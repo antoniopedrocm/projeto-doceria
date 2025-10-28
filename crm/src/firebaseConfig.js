@@ -4,6 +4,7 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
+import { getMessaging, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCNU5ZEl60OcW5eZyL_ZoD0tFKpweQvhwU",
@@ -24,11 +25,26 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const functions = getFunctions(app, 'us-central1');
 
+let messagingPromise = Promise.resolve(null);
 
+if (typeof window !== 'undefined') {
+  messagingPromise = isSupported()
+    .then((supported) => {
+      if (!supported) {
+        console.warn('Firebase messaging não é suportado neste navegador.');
+        return null;
+      }
+      return getMessaging(app);
+    })
+    .catch((error) => {
+      console.warn('Falha ao inicializar o Firebase Messaging:', error);
+      return null;
+    });
+}
 
 // Configuração adicional para desenvolvimento
 if (process.env.NODE_ENV === 'development') {
   console.log('Firebase configurado para:', firebaseConfig.projectId);
 }
 export { firebaseConfig };
-export { auth, db, storage, functions };
+export { auth, db, storage, functions, messagingPromise };

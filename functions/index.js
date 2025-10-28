@@ -9,6 +9,7 @@
 
 const {onRequest} = require("firebase-functions/v2/https");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const express = require("express");
@@ -316,3 +317,111 @@ exports.updateUserPassword = onCall(async (request) => {
     }
 });
 
+exports.notifyNewOrder = onDocumentCreated("pedidos/{pedidoId}", async (event) => {
+    const orderData = event.data?.data();
+
+    if (!orderData) {
+        logger.warn("Novo pedido criado sem dados. Notificação não enviada.");
+        return;
+    }
+
+    try {
+        const tokensSnapshot = await db.collection("notificationTokens").get();
+
+        if (tokensSnapshot.empty) {
+            logger.info("Nenhum token de notificação cadastrado. Ignorando envio de push.");
+            return;
+        }
+
+        const tokens = tokensSnapshot.docs.map((doc) => doc.id);
+        const orderId = String(event.params?.pedidoId || "");
+        const status = orderData.status ? String(orderData.status) : "Pendente";
+        const customerName = orderData.clienteNome || orderData.nomeCliente || orderData.nome || orderData.cliente?.nome || "";
+        const orderCode = orderData.numeroPedido || orderData.codigo || orderData.numero || "";
+
+        const title = "Novo pedido recebido";
+        let body = customerName ? `Pedido de ${customerName}` : "Um novo pedido foi recebido.";
+        if (orderCode) {
+            body = `${body} (#${orderCode})`;
+        }
+
+        const message = {
+            tokens,
+            notification: {
+                title,
+                body,
+            },
+            data: {
+                orderId,
+                status,
+                url: "/",
+                source: "new-order",
+            },
+            android: {
+                priority: "high",
+                notification: {
+                    title,
+                    body,
+                    channelId: "new-orders",
+                    sound: "default",
+                    clickAction: "FLUTTER_NOTIFICATION_CLICK",
+                },
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        alert: {
+                            title,
+                            body,
+                        },
+                        sound: "default",
+                        category: "NEW_ORDER",
+                    },
+                },
+            },
+            webpush: {
+                headers: {
+                    Urgency: "high",
+                },
+                notification: {
+                    title,
+                    body,
+                    icon: "/logo192.png",
+                    badge: "/logo192.png",
+                    tag: "new-order",
+                    renotify: true,
+                    vibrate: [200, 100, 200],
+                    data: {
+                        orderId,
+                        url: "/",
+                    },
+                },
+                fcmOptions: {
+                    link: "/",
+                },
+            },
+        };
+
+        const response = await admin.messaging().sendEachForMulticast(message);
+        const tokensToDelete = [];
+
+        response.responses.forEach((res, index) => {
+            if (!res.success) {
+                const errorCode = res.error?.code;
+                logger.error("Falha ao enviar notificação push:", res.error);
+
+                if (errorCode === "messaging/registration-token-not-registered" || errorCode === "messaging/invalid-registration-token") {
+                    tokensToDelete.push(tokens[index]);
+                }
+            }
+        });
+
+        if (tokensToDelete.length > 0) {
+            await Promise.all(tokensToDelete.map((token) => db.collection("notificationTokens").doc(token).delete().catch((error) => {
+                logger.error("Erro ao remover token inválido:", error);
+            })));
+        }
+    } catch (error) {
+        logger.error("Erro ao enviar notificações de novo pedido:", error);
+    }
+});

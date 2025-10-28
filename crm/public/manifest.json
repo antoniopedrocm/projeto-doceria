@@ -23,5 +23,6 @@
   "theme_color": "#e91e63",
   "background_color": "#ffffff",
   "lang": "pt-BR",
-  "orientation": "portrait"
+  "orientation": "portrait",
+  "gcm_sender_id": "103953800507"
 }

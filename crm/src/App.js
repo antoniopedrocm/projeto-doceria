@@ -24,6 +24,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // --- CORREÇÃO: Importa o novo AudioManager ---
 import { audioManager } from './utils/AudioManager.js';
+import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceWorkerMessages } from './utils/notifications.js';
 // ✅ CORREÇÃO: URL alterada para o Firebase Storage para evitar erro de CORS
 const ALARM_SOUND_URL = "https://firebasestorage.googleapis.com/v0/b/crmdoceria-9959e.firebasestorage.app/o/audio%2Fmixkit-vintage-warning-alarm-990.wav?alt=media&token=6277f61e-51ab-413e-88d8-afef7835e465"; // <-- URL de exemplo, troque pela sua
 
@@ -955,11 +956,14 @@ function App() {
   const snoozeTimerRef = useRef(null);
   const isSnoozedRef = useRef(false);
   const initialDataLoaded = useRef(false);
+  const pushTokenRef = useRef(null);
   // --- REMOVIDO: audioRef e alarmIntervalRef ---
 
   
   const [data, setData] = useState({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [] });
   const [loading, setLoading] = useState(true);
+
+	const userId = user?.uid || null;
 
   // --- SUBSTITUÍDO: Nova função stopAlarm ---
 	const stopAlarm = useCallback(() => {
@@ -978,7 +982,7 @@ function App() {
   // --- REMOVIDO: Antiga função unlockAudio ---
 
   // --- SUBSTITUÍDO: Nova função playAlarm ---
-	const playAlarm = useCallback(async () => {
+  const playAlarm = useCallback(async () => {
 		// Só toca se não estiver em modo soneca
 		if (isSnoozedRef.current) {
 			console.log("[App.js] Alarme em soneca, não tocando.");
@@ -1080,6 +1084,79 @@ function App() {
   useEffect(() => {
       playAlarmRef.current = playAlarm;
   }, [playAlarm]);
+  
+   const handleIncomingPushNotification = useCallback((payload) => {
+    console.log('[App.js] Notificação push recebida:', payload);
+    setHasNewPendingOrders(true);
+
+    if (isSnoozedRef.current) {
+      console.log('[App.js] Push recebido durante soneca. Alarme permanecerá silenciado até o fim da soneca.');
+      return;
+    }
+
+    if (typeof playAlarmRef.current === 'function') {
+      playAlarmRef.current();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!userId) {
+      pushTokenRef.current = null;
+      return;
+    }
+
+    let unsubscribeForeground = null;
+    let unsubscribeServiceWorker = null;
+    let cancelled = false;
+
+    const setupPushNotifications = async () => {
+      try {
+        const token = await registerDeviceForPush(userId);
+        if (token) {
+          pushTokenRef.current = token;
+          console.log('[App.js] Token de push registrado para o usuário:', userId, token);
+        }
+      } catch (error) {
+        console.error('[App.js] Erro ao configurar notificações push:', error);
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      try {
+        unsubscribeForeground = await listenForForegroundMessages((payload) => {
+          console.log('[App.js] Mensagem de push recebida em primeiro plano:', payload);
+          handleIncomingPushNotification(payload);
+        });
+      } catch (error) {
+        console.error('[App.js] Não foi possível escutar mensagens em primeiro plano:', error);
+      }
+
+      unsubscribeServiceWorker = subscribeToServiceWorkerMessages((event) => {
+        const message = event.data;
+        if (!message) {
+          return;
+        }
+
+        if (message.type === 'NEW_ORDER_PUSH') {
+          handleIncomingPushNotification(message.payload);
+        }
+      });
+    };
+
+    setupPushNotifications();
+
+    return () => {
+      cancelled = true;
+      if (typeof unsubscribeForeground === 'function') {
+        unsubscribeForeground();
+      }
+      if (typeof unsubscribeServiceWorker === 'function') {
+        unsubscribeServiceWorker();
+      }
+    };
+  }, [userId, handleIncomingPushNotification]);
 
   const dataRef = useRef(data);
   useEffect(() => {
@@ -2067,7 +2144,7 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
 		  stopAlarmFn();
 		}
 	  };
-	}, [stopAlarmFn]);
+  }, [stopAlarmFn]);
     
     // Handlers para Usuários
     const handleNewUser = () => { 
