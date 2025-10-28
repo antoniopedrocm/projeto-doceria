@@ -1049,11 +1049,6 @@ function App() {
         tryAutoUnlock();
     }
   
-    // Limpeza do botão se o componente desmontar ou usuário mudar
-    return () => {
-       const existing = document.getElementById('btn-ativar-som');
-       if (existing) existing.remove(); // Remove o botão se existir (caso raro)
-    }
   }, [user]); // Depende do 'user' para saber se deve mostrar o botão
 
   // --- NOVO: Estado para controlar a exibição do botão de ativar som ---
@@ -1224,13 +1219,24 @@ function App() {
     // EFFECT PARA PARAR ALARME QUANDO NÃO HÁ MAIS PEDIDOS PENDENTES
     useEffect(() => {
         const hasAnyPending = data.pedidos && data.pedidos.some(p => p.status === 'Pendente');
-        
+
         if (!hasAnyPending && !isAlarmSnoozed) {
           console.log('[App.js] Nenhum pedido pendente e não está em soneca. Parando alarme e escondendo banner.');
-          setHasNewPendingOrders(false); 
-          stopAlarm(); 
+          setHasNewPendingOrders(false);
+          stopAlarm();
         }
-    }, [data.pedidos, isAlarmSnoozed, stopAlarm]); 
+    }, [data.pedidos, isAlarmSnoozed, stopAlarm]);
+
+    // Garante que o alarme continue tocando enquanto houver pedidos pendentes
+    useEffect(() => {
+        const hasPendingOrders = pendingOrders.some(order => order.status === 'Pendente');
+
+        if (hasPendingOrders && !isAlarmSnoozed && !isAlarmPlaying) {
+          console.log('[App.js] Pedidos pendentes encontrados enquanto o alarme estava parado. Reativando alarme.');
+          setHasNewPendingOrders(true);
+          playAlarmRef.current();
+        }
+    }, [pendingOrders, isAlarmSnoozed, isAlarmPlaying]);
 
     // --- REMOVIDO: Antigo useEffect de desbloqueio ---
     // useEffect(() => { if (audioUnlocked && ...) ... });
@@ -1342,12 +1348,12 @@ function App() {
 			  role: userDoc.exists() ? userDoc.data().role || 'Atendente' : 'Atendente' 
 			};
 			setUser(userData);
-            // Tenta inicializar/resumir o AudioManager APÓS o login
-            try {
-               if (localStorage.getItem("audioUnlocked") === "true") {
-                 await audioManager.init();
-               }
-            } catch(e) { console.error("Erro no init pós-login:", e); }
+			// Tenta inicializar/resumir o AudioManager APÓS o login
+			if (localStorage.getItem("audioUnlocked") === "true") {
+			  audioManager.init().catch((e) => {
+					console.error("Erro no init pós-login:", e);
+			  });
+			}
 
 		  } catch (error) {
 			console.error("Erro ao carregar dados do usuário:", error);
@@ -1938,6 +1944,10 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
     
     // States para Usuários
     const [usuarios, setUsuarios] = useState([]);
+	const [userSearchTerm, setUserSearchTerm] = useState('');
+    const [userExcludeTerm, setUserExcludeTerm] = useState('');
+    const [userEmailFilter, setUserEmailFilter] = useState('any');
+    const [userRoleFilter, setUserRoleFilter] = useState('all');
     const [showUserModal, setShowUserModal] = useState(false); 
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [editingUser, setEditingUser] = useState(null); 
@@ -1949,6 +1959,49 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
     const [showCupomModal, setShowCupomModal] = useState(false);
     const [editingCupom, setEditingCupom] = useState(null);
     const [cupomFormData, setCupomFormData] = useState({});
+	
+	    const userRoles = useMemo(() => {
+        const roles = new Set((usuarios || []).map((userItem) => userItem.role).filter(Boolean));
+        return Array.from(roles);
+    }, [usuarios]);
+
+    const filteredUsuarios = useMemo(() => {
+        const search = userSearchTerm.trim().toLowerCase();
+        const exclude = userExcludeTerm.trim().toLowerCase();
+
+        return (usuarios || []).filter((usuario) => {
+            const name = (usuario.nome || '').toLowerCase();
+            const email = (usuario.email || '').trim();
+            const role = (usuario.role || '').toLowerCase();
+
+            if (search && !name.includes(search)) return false;
+            if (exclude && name.includes(exclude)) return false;
+
+            if (userEmailFilter === 'empty' && email) return false;
+            if (userEmailFilter === 'filled' && !email) return false;
+
+            if (userRoleFilter !== 'all' && role !== userRoleFilter.toLowerCase()) return false;
+
+            return true;
+        });
+    }, [usuarios, userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter]);
+
+    const hasUserFilters = useMemo(() => {
+        return Boolean(
+            userSearchTerm.trim() ||
+            userExcludeTerm.trim() ||
+            userEmailFilter !== 'any' ||
+            userRoleFilter !== 'all'
+        );
+    }, [userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter]);
+
+    const handleClearUserFilters = useCallback(() => {
+        setUserSearchTerm('');
+        setUserExcludeTerm('');
+        setUserEmailFilter('any');
+        setUserRoleFilter('all');
+    }, []);
+
 
     // 🔄 Carregar dados da aba ativa
     useEffect(() => {
@@ -2281,18 +2334,75 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
             </div>
             
             {activeTab === 'users' && (
-              <div>
+
+            <div>
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 md:p-6 mb-4">
+                    <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
+                        <h2 className="text-lg font-semibold text-gray-800">Filtros</h2>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleClearUserFilters}
+                            disabled={!hasUserFilters}
+                        >
+                            Limpar filtros
+                        </Button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <Input
+                            label="Buscar por nome"
+                            placeholder="Ex: Ana"
+                            value={userSearchTerm}
+                            onChange={(e) => setUserSearchTerm(e.target.value)}
+                        />
+                        <Input
+                            label="Excluir nome"
+                            placeholder="Ex: João"
+                            value={userExcludeTerm}
+                            onChange={(e) => setUserExcludeTerm(e.target.value)}
+                        />
+                        <Select
+                            label="E-mail"
+                            value={userEmailFilter}
+                            onChange={(e) => setUserEmailFilter(e.target.value)}
+                        >
+                            <option value="any">Todos</option>
+                            <option value="empty">Apenas vazios</option>
+                            <option value="filled">Apenas preenchidos</option>
+                        </Select>
+                        <Select
+                            label="Permissão"
+                            value={userRoleFilter}
+                            onChange={(e) => setUserRoleFilter(e.target.value)}
+                        >
+                            <option value="all">Todas</option>
+                            {userRoles.map((roleOption) => (
+                                <option key={roleOption} value={roleOption}>
+                                    {roleOption.charAt(0).toUpperCase() + roleOption.slice(1)}
+                                </option>
+                            ))}
+                        </Select>
+                    </div>
+                </div>
+
                 <div className="flex justify-end my-4">
                     <Button onClick={handleNewUser}><Plus className="w-4 h-4" /> Novo Usuário</Button>
                 </div>
+				
                 {(!usuarios || usuarios.length === 0) ? (
                     <div className="text-center p-8 bg-white rounded-2xl shadow-lg">
                         <p className="text-gray-500">Nenhum usuário encontrado.</p>
                         <p className="text-sm text-gray-400 mt-2">Clique em "Novo Usuário" para criar o primeiro usuário.</p>
                     </div>
+				) : (filteredUsuarios.length === 0 ? (
+                    <div className="text-center p-8 bg-white rounded-2xl shadow-lg">
+                        <p className="text-gray-500">Nenhum usuário corresponde aos filtros selecionados.</p>
+                        <p className="text-sm text-gray-400 mt-2">Ajuste os filtros ou limpe-os para visualizar todos os usuários.</p>
+                    </div>								
                 ) : (
-                    <Table columns={userColumns} data={usuarios} actions={userActions} />
-                )}
+					<Table columns={userColumns} data={filteredUsuarios} actions={userActions} />
+                ))}
+                  
               </div>
             )}
             

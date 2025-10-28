@@ -1,6 +1,6 @@
 // --- SEÇÃO 1: IMPORTAÇÕES DO FIREBASE SDK ---
 // Importa os módulos principais do Firebase.
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 
 // Firestore (banco de dados NoSQL)
 import { 
@@ -42,7 +42,10 @@ const firebaseConfig = {
 
 
 // --- SEÇÃO 3: INICIALIZAÇÃO DO FIREBASE E SERVIÇOS ---
-const app = initializeApp(firebaseConfig);
+// Usa uma instância nomeada para não interferir na sessão do CRM (app padrão)
+const appName = "cardapioPublic";
+const app = getApps().find((app) => app.name === appName)
+  || initializeApp(firebaseConfig, appName);
 
 // Firestore
 const db = getFirestore(app);
