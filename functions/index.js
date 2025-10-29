@@ -317,7 +317,10 @@ exports.updateUserPassword = onCall(async (request) => {
     }
 });
 
-exports.notifyNewOrder = onDocumentCreated("pedidos/{pedidoId}", async (event) => {
+exports.notifyNewOrder = onDocumentCreated({
+    document: "pedidos/{pedidoId}",
+    region: "southamerica-east1",
+}, async (event) => {
     const orderData = event.data?.data();
 
     if (!orderData) {
