@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ana Guimarães Doceria</string>
+    <string name="title_activity_main">Ana Guimarães Doceria</string>
+    <string name="package_name">br.com.anaguimaraes.doceria</string>
+    <string name="custom_url_scheme">br.com.anaguimaraes.doceria</string>
+</resources>

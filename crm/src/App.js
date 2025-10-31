@@ -17,7 +17,7 @@ import { httpsCallable } from "firebase/functions";
 
 // Importações do Firebase SDK
 // ATUALIZADO: Adicionado GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
 // CORRIGIDO: Adicionado 'getDocs' à importação
 import { collection, onSnapshot, query, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -25,6 +25,11 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 // --- CORREÇÃO: Importa o novo AudioManager ---
 import { audioManager } from './utils/AudioManager.js';
 import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceWorkerMessages } from './utils/notifications.js';
+
+// --- importação para Android
+import { NativeAudio } from '@capacitor-community/native-audio';
+import { Capacitor } from '@capacitor/core';
+
 // ✅ CORREÇÃO: URL alterada para o Firebase Storage para evitar erro de CORS
 const ALARM_SOUND_URL = "https://firebasestorage.googleapis.com/v0/b/crmdoceria-9959e.firebasestorage.app/o/audio%2Fmixkit-vintage-warning-alarm-990.wav?alt=media&token=6277f61e-51ab-413e-88d8-afef7835e465"; // <-- URL de exemplo, troque pela sua
 
@@ -56,7 +61,7 @@ const usePersistentState = (key, defaultValue) => {
     } catch (error) {
       console.error('Erro ao salvar no sessionStorage', error);
     }
-  }, [state]); // ⚠️ REMOVIDO 'key' das dependências - essa é a correção principal
+  }, [key, state]);
 
   return [state, setState];
 };
@@ -166,7 +171,6 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
     const [searchTerm, setSearchTerm] = usePersistentState('fornecedores_searchTerm', '');
     
     const [showFornecedorModal, setShowFornecedorModal] = useState(false);
-	const [showNewOrderAlert, setShowNewOrderAlert] = useState(false);
 
     const [editingFornecedor, setEditingFornecedor] = useState(null);
     const [fornecedorFormData, setFornecedorFormData] = useState({});
@@ -178,7 +182,8 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
     const [showEstoqueModal, setShowEstoqueModal] = useState(false);
     const [editingEstoque, setEditingEstoque] = useState(null);
     const [estoqueFormData, setEstoqueFormData] = useState({});
-	const [authReady, setAuthReady] = useState(false);
+
+
 	
     
     const resetFornecedorForm = () => setFornecedorFormData({ nome: '', cnpj_cpf: '', contato_telefone: '', contato_email: '', contato_whatsapp: '', endereco_completo: '', endereco_cep: '', categoria: 'Insumos', dados_bancarios: '', observacoes: '', status: 'Ativo' });
@@ -337,7 +342,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
     const [activeTab, setActiveTab] = usePersistentState('financeiro_activeTab', 'dashboard');
     const [modalConfig, setModalConfig] = useState({ isOpen: false, type: null, item: null });
     const [formData, setFormData] = useState({});
-    const [charts, setCharts] = useState({});
+    const chartsRef = useRef({});
     const [startDate, setStartDate] = usePersistentState('financeiro_startDate', '');
     const [endDate, setEndDate] = usePersistentState('financeiro_endDate', '');
     const [despesaFilter, setDespesaFilter] = usePersistentState('financeiro_despesaFilter', 'Todas');
@@ -351,7 +356,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 		}
 
 		// Destrói gráficos existentes
-		const existingCharts = Object.values(charts);
+        const existingCharts = Object.values(chartsRef.current);
 		existingCharts.forEach(chart => {
 			if (chart && typeof chart.destroy === 'function') {
 				chart.destroy();
@@ -420,7 +425,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 			} 
 		});
 
-		setCharts({ monthlyChart, pieChart });
+        chartsRef.current = { monthlyChart, pieChart };
 
 		return () => {
 			if (monthlyChart) monthlyChart.destroy();
@@ -945,14 +950,14 @@ function App() {
 
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, onConfirm: () => {} });
   // ... (outros estados: showLogin, email, password, etc.) ...
-	const [lightboxImage, setLightboxImage] = useState(null);
-	const [authReady, setAuthReady] = useState(false);
+    const [lightboxImage, setLightboxImage] = useState(null);
   
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   // ... (outros estados: passwordResetEmail, passwordResetMessage) ...
 
   // --- REVISADO: Refs de Áudio ---
   const stopAlarmRef = useRef(null); // Guarda a função de parar o som
+  const stopAlarmFnRef = useRef(null);
   const snoozeTimerRef = useRef(null);
   const isSnoozedRef = useRef(false);
   const initialDataLoaded = useRef(false);
@@ -1028,6 +1033,28 @@ function App() {
 			setIsAlarmPlaying(false);
 		}
 	}, [isAlarmPlaying]); // Adicione isAlarmPlaying como dependência
+	
+	  // --- PRÉ-CARREGAMENTO DO ÁUDIO NATIVO (Capacitor Android/iOS) ---
+	  useEffect(() => {
+		const loadAudio = async () => {
+		  if (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios') {
+			try {
+			  await NativeAudio.preload({
+				assetId: 'pedido',
+				assetPath: 'mixkit-vintage-warning-alarm-990.wav',
+				audioChannelNum: 1,
+				isUrl: false,
+			  });
+			  console.log('🔊 Áudio pré-carregado com sucesso!');
+			} catch (err) {
+			  console.error('Erro ao carregar áudio:', err);
+			}
+		  }
+		};
+
+		loadAudio();
+	  }, []);
+
 
   // --- SUBSTITUÍDO: Novo useEffect de inicialização do AudioManager ---
   useEffect(() => {
@@ -1071,7 +1098,7 @@ function App() {
       }, 500); // Meio segundo de espera
 
       return () => clearTimeout(timer);
-  }, [user, audioManager.unlocked]); // Reavalia quando user muda ou o estado unlocked do manager muda
+  }, [user]);
 
 
   // EFFECT para sincronizar ref com estado isAlarmSnoozed
@@ -1084,6 +1111,10 @@ function App() {
   useEffect(() => {
       playAlarmRef.current = playAlarm;
   }, [playAlarm]);
+  
+    useEffect(() => {
+    stopAlarmFnRef.current = stopAlarmFn;
+  }, [stopAlarmFn]);
   
    const handleIncomingPushNotification = useCallback((payload) => {
     console.log('[App.js] Notificação push recebida:', payload);
@@ -2134,17 +2165,17 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
     }, [activeTab]);
 	
 	//Limpeza quando o componente desmontar
-	useEffect(() => {
-	  return () => {
-		// Para o alarme quando o componente desmontar
-		if (stopAlarmRef.current) {
-		  stopAlarmRef.current();
-		}
-		if (stopAlarmFn) {
-		  stopAlarmFn();
-		}
-	  };
-  }, [stopAlarmFn]);
+        useEffect(() => {
+          return () => {
+                // Para o alarme quando o componente desmontar
+                if (stopAlarmRef.current) {
+                  stopAlarmRef.current();
+                }
+                if (stopAlarmFnRef.current) {
+                  stopAlarmFnRef.current();
+                }
+          };
+  }, []);
     
     // Handlers para Usuários
     const handleNewUser = () => { 
@@ -2890,25 +2921,29 @@ const handleSubmit = async (e) => {
         const total = subtotal - desconto;
         
         // Garante que todos os campos necessários estejam presentes, mesmo que vazios
-        setFormData({ 
-            clienteId: '', 
-            clienteNome: '', 
-            itens: [], 
-            subtotal: 0, 
-            desconto: 0, 
-            total: 0, 
-            status: 'Pendente', 
-            origem: 'Manual', 
-            categoria: 'Delivery', 
-            dataEntrega: '', 
-            observacao: '', 
-            formaPagamento: 'Pix', 
-            cupom: null,
-            ...order, // Sobrescreve com os dados do pedido
-            subtotal, // Usa os valores calculados
-            desconto, 
+        const defaultOrderData = {
+            clienteId: '',
+            clienteNome: '',
+            itens: [],
+            subtotal: 0,
+            desconto: 0,
+            total: 0,
+            status: 'Pendente',
+            origem: 'Manual',
+            categoria: 'Delivery',
+            dataEntrega: '',
+            observacao: '',
+            formaPagamento: 'Pix',
+            cupom: null
+        };
+
+        setFormData({
+            ...defaultOrderData,
+            ...order,
+            subtotal,
+            desconto,
             total,
-            dataEntrega: order.dataEntrega ? (getJSDate(order.dataEntrega)?.toISOString().split('T')[0] || '') : '' // Formata a data
+            dataEntrega: order.dataEntrega ? (getJSDate(order.dataEntrega)?.toISOString().split('T')[0] || '') : ''
         });
         
         setDescontoValor(order.desconto && !order.cupom ? String(order.desconto) : ''); // Preenche desconto manual se houver
@@ -3245,8 +3280,9 @@ const handleSubmit = async (e) => {
 			 pedidoDate.getMonth() === currentDate.getMonth();
 	});
 
+    const clientes = data.clientes || [];
     const aniversariantesDoMes = useMemo(() => {
-        return (data.clientes || []).filter(cliente => {
+        return clientes.filter(cliente => {
             if (!cliente.aniversario || !/^\d{4}-\d{2}-\d{2}$/.test(cliente.aniversario)) return false;
             // Usa UTC para evitar problemas de fuso
             const [year, month, day] = cliente.aniversario.split('-');
@@ -3277,7 +3313,6 @@ const handleSubmit = async (e) => {
                     {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} className="border rounded-lg aspect-square"></div>)}
                     {Array.from({ length: daysInMonth }).map((_, day) => {
                         const dayNumber = day + 1;
-                        const dateToCheck = new Date(Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), dayNumber));
                         
                         const today = new Date();
                         const isToday = today.getDate() === dayNumber && today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear();
@@ -3296,8 +3331,8 @@ const handleSubmit = async (e) => {
                         });
 
                         const aniversariantesDoDia = aniversariantesDoMes.filter(c => {
-                             const [, , day] = c.aniversario.split('-');
-                             return parseInt(day, 10) === dayNumber;
+                             const [, , dayString] = c.aniversario.split('-');
+                             return parseInt(dayString, 10) === dayNumber;
                         });
 
                         const hasEvents = pedidosDoDia.length > 0 || aniversariantesDoDia.length > 0;
@@ -3371,8 +3406,6 @@ const handleSubmit = async (e) => {
                     const cliente = data.clientes.find(c => c.id === viewingOrder.clienteId);
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
-                    const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
-                    
                     const handleSendToWhatsApp = () => { /* ... (código igual ao do Pedidos.js) ... */ };
                     const handlePrint = () => { /* ... (código igual ao do Pedidos.js) ... */ };
 
