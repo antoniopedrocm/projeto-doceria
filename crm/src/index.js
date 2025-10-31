@@ -22,7 +22,7 @@ root.render(
   </React.StrictMode>
 );
 
-// ✅ CORREÇÃO:
-// Altera o registro para 'unregister()' para corrigir o erro de
-// MIME type no console do navegador.
-serviceWorkerRegistration.unregister();
+// ✅ Service worker habilitado para permitir notificações push, cache offline e
+// reprodução de áudio em segundo plano quando a aplicação estiver instalada
+// como PWA ou empacotada em apps nativos.
+serviceWorkerRegistration.register();

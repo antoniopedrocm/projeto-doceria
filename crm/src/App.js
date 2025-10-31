@@ -1040,10 +1040,10 @@ function App() {
 		  if (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios') {
 			try {
 			  await NativeAudio.preload({
-				assetId: 'pedido',
-				assetPath: 'mixkit-vintage-warning-alarm-990.wav',
-				audioChannelNum: 1,
-				isUrl: false,
+					assetId: 'pedido',
+					assetPath: 'mixkit_vintage_warning_alarm_990.wav',
+					audioChannelNum: 1,
+					isUrl: false,
 			  });
 			  console.log('🔊 Áudio pré-carregado com sucesso!');
 			} catch (err) {
@@ -1084,6 +1084,89 @@ function App() {
 
   // --- NOVO: Estado para controlar a exibição do botão de ativar som ---
   const [showActivateSoundButton, setShowActivateSoundButton] = useState(false);
+  
+    useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const requestCapabilities = async () => {
+      if (typeof navigator === 'undefined') {
+        return;
+      }
+
+      const requestGeolocation = async () => {
+        if (!navigator.geolocation) {
+          return;
+        }
+
+        return new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => resolve(position),
+            (error) => {
+              console.warn('[App.js] Permissão de geolocalização negada ou indisponível:', error);
+              resolve(null);
+            },
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+          );
+        });
+      };
+
+      const requestMicrophone = async () => {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          return;
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach((track) => track.stop());
+        } catch (error) {
+          console.warn('[App.js] Usuário negou acesso ao microfone ou dispositivo indisponível:', error);
+        }
+      };
+
+      try {
+        if (navigator.permissions?.query) {
+          try {
+            const geoStatus = await navigator.permissions.query({ name: 'geolocation' });
+            if (geoStatus.state === 'granted') {
+              await requestGeolocation();
+            } else if (geoStatus.state === 'prompt') {
+              await requestGeolocation();
+            }
+          } catch (error) {
+            await requestGeolocation();
+          }
+        } else {
+          await requestGeolocation();
+        }
+      } catch (error) {
+        console.warn('[App.js] Erro ao solicitar geolocalização:', error);
+      }
+
+      try {
+        if (navigator.permissions?.query) {
+          try {
+            const micStatus = await navigator.permissions.query({ name: 'microphone' });
+            if (micStatus.state === 'prompt') {
+              await requestMicrophone();
+            } else if (micStatus.state === 'granted') {
+              // Nada a fazer, mas garante que dispositivos sejam liberados
+              await requestMicrophone();
+            }
+          } catch (error) {
+            await requestMicrophone();
+          }
+        } else {
+          await requestMicrophone();
+        }
+      } catch (error) {
+        console.warn('[App.js] Erro ao solicitar permissão do microfone:', error);
+      }
+    };
+
+    requestCapabilities();
+  }, [user]);
 
   // --- NOVO: Effect para verificar e mostrar o botão de ativar som ---
   useEffect(() => {
@@ -1173,6 +1256,11 @@ function App() {
         if (message.type === 'NEW_ORDER_PUSH') {
           handleIncomingPushNotification(message.payload);
         }
+		
+        if (message.type === 'PLAY_ORDER_SOUND' && typeof playAlarmRef.current === 'function') {
+          playAlarmRef.current();
+        }		
+		
       });
     };
 

@@ -6,8 +6,18 @@ const VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY;
 const isBrowser = typeof window !== "undefined";
 
 async function ensureServiceWorkerRegistration() {
-  if (!isBrowser || !("serviceWorker" in navigator)) {
-    throw new Error("Service workers não são suportados neste ambiente.");
+  if (!isBrowser || !('serviceWorker' in navigator)) {
+    throw new Error('Service workers não são suportados neste ambiente.');
+  }
+
+  try {
+    const readyRegistration = await navigator.serviceWorker.ready;
+    const readyScriptUrl = readyRegistration.active?.scriptURL;
+    if (readyScriptUrl && readyScriptUrl.includes('firebase-messaging-sw.js')) {
+      return readyRegistration;
+    }
+  } catch (error) {
+    console.warn('[notifications] Não foi possível obter serviceWorker.ready:', error);
   }
 
   const registrations = await navigator.serviceWorker.getRegistrations();

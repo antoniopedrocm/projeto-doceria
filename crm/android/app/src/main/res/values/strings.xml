@@ -4,4 +4,6 @@
     <string name="title_activity_main">Ana Guimarães Doceria</string>
     <string name="package_name">br.com.anaguimaraes.doceria</string>
     <string name="custom_url_scheme">br.com.anaguimaraes.doceria</string>
+	<string name="notification_order_body">Um novo pedido acabou de chegar.</string>
+    <string name="stop">Silenciar</string>
 </resources>
