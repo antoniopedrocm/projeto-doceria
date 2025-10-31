@@ -1,4 +1,7 @@
 // src/utils/AudioManager.js
+import { Capacitor } from '@capacitor/core';
+import { NativeAudio } from '@capacitor-community/native-audio';
+
 class AudioManager {
   constructor() {
     this.audioCtx = null;
@@ -112,6 +115,25 @@ class AudioManager {
   async playSound(url, { loop = false, volume = 1 } = {}) {
     await this.init();
 
+    // --- Suporte a Capacitor (Android/iOS) ---
+    if (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios') {
+      try {
+        const assetId = 'pedido';
+        await NativeAudio.preload({
+          assetId,
+          assetPath: 'mixkit-vintage-warning-alarm-990.wav',
+          audioChannelNum: 1,
+          isUrl: false,
+        });
+        await NativeAudio.play({ assetId });
+        console.log('[AudioManager] Som reproduzido via NativeAudio');
+        return () => NativeAudio.stop({ assetId });
+      } catch (err) {
+        console.error('[AudioManager] Falha ao tocar via NativeAudio:', err);
+      }
+    }
+
+    // --- Comportamento padrão (browser) ---
     if (!this.audioCtx || this.audioCtx.state !== "running") {
       console.warn("[AudioManager] play blocked: AudioContext not running. State:", this.audioCtx?.state);
       this.unlocked = false;
