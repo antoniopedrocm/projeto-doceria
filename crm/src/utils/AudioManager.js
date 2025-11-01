@@ -4,6 +4,7 @@ import { NativeAudio } from '@capacitor-community/native-audio';
 
 const NATIVE_ASSET_ID = 'pedido';
 const NATIVE_ASSET_PATH = 'mixkit_vintage_warning_alarm_990.wav';
+const unlockEvents = ['touchstart', 'touchend', 'mousedown', 'keydown', 'pointerdown'];
 
 class AudioManager {
   constructor() {
