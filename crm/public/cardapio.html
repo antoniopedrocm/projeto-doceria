@@ -463,18 +463,23 @@
 								<!-- O mapa ou o placeholder serão inseridos aqui via JS -->
 							</div>
 							
-							<!-- Número e Complemento -->
+							<!-- Rua, Número e Complemento -->
 							<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-								<div>
-									<label class="block text-sm font-medium text-gray-700 mb-2">Número</label>
-									<input id="manual-address-number" type="text" placeholder="Número" 
-										   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
-								</div>
-								<div>
-									<label class="block text-sm font-medium text-gray-700 mb-2">Complemento</label>
-									<input id="manual-address-complement" type="text" placeholder="Apto, Bloco, etc." 
-										   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
-								</div>
+									<div>
+											<label class="block text-sm font-medium text-gray-700 mb-2">Rua *</label>
+											<input id="manual-address-street" type="text" placeholder="Rua"
+													   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+									</div>
+									<div>
+											<label class="block text-sm font-medium text-gray-700 mb-2">Número/Quadra, Lote *</label>
+											<input id="manual-address-number" type="text" placeholder="Número/Quadra, Lote"
+													   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+									</div>
+									<div class="md:col-span-2">
+											<label class="block text-sm font-medium text-gray-700 mb-2">Complemento</label>
+											<input id="manual-address-complement" type="text" placeholder="Apto, Bloco, etc."
+													   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+									</div>
 							</div>
 
 							<!-- Bairro, Cidade e CEP -->
@@ -496,7 +501,6 @@
 								</div>
 							</div>
                              <!-- Endereço Completo (oculto, preenchido pelo mapa) -->
-                            <input id="manual-address-input" type="hidden">
 							<!-- Apelido do Endereço -->
 							<div>
 								<label class="block text-sm font-medium text-gray-700 mb-2">Apelido do endereço *</label>
@@ -726,11 +730,13 @@
     }
 
 	function validateAddressForm() {
+	  const rua = document.getElementById('manual-address-street').value.trim();
+	  const numero = document.getElementById('manual-address-number').value.trim();
 	  const bairro = document.getElementById('manual-address-neighborhood').value.trim();
 	  const cidade = document.getElementById('manual-address-city').value.trim();
 	  const apelido = document.getElementById('manual-address-nickname').value.trim();
 	  const hasCoords = window.currentLatLng?.lat && window.currentLatLng?.lng;
-	  const hasBasicInfo = bairro.length > 0 && cidade.length > 0 && apelido.length > 0;
+	  const hasBasicInfo = rua.length > 0 && numero.length > 0 && bairro.length > 0 && cidade.length > 0 && apelido.length > 0;
 	  const isValid = hasCoords && hasBasicInfo;
 	  
 	  if (saveAddressBtn) {
@@ -749,7 +755,7 @@
         addressMapContainer.innerHTML = '';
 
         try {
-            const defaultCenter = { lat: -16.6869, lng: -49.2648 };
+            const defaultCenter = { lat: -16.644661430463806, lng: -49.324890665224544 };
             geocoder = new google.maps.Geocoder();
             const { Map } = await google.maps.importLibrary("maps");
             const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
@@ -759,25 +765,32 @@
             
             map = new Map(mapDiv, { center: defaultCenter, zoom: 14, mapId: 'DEMO_MAP_ID' });
             marker = new AdvancedMarkerElement({ map: map, position: defaultCenter, gmpDraggable: true });
+			const storeInfoWindow = new google.maps.InfoWindow({
+                content: '<div style="font-weight:600;color:#db2777;font-size:0.95rem;">Ana Guimarães doceria</div>',
+                disableAutoPan: true,
+            });
+            storeInfoWindow.open({ anchor: marker, map });
             marker.addListener('dragend', () => reverseGeocode(marker.position));
-            
-			placeAutocomplete = new google.maps.places.PlaceAutocompleteElement();
-			placeAutocomplete.className = 'w-full mb-2 border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500';
-			placeAutocomplete.setAttribute('placeholder', 'Digite o endereço...');
+            marker.addListener('dragstart', () => storeInfoWindow.close());
 
-			placeAutocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
-			  try {
-				const place = placePrediction.toPlace();
-				await place.fetchFields({ fields: ['location', 'formattedAddress', 'addressComponents'] });
-				
-				if (place.location) {
-				  const newPosition = { lat: place.location.lat(), lng: place.location.lng() };
-				  map.setCenter(newPosition);
-				  map.setZoom(18);
-				  marker.position = newPosition;
-				  reverseGeocode(newPosition); // Call the robust reverseGeocode function
-				}
-			  } catch (error) {
+                        placeAutocomplete = new google.maps.places.PlaceAutocompleteElement();
+                        placeAutocomplete.className = 'w-full mb-2 border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500';
+                        placeAutocomplete.setAttribute('placeholder', 'Digite o endereço...');
+
+                        placeAutocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
+                          try {
+                                const place = placePrediction.toPlace();
+                                await place.fetchFields({ fields: ['location', 'formattedAddress', 'addressComponents'] });
+
+                                if (place.location) {
+                                  const newPosition = { lat: place.location.lat(), lng: place.location.lng() };
+                                  map.setCenter(newPosition);
+                                  map.setZoom(18);
+                                  storeInfoWindow.close();
+                                  marker.position = newPosition;
+                                  reverseGeocode(newPosition); // Call the robust reverseGeocode function
+                                }
+                          } catch (error) {
 				console.error('Erro ao buscar detalhes do local:', error);
 			  }
 			});
@@ -793,6 +806,7 @@
                             const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                             map.panTo(coords);
                             map.setZoom(17);
+							storeInfoWindow.close();
                             marker.position = coords;
                             reverseGeocode(coords);
                         },
@@ -856,7 +870,7 @@
 	  const components = place.addressComponents || [];
 	  const get = (type) => components.find(c => c.types.includes(type))?.longName || '';
 	  
-	  const addressInput = document.getElementById('manual-address-input');
+      const addressInput = document.getElementById('manual-address-street');
 	  const numberInput = document.getElementById('manual-address-number');
 	  const neighborhoodInput = document.getElementById('manual-address-neighborhood');
 	  const cityInput = document.getElementById('manual-address-city');
@@ -875,7 +889,7 @@
         setTimeout(initAddressMap, 300);
     });
 
-    ['manual-address-input','manual-address-number','manual-address-neighborhood','manual-address-city','manual-address-nickname']
+    ['manual-address-street','manual-address-number','manual-address-neighborhood','manual-address-city','manual-address-nickname']
     .forEach(id => {
         const el = document.getElementById(id);
         if(el) el.addEventListener('input', validateAddressForm);
@@ -1417,7 +1431,7 @@
 
         async function saveManualAddress() {
             const nickname = document.getElementById('manual-address-nickname').value.trim();
-            const address = document.getElementById('manual-address-input').value.trim();
+            const street = document.getElementById('manual-address-street').value.trim();
             const number = document.getElementById('manual-address-number').value.trim();
             const complement = document.getElementById('manual-address-complement').value.trim();
             const neighborhood = document.getElementById('manual-address-neighborhood').value.trim();
@@ -1429,12 +1443,22 @@
 				return;
 			}
 
-			if (!nickname) {
-				showToast("Digite um apelido para o endereço.", true);
-				return;
+			if (!street) {
+					showToast("Informe a rua do endereço.", true);
+					return;
 			}
 
-            const addressText = `${address}${number ? ', ' + number : ''}${complement ? ' - ' + complement : ''}${neighborhood ? ', ' + neighborhood : ''}${city ? ', ' + city : ''}${zip ? ' - CEP: ' + zip : ''}`;
+			if (!number) {
+					showToast("Informe o número, quadra ou lote.", true);
+					return;
+			}
+
+			if (!nickname) {
+					showToast("Digite um apelido para o endereço.", true);
+					return;
+			}
+
+            const addressText = `${street}${number ? ', ' + number : ''}${complement ? ' - ' + complement : ''}${neighborhood ? ', ' + neighborhood : ''}${city ? ', ' + city : ''}${zip ? ' - CEP: ' + zip : ''}`;
 
             try {
                 const { db, doc, getDoc, updateDoc } = await import('./firebaseClientConfig.js');
@@ -2095,7 +2119,7 @@
         addressMapContainer.innerHTML = ''; 
 
         try {
-            const defaultCenter = { lat: -16.6869, lng: -49.2648 };
+            const defaultCenter = { lat: -16.644661430463806, lng: -49.324890665224544 };
             guestGeocoder = new google.maps.Geocoder();
             
             const { Map } = await google.maps.importLibrary("maps");
@@ -2106,9 +2130,14 @@
             
             guestMap = new Map(mapDiv, { center: defaultCenter, zoom: 14, mapId: 'DEMO_MAP_ID' });
             guestMarker = new AdvancedMarkerElement({ map: guestMap, position: defaultCenter, gmpDraggable: true });
+			const guestStoreInfoWindow = new google.maps.InfoWindow({
+                content: '<div style="font-weight:600;color:#db2777;font-size:0.95rem;">Ana Guimarães doceria</div>',
+                disableAutoPan: true,
+            });
+            guestStoreInfoWindow.open({ anchor: guestMarker, map: guestMap });
             guestMarker.addListener('dragend', () => reverseGeocodeGuest(guestMarker.position));
-            
-            guestPlaceAutocomplete = new google.maps.places.PlaceAutocompleteElement();
+            guestMarker.addListener('dragstart', () => guestStoreInfoWindow.close());
+			guestPlaceAutocomplete = new google.maps.places.PlaceAutocompleteElement();
             guestPlaceAutocomplete.className = 'w-full mb-2 border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500';
             guestPlaceAutocomplete.setAttribute('placeholder', 'Digite o endereço para entrega...');
 
@@ -2119,6 +2148,7 @@
                     const newPosition = { lat: place.location.lat(), lng: place.location.lng };
                     guestMap.setCenter(newPosition);
                     guestMap.setZoom(18);
+                    guestStoreInfoWindow.close();				
                     guestMarker.position = newPosition;
                     fillGuestAddressFields(place);
                     updateGuestShippingAndSummary(newPosition);
@@ -2135,6 +2165,7 @@
                         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                         guestMap.panTo(coords);
                         guestMap.setZoom(17);
+						guestStoreInfoWindow.close();
                         guestMarker.position = coords;
                         reverseGeocodeGuest(coords);
                     });

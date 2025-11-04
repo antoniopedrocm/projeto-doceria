@@ -1235,8 +1235,15 @@
 				cartShipping.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
 				cartShippingLine.classList.remove('hidden');
 			} else {
-				cartShipping.textContent = `R$ 0,00`;
-				cartShippingLine.classList.add('hidden');
+                // Modificação para mostrar R$ 0,00 se o frete for zero, mesmo se a linha não estiver oculta (caso de retirada)
+				cartShipping.textContent = `R$ 0,00`; 
+                // A linha só fica oculta se não for retirada na loja E o frete for zero.
+                // Se for retirada na loja, a linha aparece, mas com valor R$ 0,00.
+                if (pendingOrderDetails?.clienteEndereco !== "Retirar na Loja") {
+				    cartShippingLine.classList.add('hidden');
+                } else {
+                    cartShippingLine.classList.remove('hidden'); // Garante que a linha apareça para Retirada
+                }
 			}
 		}
 
@@ -1481,6 +1488,26 @@
 			document.getElementById('new-address-section').classList.add('hidden');
 			document.getElementById('show-new-address-btn').classList.remove('hidden');
 			
+            /* === INÍCIO DA MODIFICAÇÃO === */
+			/* Adiciona a opção "Retirar na Loja" primeiro */
+			const pickupCard = document.createElement('div');
+			pickupCard.className = 'bg-white border border-blue-300 rounded-lg p-4 hover:shadow-md transition-shadow mb-4';
+			pickupCard.innerHTML = `
+				<div class="flex items-center justify-between gap-2 mb-2">
+					<span class="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">Opção Padrão</span>
+				</div>
+				<p class="text-gray-800 font-medium text-base leading-tight flex items-center gap-2">
+					<i class="fa-solid fa-store text-blue-600"></i>
+					<strong>Retirar na Loja</strong>
+				</p>
+				<p class="text-xs text-gray-500 mt-1">Nenhuma taxa de frete será aplicada.</p>
+				<button class="w-full mt-3 bg-blue-600 text-white py-2 px-4 rounded-lg font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 use-pickup-btn"><i class="fa-solid fa-person-walking"></i> Selecionar Retirada</button>
+			`;
+            // Atribui o novo handler
+			pickupCard.querySelector('.use-pickup-btn').onclick = usePickupAddress;
+			addressList.appendChild(pickupCard);
+            /* === FIM DA MODIFICAÇÃO === */
+
 			if (client.enderecos && client.enderecos.length > 0) {
 				client.enderecos.forEach((address, index) => {
 					const { enderecoCompleto, nickname } = (typeof address === 'string') 
@@ -1502,9 +1529,9 @@
 					addressDiv.querySelector('.delete-address-btn').onclick = (e) => { e.stopPropagation(); deleteAddress(index); };
 					addressList.appendChild(addressDiv);
 				});
-			} else {
-				addressList.innerHTML = `<div class="text-center py-8 bg-gray-50 rounded-lg"><i class="fa-solid fa-map-marker-alt text-4xl text-gray-300 mb-3"></i><p class="text-gray-500">Nenhum endereço cadastrado.</p></div>`;
-			}
+			} 
+            // O 'else' block que exibia "Nenhum endereço cadastrado" foi removido 
+            // para não apagar a opção "Retirar na Loja".
 			addressManagementModal.classList.remove('hidden');
 		}
 		
@@ -1537,6 +1564,26 @@
 				showToast('Erro ao excluir endereço.', true);
 			}
 		}
+
+        /* === INÍCIO DA MODIFICAÇÃO === */
+		/* Nova função para lidar com a opção "Retirar na Loja" */
+		function usePickupAddress() {
+			window.valorFrete = 0; // Requisito principal: frete zero
+			
+			pendingOrderDetails = {
+				clienteId: currentClient.id,
+				clienteNome: currentClient.nome,
+				clienteEndereco: "Retirar na Loja", // Endereço especial
+				telefone: currentClient.telefone
+			};
+			
+			selectedAddressText.textContent = "Retirar na Loja";
+			addressManagementModal.classList.add('hidden');
+			
+			updateAllSummaries(); // Atualiza todos os resumos (carrinho, pagamento)
+			paymentModal.classList.remove('hidden');
+		}
+        /* === FIM DA MODIFICAÇÃO === */
 
 		async function useExistingAddress(addressText, addressData) {
 			pendingOrderDetails = {
@@ -1740,13 +1787,20 @@
 			document.getElementById('payment-discount-row').classList.toggle('hidden', discount === 0);
 			if (discount > 0) document.getElementById('payment-discount').textContent = `- R$ ${discount.toFixed(2)}`;
 			
-			if (window.valorFrete > 0) {
-				document.getElementById('payment-shipping').textContent = `R$ ${window.valorFrete.toFixed(2)}`;
-				document.getElementById('payment-shipping-row').classList.remove('hidden');
+			// Atualiza a linha de frete no modal de pagamento
+			const shippingRowPayment = document.getElementById('payment-shipping-row');
+			const shippingValuePayment = document.getElementById('payment-shipping');
+			if (pendingOrderDetails?.clienteEndereco === "Retirar na Loja") {
+				shippingValuePayment.textContent = 'R$ 0,00';
+				shippingRowPayment.classList.remove('hidden'); // Mostra a linha com R$ 0,00
+			} else if (window.valorFrete > 0) {
+				shippingValuePayment.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
+				shippingRowPayment.classList.remove('hidden'); // Mostra a linha com o valor
 			} else {
-                document.getElementById('payment-shipping-row').classList.add('hidden');
+				shippingRowPayment.classList.add('hidden'); // Oculta se não for retirada e frete for 0
 			}
 		}
+
 
 		function updateGuestSummary() {
 			const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
@@ -1961,7 +2015,12 @@
                 if (!isPlatform) {
                     let message = `*Novo Pedido* 🎂 (Nº ${docRef.id.substring(0, 5)})\n\n*Itens:*\n${cart.map(item => `• ${item.quantity}x ${item.nome}`).join('\n')}\n\n*Resumo:*\nSubtotal: R$ ${subtotal.toFixed(2)}\n`;
                     if (cupomData) message += `Desconto (${cupomData.codigo}): -R$ ${desconto.toFixed(2)}\n`;
-                    if (window.valorFrete > 0) message += `Frete: R$ ${window.valorFrete.toFixed(2)}\n`;
+                    // Modificação: Não incluir linha de frete se for retirada na loja
+                    if (clientInfo.clienteEndereco !== "Retirar na Loja" && window.valorFrete > 0) {
+                         message += `Frete: R$ ${window.valorFrete.toFixed(2)}\n`;
+                    } else if (clientInfo.clienteEndereco === "Retirar na Loja") {
+                         message += `*RETIRAR NA LOJA*\n`; // Indica que é para retirada
+                    }
                     message += `*Total: R$ ${total.toFixed(2)}*\n\n*Dados:*\nNome: ${clientInfo.clienteNome}\nTelefone: ${clientInfo.telefone}\nEndereço: ${clientInfo.clienteEndereco}\nPagamento: ${clientInfo.formaPagamento}\n\n_Pedido via Cardápio Online_`;
                     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
                     confirmationModal.classList.remove('hidden');
@@ -2057,7 +2116,7 @@
                 const place = placePrediction.toPlace();
                 await place.fetchFields({ fields: ['location', 'formattedAddress', 'addressComponents'] });
                 if (place.location) {
-                    const newPosition = { lat: place.location.lat, lng: place.location.lng };
+                    const newPosition = { lat: place.location.lat(), lng: place.location.lng };
                     guestMap.setCenter(newPosition);
                     guestMap.setZoom(18);
                     guestMarker.position = newPosition;
@@ -2167,4 +2226,5 @@
 
 </body>
 </html>
+
 
