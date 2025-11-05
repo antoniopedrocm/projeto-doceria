@@ -90,3 +90,18 @@ Ou se sua branch principal for chamada "master":
 
 bash
 git push origin master
+
+Verifique e altere o remote (se necessário):
+No diretório do novo projeto, cheque o remote atual com:
+
+text
+git remote -v
+Se mostrar o repo antigo (ex: outro URL), remova-o:
+
+text
+git remote remove origin
+Depois, adicione o novo remote:
+
+text
+git remote add origin https://github.com/antoniopedrocm/projeto-doceria-Multilojas.git
+Verifique novamente com git remote -v para confirmar. Isso "troca" o repositório remoto sem afetar o antigo (que fica intacto em sua pasta). Se o repo local já foi clonado corretamente, o remote deve estar ok.
