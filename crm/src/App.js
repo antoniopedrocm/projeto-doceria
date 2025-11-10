@@ -33,6 +33,30 @@ import { Capacitor } from '@capacitor/core';
 // ✅ CORREÇÃO: URL alterada para o Firebase Storage para evitar erro de CORS
 const ALARM_SOUND_URL = "https://firebasestorage.googleapis.com/v0/b/crmdoceria-9959e.firebasestorage.app/o/audio%2Fmixkit-vintage-warning-alarm-990.wav?alt=media&token=6277f61e-51ab-413e-88d8-afef7835e465"; // <-- URL de exemplo, troque pela sua
 
+const DEFAULT_SUBCATEGORIES = {
+  Delivery: [
+    'Queridinhos',
+    'Mousse',
+    'Palha Italiana',
+    'Bolo no pote',
+    'Copo da felicidade',
+    'Bombom aberto',
+    'Pipoca',
+    'Cone recheado',
+    'Bolo gelado',
+    'Bombom recheado'
+  ],
+  Festa: [
+    'Bolo',
+    'Docinhos',
+    'Bombom',
+    'Doces finos',
+    'Bem casados',
+    'Cupcakes'
+  ]
+};
+
+
 // Hook customizado para estado persistente na sessão
 const usePersistentState = (key, defaultValue) => {
   // Inicializa o estado apenas uma vez com o valor do sessionStorage
@@ -965,7 +989,7 @@ function App() {
   // --- REMOVIDO: audioRef e alarmIntervalRef ---
 
   
-  const [data, setData] = useState({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [] });
+  const [data, setData] = useState({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [] });
   const [loading, setLoading] = useState(true);
 
 	const userId = user?.uid || null;
@@ -1112,19 +1136,6 @@ function App() {
         });
       };
 
-      const requestMicrophone = async () => {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          return;
-        }
-
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          stream.getTracks().forEach((track) => track.stop());
-        } catch (error) {
-          console.warn('[App.js] Usuário negou acesso ao microfone ou dispositivo indisponível:', error);
-        }
-      };
-
       try {
         if (navigator.permissions?.query) {
           try {
@@ -1142,26 +1153,6 @@ function App() {
         }
       } catch (error) {
         console.warn('[App.js] Erro ao solicitar geolocalização:', error);
-      }
-
-      try {
-        if (navigator.permissions?.query) {
-          try {
-            const micStatus = await navigator.permissions.query({ name: 'microphone' });
-            if (micStatus.state === 'prompt') {
-              await requestMicrophone();
-            } else if (micStatus.state === 'granted') {
-              // Nada a fazer, mas garante que dispositivos sejam liberados
-              await requestMicrophone();
-            }
-          } catch (error) {
-            await requestMicrophone();
-          }
-        } else {
-          await requestMicrophone();
-        }
-      } catch (error) {
-        console.warn('[App.js] Erro ao solicitar permissão do microfone:', error);
       }
     };
 
@@ -1324,8 +1315,8 @@ function App() {
 
   // EFFECT PARA SINCRONIZAR DADOS DO FIREBASE
 	useEffect(() => {
-	  if (!user) {
-		setData({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [] });
+          if (!user) {
+                setData({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [] });
 		setLoading(false);
 		initialDataLoaded.current = false;
 		return;
@@ -1333,10 +1324,10 @@ function App() {
 
 	  setLoading(true);
 	  
-	  const collectionsToSync = [
-		'clientes', 'produtos', 'contas_a_pagar', 'contas_a_receber',
-		'fornecedores', 'pedidosCompra', 'estoque', 'logs', 'cupons', 'users', 'pedidos'
-	  ];
+          const collectionsToSync = [
+                'clientes', 'produtos', 'contas_a_pagar', 'contas_a_receber',
+                'fornecedores', 'pedidosCompra', 'estoque', 'logs', 'cupons', 'users', 'pedidos', 'subcategorias'
+          ];
 
 	  const unsubscribes = [];
 	  
@@ -2051,21 +2042,131 @@ function App() {
     const [searchTerm, setSearchTerm] = usePersistentState("produtos_searchTerm", ""); 
     const [showModal, setShowModal] = useState(false); 
     const [editingProduct, setEditingProduct] = useState(null); 
-    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" }); 
-    const [imageFile, setImageFile] = useState(null); 
-    const [imagePreview, setImagePreview] = useState(null); 
+    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
     
-    const subcategorias = useMemo(() => ({
-      Delivery: [ 'Queridinhos', 'Mousse', 'Palha Italiana', 'Bolo no pote', 'Copo da felicidade', 'Bombom aberto', 'Pipoca', 'Cone recheado', 'Bolo gelado', 'Bombom recheado' ],
-      Festa: [ 'Bolo', 'Docinhos', 'Bombom', 'Doces finos', 'Bem casados', 'Cupcakes' ]
-    }), []);
+    const [showAddSubcategory, setShowAddSubcategory] = useState(false);
+    const [newSubcategoryName, setNewSubcategoryName] = useState("");
+    const [isSavingSubcategory, setIsSavingSubcategory] = useState(false);
+    const [subcategoryError, setSubcategoryError] = useState("");
+    const [localSubcategorias, setLocalSubcategorias] = useState({});
+
+    const subcategorias = useMemo(() => {
+      const map = {};
+
+      Object.entries(DEFAULT_SUBCATEGORIES).forEach(([categoria, subs]) => {
+        map[categoria] = new Set(subs);
+      });
+
+      (data.subcategorias || []).forEach((item) => {
+        if (!item?.categoria || !item?.nome) return;
+        if (!map[item.categoria]) {
+          map[item.categoria] = new Set();
+        }
+        map[item.categoria].add(item.nome);
+      });
+
+      Object.entries(localSubcategorias).forEach(([categoria, subs]) => {
+        if (!map[categoria]) {
+          map[categoria] = new Set();
+        }
+        subs.forEach((nome) => map[categoria].add(nome));
+      });
+
+      return Object.fromEntries(
+        Object.entries(map).map(([categoria, values]) => [
+          categoria,
+          Array.from(values).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+        ])
+      );
+    }, [data.subcategorias, localSubcategorias]);
 
     useEffect(() => {
       if (formData.categoria && subcategorias[formData.categoria] && !subcategorias[formData.categoria].includes(formData.subcategoria)) {
           setFormData(prev => ({ ...prev, subcategoria: '' }));
       }
     }, [formData.categoria, formData.subcategoria, subcategorias]);
+	
+	  useEffect(() => {
+      if (!data.subcategorias?.length) return;
+      setLocalSubcategorias((prev) => {
+        let hasChanges = false;
+        const updated = { ...prev };
+
+        Object.entries(prev).forEach(([categoria, subs]) => {
+          const persisted = new Set(
+            data.subcategorias
+              .filter((item) => item?.categoria === categoria)
+              .map((item) => item?.nome?.toLowerCase().trim())
+          );
+
+          const filtered = subs.filter((nome) => !persisted.has(nome.toLowerCase().trim()));
+
+          if (filtered.length !== subs.length) {
+            hasChanges = true;
+            if (filtered.length > 0) {
+              updated[categoria] = filtered;
+            } else {
+              delete updated[categoria];
+            }
+          }
+        });
+
+        return hasChanges ? updated : prev;
+      });
+    }, [data.subcategorias]);
+
+    useEffect(() => {
+      setShowAddSubcategory(false);
+      setNewSubcategoryName("");
+      setSubcategoryError("");
+    }, [formData.categoria]);
+
+    const handleCreateSubcategory = async () => {
+      const categoriaAtual = formData.categoria;
+      setSubcategoryError("");
+
+      if (!categoriaAtual) {
+        setSubcategoryError('Selecione uma categoria antes de adicionar uma subcategoria.');
+        return;
+      }
+
+      const trimmedName = newSubcategoryName.trim();
+      if (!trimmedName) {
+        setSubcategoryError('Informe o nome da nova subcategoria.');
+        return;
+      }
+
+      const existe = (subcategorias[categoriaAtual] || []).some(
+        (nome) => nome.toLowerCase() === trimmedName.toLowerCase()
+      );
+
+      if (existe) {
+        setSubcategoryError('Essa subcategoria já está cadastrada.');
+        return;
+      }
+
+      try {
+        setIsSavingSubcategory(true);
+        await addItem('subcategorias', { categoria: categoriaAtual, nome: trimmedName });
+        setLocalSubcategorias((prev) => {
+          const atual = new Set(prev[categoriaAtual] || []);
+          atual.add(trimmedName);
+          return { ...prev, [categoriaAtual]: Array.from(atual) };
+        });
+        setFormData((prev) => ({ ...prev, subcategoria: trimmedName }));
+        setShowAddSubcategory(false);
+        setNewSubcategoryName("");
+      } catch (error) {
+        console.error('Erro ao adicionar subcategoria:', error);
+        setSubcategoryError('Não foi possível adicionar a subcategoria. Tente novamente.');
+      } finally {
+        setIsSavingSubcategory(false);
+      }
+    };
+
 
     const filteredProducts = (data.produtos || []).filter(p => p.nome.toLowerCase().includes(searchTerm.toLowerCase()));
     const resetForm = () => { setShowModal(false); setEditingProduct(null); setFormData({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" }); setImageFile(null); setImagePreview(null); };
@@ -2105,7 +2206,72 @@ function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Input label="Nome do Produto" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required />
                   <Select label="Categoria" value={formData.categoria} onChange={(e) => setFormData({...formData, categoria: e.target.value})} required><option value="Delivery">Delivery</option><option value="Festa">Festa</option></Select>
-                  <Select label="Subcategoria" value={formData.subcategoria} onChange={e => setFormData({...formData, subcategoria: e.target.value})} required><option value="">Selecione...</option>{subcategorias[formData.categoria]?.map(sub => (<option key={sub} value={sub}>{sub}</option>))}</Select>
+                  <div className="space-y-2">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-end">
+                      <Select
+                        label="Subcategoria"
+                        value={formData.subcategoria}
+                        onChange={e => setFormData({ ...formData, subcategoria: e.target.value })}
+                        required
+                        className="flex-1"
+                      >
+                        <option value="">Selecione...</option>
+                        {(subcategorias[formData.categoria] || []).map(sub => (
+                          <option key={sub} value={sub}>{sub}</option>
+                        ))}
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setShowAddSubcategory(prev => !prev);
+                          setSubcategoryError("");
+                          setNewSubcategoryName("");
+                        }}
+                        className="md:mt-6 whitespace-nowrap"
+                      >
+                        <Plus className="w-4 h-4" /> Nova
+                      </Button>
+                    </div>
+                    {showAddSubcategory && (
+                      <div className="flex flex-col gap-2 md:flex-row md:items-end">
+                        <Input
+                          label="Nova Subcategoria"
+                          type="text"
+                          value={newSubcategoryName}
+                          onChange={(e) => {
+                            setNewSubcategoryName(e.target.value);
+                            if (subcategoryError) setSubcategoryError("");
+                          }}
+                          className="flex-1"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            onClick={handleCreateSubcategory}
+                            disabled={isSavingSubcategory}
+                          >
+                            {isSavingSubcategory ? 'Salvando...' : 'Adicionar'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => {
+                              setShowAddSubcategory(false);
+                              setNewSubcategoryName("");
+                              setSubcategoryError("");
+                            }}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    {subcategoryError && (
+                      <p className="text-sm text-red-600">{subcategoryError}</p>
+                    )}
+                  </div>
                   <Input label="Preço (R$)" type="number" step="0.01" value={formData.preco} onChange={(e) => setFormData({...formData, preco: e.target.value})} />
                   <Input label="Custo (R$)" type="number" step="0.01" value={formData.custo} onChange={(e) => setFormData({...formData, custo: e.target.value})} />
                   <Input label="Estoque" type="number" value={formData.estoque} onChange={(e) => setFormData({...formData, estoque: e.target.value})} />
