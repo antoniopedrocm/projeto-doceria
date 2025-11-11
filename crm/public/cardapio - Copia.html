@@ -866,49 +866,33 @@
 		});
 	}
 
-        function fillAddressFields(place) {
-          const rawComponents = place?.addressComponents || place?.address_components || [];
-          const normalizeComponent = (component) => {
-            if (!component) return null;
-            const name = component.long_name || component.longName || component.name || component.short_name || component.shortName;
-            return {
-              value: name || '',
-              types: component.types || [],
-            };
-          };
+	function fillAddressFields(place) {
+	  const components = place.addressComponents || [];
+	  const get = (type) => components.find(c => c.types.includes(type))?.longName || '';
+	  
+      const addressInput = document.getElementById('manual-address-street');
+	  const numberInput = document.getElementById('manual-address-number');
+	  const neighborhoodInput = document.getElementById('manual-address-neighborhood');
+	  const cityInput = document.getElementById('manual-address-city');
+	  const zipInput = document.getElementById('manual-address-zip');
+	  const street = get('route');
+	  const streetNumber = get('street_number');
+	  const neighborhood = get('sublocality_level_1') || get('neighborhood') || get('political');
 
-          const components = rawComponents
-            .map(normalizeComponent)
-            .filter(Boolean);
-
-          const get = (type) => {
-            const component = components.find((c) => c.types.includes(type));
-            return component?.value?.trim() || '';
-          };
-
-          const formattedAddress = place?.formattedAddress || place?.formatted_address || '';
-          const streetFromPlace = get('route') || formattedAddress.split(',')[0]?.trim();
-          const numberFromPlace = get('street_number');
-          const neighborhoodFromPlace = get('sublocality_level_1') || get('neighborhood') || get('political');
-          const cityFromPlace = get('administrative_area_level_2');
-          const zipFromPlace = get('postal_code');
-
-          const addressInput = document.getElementById('manual-address-street');
-          const numberInput = document.getElementById('manual-address-number');
-          const neighborhoodInput = document.getElementById('manual-address-neighborhood');
-          const cityInput = document.getElementById('manual-address-city');
-          const zipInput = document.getElementById('manual-address-zip');
-
-          if (streetFromPlace && addressInput) addressInput.value = streetFromPlace;
-          if (numberFromPlace && numberInput && !numberInput.value) numberInput.value = numberFromPlace;
-          if (neighborhoodFromPlace && neighborhoodInput) neighborhoodInput.value = neighborhoodFromPlace;
-          if (cityInput && (cityFromPlace || !cityInput.value)) {
-            cityInput.value = cityFromPlace || cityInput.value || 'Goiânia';
-          }
-          if (zipFromPlace && zipInput && !zipInput.value) zipInput.value = zipFromPlace;
-
-          validateAddressForm();
-        }
+	  if (street) {
+		addressInput.value = street;
+	  }
+	  if (streetNumber && !numberInput.value) {
+		numberInput.value = streetNumber;
+	  }
+	  if (neighborhood) {
+		neighborhoodInput.value = neighborhood;
+	  }
+	  if (!cityInput.value) cityInput.value = get('administrative_area_level_2') || 'Goiânia';
+	  if (!zipInput.value) zipInput.value = get('postal_code');
+	  
+	  validateAddressForm();
+	}
 
     document.getElementById('show-new-address-btn').addEventListener('click', () => {
         setTimeout(initAddressMap, 300);

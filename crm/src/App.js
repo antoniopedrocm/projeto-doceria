@@ -33,6 +33,15 @@ import { Capacitor } from '@capacitor/core';
 // ✅ CORREÇÃO: URL alterada para o Firebase Storage para evitar erro de CORS
 const ALARM_SOUND_URL = "https://firebasestorage.googleapis.com/v0/b/crmdoceria-9959e.firebasestorage.app/o/audio%2Fmixkit-vintage-warning-alarm-990.wav?alt=media&token=6277f61e-51ab-413e-88d8-afef7835e465"; // <-- URL de exemplo, troque pela sua
 
+const DEFAULT_FORNECEDOR_CATEGORIES = [
+  'Insumos',
+  'Embalagens',
+  'Bebidas',
+  'Entregador',
+  'Decoração',
+  'Serviços'
+];
+
 const DEFAULT_SUBCATEGORIES = {
   Delivery: [
     'Queridinhos',
@@ -190,15 +199,15 @@ const getJSDate = (firestoreTimestamp) => {
 
 const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete }) => {
     const [activeTab, setActiveTab] = usePersistentState('fornecedores_activeTab', 'fornecedores');
-    
+
     // States
     const [searchTerm, setSearchTerm] = usePersistentState('fornecedores_searchTerm', '');
-    
+
     const [showFornecedorModal, setShowFornecedorModal] = useState(false);
 
     const [editingFornecedor, setEditingFornecedor] = useState(null);
     const [fornecedorFormData, setFornecedorFormData] = useState({});
-    
+
     const [showPedidoModal, setShowPedidoModal] = useState(false);
     const [editingPedido, setEditingPedido] = useState(null);
     const [pedidoFormData, setPedidoFormData] = useState({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente' });
@@ -206,13 +215,58 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
     const [showEstoqueModal, setShowEstoqueModal] = useState(false);
     const [editingEstoque, setEditingEstoque] = useState(null);
     const [estoqueFormData, setEstoqueFormData] = useState({});
-
-
 	
-    
-    const resetFornecedorForm = () => setFornecedorFormData({ nome: '', cnpj_cpf: '', contato_telefone: '', contato_email: '', contato_whatsapp: '', endereco_completo: '', endereco_cep: '', categoria: 'Insumos', dados_bancarios: '', observacoes: '', status: 'Ativo' });
+	const [showCategoriaModal, setShowCategoriaModal] = useState(false);
+    const [novaCategoria, setNovaCategoria] = useState('');
+
+    const fornecedorCategorias = useMemo(() => {
+        const categoriasFromDb = (data.fornecedorCategorias || [])
+            .map(categoria => categoria.nome)
+            .filter(Boolean);
+        const categoriasFromFornecedores = (data.fornecedores || [])
+            .map(fornecedor => fornecedor.categoria)
+            .filter(Boolean);
+        const categoriasFromEstoque = (data.estoque || [])
+            .map(item => item.categoria)
+            .filter(Boolean);
+        const combined = [
+            ...DEFAULT_FORNECEDOR_CATEGORIES,
+            ...categoriasFromDb,
+            ...categoriasFromFornecedores,
+            ...categoriasFromEstoque
+        ];
+        return Array.from(new Set(combined.map(categoria => categoria.trim())))
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }, [data.fornecedorCategorias, data.fornecedores, data.estoque]);
+
+    const resetFornecedorForm = useCallback(() => setFornecedorFormData({ nome: '', cnpj_cpf: '', contato_telefone: '', contato_email: '', contato_whatsapp: '', endereco_completo: '', endereco_cep: '', categoria: fornecedorCategorias[0] || '', dados_bancarios: '', observacoes: '', status: 'Ativo' }), [fornecedorCategorias]);
     const resetPedidoForm = () => setPedidoFormData({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente' });
-    const resetEstoqueForm = () => setEstoqueFormData({ nome: '', categoria: 'Insumos', fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' });
+    const resetEstoqueForm = useCallback(() => setEstoqueFormData({ nome: '', categoria: fornecedorCategorias[0] || '', fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' }), [fornecedorCategorias]);
+
+    const handleAddCategoria = async (e) => {
+        e.preventDefault();
+        const categoriaNome = (novaCategoria || '').trim();
+        if (!categoriaNome) {
+            return;
+        }
+
+        const categoriaJaExiste = fornecedorCategorias.some(
+            categoria => categoria.toLowerCase() === categoriaNome.toLowerCase()
+        );
+
+        if (categoriaJaExiste) {
+            setFornecedorFormData(prev => ({ ...prev, categoria: categoriaNome }));
+            setNovaCategoria('');
+            setShowCategoriaModal(false);
+            return;
+        }
+
+        await addItem('fornecedorCategorias', { nome: categoriaNome });
+        setFornecedorFormData(prev => ({ ...prev, categoria: categoriaNome }));
+        setNovaCategoria('');
+        setShowCategoriaModal(false);
+    };
     
 	useEffect(() => {
 		const total = (pedidoFormData.itens || []).reduce((sum, item) => 
@@ -302,10 +356,16 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
 
             <Modal isOpen={showFornecedorModal} onClose={() => setShowFornecedorModal(false)} title={editingFornecedor ? 'Editar Fornecedor' : 'Novo Fornecedor'} size="lg">
                 <form onSubmit={handleFornecedorSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Input label="Nome/Razão Social" value={fornecedorFormData.nome || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, nome: e.target.value})} required/><Input label="CNPJ/CPF" value={fornecedorFormData.cnpj_cpf || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, cnpj_cpf: e.target.value})}/><Input label="Telefone" value={fornecedorFormData.contato_telefone || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, contato_telefone: e.target.value})}/><Input label="Email" type="email" value={fornecedorFormData.contato_email || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, contato_email: e.target.value})}/><Input label="Endereço Completo" value={fornecedorFormData.endereco_completo || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, endereco_completo: e.target.value})}/><Select label="Categoria" value={fornecedorFormData.categoria || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, categoria: e.target.value})}><option>Insumos</option><option>Embalagens</option><option>Bebidas</option><option>Entregador</option><option>Decoração</option><option>Serviços</option></Select></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Input label="Nome/Razão Social" value={fornecedorFormData.nome || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, nome: e.target.value})} required/><Input label="CNPJ/CPF" value={fornecedorFormData.cnpj_cpf || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, cnpj_cpf: e.target.value})}/><Input label="Telefone" value={fornecedorFormData.contato_telefone || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, contato_telefone: e.target.value})}/><Input label="Email" type="email" value={fornecedorFormData.contato_email || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, contato_email: e.target.value})}/><Input label="Endereço Completo" value={fornecedorFormData.endereco_completo || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, endereco_completo: e.target.value})}/><div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label><div className="flex flex-col md:flex-row md:items-end gap-3"><div className="flex-1"><select className="w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white border-gray-300" value={fornecedorFormData.categoria || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, categoria: e.target.value})}><option value="">Selecione...</option>{fornecedorCategorias.map(categoria => (<option key={categoria} value={categoria}>{categoria}</option>))}</select></div><Button type="button" variant="secondary" size="sm" className="h-[52px]" onClick={() => { setNovaCategoria(''); setShowCategoriaModal(true); }}><Plus className="w-4 h-4" /> Nova Categoria</Button></div></div></div>
                     <Textarea label="Dados Bancários" rows="2" value={fornecedorFormData.dados_bancarios || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, dados_bancarios: e.target.value})}/>
                     <Textarea label="Observações" rows="2" value={fornecedorFormData.observacoes || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, observacoes: e.target.value})}/>
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowFornecedorModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar</Button></div>
+                </form>
+            </Modal>
+			<Modal isOpen={showCategoriaModal} onClose={() => { setShowCategoriaModal(false); setNovaCategoria(''); }} title="Nova Categoria de Fornecedor">
+                <form onSubmit={handleAddCategoria} className="space-y-4">
+                    <Input label="Nome da Categoria" value={novaCategoria} onChange={e => setNovaCategoria(e.target.value)} required autoFocus />
+                    <div className="flex justify-end gap-3 pt-2"><Button variant="secondary" type="button" onClick={() => { setShowCategoriaModal(false); setNovaCategoria(''); }}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar</Button></div>
                 </form>
             </Modal>
             <Modal isOpen={showPedidoModal} onClose={() => setShowPedidoModal(false)} title={editingPedido ? 'Editar Pedido de Compra' : 'Novo Pedido de Compra'} size="xl">
@@ -347,7 +407,12 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
                 <form onSubmit={handleEstoqueSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Input label="Nome do Item" value={estoqueFormData.nome || ''} onChange={e => setEstoqueFormData({...estoqueFormData, nome: e.target.value})} required/>
-                        <Select label="Categoria" value={estoqueFormData.categoria || ''} onChange={e => setEstoqueFormData({...estoqueFormData, categoria: e.target.value})}><option>Insumos</option><option>Embalagens</option><option>Bebidas</option><option>Decoração</option></Select>
+                        <Select label="Categoria" value={estoqueFormData.categoria || ''} onChange={e => setEstoqueFormData({...estoqueFormData, categoria: e.target.value})}>
+                            <option value="">Selecione...</option>
+                            {fornecedorCategorias.map(categoria => (
+                                <option key={categoria} value={categoria}>{categoria}</option>
+                            ))}
+                        </Select>
                         <Select label="Fornecedor Principal" value={estoqueFormData.fornecedorId || ''} onChange={e => setEstoqueFormData({...estoqueFormData, fornecedorId: e.target.value})}><option value="">Nenhum</option>{data.fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</Select>
                         <Input label="Custo por Unidade (R$)" type="number" step="0.01" value={estoqueFormData.custoUnitario || ''} onChange={e => setEstoqueFormData({...estoqueFormData, custoUnitario: e.target.value})} />
                         <Input label="Quantidade Atual" type="number" value={estoqueFormData.quantidade || ''} onChange={e => setEstoqueFormData({...estoqueFormData, quantidade: e.target.value})} required/>
@@ -989,7 +1054,7 @@ function App() {
   // --- REMOVIDO: audioRef e alarmIntervalRef ---
 
   
-  const [data, setData] = useState({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [] });
+  const [data, setData] = useState({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [], fornecedorCategorias: [] });
   const [loading, setLoading] = useState(true);
 
 	const userId = user?.uid || null;
@@ -1316,7 +1381,7 @@ function App() {
   // EFFECT PARA SINCRONIZAR DADOS DO FIREBASE
 	useEffect(() => {
           if (!user) {
-                setData({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [] });
+                setData({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [], fornecedorCategorias: [] });
 		setLoading(false);
 		initialDataLoaded.current = false;
 		return;
@@ -1326,7 +1391,7 @@ function App() {
 	  
           const collectionsToSync = [
                 'clientes', 'produtos', 'contas_a_pagar', 'contas_a_receber',
-                'fornecedores', 'pedidosCompra', 'estoque', 'logs', 'cupons', 'users', 'pedidos', 'subcategorias'
+                'fornecedores', 'pedidosCompra', 'estoque', 'logs', 'cupons', 'users', 'pedidos', 'subcategorias', 'fornecedorCategorias'
           ];
 
 	  const unsubscribes = [];
@@ -3314,6 +3379,8 @@ const handleSubmit = async (e) => {
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
                     const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
+					const freteNumber = Number(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0);
+                    const frete = Number.isFinite(freteNumber) ? freteNumber : 0;
                     
                     const handleSendToWhatsApp = () => {
                         if (!telefone) {
@@ -3343,7 +3410,8 @@ const handleSubmit = async (e) => {
                              message += `*Subtotal:* R$ ${subtotal.toFixed(2)}\n`;
                              message += `*Desconto Manual:* - R$ ${viewingOrder.desconto.toFixed(2)}\n`;
                         }
-                        
+						
+						message += `*Frete:* R$ ${frete.toFixed(2)}\n`;
                         message += `*Total:* R$ ${(viewingOrder.total || 0).toFixed(2)}\n`;
                         if(viewingOrder.formaPagamento) message += `*Pagamento:* ${viewingOrder.formaPagamento}\n`;
                         message += `*Status:* ${viewingOrder.status}\n\n`;
@@ -3379,7 +3447,7 @@ const handleSubmit = async (e) => {
                         printWindow.document.write('</table>');
                         printWindow.document.write('<hr>');
 
-                         if (viewingOrder.cupom?.valorDesconto > 0 || viewingOrder.desconto > 0) {
+                        if (viewingOrder.cupom?.valorDesconto > 0 || viewingOrder.desconto > 0) {
                             printWindow.document.write(`<p>Subtotal:<span style="float: right;">R$ ${subtotal.toFixed(2)}</span></p>`);
                              if (viewingOrder.cupom) {
                                 printWindow.document.write(`<p>Desconto (${viewingOrder.cupom.codigo}):<span style="float: right;">- R$ ${viewingOrder.cupom.valorDesconto.toFixed(2)}</span></p>`);
@@ -3387,7 +3455,8 @@ const handleSubmit = async (e) => {
                                 printWindow.document.write(`<p>Desconto:<span style="float: right;">- R$ ${viewingOrder.desconto.toFixed(2)}</span></p>`);
                             }
                         }
-                        
+
+                        printWindow.document.write(`<p>Frete:<span style="float: right;">R$ ${frete.toFixed(2)}</span></p>`);						
                         printWindow.document.write(`<p class="total">Total:<span style="float: right;">R$ ${(viewingOrder.total || 0).toFixed(2)}</span></p>`);
                         if(viewingOrder.formaPagamento) printWindow.document.write(`<p>Pagamento: ${viewingOrder.formaPagamento}</p>`);
 
@@ -3450,11 +3519,12 @@ const handleSubmit = async (e) => {
                                     <>
                                         <p className="text-sm text-gray-600">Subtotal: R$ {subtotal.toFixed(2)}</p>
                                         <p className="text-sm text-red-600">
-                                            Desconto {viewingOrder.cupom ? `(${viewingOrder.cupom.codigo})` : ''}: 
+                                            Desconto {viewingOrder.cupom ? `(${viewingOrder.cupom.codigo})` : ''}:
                                             - R$ {(viewingOrder.cupom?.valorDesconto || viewingOrder.desconto || 0).toFixed(2)}
                                         </p>
                                     </>
                                 )}
+								<p className="text-sm text-gray-600">Frete: R$ {frete.toFixed(2)}</p>
                                 <p className="font-bold text-2xl text-pink-600">
                                     Total: R$ ${(viewingOrder.total || 0).toFixed(2)}
                                 </p>
