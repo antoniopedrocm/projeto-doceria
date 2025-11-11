@@ -3379,6 +3379,69 @@ const handleSubmit = async (e) => {
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
                     const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
+					const normalizeCoordinate = (value) => {
+                        if (value === null || value === undefined) return null;
+                        const numeric = typeof value === 'number' ? value : parseFloat(String(value).replace(',', '.'));
+                        return Number.isFinite(numeric) ? numeric : null;
+                    };
+
+                    const pickCoordinate = (...values) => {
+                        for (const value of values) {
+                            const coord = normalizeCoordinate(value);
+                            if (coord !== null) return coord;
+                        }
+                        return null;
+                    };
+
+                    const addressMatch = cliente?.enderecos?.find((addr) => {
+                        const storedAddress = (addr?.enderecoCompleto || addr?.endereco || '').trim().toLowerCase();
+                        const orderAddress = (viewingOrder.clienteEndereco || '').trim().toLowerCase();
+                        return storedAddress && orderAddress && storedAddress === orderAddress;
+                    });
+
+                    const latitude = pickCoordinate(
+                        viewingOrder.clienteLat,
+                        viewingOrder.lat,
+                        viewingOrder.latitude,
+                        viewingOrder.enderecoLat,
+                        addressMatch?.lat,
+                        addressMatch?.latitude,
+                        addressMatch?.latLng?.lat,
+                        addressMatch?.latlng?.lat
+                    );
+                    const longitude = pickCoordinate(
+                        viewingOrder.clienteLng,
+                        viewingOrder.lng,
+                        viewingOrder.longitude,
+                        viewingOrder.enderecoLng,
+                        addressMatch?.lng,
+                        addressMatch?.longitude,
+                        addressMatch?.latLng?.lng,
+                        addressMatch?.latlng?.lng
+                    );
+
+                    const mapLink = viewingOrder.localizacaoLink
+                        || viewingOrder.locationLink
+                        || viewingOrder.mapLink
+                        || viewingOrder.linkLocalizacao
+                        || viewingOrder.mapaUrl
+                        || addressMatch?.mapLink
+                        || addressMatch?.locationLink
+                        || addressMatch?.googleMapsUrl
+                        || (latitude !== null && longitude !== null ? `https://www.google.com/maps?q=${latitude},${longitude}` : null);
+
+                    const entregadores = (data.fornecedores || []).filter((fornecedor) => (fornecedor.categoria || '').toLowerCase() === 'entregador');
+                    const canSendToDeliverer = !!mapLink && entregadores.length > 0 && endereco !== 'Não informado' && endereco !== 'Retirar na Loja';
+
+                    const formatPhoneForWhatsApp = (phone) => {
+                        if (!phone) return '';
+                        const digits = phone.replace(/\D/g, '');
+                        if (!digits) return '';
+                        if (digits.length === 13 && digits.startsWith('55')) return digits;
+                        if (digits.length === 11) return `55${digits}`;
+                        if (digits.length === 12 && digits.startsWith('55')) return digits;
+                        return digits.length > 0 ? `55${digits}` : '';
+                    };
 					const freteNumber = Number(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0);
                     const frete = Number.isFinite(freteNumber) ? freteNumber : 0;
                     
@@ -3387,12 +3450,13 @@ const handleSubmit = async (e) => {
                            alert("Telefone do cliente não encontrado para enviar mensagem.");
                            return;
                         }
-            
-                        const formattedPhone = telefone.replace(/\D/g, '');
-                        // Adiciona 55 se não tiver, e garante que tenha 11 ou 13 dígitos (com 55)
-                        const whatsappNumber = formattedPhone.length === 11 ? `55${formattedPhone}` : formattedPhone.length === 13 && formattedPhone.startsWith('55') ? formattedPhone : `55${formattedPhone}`; // Assume DDD + 9 dígitos se não tiver 55
+                        const whatsappNumber = formatPhoneForWhatsApp(telefone);
+                        if (!whatsappNumber) {
+                            alert('Telefone do cliente inválido para WhatsApp.');
+                            return;
+                        }
 
-                        let message = `Olá, *${viewingOrder.clienteNome || 'Cliente'}*!\n\n`;
+                        let message = `Olá, *${viewingOrder.clienteNome || 'Cliente'}!*\n\n`;
                         message += `Aqui está um resumo do seu pedido na Ana Guimarães Doceria:\n\n`;
                         if (endereco !== 'Não informado') {
                             message += `*Endereço de Entrega:*\n${endereco}\n\n`;
@@ -3410,19 +3474,66 @@ const handleSubmit = async (e) => {
                              message += `*Subtotal:* R$ ${subtotal.toFixed(2)}\n`;
                              message += `*Desconto Manual:* - R$ ${viewingOrder.desconto.toFixed(2)}\n`;
                         }
-						
+
 						message += `*Frete:* R$ ${frete.toFixed(2)}\n`;
                         message += `*Total:* R$ ${(viewingOrder.total || 0).toFixed(2)}\n`;
                         if(viewingOrder.formaPagamento) message += `*Pagamento:* ${viewingOrder.formaPagamento}\n`;
                         message += `*Status:* ${viewingOrder.status}\n\n`;
                         if(viewingOrder.observacao) message += `*Observações:* ${viewingOrder.observacao}\n\n`;
-                        
-                        message += `Agradecemos a sua preferência! ❤`;
+
+                        message += `Agradecemos a sua preferência!`;
 
                         const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
                         window.open(whatsappUrl, '_blank');
                     };
-                    
+
+
+                    const handleSendAddressToDeliverer = () => {
+                        if (!canSendToDeliverer) {
+                            alert('Não há informações suficientes para enviar o endereço ao entregador.');
+                            return;
+                        }
+
+                        let selectedDeliverer = entregadores[0];
+                        if (entregadores.length > 1) {
+                            const options = entregadores.map((entregador, index) => {
+                                const contact = entregador.contato_whatsapp || entregador.contato_telefone || 'Sem contato';
+                                return `${index + 1} - ${entregador.nome || 'Entregador'} (${contact})`;
+                            }).join('\n');
+                            const choice = window.prompt(`Selecione o entregador:\n${options}`, '1');
+                            if (!choice) return;
+                            const selectedIndex = parseInt(choice, 10) - 1;
+                            if (Number.isNaN(selectedIndex) || !entregadores[selectedIndex]) {
+                                alert('Entregador selecionado inválido.');
+                                return;
+                            }
+                            selectedDeliverer = entregadores[selectedIndex];
+                        }
+
+                        const whatsappNumber = formatPhoneForWhatsApp(selectedDeliverer.contato_whatsapp || selectedDeliverer.contato_telefone || '');
+                        if (!whatsappNumber) {
+                            alert('O entregador selecionado não possui um número de WhatsApp válido.');
+                            return;
+                        }
+
+                        const linhasMensagem = [
+                            `Olá${selectedDeliverer.nome ? ` ${selectedDeliverer.nome}` : ''}!`,
+                            `Endereço para entrega do pedido de ${viewingOrder.clienteNome || 'cliente'}:`,
+                        ];
+
+                        if (telefone) {
+                            linhasMensagem.push(`Telefone do cliente: ${telefone}`);
+                        }
+
+                        linhasMensagem.push(endereco);
+                        linhasMensagem.push('');
+                        linhasMensagem.push(`Localização: ${mapLink}`);
+
+                        const mensagem = linhasMensagem.join('\n');
+                        const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(mensagem)}`;
+                        window.open(whatsappUrl, '_blank');
+                    };
+
                     const handlePrint = () => {
                         const printWindow = window.open('', '_blank');
                         if (!printWindow) {
@@ -3531,7 +3642,7 @@ const handleSubmit = async (e) => {
                            </div>
 
                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
-                                 <Button 
+                                <Button 
                                     onClick={handlePrint}
                                     variant="secondary"
                                     size="sm"
@@ -3539,9 +3650,18 @@ const handleSubmit = async (e) => {
                                     <Printer className="w-4 h-4" />
                                     Imprimir Cupom
                                 </Button>
-                                <Button 
-                                    onClick={handleSendToWhatsApp} 
-                                    disabled={!telefone} 
+                                <Button
+                                    onClick={handleSendAddressToDeliverer}
+                                    disabled={!canSendToDeliverer}
+                                    className="bg-gradient-to-r from-sky-500 to-blue-600 text-white hover:from-sky-600 hover:to-blue-700 disabled:from-gray-300 disabled:to-gray-400 disabled:text-gray-600 disabled:cursor-not-allowed"
+                                    size="sm"
+                                >
+                                    <MapPin className="w-4 h-4" />
+                                    Enviar Endereço para Entregador
+                                </Button>
+                                <Button
+                                    onClick={handleSendToWhatsApp}
+                                    disabled={!telefone}
                                     className="bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none disabled:transform-none"
                                     size="sm"
                                 >
@@ -3725,26 +3845,270 @@ const handleSubmit = async (e) => {
             </Modal>
              {/* Modal de Detalhes do Pedido (igual ao do componente Pedidos) */}
              <Modal isOpen={!!viewingOrder} onClose={() => setViewingOrder(null)} title="Detalhes do Pedido" size="lg">
-                 {/* Reutiliza a mesma lógica de exibição do modal de detalhes */}
                  {viewingOrder && (() => {
                     const cliente = data.clientes.find(c => c.id === viewingOrder.clienteId);
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
-                    const handleSendToWhatsApp = () => { /* ... (código igual ao do Pedidos.js) ... */ };
-                    const handlePrint = () => { /* ... (código igual ao do Pedidos.js) ... */ };
+                    const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
 
-                    return ( 
-                         <div className="space-y-4 text-sm text-gray-700">
-                            {/* ... (Conteúdo idêntico ao modal do Pedidos.js) ... */}
+                    const normalizeCoordinate = (value) => {
+                        if (value === null || value === undefined) return null;
+                        const numeric = typeof value === 'number' ? value : parseFloat(String(value).replace(',', '.'));
+                        return Number.isFinite(numeric) ? numeric : null;
+                    };
+
+                    const pickCoordinate = (...values) => {
+                        for (const value of values) {
+                            const coord = normalizeCoordinate(value);
+                            if (coord !== null) return coord;
+                        }
+                        return null;
+                    };
+
+                    const addressMatch = cliente?.enderecos?.find((addr) => {
+                        const storedAddress = (addr?.enderecoCompleto || addr?.endereco || '').trim().toLowerCase();
+                        const orderAddress = (viewingOrder.clienteEndereco || '').trim().toLowerCase();
+                        return storedAddress && orderAddress && storedAddress === orderAddress;
+                    });
+
+                    const latitude = pickCoordinate(
+                        viewingOrder.clienteLat,
+                        viewingOrder.lat,
+                        viewingOrder.latitude,
+                        viewingOrder.enderecoLat,
+                        addressMatch?.lat,
+                        addressMatch?.latitude,
+                        addressMatch?.latLng?.lat,
+                        addressMatch?.latlng?.lat
+                    );
+                    const longitude = pickCoordinate(
+                        viewingOrder.clienteLng,
+                        viewingOrder.lng,
+                        viewingOrder.longitude,
+                        viewingOrder.enderecoLng,
+                        addressMatch?.lng,
+                        addressMatch?.longitude,
+                        addressMatch?.latLng?.lng,
+                        addressMatch?.latlng?.lng
+                    );
+
+                    const mapLink = viewingOrder.localizacaoLink
+                        || viewingOrder.locationLink
+                        || viewingOrder.mapLink
+                        || viewingOrder.linkLocalizacao
+                        || viewingOrder.mapaUrl
+                        || addressMatch?.mapLink
+                        || addressMatch?.locationLink
+                        || addressMatch?.googleMapsUrl
+                        || (latitude !== null && longitude !== null ? `https://www.google.com/maps?q=${latitude},${longitude}` : null);
+
+                    const entregadores = (data.fornecedores || []).filter((fornecedor) => (fornecedor.categoria || '').toLowerCase() === 'entregador');
+                    const canSendToDeliverer = !!mapLink && entregadores.length > 0 && endereco !== 'Não informado' && endereco !== 'Retirar na Loja';
+
+                    const formatPhoneForWhatsApp = (phone) => {
+                        if (!phone) return '';
+                        const digits = phone.replace(/\D/g, '');
+                        if (!digits) return '';
+                        if (digits.length === 13 && digits.startsWith('55')) return digits;
+                        if (digits.length === 11) return `55${digits}`;
+                        if (digits.length === 12 && digits.startsWith('55')) return digits;
+                        return digits.length > 0 ? `55${digits}` : '';
+                    };
+
+                    const handleSendToWhatsApp = () => {
+                        if (!telefone) {
+                           alert("Telefone do cliente não encontrado para enviar mensagem.");
+                           return;
+                        }
+
+                        const whatsappNumber = formatPhoneForWhatsApp(telefone);
+                        if (!whatsappNumber) {
+                            alert('Telefone do cliente inválido para WhatsApp.');
+                            return;
+                        }
+
+                        let message = `Olá, *${viewingOrder.clienteNome || 'Cliente'}!*\n\n`;
+                        message += `Aqui está um resumo do seu pedido na Ana Guimarães Doceria:\n\n`;
+                        if (endereco !== 'Não informado') {
+                            message += `*Endereço de Entrega:*\n${endereco}\n\n`;
+                        }
+                        message += `*Itens do Pedido:*\n`;
+                        (viewingOrder.itens || []).forEach(item => {
+                            message += `  • ${item.quantity || 1}x ${item.nome}\n`;
+                        });
+                        message += `\n`;
+
+                        if (viewingOrder.cupom?.valorDesconto > 0) {
+                            message += `*Subtotal:* R$ ${subtotal.toFixed(2)}\n`;
+                            message += `*Desconto (${viewingOrder.cupom.codigo}):* - R$ ${viewingOrder.cupom.valorDesconto.toFixed(2)}\n`;
+                        } else if (viewingOrder.desconto > 0) {
+                             message += `*Subtotal:* R$ ${subtotal.toFixed(2)}\n`;
+                             message += `*Desconto Manual:* - R$ ${viewingOrder.desconto.toFixed(2)}\n`;
+                        }
+
+                        message += `*Total:* R$ ${(viewingOrder.total || 0).toFixed(2)}\n`;
+                        if(viewingOrder.formaPagamento) message += `*Pagamento:* ${viewingOrder.formaPagamento}\n`;
+                        message += `*Status:* ${viewingOrder.status}\n\n`;
+                        if(viewingOrder.observacao) message += `*Observações:* ${viewingOrder.observacao}\n\n`;
+
+                        message += `Agradecemos a sua preferência! ❤`;
+
+                        const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+                        window.open(whatsappUrl, '_blank');
+                    };
+
+                    const handleSendAddressToDeliverer = () => {
+                        if (!canSendToDeliverer) {
+                            alert('Não há informações suficientes para enviar o endereço ao entregador.');
+                            return;
+                        }
+
+                        let selectedDeliverer = entregadores[0];
+                        if (entregadores.length > 1) {
+                            const options = entregadores.map((entregador, index) => {
+                                const contact = entregador.contato_whatsapp || entregador.contato_telefone || 'Sem contato';
+                                return `${index + 1} - ${entregador.nome || 'Entregador'} (${contact})`;
+                            }).join('\n');
+                            const choice = window.prompt(`Selecione o entregador:\n${options}`, '1');
+                            if (!choice) return;
+                            const selectedIndex = parseInt(choice, 10) - 1;
+                            if (Number.isNaN(selectedIndex) || !entregadores[selectedIndex]) {
+                                alert('Entregador selecionado inválido.');
+                                return;
+                            }
+                            selectedDeliverer = entregadores[selectedIndex];
+                        }
+
+                        const whatsappNumber = formatPhoneForWhatsApp(selectedDeliverer.contato_whatsapp || selectedDeliverer.contato_telefone || '');
+                        if (!whatsappNumber) {
+                            alert('O entregador selecionado não possui um número de WhatsApp válido.');
+                            return;
+                        }
+
+                        const linhasMensagem = [
+                            `Olá${selectedDeliverer.nome ? ` ${selectedDeliverer.nome}` : ''}!`,
+                            `Endereço para entrega do pedido de ${viewingOrder.clienteNome || 'cliente'}:`,
+                        ];
+
+                        if (telefone) {
+                            linhasMensagem.push(`Telefone do cliente: ${telefone}`);
+                        }
+
+                        linhasMensagem.push(endereco);
+                        linhasMensagem.push('');
+                        linhasMensagem.push(`Localização: ${mapLink}`);
+
+                        const mensagem = linhasMensagem.join('\n');
+                        const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(mensagem)}`;
+                        window.open(whatsappUrl, '_blank');
+                    };
+                    const handlePrint = () => {
+                        const printWindow = window.open('', '_blank');
+                        if (!printWindow) {
+                            alert("Por favor, habilite pop-ups para imprimir.");
+                            return;
+                        }
+                        printWindow.document.write('<html><head><title>Cupom do Pedido</title>');
+                        printWindow.document.write('<style> body { font-family: monospace; margin: 0; padding: 10px; width: 300px; font-size: 10pt; } h2, h3 { text-align: center; margin: 5px 0; } hr { border: none; border-top: 1px dashed black; margin: 5px 0; } table { width: 100%; border-collapse: collapse; margin-bottom: 5px;} td { padding: 1px 0; vertical-align: top;} .right { text-align: right; } p { margin: 2px 0; } .total { font-weight: bold; font-size: 11pt;} </style>');
+                        printWindow.document.write('</head><body>');
+                        printWindow.document.write('<h2>Ana Guimarães Doceria</h2>');
+                        printWindow.document.write(`<p>Cliente: ${viewingOrder.clienteNome || 'N/A'}</p>`);
+                        if (endereco !== 'Não informado') printWindow.document.write(`<p>Endereço: ${endereco}</p>`);
+                        if (telefone) printWindow.document.write(`<p>Telefone: ${telefone}</p>`);
+                        printWindow.document.write(`<p>Data: ${getJSDate(viewingOrder.createdAt)?.toLocaleString('pt-BR') || '-'}</p>`);
+                        if (viewingOrder.dataEntrega) printWindow.document.write(`<p>Entrega: ${new Date(viewingOrder.dataEntrega + 'T03:00:00Z').toLocaleDateString('pt-BR')}</p>`);
+                        printWindow.document.write('<hr>');
+                        printWindow.document.write('<h3>Itens</h3>');
+                        printWindow.document.write('<table>');
+                        (viewingOrder.itens || []).forEach(item => {
+                            printWindow.document.write(`<tr><td>${item.quantity || 1}x ${item.nome}</td><td class="right">R$ ${((item.preco || 0) * (item.quantity || 1)).toFixed(2)}</td></tr>`);
+                        });
+                        printWindow.document.write('</table>');
+                        printWindow.document.write('<hr>');
+
+                         if (viewingOrder.cupom?.valorDesconto > 0 || viewingOrder.desconto > 0) {
+                            printWindow.document.write(`<p>Subtotal:<span style="float: right;">R$ ${subtotal.toFixed(2)}</span></p>`);
+                             if (viewingOrder.cupom) {
+                                printWindow.document.write(`<p>Desconto (${viewingOrder.cupom.codigo}):<span style="float: right;">- R$ ${viewingOrder.cupom.valorDesconto.toFixed(2)}</span></p>`);
+                            } else {
+                                printWindow.document.write(`<p>Desconto:<span style="float: right;">- R$ ${viewingOrder.desconto.toFixed(2)}</span></p>`);
+                            }
+                        }
+                        
+                        printWindow.document.write(`<p class="total">Total:<span style="float: right;">R$ ${(viewingOrder.total || 0).toFixed(2)}</span></p>`);
+                        if(viewingOrder.formaPagamento) printWindow.document.write(`<p>Pagamento: ${viewingOrder.formaPagamento}</p>`);
+
+                        if(viewingOrder.observacao) {
+                            printWindow.document.write(`<hr><h3>Observações:</h3><p>${viewingOrder.observacao}</p>`);
+                        }
+                        printWindow.document.write('<hr><p style="text-align: center;">Obrigado!</p>');
+                        printWindow.document.write('</body></html>');
+                        printWindow.document.close();
+                         // Adiciona um pequeno delay para garantir que o conteúdo foi escrito antes de imprimir
+                        setTimeout(() => {
+                           printWindow.focus(); // Necessário para alguns navegadores
+                           printWindow.print();
+                           // printWindow.close(); // Comentar se quiser manter a janela aberta para debug
+                        }, 250);
+                    };
+
+                    return (
+                        <div className="space-y-4 text-sm text-gray-700">
                             <div className="p-4 bg-gray-50 rounded-lg">
                                 <h3 className="font-bold text-lg text-gray-800 mb-2">Informações do Cliente</h3>
                                 <p><strong>Nome:</strong> {viewingOrder.clienteNome || 'N/A'}</p>
                                 <p><strong>Endereço:</strong> {endereco}</p>
                                 <p><strong>Telefone:</strong> {telefone || 'Não informado'}</p>
                             </div>
-                            {/* ... (resto do conteúdo) ... */}
-                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
-                                 <Button 
+
+                            <div className="p-4 bg-gray-50 rounded-lg">
+                                <h3 className="font-bold text-lg text-gray-800 mb-2">Informações do Pedido</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <p><strong>Status:</strong> <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClass(viewingOrder.status)}`}>{viewingOrder.status}</span></p>
+                                    <p><strong>Data do Pedido:</strong> {viewingOrder.createdAt ? getJSDate(viewingOrder.createdAt)?.toLocaleString('pt-BR') : '-'}</p>
+                                    <p><strong>Origem:</strong> {viewingOrder.origem}</p>
+                                    <p><strong>Pagamento:</strong> {viewingOrder.formaPagamento || 'Não informado'}</p>
+                                    {viewingOrder.categoria && (<p><strong>Categoria:</strong> {viewingOrder.categoria}</p>)}
+                                    {viewingOrder.dataEntrega && (<p><strong>Data de Entrega:</strong> {new Date(viewingOrder.dataEntrega + 'T03:00:00Z').toLocaleDateString('pt-BR')}</p>)}
+                                </div>
+                            </div>
+                            
+                             {viewingOrder.observacao && (
+                                <div className="p-4 bg-yellow-50 rounded-lg">
+                                    <h3 className="font-bold text-lg text-yellow-800 mb-2">Observações</h3>
+                                    <p>{viewingOrder.observacao}</p>
+                                </div>
+                            )}
+
+                            <div>
+                                <h4 className="font-bold text-lg text-gray-800 mt-4 mb-2">Itens do Pedido:</h4>
+                                <ul className="space-y-2">
+                                    {(viewingOrder.itens || []).map((item, index) => (
+                                        <li key={item.id || index} className="flex justify-between items-center p-2 bg-pink-50/50 rounded-md">
+                                            <span>{item.quantity || 1}x {item.nome}</span>
+                                            <span>R$ {((item.preco || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            <div className="text-right pt-4 border-t mt-4 space-y-1">
+                                { (viewingOrder.cupom?.valorDesconto > 0 || viewingOrder.desconto > 0) && (
+                                    <>
+                                        <p className="text-sm text-gray-600">Subtotal: R$ {subtotal.toFixed(2)}</p>
+                                        <p className="text-sm text-red-600">
+                                            Desconto {viewingOrder.cupom ? `(${viewingOrder.cupom.codigo})` : ''}: 
+                                            - R$ {(viewingOrder.cupom?.valorDesconto || viewingOrder.desconto || 0).toFixed(2)}
+                                        </p>
+                                    </>
+                                )}
+                                <p className="font-bold text-2xl text-pink-600">
+                                    Total: R$ ${(viewingOrder.total || 0).toFixed(2)}
+                                </p>
+                           </div>
+
+                            <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
+                                <Button
                                     onClick={handlePrint}
                                     variant="secondary"
                                     size="sm"
@@ -3752,9 +4116,18 @@ const handleSubmit = async (e) => {
                                     <Printer className="w-4 h-4" />
                                     Imprimir Cupom
                                 </Button>
-                                <Button 
-                                    onClick={handleSendToWhatsApp} 
-                                    disabled={!telefone} 
+                                <Button
+                                    onClick={handleSendAddressToDeliverer}
+                                    disabled={!canSendToDeliverer}
+                                    className="bg-gradient-to-r from-sky-500 to-blue-600 text-white hover:from-sky-600 hover:to-blue-700 disabled:from-gray-300 disabled:to-gray-400 disabled:text-gray-600 disabled:cursor-not-allowed"
+                                    size="sm"
+                                >
+                                    <MapPin className="w-4 h-4" />
+                                    Enviar Endereço para Entregador
+                                </Button>
+                                <Button
+                                    onClick={handleSendToWhatsApp}
+                                    disabled={!telefone}
                                     className="bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none disabled:transform-none"
                                     size="sm"
                                 >
@@ -3763,8 +4136,8 @@ const handleSubmit = async (e) => {
                                 </Button>
                             </div>
                         </div>
-                     );
-                 })()}
+                    );
+                })()}
              </Modal>
         </div>
     );
