@@ -120,7 +120,7 @@ const Select = ({ label, error, className = "", children, ...props }) => (<div c
 const Table = ({ columns, data, actions = [] }) => (
     <>
         {/* Visualização de Tabela para Desktop */}
-        <div className="hidden md:block bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+        <div className="hidden md:block print:block bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden print:shadow-none print:border print:border-gray-200">
             <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
@@ -154,7 +154,7 @@ const Table = ({ columns, data, actions = [] }) => (
         </div>
 
         {/* Visualização de Cards para Celular */}
-        <div className="block md:hidden space-y-4">
+        <div className="block md:hidden space-y-4 print:hidden">
             {(data || []).map((row, rowIndex) => (
                 <div key={row.id || row.uid || rowIndex} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 space-y-2">
                     {columns.map((col, colIndex) => {
@@ -1009,7 +1009,7 @@ const Relatorios = ({ data }) => {
   );
 };
 
-const MeuEspaco = () => {
+const MeuEspaco = ({ user, data = {} }) => {
   const isGestor = user?.role === 'admin';
   const [registroFeedback, setRegistroFeedback] = useState(null);
   const [registroLoading, setRegistroLoading] = useState(false);
@@ -1036,6 +1036,18 @@ const MeuEspaco = () => {
   });
   const [empresaFeedback, setEmpresaFeedback] = useState(null);
   const [salvandoEmpresa, setSalvandoEmpresa] = useState(false);
+  const funcionarioNome = useMemo(() => user?.auth?.displayName || user?.auth?.email || 'Funcionário', [user]);
+  const periodoFormatado = useMemo(() => {
+    if (!selectedPeriodo) return '';
+    const [ano, mes] = selectedPeriodo.split('-');
+    if (!ano || !mes) return selectedPeriodo;
+    return `${mes}/${ano}`;
+  }, [selectedPeriodo]);
+  const handlePrint = useCallback(() => {
+    if (typeof window !== 'undefined' && typeof window.print === 'function') {
+      window.print();
+    }
+  }, []);
 
   useEffect(() => {
     if (!isGestor && user?.auth?.uid) {
@@ -1077,6 +1089,14 @@ const MeuEspaco = () => {
       }))
       .filter((func) => !!func.id);
   }, [data.users]);
+  const funcionarioSelecionadoNome = useMemo(() => {
+    if (isGestor) {
+      if (!selectedFuncionario) return 'Todos os funcionários';
+      const encontrado = funcionarios.find((func) => func.id === selectedFuncionario);
+      return encontrado?.nome || 'Funcionário';
+    }
+    return funcionarioNome;
+  }, [isGestor, selectedFuncionario, funcionarios, funcionarioNome]);
 
   const parseEntryDate = (entry) => {
     if (!entry) return null;
@@ -1141,68 +1161,75 @@ const MeuEspaco = () => {
     });
   }, [filteredPontos]);
 
-  const pontoColumns = useMemo(() => ([
-    {
-      header: 'Dia da Semana',
-      render: (row) => <span className="capitalize">{row.diaSemanaFormatado}</span>
-    },
-    {
-      header: 'Dia do Mês',
-      key: 'diaMes'
-    },
-    {
-      header: 'Entrada',
-      render: (row) => row.horaEntrada || '--'
-    },
-    {
-      header: 'Saída',
-      render: (row) => row.horaSaida || '--'
-    },
-    {
-      header: 'Irregularidade',
-      render: (row) => row.irregularidade || '--'
-    },
-    {
-      header: 'QTDE',
-      render: (row) => row.qtde || '--'
-    },
-    {
-      header: 'Justificativa',
-      render: (row) => row.justificativa || '--'
-    },
-    {
-      header: 'Localização',
-      render: (row) => (
-        <div className="flex flex-col text-xs text-gray-600 gap-1">
-          {row.localizacaoEntrada ? (
-            <a
-              href={`https://www.google.com/maps?q=${row.localizacaoEntrada.latitude},${row.localizacaoEntrada.longitude}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-pink-600 hover:underline"
-            >
-              Entrada: {formatLocation(row.localizacaoEntrada)}
-            </a>
-          ) : (
-            <span className="text-gray-400">Entrada não registrada</span>
-          )}
-          {row.localizacaoSaida ? (
-            <a
-              href={`https://www.google.com/maps?q=${row.localizacaoSaida.latitude},${row.localizacaoSaida.longitude}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-pink-600 hover:underline"
-            >
-              Saída: {formatLocation(row.localizacaoSaida)}
-            </a>
-          ) : (
-            <span className="text-gray-400">Saída não registrada</span>
-          )}
-        </div>
-      )
-    }
-  ]), [formatLocation]);
+  const pontoColumns = useMemo(() => {
+    const baseColumns = [
+      {
+        header: 'Dia da Semana',
+        render: (row) => <span className="capitalize">{row.diaSemanaFormatado}</span>
+      },
+      {
+        header: 'Dia do Mês',
+        key: 'diaMes'
+      },
+      {
+        header: 'Entrada',
+        render: (row) => row.horaEntrada || '--'
+      },
+      {
+        header: 'Saída',
+        render: (row) => row.horaSaida || '--'
+      },
+      {
+        header: 'Irregularidade',
+        render: (row) => row.irregularidade || '--'
+      },
+      {
+        header: 'QTDE',
+        render: (row) => row.qtde || '--'
+      },
+      {
+        header: 'Justificativa',
+        render: (row) => row.justificativa || '--'
+      }
+    ];
 
+    if (isGestor) {
+      baseColumns.push({
+        header: 'Localização',
+        render: (row) => (
+          <div className="flex flex-col text-xs text-gray-600 gap-1">
+            {row.localizacaoEntrada ? (
+              <a
+                href={`https://www.google.com/maps?q=${row.localizacaoEntrada.latitude},${row.localizacaoEntrada.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-pink-600 hover:underline"
+              >
+                Entrada: {formatLocation(row.localizacaoEntrada)}
+              </a>
+            ) : (
+              <span className="text-gray-400">Entrada não registrada</span>
+            )}
+            {row.localizacaoSaida ? (
+              <a
+                href={`https://www.google.com/maps?q=${row.localizacaoSaida.latitude},${row.localizacaoSaida.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-pink-600 hover:underline"
+              >
+                Saída: {formatLocation(row.localizacaoSaida)}
+              </a>
+            ) : (
+              <span className="text-gray-400">Saída não registrada</span>
+            )}
+          </div>
+        )
+      });
+    }
+
+    return baseColumns;
+  }, [formatLocation, isGestor]);
+  
   const tableActions = useMemo(() => (
     isGestor
       ? [{
@@ -1399,7 +1426,7 @@ const MeuEspaco = () => {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Meu Espaço</h1>
           <p className="text-gray-600 mt-1">Gerencie seus registros de ponto e informações da empresa</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 print:hidden">
           <Input
             label="Competência"
             type="month"
@@ -1421,6 +1448,18 @@ const MeuEspaco = () => {
             </Select>
           )}
         </div>
+      </div>
+
+      {!isGestor && (
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 print:hidden">
+          <p className="text-xs uppercase text-gray-500">Funcionário</p>
+          <p className="text-lg font-semibold text-gray-800">{funcionarioNome}</p>
+        </div>
+      )}
+
+      <div className="hidden print:block bg-white rounded-2xl border border-gray-200 p-4 text-sm text-gray-700">
+        <p><span className="font-semibold">Competência:</span> {periodoFormatado || '—'}</p>
+        <p className="mt-1"><span className="font-semibold">Funcionário:</span> {funcionarioSelecionadoNome}</p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 space-y-6">
@@ -1521,7 +1560,7 @@ const MeuEspaco = () => {
             <h2 className="text-xl font-semibold text-gray-800">Registro de Ponto</h2>
             <p className="text-gray-500 text-sm">Registre sua entrada e saída com validação de localização</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 print:hidden">
             <Button
               onClick={() => handleRegisterPonto('entrada')}
               disabled={registroLoading}
@@ -1535,6 +1574,15 @@ const MeuEspaco = () => {
             >
               <Clock className="w-4 h-4" /> Registrar Saída
             </Button>
+            {!isGestor && (
+              <Button
+                onClick={handlePrint}
+                variant="secondary"
+                className="sm:w-auto"
+              >
+                <Printer className="w-4 h-4" /> Imprimir
+              </Button>
+            )}
           </div>
         </div>
         {registroFeedback && (
@@ -1598,38 +1646,40 @@ const MeuEspaco = () => {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
-              <div>
-                <p className="font-medium text-gray-700">Localização da entrada</p>
-                {editingPonto.localizacaoEntrada ? (
-                  <a
-                    href={`https://www.google.com/maps?q=${editingPonto.localizacaoEntrada.latitude},${editingPonto.localizacaoEntrada.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-pink-600 hover:underline"
-                  >
-                    {formatLocation(editingPonto.localizacaoEntrada)}
-                  </a>
-                ) : (
-                  <p className="text-gray-400">Não registrado</p>
-                )}
+            {isGestor && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+                <div>
+                  <p className="font-medium text-gray-700">Localização da entrada</p>
+                  {editingPonto.localizacaoEntrada ? (
+                    <a
+                      href={`https://www.google.com/maps?q=${editingPonto.localizacaoEntrada.latitude},${editingPonto.localizacaoEntrada.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-pink-600 hover:underline"
+                    >
+                      {formatLocation(editingPonto.localizacaoEntrada)}
+                    </a>
+                  ) : (
+                    <p className="text-gray-400">Não registrado</p>
+                  )}
+                </div>
+                <div>
+                  <p className="font-medium text-gray-700">Localização da saída</p>
+                  {editingPonto.localizacaoSaida ? (
+                    <a
+                      href={`https://www.google.com/maps?q=${editingPonto.localizacaoSaida.latitude},${editingPonto.localizacaoSaida.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-pink-600 hover:underline"
+                    >
+                      {formatLocation(editingPonto.localizacaoSaida)}
+                    </a>
+                  ) : (
+                    <p className="text-gray-400">Não registrado</p>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="font-medium text-gray-700">Localização da saída</p>
-                {editingPonto.localizacaoSaida ? (
-                  <a
-                    href={`https://www.google.com/maps?q=${editingPonto.localizacaoSaida.latitude},${editingPonto.localizacaoSaida.longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-pink-600 hover:underline"
-                  >
-                    {formatLocation(editingPonto.localizacaoSaida)}
-                  </a>
-                ) : (
-                  <p className="text-gray-400">Não registrado</p>
-                )}
-              </div>
-            </div>
+            )}
 
             {editingPonto.historicoAlteracoes && editingPonto.historicoAlteracoes.length > 0 && (
               <div className="border-t border-gray-100 pt-4">
@@ -4828,7 +4878,7 @@ const handleSubmit = async (e) => {
       case 'agenda': return user ? <Agenda /> : <PaginaInicial />;
       case 'fornecedores': return user ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'relatorios': return user ? <Relatorios data={data} /> : <PaginaInicial />;
-      case 'meu-espaco': return user ? <MeuEspaco /> : <PaginaInicial />;
+      case 'meu-espaco': return user ? <MeuEspaco user={user} data={data} /> : <PaginaInicial />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
       default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;
