@@ -19,7 +19,7 @@ import { httpsCallable } from "firebase/functions";
 // ATUALIZADO: Adicionado GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
 // CORRIGIDO: Adicionado 'getDocs' à importação
-import { collection, onSnapshot, query, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, where, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, where, getDocs, serverTimestamp, arrayUnion } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // --- CORREÇÃO: Importa o novo AudioManager ---
@@ -1009,6 +1009,665 @@ const Relatorios = ({ data }) => {
   );
 };
 
+const MeuEspaco = () => {
+  const isGestor = user?.role === 'admin';
+  const [registroFeedback, setRegistroFeedback] = useState(null);
+  const [registroLoading, setRegistroLoading] = useState(false);
+  const [selectedPeriodo, setSelectedPeriodo] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [selectedFuncionario, setSelectedFuncionario] = useState(() => (isGestor ? '' : user?.auth?.uid || ''));
+  const [editingPonto, setEditingPonto] = useState(null);
+  const [pontoForm, setPontoForm] = useState({ horaEntrada: '', horaSaida: '', irregularidade: '', qtde: '', justificativa: '' });
+  const [salvandoPonto, setSalvandoPonto] = useState(false);
+  const competenciaAtual = useMemo(() => {
+    const now = new Date();
+    return `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+  }, []);
+  const [empresaForm, setEmpresaForm] = useState({
+    nomeEmpresa: '',
+    endereco: '',
+    cnpj: '',
+    atividadeEconomica: '',
+    horarioTrabalho: '',
+    competencia: competenciaAtual,
+    gestorResponsavel: user?.auth?.displayName || user?.auth?.email || ''
+  });
+  const [empresaFeedback, setEmpresaFeedback] = useState(null);
+  const [salvandoEmpresa, setSalvandoEmpresa] = useState(false);
+
+  useEffect(() => {
+    if (!isGestor && user?.auth?.uid) {
+      setSelectedFuncionario(user.auth.uid);
+    }
+  }, [isGestor, user]);
+
+  const empresaInfoDoc = useMemo(() => (data.empresaInfo || [])[0] || null, [data.empresaInfo]);
+
+  useEffect(() => {
+    if (empresaInfoDoc) {
+      setEmpresaForm({
+        nomeEmpresa: empresaInfoDoc.nomeEmpresa || '',
+        endereco: empresaInfoDoc.endereco || '',
+        cnpj: empresaInfoDoc.cnpj || '',
+        atividadeEconomica: empresaInfoDoc.atividadeEconomica || '',
+        horarioTrabalho: empresaInfoDoc.horarioTrabalho || '',
+        competencia: empresaInfoDoc.competencia || competenciaAtual,
+        gestorResponsavel: empresaInfoDoc.gestorResponsavel || user?.auth?.displayName || user?.auth?.email || ''
+      });
+    } else {
+      setEmpresaForm({
+        nomeEmpresa: '',
+        endereco: '',
+        cnpj: '',
+        atividadeEconomica: '',
+        horarioTrabalho: '',
+        competencia: competenciaAtual,
+        gestorResponsavel: user?.auth?.displayName || user?.auth?.email || ''
+      });
+    }
+  }, [empresaInfoDoc, competenciaAtual, user]);
+
+  const funcionarios = useMemo(() => {
+    return (data.users || [])
+      .map((func) => ({
+        id: func.id || func.uid,
+        nome: func.nome || func.displayName || func.email || 'Funcionário'
+      }))
+      .filter((func) => !!func.id);
+  }, [data.users]);
+
+  const parseEntryDate = (entry) => {
+    if (!entry) return null;
+    if (entry.data?.toDate) return entry.data.toDate();
+    if (entry.dataRegistro?.toDate) return entry.dataRegistro.toDate();
+    if (typeof entry.data === 'string') return new Date(`${entry.data}T00:00:00`);
+    if (entry.dataRegistro) return new Date(entry.dataRegistro);
+    return null;
+  };
+
+  const filteredPontos = useMemo(() => {
+    const [anoStr, mesStr] = selectedPeriodo.split('-');
+    const ano = parseInt(anoStr, 10);
+    const mes = parseInt(mesStr, 10) - 1;
+    const usuarioAtual = user?.auth?.uid;
+
+    return (data.pontos || [])
+      .filter((entry) => {
+        const entryDate = parseEntryDate(entry);
+        if (!entryDate || Number.isNaN(entryDate.getTime())) return false;
+        if (entryDate.getFullYear() !== ano || entryDate.getMonth() !== mes) return false;
+
+        if (isGestor) {
+          if (!selectedFuncionario) return true;
+          return entry.funcionarioId === selectedFuncionario;
+        }
+
+        return entry.funcionarioId === usuarioAtual;
+      })
+      .sort((a, b) => {
+        const dateA = parseEntryDate(a) || new Date(0);
+        const dateB = parseEntryDate(b) || new Date(0);
+        return dateA.getTime() - dateB.getTime();
+      });
+  }, [data.pontos, selectedPeriodo, isGestor, selectedFuncionario, user]);
+
+  const formatLocation = useCallback((location) => {
+    if (!location || location.latitude === undefined || location.longitude === undefined) return null;
+    const lat = Number(location.latitude);
+    const lng = Number(location.longitude);
+    if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }, []);
+
+  const tableRows = useMemo(() => {
+    return filteredPontos.map((entry) => {
+      const entryDate = parseEntryDate(entry);
+      const diaSemana = entry.diaSemana || (entryDate ? new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(entryDate) : '-');
+      const diaMes = entryDate ? String(entryDate.getDate()).padStart(2, '0') : '-';
+      return {
+        ...entry,
+        diaSemanaFormatado: diaSemana,
+        diaMes,
+        horaEntrada: entry.horaEntrada || '',
+        horaSaida: entry.horaSaida || '',
+        irregularidade: entry.irregularidade || '',
+        qtde: entry.qtde || '',
+        justificativa: entry.justificativa || '',
+        localizacaoEntrada: entry.localizacaoEntrada || entry.localizacao?.entrada || null,
+        localizacaoSaida: entry.localizacaoSaida || entry.localizacao?.saida || null
+      };
+    });
+  }, [filteredPontos]);
+
+  const pontoColumns = useMemo(() => ([
+    {
+      header: 'Dia da Semana',
+      render: (row) => <span className="capitalize">{row.diaSemanaFormatado}</span>
+    },
+    {
+      header: 'Dia do Mês',
+      key: 'diaMes'
+    },
+    {
+      header: 'Entrada',
+      render: (row) => row.horaEntrada || '--'
+    },
+    {
+      header: 'Saída',
+      render: (row) => row.horaSaida || '--'
+    },
+    {
+      header: 'Irregularidade',
+      render: (row) => row.irregularidade || '--'
+    },
+    {
+      header: 'QTDE',
+      render: (row) => row.qtde || '--'
+    },
+    {
+      header: 'Justificativa',
+      render: (row) => row.justificativa || '--'
+    },
+    {
+      header: 'Localização',
+      render: (row) => (
+        <div className="flex flex-col text-xs text-gray-600 gap-1">
+          {row.localizacaoEntrada ? (
+            <a
+              href={`https://www.google.com/maps?q=${row.localizacaoEntrada.latitude},${row.localizacaoEntrada.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-pink-600 hover:underline"
+            >
+              Entrada: {formatLocation(row.localizacaoEntrada)}
+            </a>
+          ) : (
+            <span className="text-gray-400">Entrada não registrada</span>
+          )}
+          {row.localizacaoSaida ? (
+            <a
+              href={`https://www.google.com/maps?q=${row.localizacaoSaida.latitude},${row.localizacaoSaida.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-pink-600 hover:underline"
+            >
+              Saída: {formatLocation(row.localizacaoSaida)}
+            </a>
+          ) : (
+            <span className="text-gray-400">Saída não registrada</span>
+          )}
+        </div>
+      )
+    }
+  ]), [formatLocation]);
+
+  const tableActions = useMemo(() => (
+    isGestor
+      ? [{
+          label: 'Editar',
+          icon: Edit,
+          onClick: (row) => {
+            setEditingPonto(row);
+            setPontoForm({
+              horaEntrada: row.horaEntrada || '',
+              horaSaida: row.horaSaida || '',
+              irregularidade: row.irregularidade || '',
+              qtde: row.qtde || '',
+              justificativa: row.justificativa || ''
+            });
+          }
+        }]
+      : []
+  ), [isGestor]);
+
+  const obterLocalizacao = () => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocalização não é suportada neste dispositivo.'));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      });
+    });
+  };
+
+  const handleRegisterPonto = async (tipo) => {
+    if (!user?.auth?.uid) return;
+    setRegistroLoading(true);
+    setRegistroFeedback(null);
+
+    try {
+      const position = await obterLocalizacao();
+      const { latitude, longitude } = position.coords;
+      const now = new Date();
+      const dataStr = now.toISOString().split('T')[0];
+      const horaStr = now.toTimeString().slice(0, 5);
+      const diaSemana = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(now);
+
+      const pontosRef = collection(db, 'pontos');
+      const pontoQuery = query(
+        pontosRef,
+        where('funcionarioId', '==', user.auth.uid),
+        where('data', '==', dataStr)
+      );
+
+      const pontoSnapshot = await getDocs(pontoQuery);
+
+      if (pontoSnapshot.empty) {
+        await addDoc(pontosRef, {
+          funcionarioId: user.auth.uid,
+          funcionarioNome: user.auth.displayName || user.auth.email || 'Funcionário',
+          data: dataStr,
+          diaSemana,
+          horaEntrada: tipo === 'entrada' ? horaStr : '',
+          horaSaida: tipo === 'saida' ? horaStr : '',
+          irregularidade: '',
+          qtde: '',
+          justificativa: '',
+          localizacaoEntrada: tipo === 'entrada' ? { latitude, longitude } : null,
+          localizacaoSaida: tipo === 'saida' ? { latitude, longitude } : null,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          historicoAlteracoes: []
+        });
+      } else {
+        const pontoDoc = pontoSnapshot.docs[0];
+        const updateData = {
+          updatedAt: serverTimestamp()
+        };
+
+        if (tipo === 'entrada') {
+          updateData.horaEntrada = horaStr;
+          updateData.localizacaoEntrada = { latitude, longitude };
+        } else {
+          updateData.horaSaida = horaStr;
+          updateData.localizacaoSaida = { latitude, longitude };
+        }
+
+        await updateDoc(pontoDoc.ref, updateData);
+      }
+
+      setRegistroFeedback({
+        type: 'success',
+        message: `Ponto de ${tipo === 'entrada' ? 'entrada' : 'saída'} registrado com sucesso!`
+      });
+    } catch (error) {
+      console.error('Erro ao registrar ponto:', error);
+      let message = 'Não foi possível registrar o ponto. Tente novamente.';
+
+      if (typeof error?.code === 'number' && error.code === 1) {
+        message = 'Permita o acesso à localização para registrar o ponto.';
+      } else if (error?.message) {
+        message = error.message;
+      }
+
+      setRegistroFeedback({ type: 'error', message });
+    } finally {
+      setRegistroLoading(false);
+    }
+  };
+
+  const handleSaveEmpresa = async (event) => {
+    event.preventDefault();
+    setSalvandoEmpresa(true);
+    setEmpresaFeedback(null);
+
+    try {
+      const empresaRef = doc(db, 'empresaInfo', 'principal');
+      await setDoc(empresaRef, {
+        ...empresaForm,
+        competencia: competenciaAtual,
+        gestorResponsavel: empresaForm.gestorResponsavel || user?.auth?.displayName || user?.auth?.email || '',
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      setEmpresaFeedback({ type: 'success', message: 'Informações da empresa atualizadas com sucesso!' });
+    } catch (error) {
+      console.error('Erro ao salvar informações da empresa:', error);
+      setEmpresaFeedback({ type: 'error', message: 'Não foi possível salvar as informações. Tente novamente.' });
+    } finally {
+      setSalvandoEmpresa(false);
+    }
+  };
+
+  const handleSavePonto = async (event) => {
+    event.preventDefault();
+    if (!editingPonto) return;
+
+    setSalvandoPonto(true);
+    try {
+      const pontoRef = doc(db, 'pontos', editingPonto.id);
+      const campos = ['horaEntrada', 'horaSaida', 'irregularidade', 'qtde', 'justificativa'];
+      const updates = campos.reduce((acc, campo) => ({
+        ...acc,
+        [campo]: (pontoForm[campo] || '').trim()
+      }), {});
+
+      const changes = campos.reduce((acc, campo) => {
+        const antigo = (editingPonto[campo] || '').trim();
+        const novo = (pontoForm[campo] || '').trim();
+        if (antigo !== novo) {
+          const labelMap = {
+            horaEntrada: 'Entrada',
+            horaSaida: 'Saída',
+            irregularidade: 'Irregularidade',
+            qtde: 'QTDE',
+            justificativa: 'Justificativa'
+          };
+          acc.push(`${labelMap[campo]}: ${antigo || 'vazio'} → ${novo || 'vazio'}`);
+        }
+        return acc;
+      }, []);
+
+      const descricaoAlteracao = changes.length > 0
+        ? changes.join(' | ')
+        : 'Registro atualizado pelo gestor.';
+
+      await updateDoc(pontoRef, {
+        ...updates,
+        gestorId: user?.auth?.uid || null,
+        dataAjuste: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        historicoAlteracoes: arrayUnion({
+          timestamp: serverTimestamp(),
+          gestorId: user?.auth?.uid || null,
+          gestorNome: user?.auth?.displayName || user?.auth?.email || 'Gestor',
+          descricao: descricaoAlteracao
+        })
+      });
+
+      setRegistroFeedback({ type: 'success', message: 'Registro de ponto atualizado com sucesso.' });
+      setEditingPonto(null);
+    } catch (error) {
+      console.error('Erro ao atualizar ponto:', error);
+      setRegistroFeedback({ type: 'error', message: 'Não foi possível salvar as alterações do ponto.' });
+    } finally {
+      setSalvandoPonto(false);
+    }
+  };
+
+  return (
+    <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Meu Espaço</h1>
+          <p className="text-gray-600 mt-1">Gerencie seus registros de ponto e informações da empresa</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Input
+            label="Competência"
+            type="month"
+            value={selectedPeriodo}
+            onChange={(event) => setSelectedPeriodo(event.target.value)}
+            className="sm:w-48"
+          />
+          {isGestor && (
+            <Select
+              label="Funcionário"
+              value={selectedFuncionario}
+              onChange={(event) => setSelectedFuncionario(event.target.value)}
+              className="sm:w-56"
+            >
+              <option value="">Todos</option>
+              {funcionarios.map((func) => (
+                <option key={func.id} value={func.id}>{func.nome}</option>
+              ))}
+            </Select>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+          <div className="flex-1 space-y-2">
+            <h2 className="text-xl font-semibold text-gray-800">Informações da Empresa</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-600">
+              <div>
+                <p className="text-gray-500 text-xs uppercase">Nome da Empresa</p>
+                <p className="font-medium text-gray-800">{empresaForm.nomeEmpresa || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs uppercase">CNPJ</p>
+                <p className="font-medium text-gray-800">{empresaForm.cnpj || '—'}</p>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-gray-500 text-xs uppercase">Endereço</p>
+                <p className="font-medium text-gray-800">{empresaForm.endereco || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs uppercase">Atividade Econômica</p>
+                <p className="font-medium text-gray-800">{empresaForm.atividadeEconomica || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs uppercase">Horário de Trabalho</p>
+                <p className="font-medium text-gray-800">{empresaForm.horarioTrabalho || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs uppercase">Competência</p>
+                <p className="font-medium text-gray-800">{empresaForm.competencia || competenciaAtual}</p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-xs uppercase">Gestor Responsável</p>
+                <p className="font-medium text-gray-800">{empresaForm.gestorResponsavel || '—'}</p>
+              </div>
+            </div>
+          </div>
+
+          {isGestor && (
+            <form onSubmit={handleSaveEmpresa} className="w-full md:w-1/2 space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800">Atualizar informações</h3>
+              <Input
+                label="Nome da Empresa"
+                value={empresaForm.nomeEmpresa}
+                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, nomeEmpresa: event.target.value }))}
+              />
+              <Input
+                label="Endereço"
+                value={empresaForm.endereco}
+                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, endereco: event.target.value }))}
+              />
+              <Input
+                label="CNPJ"
+                value={empresaForm.cnpj}
+                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, cnpj: event.target.value }))}
+                placeholder="00.000.000/0000-00"
+              />
+              <Input
+                label="Atividade Econômica"
+                value={empresaForm.atividadeEconomica}
+                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, atividadeEconomica: event.target.value }))}
+              />
+              <Input
+                label="Horário de Trabalho"
+                value={empresaForm.horarioTrabalho}
+                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, horarioTrabalho: event.target.value }))}
+                placeholder="08:00 às 17:00 (intervalo 12:00 às 13:00)"
+              />
+              <Input
+                label="Competência"
+                value={empresaForm.competencia || competenciaAtual}
+                readOnly
+                disabled
+              />
+              <Input
+                label="Gestor Responsável"
+                value={empresaForm.gestorResponsavel}
+                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, gestorResponsavel: event.target.value }))}
+              />
+              <div className="flex justify-end">
+                <Button type="submit" disabled={salvandoEmpresa}>
+                  {salvandoEmpresa ? 'Salvando...' : 'Salvar Informações'}
+                </Button>
+              </div>
+              {empresaFeedback && (
+                <p className={`text-sm ${empresaFeedback.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {empresaFeedback.message}
+                </p>
+              )}
+            </form>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-800">Registro de Ponto</h2>
+            <p className="text-gray-500 text-sm">Registre sua entrada e saída com validação de localização</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              onClick={() => handleRegisterPonto('entrada')}
+              disabled={registroLoading}
+            >
+              <Clock className="w-4 h-4" /> Registrar Entrada
+            </Button>
+            <Button
+              onClick={() => handleRegisterPonto('saida')}
+              disabled={registroLoading}
+              className="bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700"
+            >
+              <Clock className="w-4 h-4" /> Registrar Saída
+            </Button>
+          </div>
+        </div>
+        {registroFeedback && (
+          <div className={`rounded-xl px-4 py-3 text-sm ${registroFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+            {registroFeedback.message}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-800">Registros do mês</h2>
+            <p className="text-gray-500 text-sm">Visualize os registros de ponto do período selecionado</p>
+          </div>
+          <div className="text-sm text-gray-500">
+            {tableRows.length} registro(s) encontrado(s)
+          </div>
+        </div>
+        <Table columns={pontoColumns} data={tableRows} actions={tableActions} />
+      </div>
+
+      <Modal
+        isOpen={!!editingPonto}
+        onClose={() => setEditingPonto(null)}
+        title="Editar registro de ponto"
+        size="lg"
+      >
+        {editingPonto && (
+          <form onSubmit={handleSavePonto} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Hora de Entrada"
+                type="time"
+                value={pontoForm.horaEntrada}
+                onChange={(event) => setPontoForm((prev) => ({ ...prev, horaEntrada: event.target.value }))}
+              />
+              <Input
+                label="Hora de Saída"
+                type="time"
+                value={pontoForm.horaSaida}
+                onChange={(event) => setPontoForm((prev) => ({ ...prev, horaSaida: event.target.value }))}
+              />
+              <Input
+                label="Irregularidade"
+                value={pontoForm.irregularidade}
+                onChange={(event) => setPontoForm((prev) => ({ ...prev, irregularidade: event.target.value }))}
+                placeholder="Atraso, falta, banco de horas..."
+              />
+              <Input
+                label="QTDE"
+                value={pontoForm.qtde}
+                onChange={(event) => setPontoForm((prev) => ({ ...prev, qtde: event.target.value }))}
+                placeholder="Horas a compensar"
+              />
+              <Textarea
+                label="Justificativa"
+                rows={3}
+                value={pontoForm.justificativa}
+                onChange={(event) => setPontoForm((prev) => ({ ...prev, justificativa: event.target.value }))}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+              <div>
+                <p className="font-medium text-gray-700">Localização da entrada</p>
+                {editingPonto.localizacaoEntrada ? (
+                  <a
+                    href={`https://www.google.com/maps?q=${editingPonto.localizacaoEntrada.latitude},${editingPonto.localizacaoEntrada.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-pink-600 hover:underline"
+                  >
+                    {formatLocation(editingPonto.localizacaoEntrada)}
+                  </a>
+                ) : (
+                  <p className="text-gray-400">Não registrado</p>
+                )}
+              </div>
+              <div>
+                <p className="font-medium text-gray-700">Localização da saída</p>
+                {editingPonto.localizacaoSaida ? (
+                  <a
+                    href={`https://www.google.com/maps?q=${editingPonto.localizacaoSaida.latitude},${editingPonto.localizacaoSaida.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-pink-600 hover:underline"
+                  >
+                    {formatLocation(editingPonto.localizacaoSaida)}
+                  </a>
+                ) : (
+                  <p className="text-gray-400">Não registrado</p>
+                )}
+              </div>
+            </div>
+
+            {editingPonto.historicoAlteracoes && editingPonto.historicoAlteracoes.length > 0 && (
+              <div className="border-t border-gray-100 pt-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Histórico de ajustes</h4>
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                  {editingPonto.historicoAlteracoes
+                    .slice()
+                    .sort((a, b) => {
+                      const dataA = getJSDate(a.timestamp) || new Date(0);
+                      const dataB = getJSDate(b.timestamp) || new Date(0);
+                      return dataB.getTime() - dataA.getTime();
+                    })
+                    .map((hist, index) => {
+                      const dataHist = getJSDate(hist.timestamp);
+                      return (
+                        <div key={index} className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3">
+                          <p className="font-medium text-gray-700">{hist.gestorNome || 'Gestor'}</p>
+                          <p>{hist.descricao || 'Ajuste registrado.'}</p>
+                          <p className="text-gray-400 mt-1">{dataHist ? dataHist.toLocaleString('pt-BR') : 'Data não disponível'}</p>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button type="button" variant="secondary" onClick={() => setEditingPonto(null)}>Cancelar</Button>
+              <Button type="submit" disabled={salvandoPonto}>
+                {salvandoPonto ? 'Salvando...' : 'Salvar alterações'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+    </div>
+  );
+};
 
 // Componente principal
 function App() {
@@ -1054,7 +1713,7 @@ function App() {
   // --- REMOVIDO: audioRef e alarmIntervalRef ---
 
   
-  const [data, setData] = useState({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [], fornecedorCategorias: [] });
+  const [data, setData] = useState({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [], fornecedorCategorias: [], pontos: [], empresaInfo: [] });
   const [loading, setLoading] = useState(true);
 
 	const userId = user?.uid || null;
@@ -1381,7 +2040,7 @@ function App() {
   // EFFECT PARA SINCRONIZAR DADOS DO FIREBASE
 	useEffect(() => {
           if (!user) {
-                setData({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [], fornecedorCategorias: [] });
+                setData({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [], fornecedorCategorias: [], pontos: [], empresaInfo: [] });
 		setLoading(false);
 		initialDataLoaded.current = false;
 		return;
@@ -1391,8 +2050,9 @@ function App() {
 	  
           const collectionsToSync = [
                 'clientes', 'produtos', 'contas_a_pagar', 'contas_a_receber',
-                'fornecedores', 'pedidosCompra', 'estoque', 'logs', 'cupons', 'users', 'pedidos', 'subcategorias', 'fornecedorCategorias'
-          ];
+                'fornecedores', 'pedidosCompra', 'estoque', 'logs', 'cupons', 'users', 'pedidos', 'subcategorias', 'fornecedorCategorias',
+                'pontos', 'empresaInfo'
+				];
 
 	  const unsubscribes = [];
 	  
@@ -1701,10 +2361,11 @@ function App() {
     { id: 'clientes', label: 'Clientes', icon: Users, roles: ['admin', 'Atendente'] }, 
     { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart, roles: ['admin', 'Atendente'] }, 
     { id: 'produtos', label: 'Produtos', icon: Package, roles: ['admin', 'Atendente'] }, 
-    { id: 'agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'Atendente'] }, 
-    { id: 'fornecedores', label: 'Fornecedores/Estoque', icon: Truck, roles: ['admin', 'Atendente'] }, 
-    { id: 'relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'Atendente'] }, 
-    { id: 'financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] }, 
+    { id: 'agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'Atendente'] },
+    { id: 'fornecedores', label: 'Fornecedores/Estoque', icon: Truck, roles: ['admin', 'Atendente'] },
+    { id: 'relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'Atendente'] },
+    { id: 'meu-espaco', label: 'Meu Espaço', icon: Clock, roles: ['admin', 'Atendente'] },
+    { id: 'financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
     { id: 'configuracoes', label: 'Configurações', icon: Settings, roles: ['admin'] }, 
   ];
   const currentUserRole = user ? user.role : null;
@@ -4167,6 +4828,7 @@ const handleSubmit = async (e) => {
       case 'agenda': return user ? <Agenda /> : <PaginaInicial />;
       case 'fornecedores': return user ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'relatorios': return user ? <Relatorios data={data} /> : <PaginaInicial />;
+      case 'meu-espaco': return user ? <MeuEspaco /> : <PaginaInicial />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
       default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;
