@@ -1148,6 +1148,7 @@ const MeuEspaco = ({ user, data = {} }) => {
       const diaMes = entryDate ? String(entryDate.getDate()).padStart(2, '0') : '-';
       return {
         ...entry,
+        funcionarioNome: entry.funcionarioNome || 'Funcionário',
         diaSemanaFormatado: diaSemana,
         diaMes,
         horaEntrada: entry.horaEntrada || '',
@@ -1192,6 +1193,13 @@ const MeuEspaco = ({ user, data = {} }) => {
         render: (row) => row.justificativa || '--'
       }
     ];
+
+    if (isGestor) {
+      baseColumns.unshift({
+        header: 'Funcionário',
+        render: (row) => row.funcionarioNome || 'Funcionário'
+      });
+    }
 
     if (isGestor) {
       baseColumns.push({
@@ -1450,10 +1458,10 @@ const MeuEspaco = ({ user, data = {} }) => {
         </div>
       </div>
 
-      {!isGestor && (
+      {(!isGestor || selectedFuncionario) && (
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 print:hidden">
           <p className="text-xs uppercase text-gray-500">Funcionário</p>
-          <p className="text-lg font-semibold text-gray-800">{funcionarioNome}</p>
+          <p className="text-lg font-semibold text-gray-800">{funcionarioSelecionadoNome}</p>
         </div>
       )}
 
