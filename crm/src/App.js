@@ -1134,11 +1134,28 @@ const MeuEspaco = ({ user, data = {} }) => {
   }, [data.pontos, selectedPeriodo, isGestor, selectedFuncionario, user]);
 
   const formatLocation = useCallback((location) => {
-    if (!location || location.latitude === undefined || location.longitude === undefined) return null;
-    const lat = Number(location.latitude);
-    const lng = Number(location.longitude);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
-    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    if (!location) return null;
+
+    const lat = location.latitude ?? location.lat;
+    const lng = location.longitude ?? location.lng;
+
+    const latNum = lat !== undefined ? Number(lat) : undefined;
+    const lngNum = lng !== undefined ? Number(lng) : undefined;
+
+    const hasLatLng =
+      latNum !== undefined &&
+      lngNum !== undefined &&
+      !Number.isNaN(latNum) &&
+      !Number.isNaN(lngNum);
+
+    const coordinateText = hasLatLng ? `${latNum.toFixed(5)}, ${lngNum.toFixed(5)}` : null;
+    const addressText = location.endereco || location.address || location.formattedAddress || null;
+
+    if (coordinateText && addressText) {
+      return `${coordinateText} | ${addressText}`;
+    }
+
+    return coordinateText || addressText || null;
   }, []);
 
   const tableRows = useMemo(() => {
