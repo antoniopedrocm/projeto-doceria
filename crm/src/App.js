@@ -1158,6 +1158,42 @@ const MeuEspaco = ({ user, data = {} }) => {
     return coordinateText || addressText || null;
   }, []);
 
+  const parseTimeToMinutes = useCallback((timeString) => {
+    if (!timeString) return null;
+
+    const [hoursStr, minutesStr] = timeString.split(':');
+    const hours = Number.parseInt(hoursStr, 10);
+    const minutes = Number.parseInt(minutesStr, 10);
+
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+      return null;
+    }
+
+    return hours * 60 + minutes;
+  }, []);
+
+  const calculateTimeBalance = useCallback((entrada, saida) => {
+    const entradaMinutos = parseTimeToMinutes(entrada);
+    const saidaMinutos = parseTimeToMinutes(saida);
+
+    if (entradaMinutos === null || saidaMinutos === null) {
+      return '';
+    }
+
+    let diferenca = saidaMinutos - entradaMinutos;
+    const sinal = diferenca >= 0 ? '+' : '-';
+
+    diferenca = Math.abs(diferenca);
+
+    const horas = Math.floor(diferenca / 60);
+    const minutos = diferenca % 60;
+
+    const horasFormatadas = String(horas).padStart(2, '0');
+    const minutosFormatados = String(minutos).padStart(2, '0');
+
+    return `${sinal} ${horasFormatadas}:${minutosFormatados}`;
+  }, [parseTimeToMinutes]);
+
   const tableRows = useMemo(() => {
     return filteredPontos.map((entry) => {
       const entryDate = parseEntryDate(entry);
@@ -1171,13 +1207,13 @@ const MeuEspaco = ({ user, data = {} }) => {
         horaEntrada: entry.horaEntrada || '',
         horaSaida: entry.horaSaida || '',
         irregularidade: entry.irregularidade || '',
-        qtde: entry.qtde || '',
+        qtde: calculateTimeBalance(entry.horaEntrada, entry.horaSaida),
         justificativa: entry.justificativa || '',
         localizacaoEntrada: entry.localizacaoEntrada || entry.localizacao?.entrada || null,
         localizacaoSaida: entry.localizacaoSaida || entry.localizacao?.saida || null
       };
     });
-  }, [filteredPontos]);
+  }, [filteredPontos, calculateTimeBalance]);
 
   const pontoColumns = useMemo(() => {
     const baseColumns = [
@@ -1266,13 +1302,13 @@ const MeuEspaco = ({ user, data = {} }) => {
               horaEntrada: row.horaEntrada || '',
               horaSaida: row.horaSaida || '',
               irregularidade: row.irregularidade || '',
-              qtde: row.qtde || '',
+              qtde: calculateTimeBalance(row.horaEntrada, row.horaSaida),
               justificativa: row.justificativa || ''
             });
           }
         }]
       : []
-  ), [isGestor]);
+  ), [isGestor, calculateTimeBalance]);
 
   const obterLocalizacao = () => {
     return new Promise((resolve, reject) => {
@@ -1424,11 +1460,14 @@ const MeuEspaco = ({ user, data = {} }) => {
     setSalvandoPonto(true);
     try {
       const pontoRef = doc(db, 'pontos', editingPonto.id);
-      const campos = ['horaEntrada', 'horaSaida', 'irregularidade', 'qtde', 'justificativa'];
+      const campos = ['horaEntrada', 'horaSaida', 'irregularidade', 'justificativa'];
       const updates = campos.reduce((acc, campo) => ({
         ...acc,
         [campo]: (pontoForm[campo] || '').trim()
       }), {});
+
+      const qtdeCalculada = calculateTimeBalance(pontoForm.horaEntrada, pontoForm.horaSaida);
+      updates.qtde = qtdeCalculada;
 
       const changes = campos.reduce((acc, campo) => {
         const antigo = (editingPonto[campo] || '').trim();
@@ -1438,13 +1477,17 @@ const MeuEspaco = ({ user, data = {} }) => {
             horaEntrada: 'Entrada',
             horaSaida: 'Saída',
             irregularidade: 'Irregularidade',
-            qtde: 'QTDE',
             justificativa: 'Justificativa'
           };
           acc.push(`${labelMap[campo]}: ${antigo || 'vazio'} → ${novo || 'vazio'}`);
         }
         return acc;
       }, []);
+
+      const qtdeAnterior = calculateTimeBalance(editingPonto.horaEntrada, editingPonto.horaSaida);
+      if ((qtdeAnterior || '').trim() !== (qtdeCalculada || '').trim()) {
+        changes.push(`QTDE: ${qtdeAnterior || 'vazio'} → ${qtdeCalculada || 'vazio'}`);
+      }
 
       const descricaoAlteracao = changes.length > 0
         ? changes.join(' | ')
@@ -1672,14 +1715,31 @@ const MeuEspaco = ({ user, data = {} }) => {
                 label="Hora de Entrada"
                 type="time"
                 value={pontoForm.horaEntrada}
-                onChange={(event) => setPontoForm((prev) => ({ ...prev, horaEntrada: event.target.value }))}
+                onChange={(event) => {
+                  const novoValor = event.target.value;
+                  setPontoForm((prev) => {
+                    const atualizado = { ...prev, horaEntrada: novoValor };
+                    return {
+                      ...atualizado,
+                      qtde: calculateTimeBalance(novoValor, atualizado.horaSaida)
+                    };
+                  });
+                }}
               />
               <Input
                 label="Hora de Saída"
                 type="time"
                 value={pontoForm.horaSaida}
-                onChange={(event) => setPontoForm((prev) => ({ ...prev, horaSaida: event.target.value }))}
-              />
+                onChange={(event) => {
+                  const novoValor = event.target.value;
+                  setPontoForm((prev) => {
+                    const atualizado = { ...prev, horaSaida: novoValor };
+                    return {
+                      ...atualizado,
+                      qtde: calculateTimeBalance(atualizado.horaEntrada, novoValor)
+                    };
+                  });
+                }}              />
               <Input
                 label="Irregularidade"
                 value={pontoForm.irregularidade}
@@ -1688,9 +1748,9 @@ const MeuEspaco = ({ user, data = {} }) => {
               />
               <Input
                 label="QTDE"
-                value={pontoForm.qtde}
-                onChange={(event) => setPontoForm((prev) => ({ ...prev, qtde: event.target.value }))}
-                placeholder="Horas a compensar"
+                value={pontoForm.qtde || ''}
+                readOnly
+                placeholder="Horas calculadas automaticamente"
               />
               <Textarea
                 label="Justificativa"
