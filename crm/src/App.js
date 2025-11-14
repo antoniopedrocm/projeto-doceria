@@ -1289,6 +1289,34 @@ const MeuEspaco = ({ user, data = {} }) => {
     });
   };
 
+  const obterEndereco = useCallback(async (latitude, longitude) => {
+    const searchParams = new URLSearchParams({
+      format: 'jsonv2',
+      lat: String(latitude),
+      lon: String(longitude),
+      'accept-language': 'pt-BR'
+    });
+
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${searchParams.toString()}`, {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.error('Erro na resposta ao obter endereço:', response.status, response.statusText);
+        return null;
+      }
+
+      const data = await response.json();
+      return data?.display_name || null;
+    } catch (error) {
+      console.error('Erro ao obter endereço a partir das coordenadas:', error);
+      return null;
+    }
+  }, []);
+
   const handleRegisterPonto = async (tipo) => {
     if (!user?.auth?.uid) return;
     setRegistroLoading(true);
@@ -1297,6 +1325,7 @@ const MeuEspaco = ({ user, data = {} }) => {
     try {
       const position = await obterLocalizacao();
       const { latitude, longitude } = position.coords;
+      const endereco = await obterEndereco(latitude, longitude);
       const now = new Date();
       const dataStr = now.toISOString().split('T')[0];
       const horaStr = now.toTimeString().slice(0, 5);
@@ -1322,8 +1351,8 @@ const MeuEspaco = ({ user, data = {} }) => {
           irregularidade: '',
           qtde: '',
           justificativa: '',
-          localizacaoEntrada: tipo === 'entrada' ? { latitude, longitude } : null,
-          localizacaoSaida: tipo === 'saida' ? { latitude, longitude } : null,
+          localizacaoEntrada: tipo === 'entrada' ? { latitude, longitude, ...(endereco ? { endereco } : {}) } : null,
+          localizacaoSaida: tipo === 'saida' ? { latitude, longitude, ...(endereco ? { endereco } : {}) } : null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           historicoAlteracoes: []
@@ -1336,10 +1365,10 @@ const MeuEspaco = ({ user, data = {} }) => {
 
         if (tipo === 'entrada') {
           updateData.horaEntrada = horaStr;
-          updateData.localizacaoEntrada = { latitude, longitude };
+          updateData.localizacaoEntrada = { latitude, longitude, ...(endereco ? { endereco } : {}) };
         } else {
           updateData.horaSaida = horaStr;
-          updateData.localizacaoSaida = { latitude, longitude };
+          updateData.localizacaoSaida = { latitude, longitude, ...(endereco ? { endereco } : {}) };
         }
 
         await updateDoc(pontoDoc.ref, updateData);
