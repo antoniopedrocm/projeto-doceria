@@ -1,9 +1,12 @@
 import { getToken, onMessage } from "firebase/messaging";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import { db, messagingPromise } from "../firebaseConfig.js";
-
-const VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY;
+import { db, messagingPromise, VAPID_KEY } from "../firebaseConfig.js";
 const isBrowser = typeof window !== "undefined";
+const runtimeEnv =
+  (typeof process !== "undefined" && process.env && process.env.NODE_ENV) ||
+  import.meta.env?.MODE ||
+  "";
+const isDev = runtimeEnv !== "production";
 
 async function ensureServiceWorkerRegistration() {
   if (!isBrowser || !('serviceWorker' in navigator)) {
@@ -58,7 +61,12 @@ export async function registerDeviceForPush(uid) {
   }
 
   if (!VAPID_KEY) {
-    throw new Error("A variável REACT_APP_FIREBASE_VAPID_KEY não está configurada.");
+    if (isDev) {
+      console.warn(
+        "A variável de ambiente da chave VAPID não está configurada; notificações push permanecerão desativadas."
+      );
+    }
+    return null;
   }
 
   try {
@@ -86,6 +94,20 @@ export async function registerDeviceForPush(uid) {
 
     return token;
   } catch (error) {
+    const errorCode = error?.code || "";
+    const errorMessage = String(error?.message || "");
+    const isForbiddenTokenError =
+      errorCode.includes("messaging/token-subscribe-failed") ||
+      errorMessage.includes("registrations.googleapis.com") ||
+      errorMessage.includes("403");
+
+    if (isForbiddenTokenError) {
+      console.warn(
+        "Falha ao obter token de push (FCM 403). As demais funcionalidades continuarão operando normalmente."
+      );
+      return null;
+    }
+
     console.error("Falha ao registrar notificações push:", error);
     throw error;
   }

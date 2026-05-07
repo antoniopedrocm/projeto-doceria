@@ -1,9 +1,14 @@
 // src/utils/AudioManager.js
-import { Capacitor } from '@capacitor/core';
-import { NativeAudio } from '@capacitor-community/native-audio';
+
+import { Capacitor } from '../shims/capacitor.js';
+import { NativeAudio } from '../shims/nativeAudio.js';
 
 const NATIVE_ASSET_ID = 'pedido';
-const NATIVE_ASSET_PATH = 'mixkit_vintage_warning_alarm_990.wav';
+const NATIVE_ASSET_PATHS = [
+  'mixkit_vintage_warning_alarm_990.mp3',
+  'audio/mixkit_vintage_warning_alarm_990.mp3',
+  '/audio/mixkit_vintage_warning_alarm_990.mp3',
+];
 const unlockEvents = ['touchstart', 'touchend', 'mousedown', 'keydown', 'pointerdown'];
 
 class AudioManager {
@@ -12,6 +17,8 @@ class AudioManager {
     this.unlocked = false;
     this.cache = new Map();
 	this.htmlAudioPlayers = new Set();
+    this.pendingPlay = false;
+    this.alarmStopFn = null;
     this.nativeAudioReady = false;
     this.nativePreloadPromise = null;
     this._visibilityHandler = this._handleVisibilityChange.bind(this);
@@ -22,7 +29,7 @@ class AudioManager {
   _setupAutoUnlockListener() {
 
     const unlockHandler = async () => {
-      await this.userUnlock();
+      await this.userUnlock({ userGesture: true });
       unlockEvents.forEach((ev) => document.removeEventListener(ev, unlockHandler));
     };
  unlockEvents.forEach((ev) => document.addEventListener(ev, unlockHandler, { once: true }));
@@ -104,12 +111,25 @@ async _ensureNativePreload() {
     }
 
     if (!this.nativePreloadPromise) {
-      this.nativePreloadPromise = NativeAudio.preload({
-        assetId: NATIVE_ASSET_ID,
-        assetPath: NATIVE_ASSET_PATH,
-        audioChannelNum: 1,
-        isUrl: false,
-      })
+      this.nativePreloadPromise = (async () => {
+        let lastError = null;
+
+        for (const assetPath of NATIVE_ASSET_PATHS) {
+          try {
+            await NativeAudio.preload({
+              assetId: NATIVE_ASSET_ID,
+              assetPath,
+              audioChannelNum: 1,
+              isUrl: false,
+            });
+            return;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+
+        throw lastError || new Error('Falha ao pré-carregar asset de áudio nativo.');
+      })()
         .then(async () => {
           this.nativeAudioReady = true;
           try {
@@ -129,11 +149,16 @@ async _ensureNativePreload() {
     return this.nativePreloadPromise;
   }
   
-  async userUnlock() {
+  async userUnlock({ userGesture = false } = {}) {
     if (!this.audioCtx || this.audioCtx.state === "closed") {
       await this.init();
       if (!this.audioCtx) return;
     }
+
+    const platform = Capacitor.getPlatform();
+    const isIOS =
+      platform === "ios" ||
+      (platform === "web" && typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent));
 
     if (this.audioCtx.state === "suspended") {
       try {
@@ -141,6 +166,10 @@ async _ensureNativePreload() {
         this.unlocked = true;
         localStorage.setItem("audioUnlocked", "true");
         console.log("[AudioManager] unlocked by user");
+
+        if (userGesture && isIOS) {
+          await this._ensureNativePreload();
+        }
       } catch (e) {
         console.error("[AudioManager] failed to unlock:", e);
         this.unlocked = false;
@@ -150,6 +179,51 @@ async _ensureNativePreload() {
       this.unlocked = true;
       localStorage.setItem("audioUnlocked", "true");
       console.log("[AudioManager] context already running, confirmed unlock by user");
+
+      if (userGesture && isIOS) {
+        await this._ensureNativePreload();
+      }
+    }
+
+    await this.retryPending();
+  }
+
+  async playAlarmSound() {
+    if (!this.unlocked) {
+      this.pendingPlay = true;
+      return false;
+    }
+
+    if (typeof this.alarmStopFn === 'function') {
+      return true;
+    }
+
+    const stopFn = await this.playSound('/audio/alarm.mp3', { loop: true, volume: 0.8 });
+    if (typeof stopFn === 'function') {
+      this.alarmStopFn = stopFn;
+      this.pendingPlay = false;
+      return true;
+    }
+
+    return false;
+  }
+
+  async retryPending() {
+    if (!this.pendingPlay || !this.unlocked) {
+      return false;
+    }
+
+    const started = await this.playAlarmSound();
+    if (started) {
+      this.pendingPlay = false;
+    }
+    return started;
+  }
+
+  stopAlarmSound() {
+    if (typeof this.alarmStopFn === 'function') {
+      this.alarmStopFn();
+      this.alarmStopFn = null;
     }
   }
 
@@ -179,7 +253,7 @@ async _ensureNativePreload() {
     await this.init();
 
     // --- Suporte a Capacitor (Android/iOS) ---
-    if (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios') {
+    if (Capacitor.isNativePlatform() && (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios')) {
       try {
         await this._ensureNativePreload();
         if (typeof NativeAudio.setVolume === 'function') {
@@ -202,6 +276,7 @@ async _ensureNativePreload() {
         };
       } catch (err) {
         console.error('[AudioManager] Falha ao tocar via NativeAudio:', err);
+        return this._playUsingHtmlAudio(url, { loop, volume });
       }
     }
 
@@ -212,7 +287,8 @@ async _ensureNativePreload() {
       try {
         const buffer = await this._fetchAndDecode(url);
         if (!buffer) {
-          return () => {};
+          console.warn('[AudioManager] Buffer indisponível, tentando fallback com HTMLAudio:', url);
+          return this._playUsingHtmlAudio(url, { loop, volume });
         }
 
         const src = this.audioCtx.createBufferSource();
@@ -241,6 +317,7 @@ async _ensureNativePreload() {
         };
       } catch (e) {
         console.error('[AudioManager] Error playing sound:', e);
+        return null;
       }
     }
 
@@ -252,12 +329,23 @@ async _ensureNativePreload() {
 
     try {
       const audioElement = new Audio(url);
+      const normalizedUrl = (url || '').toLowerCase();
+
+      if (!normalizedUrl.endsWith('.mp3') && !normalizedUrl.endsWith('.wav') && !normalizedUrl.endsWith('.ogg')) {
+        console.warn('[AudioManager] Formato de áudio possivelmente não suportado no fallback HTMLAudio:', url);
+      }
+
       audioElement.loop = loop;
       audioElement.preload = 'auto';
       audioElement.crossOrigin = 'anonymous';
       audioElement.volume = Math.min(Math.max(volume, 0), 1);
 
-      await audioElement.play();
+      try {
+        await audioElement.play();
+      } catch (error) {
+        console.error('[AudioManager] Falha no fallback de HTMLAudio:', error);
+        return null;
+      }
 
       this.htmlAudioPlayers.add(audioElement);
       audioElement.addEventListener(
@@ -284,7 +372,7 @@ async _ensureNativePreload() {
       };
     } catch (e) {
       console.error("[AudioManager] Error playing sound:", e);
-      return () => {};
+      return null;
     }
   }
 }

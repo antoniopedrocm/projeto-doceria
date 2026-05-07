@@ -2,13 +2,24 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
-  Clock, Edit, Trash2, Eye, X, Save, MessageCircle, Cake, Gift, ChevronLeft, ChevronRight, Printer, Home, BookOpen, Instagram, MapPin, Image as ImageIcon, MessageSquare, VolumeX, ArrowUpCircle, ArrowDownCircle, Banknote, PackagePlus, Ticket,
-  Key // Ícone adicionado
+  Clock, Edit, Trash2, Eye, X, Save, MessageCircle, Cake, Gift, ChevronLeft, ChevronRight, Printer, Home, Store, BookOpen, Instagram, MapPin, Image as ImageIcon, MessageSquare, VolumeX, ArrowUpCircle, ArrowDownCircle, Banknote, PackagePlus, Ticket,
+  Key, ArrowLeftRight // Ícone adicionado
 } from 'lucide-react';
 
 // --- CORREÇÃO ---
 // Importando 'functions' do seu arquivo de configuração do Firebase.
-import { auth, db, storage, functions } from './firebaseConfig.js';
+import {
+  auth,
+  db,
+  storage,
+  functions,
+  onSnapshot,
+  getDoc,
+  getDocs,
+  deleteDoc,
+  runWithRetry,
+  setFirestoreTelemetryContext
+} from './firebaseConfig.js';
 //import { firebaseConfig } from './firebaseConfig.js';
 
 // --- CORREÇÃO ---
@@ -16,55 +27,377 @@ import { auth, db, storage, functions } from './firebaseConfig.js';
 import { httpsCallable } from "firebase/functions";
 
 // Importações do Firebase SDK
-// ATUALIZADO: Adicionado GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
+// ATUALIZADO: Adicionado fluxo com redirect para login Google e reset de senha
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence, getIdToken } from "firebase/auth";
 // CORRIGIDO: Adicionado 'getDocs' à importação
-import { collection, onSnapshot, query, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, where, getDocs, serverTimestamp, arrayUnion } from "firebase/firestore";
+import { collection, query, doc, setDoc, addDoc, updateDoc, where, limit, orderBy, Timestamp, serverTimestamp, arrayUnion, writeBatch, waitForPendingWrites, runTransaction } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // --- CORREÇÃO: Importa o novo AudioManager ---
 import { audioManager } from './utils/AudioManager.js';
 import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceWorkerMessages } from './utils/notifications.js';
+import { updateStock as updateStockService } from './services/stockService.js';
+import ReceitasList from './components/fornecedores/ReceitasList';
+import ReceitasModal from './components/fornecedores/ReceitasModal';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
 import { Capacitor } from '@capacitor/core';
 
-// ✅ CORREÇÃO: URL alterada para o Firebase Storage para evitar erro de CORS
-const ALARM_SOUND_URL = "https://firebasestorage.googleapis.com/v0/b/crmdoceria-9959e.firebasestorage.app/o/audio%2Fmixkit-vintage-warning-alarm-990.wav?alt=media&token=6277f61e-51ab-413e-88d8-afef7835e465"; // <-- URL de exemplo, troque pela sua
+// ✅ CORREÇÃO: URL local para evitar erro de pré-condição no Firebase Storage
+const ALARM_SOUND_URL = '/audio/alarm.mp3';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://us-central1-crmdoceria-9959e.cloudfunctions.net/api';
 
-const DEFAULT_FORNECEDOR_CATEGORIES = [
-  'Insumos',
-  'Embalagens',
-  'Bebidas',
-  'Entregador',
-  'Decoração',
-  'Serviços'
+const ROLE_OWNER = 'dono';
+const ROLE_MANAGER = 'gerente';
+const ROLE_ATTENDANT = 'atendente';
+const ROLE_CLIENT = 'cliente';
+const ROLE_DEFAULT = ROLE_ATTENDANT;
+const STORE_ALL_KEY = '__all__';
+const DEFAULT_FORNECEDOR_CATEGORIES = ['Insumos', 'Embalagens', 'Bebidas', 'Decoração', 'Serviços'];
+const CONFIG_DOC_ID = 'config';
+const DEFAULT_ALARM_PAUSE_MINUTES = 5;
+const MIN_ALARM_PAUSE_MINUTES = 1;
+const MAX_ALARM_PAUSE_MINUTES = 120;
+const GOOGLE_AUTH_FLOW_KEY = 'google-auth-flow-in-progress';
+const GOOGLE_AUTH_FLOW_REDIRECT = 'redirect';
+const GOOGLE_AUTH_FLOW_POPUP = 'popup';
+
+const isSafariBrowser = () => {
+  if (typeof navigator === 'undefined') return false;
+
+  const userAgent = navigator.userAgent || '';
+  const vendor = navigator.vendor || '';
+
+  const hasSafariToken = /safari/i.test(userAgent);
+  const isAppleVendor = /apple/i.test(vendor);
+  const excludedBrowsersRegex = /(chrome|crios|android|edg|edge|edgios|opr|opera|fxios|firefox|samsungbrowser)/i;
+
+  return hasSafariToken && isAppleVendor && !excludedBrowsersRegex.test(userAgent);
+};
+const CONFIG_COLLECTIONS = new Set(['cupons', 'logs']);
+const MENU_PERMISSION_KEYS = [
+  'pagina-inicial',
+  'dashboard',
+  'clientes',
+  'pedidos',
+  'produtos',
+  'entre-lojas',
+  'agenda',
+  'fornecedores',
+  'relatorios',
+  'meu-espaco',
+  'financeiro',
+  'configuracoes'
 ];
 
-const DEFAULT_SUBCATEGORIES = {
-  Delivery: [
-    'Queridinhos',
-    'Mousse',
-    'Palha Italiana',
-    'Bolo no pote',
-    'Copo da felicidade',
-    'Bombom aberto',
-    'Pipoca',
-    'Cone recheado',
-    'Bolo gelado',
-    'Bombom recheado'
-  ],
-  Festa: [
-    'Bolo',
-    'Docinhos',
-    'Bombom',
-    'Doces finos',
-    'Bem casados',
-    'Cupcakes'
-  ]
+const buildStoreCollectionPath = (storeId, collectionName, useLegacyPath = false) => {
+  const shouldUseConfigPath = CONFIG_COLLECTIONS.has(collectionName) && !useLegacyPath;
+  return shouldUseConfigPath
+    ? ['lojas', storeId, 'configuracoes', CONFIG_DOC_ID, collectionName]
+    : ['lojas', storeId, collectionName];
 };
 
+const getStoreCollectionRef = (storeId, collectionName, useLegacyPath = false) => {
+  if (collectionName === 'clientes') {
+    return collection(db, 'clientes');
+  }
+
+  return collection(db, ...buildStoreCollectionPath(storeId, collectionName, useLegacyPath));
+};
+
+const getStoreDocRef = (storeId, collectionName, docId, useLegacyPath = false) => {
+  if (collectionName === 'clientes') {
+    return doc(db, 'clientes', docId);
+  }
+
+  return doc(db, ...buildStoreCollectionPath(storeId, collectionName, useLegacyPath), docId);
+};
+
+const getStoreConfigDocRef = (storeId) => doc(db, 'lojas', storeId, 'configuracoes', CONFIG_DOC_ID);
+
+const sanitizeAlarmPauseMinutes = (value) => {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue)) return DEFAULT_ALARM_PAUSE_MINUTES;
+  const roundedValue = Math.round(parsedValue);
+  if (roundedValue < MIN_ALARM_PAUSE_MINUTES || roundedValue > MAX_ALARM_PAUSE_MINUTES) {
+    return DEFAULT_ALARM_PAUSE_MINUTES;
+  }
+  return roundedValue;
+};
+
+
+const DEFAULT_STORE_TIMEZONE = 'America/Sao_Paulo';
+const WEEKDAYS = [
+  { key: 'mon', label: 'Segunda-feira' },
+  { key: 'tue', label: 'Terça-feira' },
+  { key: 'wed', label: 'Quarta-feira' },
+  { key: 'thu', label: 'Quinta-feira' },
+  { key: 'fri', label: 'Sexta-feira' },
+  { key: 'sat', label: 'Sábado' },
+  { key: 'sun', label: 'Domingo' }
+];
+
+const buildDefaultStoreSchedule = () => WEEKDAYS.reduce((acc, day) => ({
+  ...acc,
+  [day.key]: { enabled: false, open: '08:00', close: '18:00' }
+}), {});
+
+const getDefaultStoreHoursConfig = () => ({
+  timezone: DEFAULT_STORE_TIMEZONE,
+  schedule: buildDefaultStoreSchedule(),
+  alarmPauseMinutes: DEFAULT_ALARM_PAUSE_MINUTES,
+  manualOverride: {
+    mode: 'auto',
+    updatedAt: null,
+    updatedBy: ''
+  }
+});
+
+const COLLECTIONS_TO_SYNC = [
+  'produtos',
+  'subcategorias',
+  'categoriasFornecedores',
+  'contas_a_pagar',
+  'contas_a_receber',
+  'fornecedores',
+  'pedidosCompra',
+  'estoque',
+  'kardex',
+  'perdasDescarte',
+  'receitas',
+  'logs',
+  'cupons',
+  'pedidos'
+];
+
+const getInitialDataState = () => ({
+  clientes: [],
+  ...COLLECTIONS_TO_SYNC.reduce((acc, collection) => ({
+    ...acc,
+    [collection]: []
+  }), {}),
+  users: []
+});
+
+const normalizeRole = (role) => {
+  if (!role || typeof role !== 'string') return ROLE_DEFAULT;
+
+  const value = role.trim().toLowerCase();
+  if (!value) return ROLE_DEFAULT;
+
+  const normalizedValue = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const ownerAliases = new Set([
+    ROLE_OWNER,
+    'owner',
+    'proprietario',
+    'proprietaria',
+    'admin',
+    'adm',
+    'administrador',
+    'administradora',
+    'adminstrador',
+    'adminstradora',
+    'superadmin',
+    'superadministrador',
+    'superadministradora'
+  ]);
+
+  const managerAliases = new Set([
+    ROLE_MANAGER,
+    'manager',
+    'gerencia',
+    'gerente',
+    'gestor',
+    'gestora'
+  ]);
+
+  const attendantAliases = new Set([
+    ROLE_ATTENDANT,
+    'atendente',
+    'colaborador',
+    'colaboradora',
+    'funcionario',
+    'funcionaria',
+    'vendedor',
+    'vendedora'
+  ]);
+
+  const clientAliases = new Set([
+    ROLE_CLIENT,
+    'client',
+    'cliente'
+  ]);
+
+  if (ownerAliases.has(normalizedValue)) {
+    return ROLE_OWNER;
+  }
+
+  if (managerAliases.has(normalizedValue)) {
+    return ROLE_MANAGER;
+  }
+
+  if (attendantAliases.has(normalizedValue)) {
+    return ROLE_ATTENDANT;
+  }
+
+  if (clientAliases.has(normalizedValue)) {
+    return ROLE_CLIENT;
+  }
+
+  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_CLIENT].includes(value)) {
+    return value;
+  }
+
+  return ROLE_DEFAULT;
+};
+
+const getDefaultPermissionsForRole = (role) => {
+  const base = MENU_PERMISSION_KEYS.reduce((acc, key) => ({ ...acc, [key]: false }), {});
+  const normalizedRole = normalizeRole(role);
+
+  if (normalizedRole === ROLE_OWNER) {
+    return MENU_PERMISSION_KEYS.reduce((acc, key) => ({ ...acc, [key]: true }), {});
+  }
+
+  if (normalizedRole === ROLE_MANAGER) {
+    return {
+      ...base,
+      'pagina-inicial': true,
+      dashboard: true,
+      clientes: true,
+      pedidos: true,
+      produtos: true,
+      'entre-lojas': true,
+      agenda: true,
+      fornecedores: true,
+      relatorios: true,
+      'meu-espaco': true,
+      financeiro: true,
+      configuracoes: true,
+    };
+  }
+
+  if (normalizedRole === ROLE_CLIENT) {
+    return {
+      ...base,
+      'pagina-inicial': true,
+      'meu-espaco': true,
+    };
+  }
+
+  return {
+    ...base,
+    'pagina-inicial': true,
+    clientes: true,
+    pedidos: true,
+    'entre-lojas': true,
+    agenda: true,
+    'meu-espaco': true,
+  };
+};
+
+const sanitizePermissions = (permissions, role) => {
+  const defaults = getDefaultPermissionsForRole(role);
+  if (!permissions || typeof permissions !== 'object') return defaults;
+
+  return MENU_PERMISSION_KEYS.reduce((acc, key) => {
+    if (Object.prototype.hasOwnProperty.call(permissions, key)) {
+      acc[key] = Boolean(permissions[key]);
+    } else {
+      acc[key] = defaults[key];
+    }
+    return acc;
+  }, {});
+};
+
+const extractStoreIdsFromProfile = (profile) => {
+  if (!profile) return [];
+  const { lojaId, lojaIds, lojas } = profile;
+  if (Array.isArray(lojaIds) && lojaIds.length) return lojaIds;
+  if (Array.isArray(lojas) && lojas.length) return lojas;
+  if (Array.isArray(lojaId) && lojaId.length) return lojaId;
+  if (typeof lojaId === 'string' && lojaId.trim().length) return [lojaId.trim()];
+  return [];
+};
+
+const formatPhoneForWhatsApp = (phone) => {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('55')) {
+    return digits.length >= 12 ? digits : digits;
+  }
+  if (digits.length >= 11) {
+    return `55${digits}`;
+  }
+  if (digits.length === 10) {
+    return `55${digits}`;
+  }
+  return '';
+};
+
+const getOrderAddressDetails = (order, clientes = []) => {
+  if (!order) return { cliente: null, enderecoTexto: '', locationLink: '' };
+
+  const cliente = clientes.find((c) => c.id === order.clienteId) || null;
+  const normalizeEnderecoObj = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') return { enderecoCompleto: value };
+    if (typeof value === 'object') return value;
+    return null;
+  };
+
+  let enderecoTexto = '';
+  if (typeof order.clienteEndereco === 'string') {
+    enderecoTexto = order.clienteEndereco;
+  } else if (typeof order.clienteEndereco === 'object' && order.clienteEndereco !== null) {
+    enderecoTexto = order.clienteEndereco.enderecoCompleto || order.clienteEndereco.texto || '';
+  }
+
+  if (!enderecoTexto && cliente) {
+    if (Array.isArray(cliente.enderecos) && cliente.enderecos.length > 0) {
+      const primeiroEndereco = normalizeEnderecoObj(cliente.enderecos[0]);
+      enderecoTexto = primeiroEndereco?.enderecoCompleto || '';
+    } else if (cliente.endereco) {
+      enderecoTexto = cliente.endereco;
+    }
+  }
+
+  if (!enderecoTexto) {
+    enderecoTexto = 'Não informado';
+  }
+
+  let enderecoSelecionado = null;
+  if (cliente && Array.isArray(cliente.enderecos)) {
+    enderecoSelecionado = cliente.enderecos.find((item) => {
+      const normalizado = normalizeEnderecoObj(item);
+      if (!normalizado) return false;
+      if (!enderecoTexto || enderecoTexto === 'Não informado') return false;
+      return normalizado.enderecoCompleto === enderecoTexto;
+    }) || null;
+  }
+
+  let lat = null;
+  let lng = null;
+  if (enderecoSelecionado && typeof enderecoSelecionado === 'object') {
+    const latNumber = parseFloat(enderecoSelecionado.lat);
+    const lngNumber = parseFloat(enderecoSelecionado.lng);
+    lat = Number.isNaN(latNumber) ? null : latNumber;
+    lng = Number.isNaN(lngNumber) ? null : lngNumber;
+  }
+
+  const locationLink = lat !== null && lng !== null
+    ? `https://www.google.com/maps?q=${lat},${lng}`
+    : enderecoTexto && enderecoTexto !== 'Não informado'
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoTexto)}`
+      : '';
+
+  return { cliente, enderecoTexto, locationLink };
+};
 
 // Hook customizado para estado persistente na sessão
 const usePersistentState = (key, defaultValue) => {
@@ -108,7 +441,12 @@ const Modal = ({ isOpen, onClose, title, children, size = "md" }) => {
 };
 const Button = ({ children, variant = "primary", size = "md", onClick, className = "", disabled = false, type = "button" }) => {
   const baseClasses = "font-medium rounded-xl transition-all flex items-center gap-2 justify-center";
-  const variants = { primary: "bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5", secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 shadow-md hover:shadow-lg", danger: "bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl" };
+  const variants = {
+    primary: "bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5",
+    secondary: "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 shadow-md hover:shadow-lg",
+    outline: "bg-white text-pink-600 border border-pink-200 hover:bg-pink-50 shadow-sm",
+    danger: "bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl"
+  };
   const sizes = { sm: "px-4 py-2 text-sm", md: "px-6 py-3", lg: "px-8 py-4 text-lg" };
   return (<button type={type} onClick={onClick} disabled={disabled} className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>{children}</button>);
 };
@@ -120,7 +458,7 @@ const Select = ({ label, error, className = "", children, ...props }) => (<div c
 const Table = ({ columns, data, actions = [] }) => (
     <>
         {/* Visualização de Tabela para Desktop */}
-        <div className="hidden md:block print:block bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden print:shadow-none print:border print:border-gray-200">
+        <div className="hidden md:block bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
             <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
@@ -130,7 +468,9 @@ const Table = ({ columns, data, actions = [] }) => (
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                        {(data || []).map((row, rowIndex) => (
+                        {(data || []).map((row, rowIndex) => {
+                            const visibleActions = actions.filter((action) => (typeof action.isVisible === 'function' ? action.isVisible(row) : true));
+                            return (
                             <tr key={row.id || row.uid || rowIndex} className="hover:bg-gradient-to-r hover:from-pink-50/50 hover:to-rose-50/50 transition-all">
                                 {columns.map((col, colIndex) => (
                                     <td key={colIndex} className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{col.render ? col.render(row) : row[col.key]}</td>
@@ -138,24 +478,28 @@ const Table = ({ columns, data, actions = [] }) => (
                                 {actions.length > 0 && (
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex justify-end gap-2">
-                                            {actions.map((action, actionIndex) => (
-                                                <button key={actionIndex} onClick={() => action.onClick(row)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title={action.label}>
+                                            {visibleActions.map((action, actionIndex) => {
+                                                const actionLabel = typeof action.label === 'function' ? action.label(row) : action.label;
+                                                return (
+                                                <button key={actionIndex} onClick={() => action.onClick(row)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title={actionLabel}>
                                                     <action.icon className="w-4 h-4 text-gray-600" />
                                                 </button>
-                                            ))}
+                                            )})}
                                         </div>
                                     </td>
                                 )}
                             </tr>
-                        ))}
+                        )})}
                     </tbody>
                 </table>
             </div>
         </div>
 
         {/* Visualização de Cards para Celular */}
-        <div className="block md:hidden space-y-4 print:hidden">
-            {(data || []).map((row, rowIndex) => (
+        <div className="block md:hidden space-y-4">
+            {(data || []).map((row, rowIndex) => {
+                const visibleActions = actions.filter((action) => (typeof action.isVisible === 'function' ? action.isVisible(row) : true));
+                return (
                 <div key={row.id || row.uid || rowIndex} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 space-y-2">
                     {columns.map((col, colIndex) => {
                         const content = col.render ? col.render(row) : row[col.key];
@@ -170,19 +514,371 @@ const Table = ({ columns, data, actions = [] }) => (
                     })}
                     {actions.length > 0 && (
                         <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-gray-100">
-                            {actions.map((action, actionIndex) => (
-                                <button key={actionIndex} onClick={() => action.onClick(row)} className="flex items-center gap-2 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-sm text-gray-700" title={action.label}>
+                            {visibleActions.map((action, actionIndex) => {
+                                const actionLabel = typeof action.label === 'function' ? action.label(row) : action.label;
+                                return (
+                                <button key={actionIndex} onClick={() => action.onClick(row)} className="flex items-center gap-2 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-sm text-gray-700" title={actionLabel}>
                                     <action.icon className="w-4 h-4" />
-                                    <span>{action.label}</span>
+                                    <span>{actionLabel}</span>
                                 </button>
-                            ))}
+                            )})}
                         </div>
                     )}
                 </div>
-            ))}
+            )})}
         </div>
     </>
 );
+
+const DeliveryModal = ({ isOpen, onClose, order, clientes = [], fornecedores = [] }) => {
+  const [selectedDeliverer, setSelectedDeliverer] = useState('');
+  const [error, setError] = useState('');
+  const availableDeliverers = useMemo(
+    () => (fornecedores || []).filter((f) => (f.status || 'Ativo') !== 'Inativo'),
+    [fornecedores]
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedDeliverer('');
+      setError('');
+    }
+  }, [isOpen, order?.id]);
+
+  if (!isOpen || !order) return null;
+
+  const { enderecoTexto, locationLink } = getOrderAddressDetails(order, clientes);
+  const canSend =
+    availableDeliverers.length > 0 &&
+    enderecoTexto &&
+    enderecoTexto !== 'Não informado' &&
+    enderecoTexto !== 'Retirar na Loja';
+
+  const handleSend = () => {
+    if (!selectedDeliverer) {
+      setError('Selecione um entregador.');
+      return;
+    }
+    const deliverer = availableDeliverers.find((f) => f.id === selectedDeliverer);
+    const whatsappNumber = formatPhoneForWhatsApp(deliverer?.contato_whatsapp || deliverer?.contato_telefone);
+    if (!deliverer || !whatsappNumber) {
+      setError('O entregador selecionado não possui um telefone/WhatsApp válido.');
+      return;
+    }
+    if (!canSend) {
+      setError('Este pedido não possui um endereço válido para entrega.');
+      return;
+    }
+
+    let message = `Olá ${deliverer.nome?.split(' ')[0] || 'entregador'}, segue o endereço para entrega.\n\n`;
+    message += `Pedido: ${order.id?.substring(0, 8) || '-'}\n`;
+    message += `Cliente: ${order.clienteNome || 'Cliente'}\n`;
+    message += `Endereço: ${enderecoTexto}\n`;
+    if (locationLink) {
+      message += `Localização: ${locationLink}\n`;
+    }
+    if (order.telefone) {
+      message += `Telefone do cliente: ${order.telefone}\n`;
+    }
+    if (order.observacao) {
+      message += `Observações: ${order.observacao}\n`;
+    }
+    if (order.formaPagamento) {
+      message += `Pagamento: ${order.formaPagamento}\n`;
+    }
+    if (order.total) {
+      message += `Total: R$ ${(order.total || 0).toFixed(2)}\n`;
+    }
+
+    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+    onClose();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Enviar endereço para entregador" size="md">
+      <div className="space-y-4 text-sm text-gray-700">
+        <div className="p-3 bg-gray-50 rounded-xl space-y-1">
+          <p><strong>Cliente:</strong> {order.clienteNome || 'Cliente'}</p>
+          <p><strong>Endereço:</strong> {enderecoTexto}</p>
+          {locationLink && (
+            <p className="truncate">
+              <strong>Localização:</strong>{' '}
+              <a href={locationLink} target="_blank" rel="noreferrer" className="text-pink-600 underline">
+                Abrir no mapa
+              </a>
+            </p>
+          )}
+        </div>
+
+        {availableDeliverers.length === 0 ? (
+          <p className="text-sm text-red-500">Nenhum entregador cadastrado nos fornecedores.</p>
+        ) : (
+          <Select
+            label="Selecione o entregador"
+            value={selectedDeliverer}
+            onChange={(e) => {
+              setSelectedDeliverer(e.target.value);
+              setError('');
+            }}
+          >
+            <option value="">Escolha um entregador</option>
+            {availableDeliverers.map((deliverer) => (
+              <option key={deliverer.id} value={deliverer.id}>
+                {deliverer.nome} {deliverer.categoria ? `(${deliverer.categoria})` : ''}
+              </option>
+            ))}
+          </Select>
+        )}
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            onClick={handleSend}
+            disabled={!canSend || availableDeliverers.length === 0}
+            className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700"
+          >
+            <Truck className="w-4 h-4" /> Enviar via WhatsApp
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+const generateStoreId = (value) => {
+  if (!value) return '';
+  const cleaned = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50);
+  return cleaned || `loja-${Date.now()}`;
+};
+
+const StoreManagerModal = ({
+  isOpen,
+  onClose,
+  availableStores,
+  storeInfoMap,
+  onCreateStore,
+  onSelectStore,
+  canCreate,
+  allowAllOption,
+  currentStoreId,
+  isCreatingStore
+}) => {
+  const [storeName, setStoreName] = useState('');
+  const [storeIdInput, setStoreIdInput] = useState('');
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setStoreName('');
+      setStoreIdInput('');
+      setError('');
+      setSuccessMessage('');
+	  setShowForm(false);
+
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && canCreate && availableStores.length === 0) {
+      setShowForm(true);
+    }
+  }, [isOpen, canCreate, availableStores.length]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!canCreate) return;
+
+    setError('');
+    setSuccessMessage('');
+
+    const name = storeName.trim();
+    if (!name) {
+      setError('Informe o nome da loja.');
+      return;
+    }
+
+    let finalId = storeIdInput.trim();
+    if (finalId) {
+      finalId = generateStoreId(finalId);
+    } else {
+      finalId = generateStoreId(name);
+    }
+
+    if (finalId === STORE_ALL_KEY) {
+      setError('Identificador inválido.');
+      return;
+    }
+
+    if (!finalId) {
+      setError('Não foi possível gerar um identificador para a loja.');
+      return;
+    }
+
+    if (availableStores.includes(finalId)) {
+      setError('Já existe uma loja com esse identificador.');
+      return;
+    }
+
+    try {
+      await onCreateStore({ storeId: finalId, nome: name });
+      setSuccessMessage(`Loja "${name}" criada com sucesso!`);
+      setStoreName('');
+      setStoreIdInput('');
+	  setShowForm(false);
+
+    } catch (createError) {
+      setError(createError.message || 'Não foi possível criar a loja.');
+    }
+  };
+
+  const handleSelect = (value) => {
+    onSelectStore(value);
+    onClose();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Gerenciar lojas" size="lg">
+      <div className="space-y-6">
+        {canCreate && (
+          <div className="space-y-4">
+            {showForm ? (
+              <form onSubmit={handleSubmit} className="space-y-4 p-4 border border-gray-200 rounded-xl bg-white shadow-sm">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Adicionar nova loja</h3>
+                  <p className="text-sm text-gray-500">Informe um nome para identificar a loja. Você pode ajustar o identificador se necessário.</p>
+                </div>
+                <Input
+                  label="Nome da loja"
+                  value={storeName}
+                  onChange={(e) => setStoreName(e.target.value)}
+                  placeholder="Ex: Loja Centro"
+                  required
+                />
+                <Input
+                  label="Identificador (opcional)"
+                  value={storeIdInput}
+                  onChange={(e) => setStoreIdInput(e.target.value)}
+                  placeholder="Ex: loja-centro"
+                />
+                {error && <p className="text-sm text-red-500">{error}</p>}
+                <div className="flex justify-end gap-3">
+                  {availableStores.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setShowForm(false);
+                        setStoreName('');
+                        setStoreIdInput('');
+                        setError('');
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
+                  <Button type="submit" disabled={isCreatingStore}>
+                    <Plus className="w-4 h-4" />
+                    {isCreatingStore ? 'Salvando...' : 'Criar loja'}
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="p-4 border border-gray-200 rounded-xl flex items-center justify-between bg-white shadow-sm">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Adicionar nova loja</h3>
+                  <p className="text-sm text-gray-500">Crie lojas para organizar suas unidades. Você pode adicionar quantas quiser.</p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setShowForm(true);
+                    setError('');
+                    setSuccessMessage('');
+                  }}
+                >
+                  <Plus className="w-4 h-4" /> Nova loja
+                </Button>
+              </div>
+            )}
+            {successMessage && !showForm && (
+              <p className="text-sm text-green-600">{successMessage}</p>
+            )}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold text-gray-800">Lojas disponíveis</h3>
+
+          {allowAllOption && availableStores.length > 0 && (
+            <div className="p-4 border border-gray-200 rounded-xl flex items-center justify-between bg-gray-50">
+              <div>
+                <p className="font-semibold text-gray-800">Visão Geral</p>
+                <p className="text-xs text-gray-500">Exibe dados combinados de todas as lojas.</p>
+              </div>
+              <Button
+                size="sm"
+                variant={currentStoreId === STORE_ALL_KEY ? 'secondary' : 'primary'}
+                onClick={() => handleSelect(STORE_ALL_KEY)}
+                disabled={currentStoreId === STORE_ALL_KEY}
+              >
+                {currentStoreId === STORE_ALL_KEY ? 'Selecionada' : 'Selecionar'}
+              </Button>
+            </div>
+          )}
+
+          {availableStores.length === 0 ? (
+            <div className="p-6 border border-dashed border-gray-300 rounded-xl text-center space-y-3 bg-gray-50">
+              <Store className="w-10 h-10 mx-auto text-gray-400" />
+              <p className="text-base font-semibold text-gray-700">Nenhuma loja cadastrada</p>
+              <p className="text-sm text-gray-500">Crie sua primeira loja para começar a organizar sua operação.</p>
+              {canCreate && (
+                <Button
+                  onClick={() => {
+                    setShowForm(true);
+                    setError('');
+                    setSuccessMessage('');
+                  }}
+                >
+                  <Plus className="w-4 h-4" /> Criar primeira loja
+                </Button>
+              )}
+            </div>
+          ) : (
+            availableStores.map((storeId) => {
+              const info = storeInfoMap[storeId] || {};
+              return (
+                <div key={storeId} className="p-4 border border-gray-200 rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-gray-800">{info.nome || storeId}</p>
+                    <p className="text-xs text-gray-500">ID: {storeId}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={currentStoreId === storeId ? 'secondary' : 'primary'}
+                    onClick={() => handleSelect(storeId)}
+                    disabled={currentStoreId === storeId}
+                  >
+                    {currentStoreId === storeId ? 'Selecionada' : 'Selecionar'}
+                  </Button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+};
 
 
 // Helper function
@@ -197,17 +893,16 @@ const getJSDate = (firestoreTimestamp) => {
 
 // --- NOVOS COMPONENTES ---
 
-const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete }) => {
+const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser }) => {
     const [activeTab, setActiveTab] = usePersistentState('fornecedores_activeTab', 'fornecedores');
-
+    
     // States
     const [searchTerm, setSearchTerm] = usePersistentState('fornecedores_searchTerm', '');
-
+    
     const [showFornecedorModal, setShowFornecedorModal] = useState(false);
-
     const [editingFornecedor, setEditingFornecedor] = useState(null);
     const [fornecedorFormData, setFornecedorFormData] = useState({});
-
+    
     const [showPedidoModal, setShowPedidoModal] = useState(false);
     const [editingPedido, setEditingPedido] = useState(null);
     const [pedidoFormData, setPedidoFormData] = useState({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente' });
@@ -215,58 +910,101 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
     const [showEstoqueModal, setShowEstoqueModal] = useState(false);
     const [editingEstoque, setEditingEstoque] = useState(null);
     const [estoqueFormData, setEstoqueFormData] = useState({});
-	
-	const [showCategoriaModal, setShowCategoriaModal] = useState(false);
-    const [novaCategoria, setNovaCategoria] = useState('');
+    const [estoqueSearchTerm, setEstoqueSearchTerm] = useState('');
+    const [selectedEstoqueFornecedor, setSelectedEstoqueFornecedor] = useState('');
 
-    const fornecedorCategorias = useMemo(() => {
-        const categoriasFromDb = (data.fornecedorCategorias || [])
-            .map(categoria => categoria.nome)
-            .filter(Boolean);
-        const categoriasFromFornecedores = (data.fornecedores || [])
-            .map(fornecedor => fornecedor.categoria)
-            .filter(Boolean);
-        const categoriasFromEstoque = (data.estoque || [])
-            .map(item => item.categoria)
-            .filter(Boolean);
-        const combined = [
-            ...DEFAULT_FORNECEDOR_CATEGORIES,
-            ...categoriasFromDb,
-            ...categoriasFromFornecedores,
-            ...categoriasFromEstoque
-        ];
-        return Array.from(new Set(combined.map(categoria => categoria.trim())))
-            .filter(Boolean)
-            .sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    }, [data.fornecedorCategorias, data.fornecedores, data.estoque]);
+    const [showPerdaModal, setShowPerdaModal] = useState(false);
+    const [showReceitaModal, setShowReceitaModal] = useState(false);
+    const [editingReceita, setEditingReceita] = useState(null);
+    const [receitaFormData, setReceitaFormData] = useState({});
+    const [editingPerda, setEditingPerda] = useState(null);
+    const [perdaFormData, setPerdaFormData] = useState({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: '', motivo: 'Vencimento', outroMotivo: '' });
 
-    const resetFornecedorForm = useCallback(() => setFornecedorFormData({ nome: '', cnpj_cpf: '', contato_telefone: '', contato_email: '', contato_whatsapp: '', endereco_completo: '', endereco_cep: '', categoria: fornecedorCategorias[0] || '', dados_bancarios: '', observacoes: '', status: 'Ativo' }), [fornecedorCategorias]);
-    const resetPedidoForm = () => setPedidoFormData({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente' });
-    const resetEstoqueForm = useCallback(() => setEstoqueFormData({ nome: '', categoria: fornecedorCategorias[0] || '', fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' }), [fornecedorCategorias]);
+    const [stockMovementModal, setStockMovementModal] = useState({ isOpen: false, type: 'entrada', item: null });
+    const [stockMovementQuantity, setStockMovementQuantity] = useState('');
+    
+    const [isAddingFornecedorCategoria, setIsAddingFornecedorCategoria] = useState(false);
+    const [newFornecedorCategoria, setNewFornecedorCategoria] = useState('');
+    const [isSavingFornecedorCategoria, setIsSavingFornecedorCategoria] = useState(false);
+    const [previousFornecedorCategoria, setPreviousFornecedorCategoria] = useState('');
 
-    const handleAddCategoria = async (e) => {
-        e.preventDefault();
-        const categoriaNome = (novaCategoria || '').trim();
-        if (!categoriaNome) {
-            return;
-        }
-
-        const categoriaJaExiste = fornecedorCategorias.some(
-            categoria => categoria.toLowerCase() === categoriaNome.toLowerCase()
-        );
-
-        if (categoriaJaExiste) {
-            setFornecedorFormData(prev => ({ ...prev, categoria: categoriaNome }));
-            setNovaCategoria('');
-            setShowCategoriaModal(false);
-            return;
-        }
-
-        await addItem('fornecedorCategorias', { nome: categoriaNome });
-        setFornecedorFormData(prev => ({ ...prev, categoria: categoriaNome }));
-        setNovaCategoria('');
-        setShowCategoriaModal(false);
+    const resetFornecedorForm = () => {
+        setFornecedorFormData({ nome: '', cnpj_cpf: '', contato_telefone: '', contato_email: '', contato_whatsapp: '', endereco_completo: '', endereco_cep: '', categoria: DEFAULT_FORNECEDOR_CATEGORIES[0], dados_bancarios: '', observacoes: '', status: 'Ativo' });
+        setIsAddingFornecedorCategoria(false);
+        setNewFornecedorCategoria('');
+        setIsSavingFornecedorCategoria(false);
+        setPreviousFornecedorCategoria('');
     };
+    const resetPedidoForm = () => setPedidoFormData({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente' });
+    const resetEstoqueForm = () => setEstoqueFormData({ nome: '', categoria: DEFAULT_FORNECEDOR_CATEGORIES[0], fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' });
+    const resetPerdaForm = () => setPerdaFormData({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: new Date().toISOString().split('T')[0], motivo: 'Vencimento', outroMotivo: '' });
+    const resetReceitaForm = () => setReceitaFormData({ nome: '', categoria: '', ingredientes: '', modoPreparo: '', tempoPreparo: '', rendimento: '', custoEstimado: '', observacoes: '' });
+
+    const openStockMovementModal = (item, type) => {
+        setStockMovementModal({ isOpen: true, type, item });
+        setStockMovementQuantity('');
+    };
+
+    const closeStockMovementModal = () => {
+        setStockMovementModal({ isOpen: false, type: 'entrada', item: null });
+        setStockMovementQuantity('');
+    };
+
+    const handleStockMovementSubmit = async (event) => {
+        event.preventDefault();
+        const quantity = parseFloat(stockMovementQuantity);
+
+        if (!quantity || quantity <= 0) {
+            alert('Informe uma quantidade válida para a movimentação.');
+            return;
+        }
+
+        try {
+            await updateStock(
+                stockMovementModal.item.id,
+                stockMovementModal.type,
+                quantity,
+                `Movimentação rápida - ${stockMovementModal.type}`,
+                currentUser
+            );
+            closeStockMovementModal();
+        } catch (error) {
+            console.error('Erro ao movimentar estoque', error);
+            alert(error.message || 'Erro ao atualizar estoque.');
+        }
+    };
+
+    const fornecedorCategories = useMemo(() => {
+        const customCategories = (data.categoriasFornecedores || [])
+            .map(item => {
+                if (!item) return null;
+                if (typeof item === 'string') return item;
+                return item.nome;
+            })
+            .filter(Boolean);
+
+        const combined = [...DEFAULT_FORNECEDOR_CATEGORIES, ...customCategories];
+        if (fornecedorFormData.categoria && fornecedorFormData.categoria.trim()) {
+            combined.push(fornecedorFormData.categoria.trim());
+        }
+        if (estoqueFormData.categoria && estoqueFormData.categoria.trim()) {
+            combined.push(estoqueFormData.categoria.trim());
+        }
+
+        const seen = new Set();
+        const unique = [];
+        combined.forEach(cat => {
+            const normalized = typeof cat === 'string' ? cat.trim() : '';
+            if (!normalized) return;
+            const key = normalized.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                unique.push(normalized);
+            }
+        });
+
+        return unique;
+    }, [data.categoriasFornecedores, fornecedorFormData.categoria, estoqueFormData.categoria]);
     
 	useEffect(() => {
 		const total = (pedidoFormData.itens || []).reduce((sum, item) => 
@@ -276,19 +1014,141 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
 		// Só atualiza se mudou para evitar loop
 		if (total !== pedidoFormData.valorTotal) {
 			setPedidoFormData(prev => ({ ...prev, valorTotal: total }));
-		}
-	}, [pedidoFormData.itens, pedidoFormData.valorTotal]);
+        }
+    }, [pedidoFormData.itens, pedidoFormData.valorTotal]);
+
+    const handlePerdaProdutoChange = async (e) => {
+        const produtoId = e.target.value;
+        setPerdaFormData(prev => ({ ...prev, produtoId, produtoNome: '', custoUnitario: '' }));
+
+        if (!produtoId || !effectiveStoreId) return;
+
+        try {
+            const produtoDoc = await getDoc(doc(db, 'lojas', effectiveStoreId, 'produtos', produtoId));
+            if (!produtoDoc.exists()) return;
+
+            const produtoData = produtoDoc.data() || {};
+            const custo = produtoData.custo ?? produtoData.custoUnitario ?? '';
+            setPerdaFormData(prev => ({
+                ...prev,
+                produtoId,
+                produtoNome: produtoData.nome || '',
+                custoUnitario: custo
+            }));
+        } catch (error) {
+            console.error('Erro ao buscar produto para perda', error);
+        }
+    };
 
     // Memoized Filters
     const filteredFornecedores = useMemo(() => (data.fornecedores || []).filter(f => (f.nome && f.nome.toLowerCase().includes(searchTerm.toLowerCase())) || (f.categoria && f.categoria.toLowerCase().includes(searchTerm.toLowerCase()))), [data.fornecedores, searchTerm]);
     const pedidosComNomes = useMemo(() => (data.pedidosCompra || []).map(pedido => ({ ...pedido, fornecedorNome: data.fornecedores.find(f => f.id === pedido.fornecedorId)?.nome || 'N/A' })), [data.pedidosCompra, data.fornecedores]);
     const estoqueComNomes = useMemo(() => (data.estoque || []).map(item => ({ ...item, fornecedorNome: data.fornecedores.find(f => f.id === item.fornecedorId)?.nome || 'N/A' })), [data.estoque, data.fornecedores]);
+    const estoqueFornecedores = useMemo(() => {
+        const fornecedores = new Set();
+        (estoqueComNomes || []).forEach(item => {
+            if (item.fornecedorNome) {
+                fornecedores.add(item.fornecedorNome);
+            }
+        });
+        return Array.from(fornecedores).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }, [estoqueComNomes]);
+    const filteredEstoque = useMemo(() => {
+        const normalizedSearch = estoqueSearchTerm.trim().toLowerCase();
+        const normalizedFornecedor = selectedEstoqueFornecedor.trim().toLowerCase();
+        return (estoqueComNomes || []).filter((item) => {
+            const itemNome = (item.nome || '').toLowerCase();
+            const itemFornecedor = (item.fornecedorNome || '').toLowerCase();
+            const matchesName = itemNome.includes(normalizedSearch);
+            const matchesFornecedor = normalizedFornecedor ? itemFornecedor === normalizedFornecedor : true;
+            return matchesName && matchesFornecedor;
+        });
+    }, [estoqueComNomes, estoqueSearchTerm, selectedEstoqueFornecedor]);
+    const perdasOrdenadas = useMemo(() => {
+        const perdas = data.perdasDescarte || [];
+        const mapped = perdas.map(perda => {
+            const produto = (data.produtos || []).find(p => p.id === perda.produtoId);
+            const custo = perda.custoUnitario ?? produto?.custo ?? produto?.custoUnitario ?? 0;
+            return {
+                ...perda,
+                produtoNome: produto?.nome || perda.produtoNome || 'Produto',
+                custoUnitario: custo,
+                valorTotal: perda.valorTotal ?? ((perda.quantidade || 0) * custo)
+            };
+        });
+
+        return mapped.sort((a, b) => {
+            const dateA = getJSDate(a.dataDescarte) || new Date(0);
+            const dateB = getJSDate(b.dataDescarte) || new Date(0);
+            return dateB - dateA;
+        });
+    }, [data.perdasDescarte, data.produtos]);
+
+    const perdaValorTotal = useMemo(() => {
+        const quantidade = parseFloat(perdaFormData.quantidade || 0) || 0;
+        const custo = parseFloat(perdaFormData.custoUnitario || 0) || 0;
+        return quantidade * custo;
+    }, [perdaFormData.quantidade, perdaFormData.custoUnitario]);
 
 
     // Handlers Fornecedores
     const handleNewFornecedor = () => { setEditingFornecedor(null); resetFornecedorForm(); setShowFornecedorModal(true); };
-    const handleEditFornecedor = (fornecedor) => { setEditingFornecedor(fornecedor); setFornecedorFormData(fornecedor); setShowFornecedorModal(true); };
+    const handleEditFornecedor = (fornecedor) => { setEditingFornecedor(fornecedor); setFornecedorFormData(fornecedor); setIsAddingFornecedorCategoria(false); setNewFornecedorCategoria(''); setIsSavingFornecedorCategoria(false); setPreviousFornecedorCategoria(''); setShowFornecedorModal(true); };
     const handleFornecedorSubmit = async (e) => { e.preventDefault(); if (editingFornecedor) { await updateItem('fornecedores', editingFornecedor.id, fornecedorFormData); } else { await addItem('fornecedores', fornecedorFormData); } setShowFornecedorModal(false); };
+
+    const handleFornecedorCategoriaChange = (e) => {
+        const value = e.target.value;
+        if (value === '__add_new__') {
+            setIsAddingFornecedorCategoria(true);
+            setNewFornecedorCategoria('');
+            setPreviousFornecedorCategoria(fornecedorFormData.categoria || DEFAULT_FORNECEDOR_CATEGORIES[0]);
+            setFornecedorFormData(prev => ({ ...prev, categoria: '' }));
+            return;
+        }
+        setIsAddingFornecedorCategoria(false);
+        setNewFornecedorCategoria('');
+        setPreviousFornecedorCategoria('');
+        setFornecedorFormData(prev => ({ ...prev, categoria: value || DEFAULT_FORNECEDOR_CATEGORIES[0] }));
+    };
+
+    const handleCancelFornecedorCategoria = () => {
+        setIsAddingFornecedorCategoria(false);
+        setNewFornecedorCategoria('');
+        setIsSavingFornecedorCategoria(false);
+        setFornecedorFormData(prev => ({ ...prev, categoria: previousFornecedorCategoria || DEFAULT_FORNECEDOR_CATEGORIES[0] }));
+        setPreviousFornecedorCategoria('');
+    };
+
+    const handleCreateFornecedorCategoria = async () => {
+        const trimmed = newFornecedorCategoria.trim();
+        if (!trimmed) {
+            alert('Informe o nome da nova categoria.');
+            return;
+        }
+
+        const existing = fornecedorCategories.find(cat => cat.toLowerCase() === trimmed.toLowerCase());
+        if (existing) {
+            alert('Esta categoria já existe.');
+            setFornecedorFormData(prev => ({ ...prev, categoria: existing }));
+            setIsAddingFornecedorCategoria(false);
+            setNewFornecedorCategoria('');
+            return;
+        }
+
+        try {
+            setIsSavingFornecedorCategoria(true);
+            await addItem('categoriasFornecedores', { nome: trimmed });
+            setFornecedorFormData(prev => ({ ...prev, categoria: trimmed }));
+            setIsAddingFornecedorCategoria(false);
+            setNewFornecedorCategoria('');
+            setPreviousFornecedorCategoria('');
+        } catch (error) {
+            console.error('Erro ao criar categoria de fornecedor:', error);
+            alert('Não foi possível salvar a nova categoria. Tente novamente.');
+        } finally {
+            setIsSavingFornecedorCategoria(false);
+        }
+    };
 
     // Handlers Pedidos de Compra
     const handleNewPedido = () => { setEditingPedido(null); resetPedidoForm(); setShowPedidoModal(true); };
@@ -304,14 +1164,56 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
     const handleEditEstoque = (item) => { setEditingEstoque(item); setEstoqueFormData(item); setShowEstoqueModal(true); };
     const handleEstoqueSubmit = async (e) => { e.preventDefault(); const dataToSave = { ...estoqueFormData, quantidade: parseFloat(estoqueFormData.quantidade || 0), custoUnitario: parseFloat(estoqueFormData.custoUnitario || 0), nivelMinimo: parseFloat(estoqueFormData.nivelMinimo || 0) }; if (editingEstoque) { await updateItem('estoque', editingEstoque.id, dataToSave); } else { await addItem('estoque', dataToSave); } setShowEstoqueModal(false); };
 
+    const handleNewPerda = () => { setEditingPerda(null); resetPerdaForm(); setShowPerdaModal(true); };
+    const handleEditPerda = (perda) => { setEditingPerda(perda); setPerdaFormData({ produtoId: perda.produtoId || '', produtoNome: perda.produtoNome || '', custoUnitario: perda.custoUnitario ?? '', quantidade: perda.quantidade ?? '', dataDescarte: perda.dataDescarte?.split('T')[0] || perda.dataDescarte || '', motivo: perda.motivo || 'Vencimento', outroMotivo: perda.outroMotivo || '' }); setShowPerdaModal(true); };
+    const handlePerdaSubmit = async (e) => {
+        e.preventDefault();
+        if (!perdaFormData.produtoId) { alert('Selecione um produto.'); return; }
+        const quantidade = parseFloat(perdaFormData.quantidade || 0);
+        if (!quantidade || quantidade <= 0) { alert('A quantidade deve ser maior que zero.'); return; }
+        const custoUnitario = parseFloat(perdaFormData.custoUnitario || 0);
+        const valorTotal = quantidade * custoUnitario;
+        const dataToSave = {
+            ...perdaFormData,
+            quantidade,
+            custoUnitario,
+            valorTotal,
+            motivo: perdaFormData.motivo === 'Outro' ? (perdaFormData.outroMotivo || 'Outro') : perdaFormData.motivo
+        };
+        if (editingPerda) { await updateItem('perdasDescarte', editingPerda.id, dataToSave); } else { await addItem('perdasDescarte', dataToSave); }
+        setShowPerdaModal(false);
+    };
+    const handleDeletePerda = (perda) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('perdasDescarte', perda.id) });
+
+    const handleNewReceita = () => { setEditingReceita(null); resetReceitaForm(); setShowReceitaModal(true); };
+    const handleEditReceita = (receita) => { setEditingReceita(receita); setReceitaFormData({ ...receita }); setShowReceitaModal(true); };
+    const handleDeleteReceita = (receita) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('receitas', receita.id) });
+    const handleReceitaSubmit = async (e) => {
+        e.preventDefault();
+        const requiredFields = ['nome', 'categoria', 'ingredientes', 'modoPreparo', 'tempoPreparo', 'rendimento', 'custoEstimado'];
+        const hasEmpty = requiredFields.some((field) => !String(receitaFormData[field] ?? '').trim());
+        if (hasEmpty) { alert('Preencha todos os campos obrigatórios da receita.'); return; }
+
+        const dataToSave = {
+            ...receitaFormData,
+            tempoPreparo: parseInt(receitaFormData.tempoPreparo || 0, 10),
+            rendimento: parseInt(receitaFormData.rendimento || 0, 10),
+            custoEstimado: parseFloat(receitaFormData.custoEstimado || 0)
+        };
+
+        if (editingReceita) { await updateItem('receitas', editingReceita.id, dataToSave); }
+        else { await addItem('receitas', dataToSave); }
+        setShowReceitaModal(false);
+    };
+
     // UI Rendering
     return (
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
             <div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Fornecedores/Estoque</h1><p className="text-gray-600 mt-1">Organize seus parceiros, compras e insumos</p></div>
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2"><div className="flex space-x-2">
-                {['fornecedores', 'pedidos', 'estoque'].map(tab => (
+                {['fornecedores', 'pedidos', 'estoque', 'receitas', 'perdas'].map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
-                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}
+                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
                     </button>
                 ))}
             </div></div>
@@ -333,39 +1235,141 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
             )}
              {activeTab === 'estoque' && (
                  <div>
-                    <div className="flex justify-end mb-6"><Button onClick={handleNewEstoque}><PackagePlus className="w-4 h-4" /> Novo Item de Estoque</Button></div>
-                    <Table 
+                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+                        <div className="flex flex-col sm:flex-row gap-3 w-full md:max-w-2xl">
+                            <div className="relative w-full">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar item..."
+                                    value={estoqueSearchTerm}
+                                    onChange={(e) => setEstoqueSearchTerm(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500"
+                                />
+                            </div>
+                            <select
+                                value={selectedEstoqueFornecedor}
+                                onChange={(e) => setSelectedEstoqueFornecedor(e.target.value)}
+                                className="w-full sm:w-64 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 bg-white"
+                            >
+                                <option value="">Todos os fornecedores</option>
+                                {estoqueFornecedores.map((fornecedorNome) => (
+                                    <option key={fornecedorNome} value={fornecedorNome}>{fornecedorNome}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <Button onClick={handleNewEstoque} className="w-full md:w-auto"><PackagePlus className="w-4 h-4" /> Novo Item de Estoque</Button>
+                    </div>
+                    <Table
                         columns={[
                             { header: 'Item', key: 'nome' },
                             { header: 'Fornecedor', key: 'fornecedorNome' },
-                            { header: 'Quantidade', render: (row) => `${row.quantidade || 0} ${row.unidade}` },
-                            { header: 'Custo Unitário', render: (row) => `R$ ${(row.custoUnitario || 0).toFixed(2)}` },
-                            { header: 'Status', render: (row) => {
-                                const nivel = row.quantidade; const min = row.nivelMinimo;
-                                let status = { text: 'OK', className: 'bg-green-100 text-green-800' };
-                                if(nivel <= min) status = { text: 'Baixo', className: 'bg-yellow-100 text-yellow-800' };
-                                if(nivel <= 0) status = { text: 'Crítico', className: 'bg-red-100 text-red-800' };
-                                return <span className={`px-3 py-1 rounded-full text-xs font-medium ${status.className}`}>{status.text}</span>;
-                            }}
+                            { header: 'Estoque Atual', render: (row) => `${row.quantidade || 0} ${row.unidade}` },
+                            {
+                                header: 'Movimentação Rápida',
+                                render: (row) => (
+                                    <div className="flex gap-2">
+                                        <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            className="!px-3 !py-2 text-xs"
+                                            onClick={() => openStockMovementModal(row, 'entrada')}
+                                        >
+                                            + Entrada
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            className="!px-3 !py-2 text-xs text-red-600 border-red-200 hover:border-red-300 hover:text-red-700"
+                                            onClick={() => openStockMovementModal(row, 'saida')}
+                                        >
+                                            - Saída
+                                        </Button>
+                                    </div>
+                                )
+                            },
+                            { header: 'Custo Unitário', render: (row) => `R$ ${(row.custoUnitario || 0).toFixed(2)}` }
                         ]}
-                        data={estoqueComNomes}
+                        data={filteredEstoque}
                         actions={[ { icon: Edit, label: "Editar", onClick: handleEditEstoque }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('estoque', row.id) }) } ]}
+                    />
+                    {filteredEstoque.length === 0 && (
+                        <div className="px-4 py-6 text-center text-gray-500">Nenhum item encontrado</div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === 'receitas' && (
+                <div className="space-y-4">
+                    <div className="flex justify-end">
+                        <Button onClick={handleNewReceita} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Nova Receita</Button>
+                    </div>
+                    <ReceitasList receitas={data.receitas || []} onEdit={handleEditReceita} onDelete={handleDeleteReceita} />
+                </div>
+            )}
+
+            {activeTab === 'perdas' && (
+                <div>
+                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800">Perdas e Descarte</h2>
+                            <p className="text-sm text-gray-600">Registre perdas de estoque e motivos de descarte</p>
+                        </div>
+                        <Button onClick={handleNewPerda} className="w-full md:w-auto"><PackagePlus className="w-4 h-4" /> ➕ Nova Perda/Descarte</Button>
+                    </div>
+                    <Table
+                        columns={[
+                            { header: 'Produto', key: 'produtoNome' },
+                            { header: 'Valor de Custo (R$)', render: (row) => `R$ ${(row.custoUnitario || 0).toFixed(2)}` },
+                            { header: 'Quantidade', key: 'quantidade' },
+                            { header: 'Valor Total da Perda', render: (row) => `R$ ${((row.valorTotal ?? ((row.quantidade || 0) * (row.custoUnitario || 0))).toFixed(2))}` },
+                            { header: 'Data do Descarte', render: (row) => getJSDate(row.dataDescarte)?.toLocaleDateString('pt-BR') || '-' },
+                            { header: 'Motivo da Perda', render: (row) => row.motivo || '-' }
+                        ]}
+                        data={perdasOrdenadas}
+                        actions={[
+                            { icon: Edit, label: "Editar", onClick: handleEditPerda },
+                            { icon: Trash2, label: "Excluir", onClick: handleDeletePerda }
+                        ]}
                     />
                 </div>
             )}
 
             <Modal isOpen={showFornecedorModal} onClose={() => setShowFornecedorModal(false)} title={editingFornecedor ? 'Editar Fornecedor' : 'Novo Fornecedor'} size="lg">
                 <form onSubmit={handleFornecedorSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Input label="Nome/Razão Social" value={fornecedorFormData.nome || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, nome: e.target.value})} required/><Input label="CNPJ/CPF" value={fornecedorFormData.cnpj_cpf || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, cnpj_cpf: e.target.value})}/><Input label="Telefone" value={fornecedorFormData.contato_telefone || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, contato_telefone: e.target.value})}/><Input label="Email" type="email" value={fornecedorFormData.contato_email || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, contato_email: e.target.value})}/><Input label="Endereço Completo" value={fornecedorFormData.endereco_completo || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, endereco_completo: e.target.value})}/><div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label><div className="flex flex-col md:flex-row md:items-end gap-3"><div className="flex-1"><select className="w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white border-gray-300" value={fornecedorFormData.categoria || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, categoria: e.target.value})}><option value="">Selecione...</option>{fornecedorCategorias.map(categoria => (<option key={categoria} value={categoria}>{categoria}</option>))}</select></div><Button type="button" variant="secondary" size="sm" className="h-[52px]" onClick={() => { setNovaCategoria(''); setShowCategoriaModal(true); }}><Plus className="w-4 h-4" /> Nova Categoria</Button></div></div></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Input label="Nome/Razão Social" value={fornecedorFormData.nome || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, nome: e.target.value})} required/>
+                        <Input label="CNPJ/CPF" value={fornecedorFormData.cnpj_cpf || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, cnpj_cpf: e.target.value})}/>
+                        <Input label="Telefone" value={fornecedorFormData.contato_telefone || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, contato_telefone: e.target.value})}/>
+                        <Input label="Email" type="email" value={fornecedorFormData.contato_email || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, contato_email: e.target.value})}/>
+                        <Input label="Endereço Completo" value={fornecedorFormData.endereco_completo || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, endereco_completo: e.target.value})}/>
+                        <Select label="Categoria" value={fornecedorFormData.categoria || ''} onChange={handleFornecedorCategoriaChange}>
+                            <option value="">Selecione...</option>
+                            {fornecedorCategories.map(categoria => (
+                                <option key={categoria} value={categoria}>{categoria}</option>
+                            ))}
+                            <option value="__add_new__">+ Adicionar nova categoria</option>
+                        </Select>
+                        {isAddingFornecedorCategoria && (
+                            <div className="md:col-span-2 bg-pink-50 border border-pink-100 rounded-2xl p-4 space-y-3">
+                                <div className="flex flex-col md:flex-row gap-3">
+                                    <div className="flex-1">
+                                        <Input label="Nova Categoria" placeholder="Digite o nome da categoria" value={newFornecedorCategoria} onChange={(e) => setNewFornecedorCategoria(e.target.value)} />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button type="button" variant="secondary" onClick={handleCancelFornecedorCategoria} className="whitespace-nowrap">Cancelar</Button>
+                                        <Button type="button" onClick={handleCreateFornecedorCategoria} disabled={isSavingFornecedorCategoria} className="whitespace-nowrap">
+                                            {isSavingFornecedorCategoria ? 'Salvando...' : 'Salvar Categoria'}
+                                        </Button>
+                                    </div>
+                                </div>
+                                <p className="text-sm text-pink-700">A nova categoria ficará disponível automaticamente para todos os cadastros desta loja.</p>
+                            </div>
+                        )}
+                    </div>
                     <Textarea label="Dados Bancários" rows="2" value={fornecedorFormData.dados_bancarios || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, dados_bancarios: e.target.value})}/>
                     <Textarea label="Observações" rows="2" value={fornecedorFormData.observacoes || ''} onChange={e => setFornecedorFormData({...fornecedorFormData, observacoes: e.target.value})}/>
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowFornecedorModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar</Button></div>
-                </form>
-            </Modal>
-			<Modal isOpen={showCategoriaModal} onClose={() => { setShowCategoriaModal(false); setNovaCategoria(''); }} title="Nova Categoria de Fornecedor">
-                <form onSubmit={handleAddCategoria} className="space-y-4">
-                    <Input label="Nome da Categoria" value={novaCategoria} onChange={e => setNovaCategoria(e.target.value)} required autoFocus />
-                    <div className="flex justify-end gap-3 pt-2"><Button variant="secondary" type="button" onClick={() => { setShowCategoriaModal(false); setNovaCategoria(''); }}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar</Button></div>
                 </form>
             </Modal>
             <Modal isOpen={showPedidoModal} onClose={() => setShowPedidoModal(false)} title={editingPedido ? 'Editar Pedido de Compra' : 'Novo Pedido de Compra'} size="xl">
@@ -408,8 +1412,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Input label="Nome do Item" value={estoqueFormData.nome || ''} onChange={e => setEstoqueFormData({...estoqueFormData, nome: e.target.value})} required/>
                         <Select label="Categoria" value={estoqueFormData.categoria || ''} onChange={e => setEstoqueFormData({...estoqueFormData, categoria: e.target.value})}>
-                            <option value="">Selecione...</option>
-                            {fornecedorCategorias.map(categoria => (
+                            {fornecedorCategories.map(categoria => (
                                 <option key={categoria} value={categoria}>{categoria}</option>
                             ))}
                         </Select>
@@ -420,6 +1423,77 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete 
                         <Input label="Nível Mínimo de Estoque" type="number" value={estoqueFormData.nivelMinimo || ''} onChange={e => setEstoqueFormData({...estoqueFormData, nivelMinimo: e.target.value})} />
                     </div>
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowEstoqueModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar Item</Button></div>
+                </form>
+            </Modal>
+            <ReceitasModal
+                isOpen={showReceitaModal}
+                onClose={() => setShowReceitaModal(false)}
+                onSubmit={handleReceitaSubmit}
+                formData={receitaFormData}
+                setFormData={setReceitaFormData}
+                editingReceita={editingReceita}
+                Modal={Modal}
+                Input={Input}
+                Select={Select}
+                Textarea={Textarea}
+                Button={Button}
+                Save={Save}
+            />
+
+            <Modal
+                isOpen={stockMovementModal.isOpen}
+                onClose={closeStockMovementModal}
+                title={`Registrar ${stockMovementModal.type === 'entrada' ? 'Entrada' : 'Saída'} de Estoque`}
+                size="sm"
+            >
+                <form onSubmit={handleStockMovementSubmit} className="space-y-4">
+                    <div className="text-sm text-gray-700">
+                        <p className="font-semibold">Item</p>
+                        <p>{stockMovementModal.item?.nome || '-'}</p>
+                    </div>
+                    <Input
+                        label="Quantidade"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={stockMovementQuantity}
+                        onChange={(e) => setStockMovementQuantity(e.target.value)}
+                        required
+                    />
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button variant="secondary" type="button" onClick={closeStockMovementModal}>Cancelar</Button>
+                        <Button type="submit">Confirmar</Button>
+                    </div>
+                </form>
+            </Modal>
+            <Modal isOpen={showPerdaModal} onClose={() => setShowPerdaModal(false)} title={editingPerda ? 'Editar Perda/Descarte' : 'Nova Perda/Descarte'} size="lg">
+                <form onSubmit={handlePerdaSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Select label="Produto" value={perdaFormData.produtoId} onChange={handlePerdaProdutoChange} required>
+                            <option value="">Selecione um produto</option>
+                            {(data.produtos || []).map(produto => (
+                                <option key={produto.id} value={produto.id}>{produto.nome}</option>
+                            ))}
+                        </Select>
+                        <Input label="Valor de Custo (R$)" type="number" step="0.01" value={perdaFormData.custoUnitario || ''} onChange={e => setPerdaFormData({...perdaFormData, custoUnitario: e.target.value})} />
+                        <Input label="Quantidade" type="number" min="0" value={perdaFormData.quantidade || ''} onChange={e => setPerdaFormData({...perdaFormData, quantidade: e.target.value})} required/>
+                        <Input label="Data do Descarte" type="date" value={perdaFormData.dataDescarte || ''} onChange={e => setPerdaFormData({...perdaFormData, dataDescarte: e.target.value})} required/>
+                        <Select label="Motivo da Perda" value={perdaFormData.motivo} onChange={e => setPerdaFormData({...perdaFormData, motivo: e.target.value})}>
+                            <option value="Vencimento">Vencimento</option>
+                            <option value="Dano no transporte">Dano no transporte</option>
+                            <option value="Erro de produção">Erro de produção</option>
+                            <option value="Produto danificado">Produto danificado</option>
+                            <option value="Outro">Outro</option>
+                        </Select>
+                        {perdaFormData.motivo === 'Outro' && (
+                            <Input label="Detalhe o motivo" value={perdaFormData.outroMotivo || ''} onChange={e => setPerdaFormData({...perdaFormData, outroMotivo: e.target.value})} />
+                        )}
+                    </div>
+                    <div className="p-4 bg-pink-50 border border-pink-100 rounded-xl flex items-center justify-between text-sm text-pink-900">
+                        <span>Valor total da perda</span>
+                        <span className="text-lg font-bold text-rose-600">R$ {perdaValorTotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowPerdaModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar Perda</Button></div>
                 </form>
             </Modal>
         </div>
@@ -846,10 +1920,26 @@ const Relatorios = ({ data }) => {
   const [endDate, setEndDate] = usePersistentState('relatorios_endDate', getInitialDateRange().end);
   const [reportData, setReportData] = useState([]);
   const [reportColumns, setReportColumns] = useState([]);
+  const [reportTotals, setReportTotals] = useState(null);
+  const [perdasColumns, setPerdasColumns] = useState([]);
+  const [perdasData, setPerdasData] = useState([]);
+
+  const formatCurrency = (value) =>
+    (Number(value) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const formatDate = (value) => {
+    const date = getJSDate(value);
+    return date ? date.toLocaleDateString('pt-BR') : '-';
+  };
+
+  const isCustoProducao = reportType === 'custoProducao';
 
   const handleGenerateReport = () => {
     let columns = [];
     let processedData = [];
+    let totals = null;
+    let perdasColumnsLocal = [];
+    let perdasDataLocal = [];
     
     const filterByDate = (items, dateField) => {
         let filtered = items;
@@ -883,13 +1973,66 @@ const Relatorios = ({ data }) => {
         }
         case 'produtosMaisVendidos': {
             const filtered = filterByDate(data.pedidos.filter(p => p.status === 'Finalizado'), 'createdAt');
-            columns = [{ header: 'Produto', key: 'nome' }, { header: 'Quantidade Vendida', key: 'quantidade' }];
-            const productSales = filtered.flatMap(p => p.itens).reduce((acc, item) => {
-                if (!acc[item.id]) acc[item.id] = { nome: item.nome, quantidade: 0 };
-                acc[item.id].quantidade += item.quantity;
+            columns = [
+                { header: 'Produto', key: 'nome' },
+                { header: 'Quantidade Vendida', key: 'quantidade' },
+                { header: 'Valor de Venda (R$)', key: 'valor' },
+                { header: 'Custo Total (R$)', key: 'custoTotal' },
+                { header: 'Lucro (R$)', key: 'lucro' }
+            ];
+
+            const productCostMap = (data.produtos || []).reduce((acc, produto) => {
+                const custo = parseFloat(produto.custo || 0);
+                if (produto.id) acc[produto.id] = custo;
+                if (produto.nome) acc[produto.nome] = custo;
                 return acc;
             }, {});
-            processedData = Object.values(productSales).sort((a, b) => b.quantidade - a.quantidade);
+
+            const productSales = filtered.reduce((acc, pedido) => {
+                (pedido.itens || []).forEach((item) => {
+                    const id = item?.id || item?.nome;
+                    if (!id) return;
+
+                    const quantidade = Number(item.quantity) || 0;
+                    const preco = Number(item.preco) || 0;
+                    const custoUnitario = Number(
+                        item.custo ?? productCostMap[item.id] ?? productCostMap[item.nome] ?? 0
+                    );
+
+                    if (!acc[id]) {
+                        acc[id] = { nome: item.nome || 'Produto sem nome', quantidade: 0, valor: 0, custoTotal: 0 };
+                    }
+
+                    acc[id].quantidade += quantidade;
+                    acc[id].valor += preco * quantidade;
+                    acc[id].custoTotal += custoUnitario * quantidade;
+                });
+
+                return acc;
+            }, {});
+
+            totals = Object.values(productSales).reduce(
+                (acc, item) => {
+                    const custo = item.custoTotal || 0;
+                    const valor = item.valor || 0;
+                    return {
+                        totalCost: acc.totalCost + custo,
+                        totalSales: acc.totalSales + valor,
+                        totalProfit: acc.totalProfit + (valor - custo)
+                    };
+                },
+                { totalCost: 0, totalSales: 0, totalProfit: 0 }
+            );
+
+            processedData = Object.values(productSales)
+                .filter(item => item.quantidade > 0)
+                .map(item => ({
+                    ...item,
+                    valor: formatCurrency(item.valor),
+                    custoTotal: formatCurrency(item.custoTotal),
+                    lucro: formatCurrency(item.valor - item.custoTotal)
+                }))
+                .sort((a, b) => b.quantidade - a.quantidade);
             break;
         }
         case 'clientesMaisCompram': {
@@ -933,7 +2076,7 @@ const Relatorios = ({ data }) => {
             processedData = Object.values(insumoSales).sort((a, b) => b.quantidade - a.quantidade);
             break;
         }
-        case 'receitaPorPagamento': {
+                case 'receitaPorPagamento': {
             const filtered = filterByDate(data.pedidos.filter(p => p.status === 'Finalizado'), 'createdAt');
             columns = [{ header: 'Forma de Pagamento', key: 'metodo' }, { header: 'Total Recebido (R$)', key: 'total' }];
             const paymentMethodSales = filtered.reduce((acc, pedido) => {
@@ -945,12 +2088,174 @@ const Relatorios = ({ data }) => {
             processedData = Object.values(paymentMethodSales).map(d => ({...d, total: `R$ ${d.total.toFixed(2)}`})).sort((a,b) => b.total - a.total);
             break;
         }
+        case 'custoProducao': {
+            const filtered = filterByDate(
+                data.pedidos.filter((p) => p.status === 'Finalizado'),
+                'createdAt'
+            );
+
+            const perdasProcessadas = (data.perdasDescarte || [])
+                .map((perda) => {
+                    const produto = (data.produtos || []).find((p) => p.id === perda.produtoId);
+                    const custoUnitario = Number(
+                        perda.custoUnitario ?? produto?.custo ?? produto?.custoUnitario ?? 0
+                    );
+                    const quantidade = Number(perda.quantidade) || 0;
+                    const dataPerda = perda.dataDescarte || perda.data;
+                    const nomeProduto =
+                        perda.nome || perda.produto || produto?.nome || 'Produto não informado';
+
+                    return {
+                        ...perda,
+                        custoUnitario,
+                        quantidade,
+                        dataPerda,
+                        nomeProduto,
+                        valorTotal: quantidade * custoUnitario,
+                    };
+                })
+                .filter((perda) => perda.quantidade > 0);
+
+            const perdasFiltradas = filterByDate(perdasProcessadas, 'dataPerda').sort((a, b) => {
+                const dataA = getJSDate(a.dataPerda) || new Date(0);
+                const dataB = getJSDate(b.dataPerda) || new Date(0);
+                return dataB - dataA;
+            });
+
+            const totalPerdas = perdasFiltradas.reduce(
+                (total, perda) => total + (Number(perda.valorTotal) || 0),
+                0
+            );
+
+            perdasColumnsLocal = [
+                { header: 'Produto', key: 'produto' },
+                { header: 'Quantidade', key: 'quantidade' },
+                { header: 'Custo Unitário', key: 'custoUnitario' },
+                { header: 'Valor Total', key: 'valorTotal' },
+                { header: 'Data', key: 'data' },
+                { header: 'Motivo', key: 'motivo' },
+            ];
+
+            perdasDataLocal = perdasFiltradas.map((perda) => ({
+                produto: perda.nomeProduto,
+                quantidade: perda.quantidade,
+                custoUnitario: formatCurrency(perda.custoUnitario),
+                valorTotal: formatCurrency(perda.valorTotal),
+                data: formatDate(perda.dataPerda),
+                motivo: perda.motivo || 'Não informado',
+            }));
+
+            columns = [
+                { header: 'Produto', key: 'nome' },
+                { header: 'Categoria', key: 'categoria' },
+                { header: 'Custo Unitário (R$)', key: 'custo' },
+                { header: 'Preço de Venda (R$)', key: 'preco' },
+                { header: 'Lucro Unitário (R$)', key: 'lucroUnitario' },
+                { header: 'Margem (%)', key: 'margemPercentual' }
+            ];
+
+            const productMap = (data.produtos || []).reduce((acc, produto) => {
+                const produtoInfo = {
+                    nome: produto.nome || 'Produto sem nome',
+                    categoria: produto.subcategoria || produto.categoria || 'Não informado',
+                    custo: Number(produto.custo) || 0,
+                    preco: Number(produto.preco) || 0,
+                };
+
+                if (produto.id) acc[produto.id] = produtoInfo;
+                if (produto.nome) acc[produto.nome] = produtoInfo;
+
+                return acc;
+            }, {});
+
+            const productAggregates = filtered.reduce((acc, pedido) => {
+                (pedido.itens || []).forEach((item) => {
+                    const id = item?.id || item?.nome;
+                    if (!id) return;
+
+                    const quantidade = Number(item.quantity) || 0;
+                    if (quantidade <= 0) return;
+
+                    const produtoInfo = productMap[id] || {};
+                    const custoUnitario = Number(item.custo ?? produtoInfo.custo ?? 0);
+                    const precoUnitario = Number(item.preco ?? produtoInfo.preco ?? 0);
+                    const nome = item.nome || produtoInfo.nome || 'Produto sem nome';
+                    const categoria =
+                        item.categoria || produtoInfo.categoria || 'Não informado';
+
+                    if (!acc[id]) {
+                        acc[id] = {
+                            nome,
+                            categoria,
+                            quantidade: 0,
+                            valorVenda: 0,
+                            custoTotal: 0,
+                        };
+                    }
+
+                    acc[id].quantidade += quantidade;
+                    acc[id].valorVenda += precoUnitario * quantidade;
+                    acc[id].custoTotal += custoUnitario * quantidade;
+                });
+
+                return acc;
+            }, {});
+
+            const { custoTotalGeral, valorTotalDeVendas, lucroTotalGeral } = Object.values(productAggregates).reduce(
+                (acc, item) => {
+                    const custoTotal = item.custoTotal || 0;
+                    const valorTotal = item.valorVenda || 0;
+                    return {
+                        custoTotalGeral: acc.custoTotalGeral + custoTotal,
+                        valorTotalDeVendas: acc.valorTotalDeVendas + valorTotal,
+                        lucroTotalGeral: acc.lucroTotalGeral + (valorTotal - custoTotal),
+                    };
+                },
+                { custoTotalGeral: 0, valorTotalDeVendas: 0, lucroTotalGeral: 0 }
+            );
+
+            processedData = Object.values(productAggregates)
+                .filter((item) => item.quantidade > 0)
+                .map((item) => {
+                    const custoUnitario = item.quantidade
+                        ? item.custoTotal / item.quantidade
+                        : 0;
+                    const precoUnitario = item.quantidade
+                        ? item.valorVenda / item.quantidade
+                        : 0;
+                    const lucro = precoUnitario - custoUnitario;
+                    const margem = precoUnitario ? (lucro / precoUnitario) * 100 : 0;
+
+                    return {
+                        nome: item.nome,
+                        categoria: item.categoria,
+                        custo: formatCurrency(custoUnitario),
+                        preco: formatCurrency(precoUnitario),
+                        lucroUnitario: formatCurrency(lucro),
+                        margemPercentual: `${margem.toFixed(1)}%`,
+                        custoValor: item.custoTotal,
+                    };
+                })
+                .sort((a, b) => (b.custoValor || 0) - (a.custoValor || 0));
+
+            totals = {
+                totalCost: custoTotalGeral,
+                totalSales: valorTotalDeVendas,
+                totalProfit: lucroTotalGeral,
+                totalPerdas,
+                custoTotalProducao: custoTotalGeral + totalPerdas,
+            };
+            break;
+        }
         default:
             break;
     }
 
     setReportColumns(columns);
     setReportData(processedData);
+    setReportTotals(totals);
+    setPerdasColumns(perdasColumnsLocal);
+    setPerdasData(perdasDataLocal);
   };
 
   const exportPDF = () => {
@@ -992,6 +2297,7 @@ const Relatorios = ({ data }) => {
                     <option value="estoqueBaixo">Estoque Baixo (Produtos Finais)</option>
                     <option value="comprasInsumos">Compras de Insumos</option>
                     <option value="receitaPorPagamento">Receita por Forma de Pagamento</option>
+                    <option value="custoProducao">Custo de Produção</option>
                 </Select>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -1003,835 +2309,77 @@ const Relatorios = ({ data }) => {
         </div>
         
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-             <Table columns={reportColumns} data={reportData} />
-        </div>
-    </div>
-  );
-};
-
-const MeuEspaco = ({ user, data = {} }) => {
-  const isGestor = user?.role === 'admin';
-  const [registroFeedback, setRegistroFeedback] = useState(null);
-  const [registroLoading, setRegistroLoading] = useState(false);
-  const [selectedPeriodo, setSelectedPeriodo] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [selectedFuncionario, setSelectedFuncionario] = useState(() => (isGestor ? '' : user?.auth?.uid || ''));
-  const [editingPonto, setEditingPonto] = useState(null);
-  const [pontoForm, setPontoForm] = useState({ horaEntrada: '', horaSaida: '', irregularidade: '', qtde: '', justificativa: '' });
-  const [salvandoPonto, setSalvandoPonto] = useState(false);
-  const competenciaAtual = useMemo(() => {
-    const now = new Date();
-    return `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
-  }, []);
-  const [empresaForm, setEmpresaForm] = useState({
-    nomeEmpresa: '',
-    endereco: '',
-    cnpj: '',
-    atividadeEconomica: '',
-    horarioTrabalho: '',
-    competencia: competenciaAtual,
-    gestorResponsavel: user?.auth?.displayName || user?.auth?.email || ''
-  });
-  const [empresaFeedback, setEmpresaFeedback] = useState(null);
-  const [salvandoEmpresa, setSalvandoEmpresa] = useState(false);
-  const funcionarioNome = useMemo(() => user?.auth?.displayName || user?.auth?.email || 'Funcionário', [user]);
-  const periodoFormatado = useMemo(() => {
-    if (!selectedPeriodo) return '';
-    const [ano, mes] = selectedPeriodo.split('-');
-    if (!ano || !mes) return selectedPeriodo;
-    return `${mes}/${ano}`;
-  }, [selectedPeriodo]);
-  const handlePrint = useCallback(() => {
-    if (typeof window !== 'undefined' && typeof window.print === 'function') {
-      window.print();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isGestor && user?.auth?.uid) {
-      setSelectedFuncionario(user.auth.uid);
-    }
-  }, [isGestor, user]);
-
-  const empresaInfoDoc = useMemo(() => (data.empresaInfo || [])[0] || null, [data.empresaInfo]);
-
-  useEffect(() => {
-    if (empresaInfoDoc) {
-      setEmpresaForm({
-        nomeEmpresa: empresaInfoDoc.nomeEmpresa || '',
-        endereco: empresaInfoDoc.endereco || '',
-        cnpj: empresaInfoDoc.cnpj || '',
-        atividadeEconomica: empresaInfoDoc.atividadeEconomica || '',
-        horarioTrabalho: empresaInfoDoc.horarioTrabalho || '',
-        competencia: empresaInfoDoc.competencia || competenciaAtual,
-        gestorResponsavel: empresaInfoDoc.gestorResponsavel || user?.auth?.displayName || user?.auth?.email || ''
-      });
-    } else {
-      setEmpresaForm({
-        nomeEmpresa: '',
-        endereco: '',
-        cnpj: '',
-        atividadeEconomica: '',
-        horarioTrabalho: '',
-        competencia: competenciaAtual,
-        gestorResponsavel: user?.auth?.displayName || user?.auth?.email || ''
-      });
-    }
-  }, [empresaInfoDoc, competenciaAtual, user]);
-
-  const funcionarios = useMemo(() => {
-    return (data.users || [])
-      .map((func) => ({
-        id: func.id || func.uid,
-        nome: func.nome || func.displayName || func.email || 'Funcionário'
-      }))
-      .filter((func) => !!func.id);
-  }, [data.users]);
-  const funcionarioSelecionadoNome = useMemo(() => {
-    if (isGestor) {
-      if (!selectedFuncionario) return 'Todos os funcionários';
-      const encontrado = funcionarios.find((func) => func.id === selectedFuncionario);
-      return encontrado?.nome || 'Funcionário';
-    }
-    return funcionarioNome;
-  }, [isGestor, selectedFuncionario, funcionarios, funcionarioNome]);
-
-  const parseEntryDate = (entry) => {
-    if (!entry) return null;
-    if (entry.data?.toDate) return entry.data.toDate();
-    if (entry.dataRegistro?.toDate) return entry.dataRegistro.toDate();
-    if (typeof entry.data === 'string') return new Date(`${entry.data}T00:00:00`);
-    if (entry.dataRegistro) return new Date(entry.dataRegistro);
-    return null;
-  };
-
-  const filteredPontos = useMemo(() => {
-    const [anoStr, mesStr] = selectedPeriodo.split('-');
-    const ano = parseInt(anoStr, 10);
-    const mes = parseInt(mesStr, 10) - 1;
-    const usuarioAtual = user?.auth?.uid;
-
-    return (data.pontos || [])
-      .filter((entry) => {
-        const entryDate = parseEntryDate(entry);
-        if (!entryDate || Number.isNaN(entryDate.getTime())) return false;
-        if (entryDate.getFullYear() !== ano || entryDate.getMonth() !== mes) return false;
-
-        if (isGestor) {
-          if (!selectedFuncionario) return true;
-          return entry.funcionarioId === selectedFuncionario;
-        }
-
-        return entry.funcionarioId === usuarioAtual;
-      })
-      .sort((a, b) => {
-        const dateA = parseEntryDate(a) || new Date(0);
-        const dateB = parseEntryDate(b) || new Date(0);
-        return dateA.getTime() - dateB.getTime();
-      });
-  }, [data.pontos, selectedPeriodo, isGestor, selectedFuncionario, user]);
-
-  const formatLocation = useCallback((location) => {
-    if (!location) return null;
-
-    const lat = location.latitude ?? location.lat;
-    const lng = location.longitude ?? location.lng;
-
-    const latNum = lat !== undefined ? Number(lat) : undefined;
-    const lngNum = lng !== undefined ? Number(lng) : undefined;
-
-    const hasLatLng =
-      latNum !== undefined &&
-      lngNum !== undefined &&
-      !Number.isNaN(latNum) &&
-      !Number.isNaN(lngNum);
-
-    const coordinateText = hasLatLng ? `${latNum.toFixed(5)}, ${lngNum.toFixed(5)}` : null;
-    const addressText = location.endereco || location.address || location.formattedAddress || null;
-
-    if (coordinateText && addressText) {
-      return `${coordinateText} | ${addressText}`;
-    }
-
-    return coordinateText || addressText || null;
-  }, []);
-
-  const parseTimeToMinutes = useCallback((timeString) => {
-    if (!timeString) return null;
-
-    const [hoursStr, minutesStr] = timeString.split(':');
-    const hours = Number.parseInt(hoursStr, 10);
-    const minutes = Number.parseInt(minutesStr, 10);
-
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-      return null;
-    }
-
-    return hours * 60 + minutes;
-  }, []);
-
-  const calculateTimeBalance = useCallback((entrada, saida) => {
-    const entradaMinutos = parseTimeToMinutes(entrada);
-    const saidaMinutos = parseTimeToMinutes(saida);
-
-    if (entradaMinutos === null || saidaMinutos === null) {
-      return '';
-    }
-
-    let diferenca = saidaMinutos - entradaMinutos;
-    const sinal = diferenca >= 0 ? '+' : '-';
-
-    diferenca = Math.abs(diferenca);
-
-    const horas = Math.floor(diferenca / 60);
-    const minutos = diferenca % 60;
-
-    const horasFormatadas = String(horas).padStart(2, '0');
-    const minutosFormatados = String(minutos).padStart(2, '0');
-
-    return `${sinal} ${horasFormatadas}:${minutosFormatados}`;
-  }, [parseTimeToMinutes]);
-
-  const tableRows = useMemo(() => {
-    return filteredPontos.map((entry) => {
-      const entryDate = parseEntryDate(entry);
-      const diaSemana = entry.diaSemana || (entryDate ? new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(entryDate) : '-');
-      const diaMes = entryDate ? String(entryDate.getDate()).padStart(2, '0') : '-';
-      return {
-        ...entry,
-        funcionarioNome: entry.funcionarioNome || 'Funcionário',
-        diaSemanaFormatado: diaSemana,
-        diaMes,
-        horaEntrada: entry.horaEntrada || '',
-        horaSaida: entry.horaSaida || '',
-        irregularidade: entry.irregularidade || '',
-        qtde: calculateTimeBalance(entry.horaEntrada, entry.horaSaida),
-        justificativa: entry.justificativa || '',
-        localizacaoEntrada: entry.localizacaoEntrada || entry.localizacao?.entrada || null,
-        localizacaoSaida: entry.localizacaoSaida || entry.localizacao?.saida || null
-      };
-    });
-  }, [filteredPontos, calculateTimeBalance]);
-
-  const pontoColumns = useMemo(() => {
-    const baseColumns = [
-      {
-        header: 'Dia da Semana',
-        render: (row) => <span className="capitalize">{row.diaSemanaFormatado}</span>
-      },
-      {
-        header: 'Dia do Mês',
-        key: 'diaMes'
-      },
-      {
-        header: 'Entrada',
-        render: (row) => row.horaEntrada || '--'
-      },
-      {
-        header: 'Saída',
-        render: (row) => row.horaSaida || '--'
-      },
-      {
-        header: 'Irregularidade',
-        render: (row) => row.irregularidade || '--'
-      },
-      {
-        header: 'QTDE',
-        render: (row) => row.qtde || '--'
-      },
-      {
-        header: 'Justificativa',
-        render: (row) => row.justificativa || '--'
-      }
-    ];
-
-    if (isGestor) {
-      baseColumns.unshift({
-        header: 'Funcionário',
-        render: (row) => row.funcionarioNome || 'Funcionário'
-      });
-    }
-
-    if (isGestor) {
-      baseColumns.push({
-        header: 'Localização',
-        render: (row) => (
-          <div className="flex flex-col text-xs text-gray-600 gap-1">
-            {row.localizacaoEntrada ? (
-              <a
-                href={`https://www.google.com/maps?q=${row.localizacaoEntrada.latitude},${row.localizacaoEntrada.longitude}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-pink-600 hover:underline"
-              >
-                Entrada: {formatLocation(row.localizacaoEntrada)}
-              </a>
-            ) : (
-              <span className="text-gray-400">Entrada não registrada</span>
-            )}
-            {row.localizacaoSaida ? (
-              <a
-                href={`https://www.google.com/maps?q=${row.localizacaoSaida.latitude},${row.localizacaoSaida.longitude}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-pink-600 hover:underline"
-              >
-                Saída: {formatLocation(row.localizacaoSaida)}
-              </a>
-            ) : (
-              <span className="text-gray-400">Saída não registrada</span>
-            )}
-          </div>
-        )
-      });
-    }
-
-    return baseColumns;
-  }, [formatLocation, isGestor]);
-  
-  const tableActions = useMemo(() => (
-    isGestor
-      ? [{
-          label: 'Editar',
-          icon: Edit,
-          onClick: (row) => {
-            setEditingPonto(row);
-            setPontoForm({
-              horaEntrada: row.horaEntrada || '',
-              horaSaida: row.horaSaida || '',
-              irregularidade: row.irregularidade || '',
-              qtde: calculateTimeBalance(row.horaEntrada, row.horaSaida),
-              justificativa: row.justificativa || ''
-            });
-          }
-        }]
-      : []
-  ), [isGestor, calculateTimeBalance]);
-
-  const obterLocalizacao = () => {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Geolocalização não é suportada neste dispositivo.'));
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
-      });
-    });
-  };
-
-  const obterEndereco = useCallback(async (latitude, longitude) => {
-    const searchParams = new URLSearchParams({
-      format: 'jsonv2',
-      lat: String(latitude),
-      lon: String(longitude),
-      'accept-language': 'pt-BR'
-    });
-
-    try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${searchParams.toString()}`, {
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        console.error('Erro na resposta ao obter endereço:', response.status, response.statusText);
-        return null;
-      }
-
-      const data = await response.json();
-      return data?.display_name || null;
-    } catch (error) {
-      console.error('Erro ao obter endereço a partir das coordenadas:', error);
-      return null;
-    }
-  }, []);
-
-  const handleRegisterPonto = async (tipo) => {
-    if (!user?.auth?.uid) return;
-    setRegistroLoading(true);
-    setRegistroFeedback(null);
-
-    try {
-      const position = await obterLocalizacao();
-      const { latitude, longitude } = position.coords;
-      const endereco = await obterEndereco(latitude, longitude);
-      const now = new Date();
-      const dataStr = now.toISOString().split('T')[0];
-      const horaStr = now.toTimeString().slice(0, 5);
-      const diaSemana = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(now);
-
-      const pontosRef = collection(db, 'pontos');
-      const pontoQuery = query(
-        pontosRef,
-        where('funcionarioId', '==', user.auth.uid),
-        where('data', '==', dataStr)
-      );
-
-      const pontoSnapshot = await getDocs(pontoQuery);
-
-      if (pontoSnapshot.empty) {
-        await addDoc(pontosRef, {
-          funcionarioId: user.auth.uid,
-          funcionarioNome: user.auth.displayName || user.auth.email || 'Funcionário',
-          data: dataStr,
-          diaSemana,
-          horaEntrada: tipo === 'entrada' ? horaStr : '',
-          horaSaida: tipo === 'saida' ? horaStr : '',
-          irregularidade: '',
-          qtde: '',
-          justificativa: '',
-          localizacaoEntrada: tipo === 'entrada' ? { latitude, longitude, ...(endereco ? { endereco } : {}) } : null,
-          localizacaoSaida: tipo === 'saida' ? { latitude, longitude, ...(endereco ? { endereco } : {}) } : null,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          historicoAlteracoes: []
-        });
-      } else {
-        const pontoDoc = pontoSnapshot.docs[0];
-        const updateData = {
-          updatedAt: serverTimestamp()
-        };
-
-        if (tipo === 'entrada') {
-          updateData.horaEntrada = horaStr;
-          updateData.localizacaoEntrada = { latitude, longitude, ...(endereco ? { endereco } : {}) };
-        } else {
-          updateData.horaSaida = horaStr;
-          updateData.localizacaoSaida = { latitude, longitude, ...(endereco ? { endereco } : {}) };
-        }
-
-        await updateDoc(pontoDoc.ref, updateData);
-      }
-
-      setRegistroFeedback({
-        type: 'success',
-        message: `Ponto de ${tipo === 'entrada' ? 'entrada' : 'saída'} registrado com sucesso!`
-      });
-    } catch (error) {
-      console.error('Erro ao registrar ponto:', error);
-      let message = 'Não foi possível registrar o ponto. Tente novamente.';
-
-      if (typeof error?.code === 'number' && error.code === 1) {
-        message = 'Permita o acesso à localização para registrar o ponto.';
-      } else if (error?.message) {
-        message = error.message;
-      }
-
-      setRegistroFeedback({ type: 'error', message });
-    } finally {
-      setRegistroLoading(false);
-    }
-  };
-
-  const handleSaveEmpresa = async (event) => {
-    event.preventDefault();
-    setSalvandoEmpresa(true);
-    setEmpresaFeedback(null);
-
-    try {
-      const empresaRef = doc(db, 'empresaInfo', 'principal');
-      await setDoc(empresaRef, {
-        ...empresaForm,
-        competencia: competenciaAtual,
-        gestorResponsavel: empresaForm.gestorResponsavel || user?.auth?.displayName || user?.auth?.email || '',
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      setEmpresaFeedback({ type: 'success', message: 'Informações da empresa atualizadas com sucesso!' });
-    } catch (error) {
-      console.error('Erro ao salvar informações da empresa:', error);
-      setEmpresaFeedback({ type: 'error', message: 'Não foi possível salvar as informações. Tente novamente.' });
-    } finally {
-      setSalvandoEmpresa(false);
-    }
-  };
-
-  const handleSavePonto = async (event) => {
-    event.preventDefault();
-    if (!editingPonto) return;
-
-    setSalvandoPonto(true);
-    try {
-      const pontoRef = doc(db, 'pontos', editingPonto.id);
-      const campos = ['horaEntrada', 'horaSaida', 'irregularidade', 'justificativa'];
-      const updates = campos.reduce((acc, campo) => ({
-        ...acc,
-        [campo]: (pontoForm[campo] || '').trim()
-      }), {});
-
-      const qtdeCalculada = calculateTimeBalance(pontoForm.horaEntrada, pontoForm.horaSaida);
-      updates.qtde = qtdeCalculada;
-
-      const changes = campos.reduce((acc, campo) => {
-        const antigo = (editingPonto[campo] || '').trim();
-        const novo = (pontoForm[campo] || '').trim();
-        if (antigo !== novo) {
-          const labelMap = {
-            horaEntrada: 'Entrada',
-            horaSaida: 'Saída',
-            irregularidade: 'Irregularidade',
-            justificativa: 'Justificativa'
-          };
-          acc.push(`${labelMap[campo]}: ${antigo || 'vazio'} → ${novo || 'vazio'}`);
-        }
-        return acc;
-      }, []);
-
-      const qtdeAnterior = calculateTimeBalance(editingPonto.horaEntrada, editingPonto.horaSaida);
-      if ((qtdeAnterior || '').trim() !== (qtdeCalculada || '').trim()) {
-        changes.push(`QTDE: ${qtdeAnterior || 'vazio'} → ${qtdeCalculada || 'vazio'}`);
-      }
-
-      const descricaoAlteracao = changes.length > 0
-        ? changes.join(' | ')
-        : 'Registro atualizado pelo gestor.';
-
-      await updateDoc(pontoRef, {
-        ...updates,
-        gestorId: user?.auth?.uid || null,
-        dataAjuste: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        historicoAlteracoes: arrayUnion({
-          timestamp: serverTimestamp(),
-          gestorId: user?.auth?.uid || null,
-          gestorNome: user?.auth?.displayName || user?.auth?.email || 'Gestor',
-          descricao: descricaoAlteracao
-        })
-      });
-
-      setRegistroFeedback({ type: 'success', message: 'Registro de ponto atualizado com sucesso.' });
-      setEditingPonto(null);
-    } catch (error) {
-      console.error('Erro ao atualizar ponto:', error);
-      setRegistroFeedback({ type: 'error', message: 'Não foi possível salvar as alterações do ponto.' });
-    } finally {
-      setSalvandoPonto(false);
-    }
-  };
-
-  return (
-    <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Meu Espaço</h1>
-          <p className="text-gray-600 mt-1">Gerencie seus registros de ponto e informações da empresa</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-3 print:hidden">
-          <Input
-            label="Competência"
-            type="month"
-            value={selectedPeriodo}
-            onChange={(event) => setSelectedPeriodo(event.target.value)}
-            className="sm:w-48"
-          />
-          {isGestor && (
-            <Select
-              label="Funcionário"
-              value={selectedFuncionario}
-              onChange={(event) => setSelectedFuncionario(event.target.value)}
-              className="sm:w-56"
-            >
-              <option value="">Todos</option>
-              {funcionarios.map((func) => (
-                <option key={func.id} value={func.id}>{func.nome}</option>
-              ))}
-            </Select>
-          )}
-        </div>
-      </div>
-
-      {(!isGestor || selectedFuncionario) && (
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 print:hidden">
-          <p className="text-xs uppercase text-gray-500">Funcionário</p>
-          <p className="text-lg font-semibold text-gray-800">{funcionarioSelecionadoNome}</p>
-        </div>
-      )}
-
-      <div className="hidden print:block bg-white rounded-2xl border border-gray-200 p-4 text-sm text-gray-700">
-        <p><span className="font-semibold">Competência:</span> {periodoFormatado || '—'}</p>
-        <p className="mt-1"><span className="font-semibold">Funcionário:</span> {funcionarioSelecionadoNome}</p>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
-          <div className="flex-1 space-y-2">
-            <h2 className="text-xl font-semibold text-gray-800">Informações da Empresa</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-600">
-              <div>
-                <p className="text-gray-500 text-xs uppercase">Nome da Empresa</p>
-                <p className="font-medium text-gray-800">{empresaForm.nomeEmpresa || '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-xs uppercase">CNPJ</p>
-                <p className="font-medium text-gray-800">{empresaForm.cnpj || '—'}</p>
-              </div>
-              <div className="sm:col-span-2">
-                <p className="text-gray-500 text-xs uppercase">Endereço</p>
-                <p className="font-medium text-gray-800">{empresaForm.endereco || '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-xs uppercase">Atividade Econômica</p>
-                <p className="font-medium text-gray-800">{empresaForm.atividadeEconomica || '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-xs uppercase">Horário de Trabalho</p>
-                <p className="font-medium text-gray-800">{empresaForm.horarioTrabalho || '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-xs uppercase">Competência</p>
-                <p className="font-medium text-gray-800">{empresaForm.competencia || competenciaAtual}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-xs uppercase">Gestor Responsável</p>
-                <p className="font-medium text-gray-800">{empresaForm.gestorResponsavel || '—'}</p>
-              </div>
-            </div>
-          </div>
-
-          {isGestor && (
-            <form onSubmit={handleSaveEmpresa} className="w-full md:w-1/2 space-y-4">
-              <h3 className="text-lg font-semibold text-gray-800">Atualizar informações</h3>
-              <Input
-                label="Nome da Empresa"
-                value={empresaForm.nomeEmpresa}
-                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, nomeEmpresa: event.target.value }))}
-              />
-              <Input
-                label="Endereço"
-                value={empresaForm.endereco}
-                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, endereco: event.target.value }))}
-              />
-              <Input
-                label="CNPJ"
-                value={empresaForm.cnpj}
-                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, cnpj: event.target.value }))}
-                placeholder="00.000.000/0000-00"
-              />
-              <Input
-                label="Atividade Econômica"
-                value={empresaForm.atividadeEconomica}
-                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, atividadeEconomica: event.target.value }))}
-              />
-              <Input
-                label="Horário de Trabalho"
-                value={empresaForm.horarioTrabalho}
-                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, horarioTrabalho: event.target.value }))}
-                placeholder="08:00 às 17:00 (intervalo 12:00 às 13:00)"
-              />
-              <Input
-                label="Competência"
-                value={empresaForm.competencia || competenciaAtual}
-                readOnly
-                disabled
-              />
-              <Input
-                label="Gestor Responsável"
-                value={empresaForm.gestorResponsavel}
-                onChange={(event) => setEmpresaForm((prev) => ({ ...prev, gestorResponsavel: event.target.value }))}
-              />
-              <div className="flex justify-end">
-                <Button type="submit" disabled={salvandoEmpresa}>
-                  {salvandoEmpresa ? 'Salvando...' : 'Salvar Informações'}
-                </Button>
-              </div>
-              {empresaFeedback && (
-                <p className={`text-sm ${empresaFeedback.type === 'success' ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {empresaFeedback.message}
-                </p>
-              )}
-            </form>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-800">Registro de Ponto</h2>
-            <p className="text-gray-500 text-sm">Registre sua entrada e saída com validação de localização</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 print:hidden">
-            <Button
-              onClick={() => handleRegisterPonto('entrada')}
-              disabled={registroLoading}
-            >
-              <Clock className="w-4 h-4" /> Registrar Entrada
-            </Button>
-            <Button
-              onClick={() => handleRegisterPonto('saida')}
-              disabled={registroLoading}
-              className="bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700"
-            >
-              <Clock className="w-4 h-4" /> Registrar Saída
-            </Button>
-            {!isGestor && (
-              <Button
-                onClick={handlePrint}
-                variant="secondary"
-                className="sm:w-auto"
-              >
-                <Printer className="w-4 h-4" /> Imprimir
-              </Button>
-            )}
-          </div>
-        </div>
-        {registroFeedback && (
-          <div className={`rounded-xl px-4 py-3 text-sm ${registroFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-            {registroFeedback.message}
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-800">Registros do mês</h2>
-            <p className="text-gray-500 text-sm">Visualize os registros de ponto do período selecionado</p>
-          </div>
-          <div className="text-sm text-gray-500">
-            {tableRows.length} registro(s) encontrado(s)
-          </div>
-        </div>
-        <Table columns={pontoColumns} data={tableRows} actions={tableActions} />
-      </div>
-
-      <Modal
-        isOpen={!!editingPonto}
-        onClose={() => setEditingPonto(null)}
-        title="Editar registro de ponto"
-        size="lg"
-      >
-        {editingPonto && (
-          <form onSubmit={handleSavePonto} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Hora de Entrada"
-                type="time"
-                value={pontoForm.horaEntrada}
-                onChange={(event) => {
-                  const novoValor = event.target.value;
-                  setPontoForm((prev) => {
-                    const atualizado = { ...prev, horaEntrada: novoValor };
-                    return {
-                      ...atualizado,
-                      qtde: calculateTimeBalance(novoValor, atualizado.horaSaida)
-                    };
-                  });
-                }}
-              />
-              <Input
-                label="Hora de Saída"
-                type="time"
-                value={pontoForm.horaSaida}
-                onChange={(event) => {
-                  const novoValor = event.target.value;
-                  setPontoForm((prev) => {
-                    const atualizado = { ...prev, horaSaida: novoValor };
-                    return {
-                      ...atualizado,
-                      qtde: calculateTimeBalance(atualizado.horaEntrada, novoValor)
-                    };
-                  });
-                }}              />
-              <Input
-                label="Irregularidade"
-                value={pontoForm.irregularidade}
-                onChange={(event) => setPontoForm((prev) => ({ ...prev, irregularidade: event.target.value }))}
-                placeholder="Atraso, falta, banco de horas..."
-              />
-              <Input
-                label="QTDE"
-                value={pontoForm.qtde || ''}
-                readOnly
-                placeholder="Horas calculadas automaticamente"
-              />
-              <Textarea
-                label="Justificativa"
-                rows={3}
-                value={pontoForm.justificativa}
-                onChange={(event) => setPontoForm((prev) => ({ ...prev, justificativa: event.target.value }))}
-              />
-            </div>
-
-            {isGestor && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
-                <div>
-                  <p className="font-medium text-gray-700">Localização da entrada</p>
-                  {editingPonto.localizacaoEntrada ? (
-                    <a
-                      href={`https://www.google.com/maps?q=${editingPonto.localizacaoEntrada.latitude},${editingPonto.localizacaoEntrada.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-pink-600 hover:underline"
-                    >
-                      {formatLocation(editingPonto.localizacaoEntrada)}
-                    </a>
-                  ) : (
-                    <p className="text-gray-400">Não registrado</p>
-                  )}
-                </div>
-                <div>
-                  <p className="font-medium text-gray-700">Localização da saída</p>
-                  {editingPonto.localizacaoSaida ? (
-                    <a
-                      href={`https://www.google.com/maps?q=${editingPonto.localizacaoSaida.latitude},${editingPonto.localizacaoSaida.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-pink-600 hover:underline"
-                    >
-                      {formatLocation(editingPonto.localizacaoSaida)}
-                    </a>
-                  ) : (
-                    <p className="text-gray-400">Não registrado</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {editingPonto.historicoAlteracoes && editingPonto.historicoAlteracoes.length > 0 && (
-              <div className="border-t border-gray-100 pt-4">
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">Histórico de ajustes</h4>
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                  {editingPonto.historicoAlteracoes
-                    .slice()
-                    .sort((a, b) => {
-                      const dataA = getJSDate(a.timestamp) || new Date(0);
-                      const dataB = getJSDate(b.timestamp) || new Date(0);
-                      return dataB.getTime() - dataA.getTime();
-                    })
-                    .map((hist, index) => {
-                      const dataHist = getJSDate(hist.timestamp);
-                      return (
-                        <div key={index} className="text-xs text-gray-600 bg-gray-50 rounded-lg p-3">
-                          <p className="font-medium text-gray-700">{hist.gestorNome || 'Gestor'}</p>
-                          <p>{hist.descricao || 'Ajuste registrado.'}</p>
-                          <p className="text-gray-400 mt-1">{dataHist ? dataHist.toLocaleString('pt-BR') : 'Data não disponível'}</p>
+            <Table columns={reportColumns} data={reportData} />
+            {reportTotals && (
+                <div className="p-6 border-t border-gray-100 bg-gray-50">
+                    {isCustoProducao ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                <p className="text-sm text-gray-500">Valor Total de Vendas</p>
+                                <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.totalSales)}</p>
+                            </div>
+                            <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                <p className="text-sm text-gray-500">Custos Vendidos</p>
+                                <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.totalCost)}</p>
+                            </div>
+                            <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                <p className="text-sm text-gray-500">Total de Perdas</p>
+                                <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.totalPerdas)}</p>
+                            </div>
+                            <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
+                                <p className="text-sm text-gray-500">Custo Total de Produção = Custos Vendidos + Custos Descartados</p>
+                                <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.custoTotalProducao)}</p>
+                            </div>
+                            <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
+                                <p className="text-sm text-gray-500">Lucro Total</p>
+                                <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.totalProfit)}</p>
+                            </div>
                         </div>
-                      );
-                    })}
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                <p className="text-sm text-gray-500">Custo Total</p>
+                                <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.totalCost)}</p>
+                            </div>
+                            <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                <p className="text-sm text-gray-500">Valor Total de Vendas</p>
+                                <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.totalSales)}</p>
+                            </div>
+                            {reportTotals.totalPerdas !== undefined && (
+                                <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                    <p className="text-sm text-gray-500">Total de Perdas</p>
+                                    <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.totalPerdas)}</p>
+                                </div>
+                            )}
+                            {reportTotals.custoTotalProducao !== undefined && (
+                                <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                                    <p className="text-sm text-gray-500">Custo Total de Produção</p>
+                                    <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.custoTotalProducao)}</p>
+                                </div>
+                            )}
+                            <div className="p-4 bg-white rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
+                                <p className="text-sm text-gray-500">Lucro Total</p>
+                                <p className="text-xl font-semibold text-gray-800">{formatCurrency(reportTotals.totalProfit)}</p>
+                            </div>
+                        </div>
+                    )}
                 </div>
-              </div>
             )}
+        </div>
 
-            <div className="flex justify-end gap-3 pt-4">
-              <Button type="button" variant="secondary" onClick={() => setEditingPonto(null)}>Cancelar</Button>
-              <Button type="submit" disabled={salvandoPonto}>
-                {salvandoPonto ? 'Salvando...' : 'Salvar alterações'}
-              </Button>
+        {isCustoProducao && perdasData.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                <div className="px-6 pt-6 pb-2">
+                    <h3 className="text-lg font-semibold text-gray-800">Custos de Descarte (Perdas)</h3>
+                    <p className="text-sm text-gray-500">Itens descartados, do mais recente para o mais antigo.</p>
+                </div>
+                <Table columns={perdasColumns} data={perdasData} />
             </div>
-          </form>
         )}
-      </Modal>
     </div>
   );
 };
+
 
 // Componente principal
 function App() {
@@ -1850,12 +2398,31 @@ function App() {
   const [stopAlarmFn, setStopAlarmFn] = useState(null);
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
   const [hasNewPendingOrders, setHasNewPendingOrders] = useState(false);
+  const [pedidosConnectivityStatus, setPedidosConnectivityStatus] = useState('online');
   const [pendingOrders, setPendingOrders] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  const isiOS = useMemo(() => {
+    const platform = Capacitor.getPlatform();
+    if (platform === 'ios') return true;
+
+    if (platform === 'web' && typeof navigator !== 'undefined') {
+      const ua = navigator.userAgent || '';
+      return /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+    }
+
+    return false;
+  }, []);
+
+  const [soundUnlocked, setSoundUnlocked] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('iosSoundUnlocked') === 'true';
+  });
+
   const [isAlarmSnoozed, setIsAlarmSnoozed] = useState(false);
   const [snoozeEndTime, setSnoozeEndTime] = useState(null);
+  const [audioAllowed, setAudioAllowed] = useState(audioManager.unlocked);
   // --- Estado audioUnlocked agora é derivado do AudioManager ---
   // const [audioUnlocked, setAudioUnlocked] = useState(...);
 
@@ -1866,6 +2433,48 @@ function App() {
   
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   // ... (outros estados: passwordResetEmail, passwordResetMessage) ...
+  
+  const [availableStores, setAvailableStores] = useState([]);
+  const [storeInfoMap, setStoreInfoMap] = useState({});
+  const [selectedStoreId, setSelectedStoreId] = usePersistentState('selectedStoreId', null);
+  const [showStoreManager, setShowStoreManager] = useState(false);
+  const [isCreatingStore, setIsCreatingStore] = useState(false);
+
+  useEffect(() => {
+    if (!isiOS || soundUnlocked) return undefined;
+
+    const unlockWithGesture = async () => {
+      try {
+        await audioManager.userUnlock({ userGesture: true });
+        setAudioAllowed(audioManager.unlocked);
+
+        const htmlAudio = new Audio(ALARM_SOUND_URL);
+        const playPromise = htmlAudio.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => {});
+        }
+        htmlAudio.pause();
+        htmlAudio.currentTime = 0;
+      } catch (error) {
+        console.warn('[App.js] Não foi possível iniciar o áudio no gesto de desbloqueio:', error);
+      }
+
+      localStorage.setItem('iosSoundUnlocked', 'true');
+      setSoundUnlocked(true);
+      setAudioAllowed(audioManager.unlocked);
+      window.removeEventListener('touchstart', unlockWithGesture);
+      window.removeEventListener('click', unlockWithGesture);
+    };
+
+    window.addEventListener('touchstart', unlockWithGesture, { passive: true });
+    window.addEventListener('click', unlockWithGesture, { passive: true });
+
+    return () => {
+      window.removeEventListener('touchstart', unlockWithGesture);
+      window.removeEventListener('click', unlockWithGesture);
+    };
+  }, [isiOS, soundUnlocked]);
+
 
   // --- REVISADO: Refs de Áudio ---
   const stopAlarmRef = useRef(null); // Guarda a função de parar o som
@@ -1873,19 +2482,297 @@ function App() {
   const snoozeTimerRef = useRef(null);
   const isSnoozedRef = useRef(false);
   const initialDataLoaded = useRef(false);
+  const storeCollectionsDataRef = useRef({});
+  const clientesDataRef = useRef([]);
   const pushTokenRef = useRef(null);
+  const configMigrationStatusRef = useRef(new Set());
   // --- REMOVIDO: audioRef e alarmIntervalRef ---
 
   
-  const [data, setData] = useState({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [], fornecedorCategorias: [], pontos: [], empresaInfo: [] });
+  const [data, setData] = useState(getInitialDataState());
   const [loading, setLoading] = useState(true);
+  const userId = user?.auth?.uid || null;
+  const isGeneralViewSelected = user?.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY;
+  const selectedStoreIdForAlarm = useMemo(() => {
+    if (!user || isGeneralViewSelected) return null;
+    if (selectedStoreId) return selectedStoreId;
+    if (availableStores.length) return availableStores[0];
+    if (user.lojaIds && user.lojaIds.length) return user.lojaIds[0];
+    return user.lojaId || null;
+  }, [user, isGeneralViewSelected, selectedStoreId, availableStores]);
+  const [resolvedAlarmPauseMinutes, setResolvedAlarmPauseMinutes] = useState(DEFAULT_ALARM_PAUSE_MINUTES);
 
-	const userId = user?.uid || null;
+  useEffect(() => {
+    setFirestoreTelemetryContext({
+      route: currentPage,
+      uid: userId
+    });
+  }, [currentPage, userId]);
+
+  useEffect(() => {
+    const handleListenerStatus = (event) => {
+      const detail = event?.detail || {};
+      if (detail.collection !== 'pedidos') return;
+
+      if (detail.status === 'reconnecting') {
+        setPedidosConnectivityStatus('reconnecting');
+      } else if (detail.status === 'offline') {
+        setPedidosConnectivityStatus('offline');
+      }
+    };
+
+    window.addEventListener('firestore:listener-status', handleListenerStatus);
+    return () => window.removeEventListener('firestore:listener-status', handleListenerStatus);
+  }, []);
+
+  useEffect(() => {
+    if (isGeneralViewSelected || !selectedStoreIdForAlarm) {
+      setResolvedAlarmPauseMinutes(DEFAULT_ALARM_PAUSE_MINUTES);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchAlarmPauseMinutes = async () => {
+      try {
+        const configSnap = await getDoc(getStoreConfigDocRef(selectedStoreIdForAlarm));
+        if (!isMounted) return;
+
+        const configData = configSnap.exists() ? (configSnap.data() || {}) : {};
+        setResolvedAlarmPauseMinutes(sanitizeAlarmPauseMinutes(configData.alarmPauseMinutes));
+      } catch (error) {
+        console.error('[App.js] Erro ao buscar tempo de pausa do alarme:', error);
+        if (isMounted) {
+          setResolvedAlarmPauseMinutes(DEFAULT_ALARM_PAUSE_MINUTES);
+        }
+      }
+    };
+
+    fetchAlarmPauseMinutes();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isGeneralViewSelected, selectedStoreIdForAlarm]);
+
+  const hasPendingOrdersForSelectedStore = useMemo(() => {
+    if (!selectedStoreIdForAlarm) return false;
+    return (data.pedidos || []).some((order) => order.status === 'Pendente' && order.lojaId === selectedStoreIdForAlarm);
+  }, [data.pedidos, selectedStoreIdForAlarm]);
+
+  
+   const resolveStoreIdsForView = useCallback(() => {
+    if (!user) return [];
+
+    if (user.role === ROLE_OWNER) {
+        if (selectedStoreId === STORE_ALL_KEY) {
+            return availableStores;
+        }
+        return selectedStoreId ? [selectedStoreId] : (availableStores.length ? [availableStores[0]] : []);
+    }
+
+    if (selectedStoreId) return [selectedStoreId];
+    if (availableStores.length) return [availableStores[0]];
+    if (user.lojaIds && user.lojaIds.length) return [user.lojaIds[0]];
+    if (user.lojaId) return [user.lojaId];
+    return [];
+  }, [user, selectedStoreId, availableStores]);
+
+  const recomputeDataForView = useCallback(() => {
+    const base = getInitialDataState();
+
+    if (!user) {
+      return base;
+    }
+
+    const storeIds = resolveStoreIdsForView();
+    if (!storeIds.length) {
+      return base;
+    }
+
+    storeIds.forEach((storeId) => {
+      const storeData = storeCollectionsDataRef.current[storeId];
+      if (!storeData) return;
+
+      COLLECTIONS_TO_SYNC.forEach((collectionName) => {
+        const items = storeData[collectionName] || [];
+        if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
+          base[collectionName] = [
+            ...(base[collectionName] || []),
+            ...items.map((item) => ({ ...item, lojaId: storeId }))
+          ];
+        } else {
+          base[collectionName] = items.map((item) => ({ ...item, lojaId: storeId }));
+        }
+      });
+    });
+
+    const allClientes = clientesDataRef.current || [];
+    const storeIdSet = new Set(storeIds);
+
+    const matchesStore = (cliente) => {
+      const visitedStores = Array.isArray(cliente.lojasVisitadas) ? cliente.lojasVisitadas : [];
+      if (visitedStores.some((id) => storeIdSet.has(id))) return true;
+      if (cliente.lojaId && storeIdSet.has(cliente.lojaId)) return true;
+      if (cliente.lojaAtual && storeIdSet.has(cliente.lojaAtual)) return true;
+      return false;
+    };
+
+    const addResolvedStoreToClient = (cliente) => {
+      const visitedStores = Array.isArray(cliente.lojasVisitadas) ? cliente.lojasVisitadas : [];
+      const resolvedLojaId = visitedStores.length === 1
+        ? visitedStores[0]
+        : (cliente.lojaAtual || cliente.lojaId || null);
+
+      if (!resolvedLojaId) return cliente;
+      return { ...cliente, lojaId: resolvedLojaId };
+    };
+
+    if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
+      base.clientes = allClientes.map(addResolvedStoreToClient);
+    } else {
+      base.clientes = allClientes.filter(matchesStore).map(addResolvedStoreToClient);
+    }
+
+    return base;
+  }, [user, resolveStoreIdsForView, selectedStoreId]);
+
+  const migrateLegacyConfigCollection = useCallback(async (storeId, collectionName, legacyDocs) => {
+    const migrationKey = `${storeId}:${collectionName}`;
+    if (configMigrationStatusRef.current.has(migrationKey)) return;
+
+    configMigrationStatusRef.current.add(migrationKey);
+
+    try {
+      const batch = writeBatch(db);
+      legacyDocs.forEach((docSnap) => {
+        batch.set(
+          doc(db, ...buildStoreCollectionPath(storeId, collectionName), docSnap.id),
+          docSnap.data()
+        );
+      });
+      await batch.commit();
+      console.log(`[App.js] Migração de ${collectionName} concluída para a loja ${storeId}.`);
+    } catch (error) {
+      console.error(`[App.js] Falha ao migrar ${collectionName} da loja ${storeId}:`, error);
+    }
+  }, []);
+
+  const resolveActiveStoreForWrite = useCallback(() => {
+        if (!user) {
+          throw new Error('Usuário não autenticado.');
+        }
+
+	if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
+	  throw new Error('Selecione uma loja específica para executar esta ação.');
+	}
+
+	const storeId = selectedStoreId || (availableStores.length ? availableStores[0] : (user.lojaIds && user.lojaIds.length ? user.lojaIds[0] : user.lojaId));
+
+	if (!storeId) {
+	  throw new Error('Nenhuma loja associada ao usuário.');
+	}
+
+        return storeId;
+  }, [user, selectedStoreId, availableStores]);
+
+  const callClientApi = useCallback(async (path, { method = 'GET', body = null } = {}) => {
+    const storeId = resolveActiveStoreForWrite();
+    const url = `${API_BASE_URL}${path}${path.includes('?') ? '&' : '?'}lojaId=${encodeURIComponent(storeId)}`;
+
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || 'Erro ao comunicar com a API de clientes.');
+    }
+
+    if (response.status === 204) return null;
+    return response.json();
+  }, [resolveActiveStoreForWrite]);
+  
+  const selectStoreById = useCallback((value) => {
+        if (value === STORE_ALL_KEY) {
+          setSelectedStoreId(STORE_ALL_KEY);
+        } else if (value) {
+          setSelectedStoreId(value);
+        } else {
+          setSelectedStoreId(null);
+        }
+  }, [setSelectedStoreId]);
+
+  const handleStoreChange = useCallback((event) => {
+        selectStoreById(event.target.value);
+  }, [selectStoreById]);
+
+  const handleCreateStore = useCallback(async ({ storeId, nome }) => {
+        const trimmedId = typeof storeId === 'string' ? storeId.trim() : '';
+        const trimmedName = typeof nome === 'string' ? nome.trim() : '';
+
+        if (!trimmedName) {
+          throw new Error('Nome e identificador são obrigatórios.');
+        }
+
+        setIsCreatingStore(true);
+
+        try {
+          const createStoreFn = httpsCallable(functions, 'createStore');
+          const result = await createStoreFn({ storeId: trimmedId, nome: trimmedName });
+          const response = (result && result.data) || {};
+          const createdStoreId = response.storeId || generateStoreId(trimmedId || trimmedName);
+
+          if (!createdStoreId || createdStoreId === STORE_ALL_KEY) {
+            throw new Error('Identificador inválido para a loja.');
+          }
+
+          const storeData = response.storeData || { nome: trimmedName };
+
+          setAvailableStores((prev) => (prev.includes(createdStoreId) ? prev : [...prev, createdStoreId]));
+          setStoreInfoMap((prev) => ({
+            ...prev,
+            [createdStoreId]: { ...(prev[createdStoreId] || {}), ...storeData }
+          }));
+
+          selectStoreById(createdStoreId);
+
+          if (Array.isArray(response.assignedStoreIds)) {
+            setUser((prev) => {
+              if (!prev) return prev;
+              const uniqueIds = Array.from(new Set(response.assignedStoreIds));
+              const nextPrimary = response.primaryStoreId || prev.lojaId || uniqueIds[0] || null;
+
+              return {
+                ...prev,
+                lojaIds: uniqueIds,
+                lojaId: nextPrimary,
+                canAccessAllStores: typeof response.canAccessAllStores === 'boolean'
+                  ? response.canAccessAllStores
+                  : prev.canAccessAllStores
+              };
+            });
+          }
+        } catch (error) {
+          console.error('Erro ao criar loja:', error);
+          if (error && typeof error.message === 'string') {
+            const cleanedMessage = error.message.replace(/^FirebaseError:\s*/i, '').trim();
+            throw new Error(cleanedMessage || 'Não foi possível criar a loja.');
+          }
+          throw new Error('Não foi possível criar a loja.');
+		  } finally {
+          setIsCreatingStore(false);
+        }
+  }, [selectStoreById, setUser]);
 
   // --- SUBSTITUÍDO: Nova função stopAlarm ---
-	const stopAlarm = useCallback(() => {
-		console.log("[App.js] Parando alarme...");
-		if (stopAlarmRef.current) {
+        const stopAlarm = useCallback(() => {
+                console.log("[App.js] Parando alarme...");
+                if (stopAlarmRef.current) {
 		  stopAlarmRef.current(); // Chama a função de parada
 		  stopAlarmRef.current = null; // Limpa a referência
 		}
@@ -1900,11 +2787,15 @@ function App() {
 
   // --- SUBSTITUÍDO: Nova função playAlarm ---
   const playAlarm = useCallback(async () => {
-		// Só toca se não estiver em modo soneca
-		if (isSnoozedRef.current) {
-			console.log("[App.js] Alarme em soneca, não tocando.");
-			return;
-		}
+                if (isiOS && !soundUnlocked) {
+                        console.warn("[App.js] Áudio bloqueado no iOS aguardando interação do usuário.");
+                        return;
+                }
+                // Só toca se não estiver em modo soneca
+                if (isSnoozedRef.current) {
+                        console.log("[App.js] Alarme em soneca, não tocando.");
+                        return;
+                }
 		
 		// Se já está tocando, não faz nada
 		if (isAlarmPlaying) {
@@ -1913,7 +2804,6 @@ function App() {
 		}
 
 		console.log("[App.js] Tentando tocar alarme...");
-		setIsAlarmPlaying(true); // Define como tocando (para UI) ANTES de tentar tocar
 
 		// Chama o AudioManager para tocar o som
 		// Verifica se o áudio está desbloqueado antes de tentar tocar
@@ -1926,47 +2816,46 @@ function App() {
 		  }
 		}
 
-		// Só tenta tocar o som se o contexto estiver ativo
-		if (audioManager.unlocked) {
-		  const stopFn = await audioManager.playSound(ALARM_SOUND_URL, { loop: true, volume: 0.8 });
-		  
-		  // CORREÇÃO: Armazena a função de parada tanto no estado quanto na ref
-		  if (stopFn && typeof stopFn === 'function') {
-			setStopAlarmFn(() => stopFn); // Armazena no estado
-			stopAlarmRef.current = stopFn; // Armazena na ref
-			console.log("[App.js] Alarme iniciado.");
-		  } else {
-			// Se foi bloqueado ou falhou, reseta o estado da UI
-			console.log("[App.js] Falha ao iniciar o alarme (provavelmente bloqueado).");
-			setIsAlarmPlaying(false); 
-		  }
-		} else {
-			console.log("[App.js] Áudio ainda bloqueado, não tocando alarme.");
-			setIsAlarmPlaying(false);
+		let started = false;
+		try {
+			started = await audioManager.playAlarmSound();
+		} catch (error) {
+			console.error("[App.js] Erro ao iniciar o alarme:", error);
 		}
-	}, [isAlarmPlaying]); // Adicione isAlarmPlaying como dependência
+
+		if (started) {
+			const stopFn = () => audioManager.stopAlarmSound();
+			setIsAlarmPlaying(true);
+			setStopAlarmFn(() => stopFn);
+			stopAlarmRef.current = stopFn;
+			console.log("[App.js] Alarme iniciado.");
+		} else {
+			console.log("[App.js] Alarme pendente aguardando desbloqueio do áudio.");
+			setIsAlarmPlaying(false);
+			setShowActivateSoundButton(true);
+		}
+        }, [isiOS, isAlarmPlaying, soundUnlocked]); // Adicione isAlarmPlaying como dependência
 	
 	  // --- PRÉ-CARREGAMENTO DO ÁUDIO NATIVO (Capacitor Android/iOS) ---
-	  useEffect(() => {
-		const loadAudio = async () => {
-		  if (Capacitor.getPlatform() === 'android' || Capacitor.getPlatform() === 'ios') {
-			try {
-			  await NativeAudio.preload({
-					assetId: 'pedido',
-					assetPath: 'mixkit_vintage_warning_alarm_990.wav',
-					audioChannelNum: 1,
-					isUrl: false,
-			  });
-			  console.log('🔊 Áudio pré-carregado com sucesso!');
-			} catch (err) {
-			  console.error('Erro ao carregar áudio:', err);
-			}
-		  }
-		};
+          useEffect(() => {
+                const loadAudio = async () => {
+                  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+                        try {
+                          await NativeAudio.preload({
+                                        assetId: 'pedido',
+                                        assetPath: 'mixkit_vintage_warning_alarm_990.mp3',
+                                        audioChannelNum: 1,
+                                        isUrl: false,
+                          });
+                          console.log('🔊 Áudio pré-carregado com sucesso!');
+                        } catch (err) {
+                          console.error('Erro ao carregar áudio:', err);
+                        }
+                  }
+                };
 
-		loadAudio();
-	  }, []);
-
+                loadAudio();
+          }, []);
 
   // --- SUBSTITUÍDO: Novo useEffect de inicialização do AudioManager ---
   useEffect(() => {
@@ -1979,9 +2868,12 @@ function App() {
           // tenta init para recuperar estado, mas pode ficar suspenso
           await audioManager.init().catch(()=>{});
         }
+
+        await audioManager.userUnlock({ userGesture: false });
       } catch (e) {
         console.error("Erro ao inicializar audioManager:", e);
       }
+      setAudioAllowed(audioManager.unlocked);
   
       // --- CORREÇÃO: Lógica do botão movida para um state para ser renderizado pelo React ---
       // O botão será renderizado condicionalmente no JSX principal
@@ -2042,7 +2934,7 @@ function App() {
       } catch (error) {
         console.warn('[App.js] Erro ao solicitar geolocalização:', error);
       }
-    };
+	};
 
     requestCapabilities();
   }, [user]);
@@ -2060,6 +2952,7 @@ function App() {
       }, 500); // Meio segundo de espera
 
       return () => clearTimeout(timer);
+
   }, [user]);
 
 
@@ -2080,6 +2973,19 @@ function App() {
   
    const handleIncomingPushNotification = useCallback((payload) => {
     console.log('[App.js] Notificação push recebida:', payload);
+
+    if (isGeneralViewSelected || !selectedStoreIdForAlarm) {
+      stopAlarm();
+      return;
+    }
+
+    const hasPendingForStore = (dataRef.current.pedidos || []).some(
+      (order) => order.status === 'Pendente' && order.lojaId === selectedStoreIdForAlarm
+    );
+    if (!hasPendingForStore) {
+      return;
+    }
+
     setHasNewPendingOrders(true);
 
     if (isSnoozedRef.current) {
@@ -2090,7 +2996,7 @@ function App() {
     if (typeof playAlarmRef.current === 'function') {
       playAlarmRef.current();
     }
-  }, []);
+  }, [isGeneralViewSelected, selectedStoreIdForAlarm, stopAlarm]);
 
   useEffect(() => {
     if (!userId) {
@@ -2168,7 +3074,7 @@ function App() {
 	setStopAlarmFn(null); // Limpa o estado da função de parada
     setIsAlarmSnoozed(true); // Ativa o estado de soneca
     
-    const endTime = new Date().getTime() + (5 * 60 * 1000); // 5 minutos a partir de agora
+    const endTime = new Date().getTime() + (resolvedAlarmPauseMinutes * 60 * 1000);
     setSnoozeEndTime(endTime); // Define o tempo final da soneca
     
     // Limpa timer anterior se existir
@@ -2188,7 +3094,9 @@ function App() {
         console.log('[App.js] Soneca terminada');
         
         // Verifica se ainda existem pedidos pendentes para tocar o alarme novamente
-        const hasPending = dataRef.current.pedidos && dataRef.current.pedidos.some(p => p.status === 'Pendente');
+        const hasPending = !isGeneralViewSelected && selectedStoreIdForAlarm && dataRef.current.pedidos && dataRef.current.pedidos.some(
+          (p) => p.status === 'Pendente' && p.lojaId === selectedStoreIdForAlarm
+        );
         if (hasPending) {
           console.log('[App.js] Pedidos pendentes encontrados após soneca, reativando alarme.');
           setHasNewPendingOrders(true); // Garante que o banner apareça (se necessário)
@@ -2199,101 +3107,273 @@ function App() {
       } 
       // O display do timer é gerenciado localmente pelo Dashboard
     }, 1000); // Atualiza a cada segundo
-  }, [stopAlarm]); // Removidas dependências instáveis (data, playAlarm, unlockAudio)
+  }, [stopAlarm, isGeneralViewSelected, selectedStoreIdForAlarm, resolvedAlarmPauseMinutes]); // Removidas dependências instáveis (data, playAlarm, unlockAudio)
 
   // EFFECT PARA SINCRONIZAR DADOS DO FIREBASE
-	useEffect(() => {
-          if (!user) {
-                setData({ clientes: [], pedidos: [], produtos: [], contas_a_pagar: [], contas_a_receber: [], fornecedores: [], pedidosCompra: [], estoque: [], logs: [], cupons: [], users: [], subcategorias: [], fornecedorCategorias: [], pontos: [], empresaInfo: [] });
-		setLoading(false);
-		initialDataLoaded.current = false;
-		return;
-	  }
+        useEffect(() => {
+          const storeIds = resolveStoreIdsForView();
 
-	  setLoading(true);
-	  
-          const collectionsToSync = [
-                'clientes', 'produtos', 'contas_a_pagar', 'contas_a_receber',
-                'fornecedores', 'pedidosCompra', 'estoque', 'logs', 'cupons', 'users', 'pedidos', 'subcategorias', 'fornecedorCategorias',
-                'pontos', 'empresaInfo'
-				];
+          if (!user || !storeIds.length) {
+                setData(getInitialDataState());
+                setPendingOrders([]);
+                clientesDataRef.current = [];
+                storeCollectionsDataRef.current = {};
+                setLoading(false);
+                initialDataLoaded.current = false;
+                return;
+          }
 
-	  const unsubscribes = [];
-	  
-	  collectionsToSync.forEach(colName => {
-		  const q = query(collection(db, colName));
-		  const unsub = onSnapshot(q,
-			(snapshot) => {
-			  const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-			  
-			  setData(prevData => ({ ...prevData, [colName]: items }));
+          let isMounted = true;
+          let pendingInitial = (storeIds.length * COLLECTIONS_TO_SYNC.length) + 1;
+          const unsubscribes = [];
 
-			  if (colName === 'pedidos') {
-				const activeOrders = items.filter(p => p.status !== 'Finalizado' && p.status !== 'Cancelado');
-				setPendingOrders(activeOrders); 
-			  
-				if (initialDataLoaded.current) {
-				  const newPendingOrdersDetected = snapshot.docChanges().some(change => 
-					change.type === 'added' && change.doc.data().status === 'Pendente'
-				  );
-				  
-				  // CORREÇÃO: Só toca alarme se não estiver já tocando
-				  if (newPendingOrdersDetected && !isAlarmPlaying && !isSnoozedRef.current) {
-					console.log('[App.js] Novo pedido pendente detectado pelo listener!');
-					setHasNewPendingOrders(true); 
-					
-					console.log('[App.js] Tentando tocar alarme...');
-					(async () => {
-					  try {
-						// Verifica se o áudio está desbloqueado antes de tentar tocar 
-						if (!audioManager.unlocked) {
-						  console.warn("[App.js] Áudio bloqueado — aguardando interação do usuário.");
-						  try {
-							await audioManager.userUnlock();
-						  } catch (e) {
-							console.warn("[App.js] Não foi possível desbloquear o áudio automaticamente:", e);
-						  }
-						}
+          const markInitialLoaded = () => {
+                if (pendingInitial > 0) {
+                      pendingInitial -= 1;
+                      if (pendingInitial === 0) {
+                            initialDataLoaded.current = true;
+                            setLoading(false);
+                      }
+                }
+          };
 
-						// Só tenta tocar o som se o contexto estiver ativo
-						if (audioManager.unlocked) {
-						  playAlarmRef.current(); // chama normalmente
-						} else {
-						  console.log("[App.js] Áudio ainda bloqueado, não tocando alarme.");
-						}
+          if (pendingInitial === 0) {
+                setLoading(false);
+                initialDataLoaded.current = true;
+          } else {
+                setLoading(true);
+                initialDataLoaded.current = false;
+          }
 
-					  } catch (error) {
-						console.error("[App.js] Erro ao tentar tocar alarme:", error);
-					  }
-					})();
-				  }
-				  else if (newPendingOrdersDetected && isSnoozedRef.current) {
-					console.log('[App.js] Alarme em modo soneca, não tocando agora.');
-				  }
-				  else if (newPendingOrdersDetected && isAlarmPlaying) {
-					console.log('[App.js] Alarme já está tocando, não iniciando novo.');
-				  }
-				}
-			  }
-			},
-			(error) => {
-			  console.error(`[App.js] Erro ao sincronizar ${colName}:`, error);
-			}
-		  );
-		  unsubscribes.push(unsub);
-	  });
+          const setupClientesListener = () => {
+                const uniqueStoreIds = Array.from(new Set(storeIds)).filter(Boolean);
+                const clientesRef = collection(db, 'clientes');
 
-	  initialDataLoaded.current = true;
-	  setLoading(false); 
+                let clientesQuery;
+                if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
+                      clientesQuery = query(clientesRef);
+                } else if (uniqueStoreIds.length === 1) {
+                      clientesQuery = query(clientesRef, where('lojasVisitadas', 'array-contains', uniqueStoreIds[0]));
+                } else if (uniqueStoreIds.length > 1) {
+                      clientesQuery = query(clientesRef, where('lojasVisitadas', 'array-contains-any', uniqueStoreIds.slice(0, 10)));
+                } else {
+                      clientesQuery = query(clientesRef);
+                }
 
-	  return () => {
-		unsubscribes.forEach(unsubscribe => unsubscribe());
-		initialDataLoaded.current = false; 
-	  };
-	}, [user, isAlarmPlaying]); // ADICIONE isAlarmPlaying aqui
+                let initialResolved = false;
+                const unsubscribe = onSnapshot(
+                      clientesQuery,
+                      (snapshot) => {
+                            if (!isMounted) return;
 
+                            clientesDataRef.current = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+                            const computedData = recomputeDataForView();
+                            setData(computedData);
+
+                            if (!initialResolved) {
+                                  markInitialLoaded();
+                                  initialResolved = true;
+                            }
+                      },
+                      (error) => {
+                            console.error('[App.js] Erro ao sincronizar clientes:', { code: error?.code || null, message: error?.originalMessage || error?.message || null });
+                            setLoginError(error?.message || 'Não foi possível sincronizar os dados de clientes.');
+                            if (!initialResolved) {
+                                  markInitialLoaded();
+                                  initialResolved = true;
+                            }
+                      },
+                      {
+                            __listenerOptions: true,
+                            operation: 'sync-clientes',
+                            route: currentPage,
+                            uid: userId
+                      }
+                );
+
+                unsubscribes.push(() => unsubscribe());
+          };
+
+          setupClientesListener();
+
+          storeIds.forEach((storeId) => {
+                COLLECTIONS_TO_SYNC.forEach((collectionName) => {
+                        const isConfigCollection = CONFIG_COLLECTIONS.has(collectionName);
+                        const primaryQuery = query(getStoreCollectionRef(storeId, collectionName));
+                        const legacyQuery = isConfigCollection ? query(getStoreCollectionRef(storeId, collectionName, true)) : null;
+
+                        let primaryItems = [];
+                        let legacyItems = [];
+                        let legacyUnsubscribe = null;
+                        let initialResolved = false;
+
+                        const applyItems = (changes = []) => {
+                              if (!isMounted) return;
+                              const itemsToUse = primaryItems.length ? primaryItems : legacyItems;
+
+                              storeCollectionsDataRef.current = {
+                                    ...storeCollectionsDataRef.current,
+                                    [storeId]: {
+                                          ...(storeCollectionsDataRef.current[storeId] || {}),
+                                          [collectionName]: itemsToUse
+                                    }
+                              };
+
+                              const computedData = recomputeDataForView();
+                              setData(computedData);
+
+                              if (collectionName === 'pedidos') {
+                                    const activeOrders = (computedData.pedidos || []).filter(
+                                          (p) => p.status !== 'Finalizado' && p.status !== 'Cancelado' && !p._isPendingSync
+                                    );
+                                    setPendingOrders(activeOrders);
+
+                                    if (initialDataLoaded.current) {
+                                          const newPendingOrdersDetected = changes.some(
+                                                (change) => change.type === 'added'
+                                                      && change.doc.data().status === 'Pendente'
+                                                      && !change.doc.metadata?.hasPendingWrites
+                                          );
+
+                                          if (newPendingOrdersDetected && !isGeneralViewSelected && selectedStoreIdForAlarm && !isAlarmPlaying && !isSnoozedRef.current) {
+                                                console.log('[App.js] Novo pedido pendente detectado pelo listener!');
+                                                setHasNewPendingOrders(true);
+
+                                                console.log('[App.js] Tentando tocar alarme...');
+                                                (async () => {
+                                                  try {
+                                                        if (!audioManager.unlocked) {
+                                                          console.warn("[App.js] Áudio bloqueado — aguardando interação do usuário.");
+                                                          try {
+                                                                await audioManager.userUnlock();
+                                                          } catch (e) {
+                                                                console.warn("[App.js] Não foi possível desbloquear o áudio automaticamente:", e);
+                                                          }
+                                                        }
+
+                                                        if (audioManager.unlocked) {
+                                                          playAlarmRef.current();
+                                                        } else {
+                                                          console.log("[App.js] Áudio ainda bloqueado, não tocando alarme.");
+                                                        }
+
+                                                  } catch (error) {
+                                                        console.error("[App.js] Erro ao tentar tocar alarme:", error);
+                                                  }
+                                                })();
+                                          } else if (newPendingOrdersDetected && isSnoozedRef.current) {
+                                                console.log('[App.js] Alarme em modo soneca, não tocando agora.');
+                                          } else if (newPendingOrdersDetected && isAlarmPlaying) {
+                                                console.log('[App.js] Alarme já está tocando, não iniciando novo.');
+                                          }
+                                    }
+                              }
+
+                              if (!initialResolved) {
+                                    markInitialLoaded();
+                                    initialResolved = true;
+                              }
+                        };
+
+                        const handleSnapshotError = (error) => {
+                              console.error(`[App.js] Erro ao sincronizar ${collectionName} da loja ${storeId}:`, {
+                                    code: error?.code || null,
+                                    message: error?.originalMessage || error?.message || null
+                              });
+                              setLoginError(error?.message || 'Não foi possível sincronizar dados em tempo real.');
+                              if (collectionName === 'pedidos') {
+                                    setPedidosConnectivityStatus('offline');
+                              }
+                              if (!initialResolved) {
+                                    markInitialLoaded();
+                                    initialResolved = true;
+                              }
+                        };
+
+                        const mapSnapshotDocs = (snapshotDocs) => snapshotDocs.map((docSnap) => {
+                              const mappedDoc = { id: docSnap.id, ...docSnap.data() };
+
+                              if (collectionName !== 'pedidos') {
+                                    return mappedDoc;
+                              }
+
+                              return {
+                                    ...mappedDoc,
+                                    _isPendingSync: docSnap.metadata?.hasPendingWrites === true
+                              };
+                        });
+
+                        const primaryUnsubscribe = onSnapshot(
+                              primaryQuery,
+                              (snapshot) => {
+                                    if (collectionName === 'pedidos') {
+                                          const isFromCache = snapshot.metadata?.fromCache === true;
+                                          if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                                                setPedidosConnectivityStatus('offline');
+                                          } else if (isFromCache) {
+                                                setPedidosConnectivityStatus('reconnecting');
+                                          } else {
+                                                setPedidosConnectivityStatus('online');
+                                          }
+                                    }
+                                    primaryItems = mapSnapshotDocs(snapshot.docs);
+                                    applyItems(snapshot.docChanges());
+
+                                    if (!primaryItems.length && isConfigCollection && legacyQuery && !legacyUnsubscribe) {
+                                          legacyUnsubscribe = onSnapshot(
+                                                legacyQuery,
+                                                (legacySnap) => {
+                                                      if (primaryItems.length) return;
+                                                      legacyItems = mapSnapshotDocs(legacySnap.docs);
+                                                      if (!primaryItems.length && isConfigCollection && legacySnap.docs.length) {
+                                                            migrateLegacyConfigCollection(storeId, collectionName, legacySnap.docs);
+                                                      }
+                                                      applyItems(legacySnap.docChanges());
+                                                },
+                                                handleSnapshotError,
+                                                {
+                                                      __listenerOptions: true,
+                                                      operation: `sync-${collectionName}-legacy`,
+                                                      route: currentPage,
+                                                      uid: userId
+                                                }
+                                          );
+                                    } else if (primaryItems.length && legacyUnsubscribe) {
+                                          legacyUnsubscribe();
+                                          legacyUnsubscribe = null;
+                                          legacyItems = [];
+                                    }
+                              },
+                              handleSnapshotError,
+                              {
+                                    __listenerOptions: true,
+                                    operation: `sync-${collectionName}`,
+                                    route: currentPage,
+                                    uid: userId
+                              }
+                        );
+
+                        unsubscribes.push(() => {
+                              primaryUnsubscribe();
+                              if (legacyUnsubscribe) legacyUnsubscribe();
+                        });
+                });
+          });
+
+          return () => {
+                isMounted = false;
+                unsubscribes.forEach(unsubscribe => unsubscribe());
+                initialDataLoaded.current = false;
+          };
+        }, [user, isAlarmPlaying, resolveStoreIdsForView, recomputeDataForView, selectedStoreId, availableStores, migrateLegacyConfigCollection, isGeneralViewSelected, selectedStoreIdForAlarm, currentPage, userId]);
     // EFFECT PARA PARAR ALARME QUANDO NÃO HÁ MAIS PEDIDOS PENDENTES
     useEffect(() => {
+        if (isGeneralViewSelected) {
+          setHasNewPendingOrders(false);
+          stopAlarm();
+          return;
+        }
+
         const hasAnyPending = data.pedidos && data.pedidos.some(p => p.status === 'Pendente');
 
         if (!hasAnyPending && !isAlarmSnoozed) {
@@ -2301,87 +3381,226 @@ function App() {
           setHasNewPendingOrders(false);
           stopAlarm();
         }
-    }, [data.pedidos, isAlarmSnoozed, stopAlarm]);
+    }, [data.pedidos, isAlarmSnoozed, stopAlarm, isGeneralViewSelected]);
 
     // Garante que o alarme continue tocando enquanto houver pedidos pendentes
     useEffect(() => {
-        const hasPendingOrders = pendingOrders.some(order => order.status === 'Pendente');
+        const shouldPlayAlarm = !isGeneralViewSelected && !!selectedStoreIdForAlarm && hasPendingOrdersForSelectedStore && !isAlarmSnoozed;
 
-        if (hasPendingOrders && !isAlarmSnoozed && !isAlarmPlaying) {
+        if (audioAllowed && shouldPlayAlarm && !isAlarmPlaying) {
           console.log('[App.js] Pedidos pendentes encontrados enquanto o alarme estava parado. Reativando alarme.');
           setHasNewPendingOrders(true);
           playAlarmRef.current();
         }
-    }, [pendingOrders, isAlarmSnoozed, isAlarmPlaying]);
+    }, [audioAllowed, isGeneralViewSelected, selectedStoreIdForAlarm, hasPendingOrdersForSelectedStore, isAlarmSnoozed, isAlarmPlaying]);
 
-    // --- REMOVIDO: Antigo useEffect de desbloqueio ---
-    // useEffect(() => { if (audioUnlocked && ...) ... });
+  // --- REMOVIDO: Antigo useEffect de desbloqueio ---
+  // useEffect(() => { if (audioUnlocked && ...) ... });
 
 
-  const addItem = async (section, item) => {
+  const updateStock = useCallback(async (productId, type, quantity, reason = 'Movimentação de estoque', userInfo = null, targetStoreId = null, options = {}) => {
+    const storeId = targetStoreId || resolveActiveStoreForWrite();
+    await updateStockService(productId, type, quantity, reason, userInfo, storeId, options);
+  }, [resolveActiveStoreForWrite]);
+
+
+  const ensureAuthenticatedUserForWrite = useCallback(async () => {
+    const currentAuthUser = auth.currentUser;
+    const fallbackAuthUser = user?.auth || null;
+    const resolvedAuthUser = currentAuthUser || fallbackAuthUser;
+
+    console.log('[Sales][Auth] Validando sessão antes da gravação.', {
+      hasCurrentUser: Boolean(currentAuthUser),
+      hasFallbackUser: Boolean(fallbackAuthUser),
+      currentUserUid: currentAuthUser?.uid || null,
+      fallbackUserUid: fallbackAuthUser?.uid || null
+    });
+
+    if (!resolvedAuthUser) {
+      console.error('[Sales][Auth] Nenhum usuário autenticado encontrado para concluir a gravação.');
+      throw new Error('Sua sessão expirou. Faça login novamente para salvar a venda.');
+    }
+
     try {
-        const docRef = await addDoc(collection(db, section), {
-            ...item,
-            createdAt: new Date()
-        });
-        if (user && section !== 'logs') {
-            await addDoc(collection(db, 'logs'), {
-                action: `Novo item adicionado em ${section}`,
-                details: `ID: ${docRef.id}`,
-                userEmail: user?.auth?.email || 'N/A', // Fallback para email
-                timestamp: new Date()
+      await getIdToken(resolvedAuthUser);
+    } catch (tokenError) {
+      console.error('[Sales][Auth] Falha ao validar autenticação antes da gravação:', tokenError);
+      throw new Error('Não foi possível validar sua sessão. Faça login novamente para concluir a venda.');
+    }
+
+    return resolvedAuthUser;
+  }, [user]);
+
+  const mapCriticalWriteErrorMessage = useCallback((error) => {
+    const rawCode = String(error?.code || '').toLowerCase();
+    const rawMessage = String(error?.message || '').toLowerCase();
+
+    if (rawCode.includes('permission-denied') || rawMessage.includes('permission-denied') || rawMessage.includes('missing or insufficient permissions')) {
+      return 'Você não tem permissão para realizar esta ação nesta loja.';
+    }
+
+    if (rawCode.includes('unauthenticated') || rawCode.includes('auth/') || rawCode.includes('invalid-user-token') || rawCode.includes('user-token-expired')) {
+      return 'Sua sessão expirou. Faça login novamente para continuar.';
+    }
+
+    if (rawCode.includes('failed-precondition') || rawMessage.includes('failed-precondition')) {
+      return 'Não foi possível concluir esta operação agora. Atualize a página e tente novamente.';
+    }
+
+    return error?.message || 'Não foi possível concluir a operação agora. Tente novamente.';
+  }, []);
+
+  const addItem = async (section, item, targetStoreId = null) => {
+    try {
+        const storeId = targetStoreId || resolveActiveStoreForWrite();
+
+        if (section === 'clientes') {
+            await callClientApi('/clientes', { method: 'POST', body: item });
+            return null;
+        }
+
+        const currentAuthUser = await ensureAuthenticatedUserForWrite();
+        const isSalesOrder = section === 'pedidos';
+
+        if (isSalesOrder) {
+            console.log('[Sales][Create] Iniciando tentativa de salvar venda.', {
+                storeId,
+                authUid: currentAuthUser.uid,
+                authEmail: currentAuthUser.email || null
             });
         }
+
+        const payload = {
+            ...item,
+            ...(item?.lojaId ? {} : { lojaId: storeId }),
+            createdAt: new Date()
+         };
+
+        const docRef = await runWithRetry(
+            `addItem:${section}`,
+            () => addDoc(getStoreCollectionRef(storeId, section), payload),
+            { route: currentPage, uid: currentAuthUser?.uid || userId, collection: section }
+        );
+        await waitForPendingWrites(db);
+
+        if (isSalesOrder) {
+            console.log('[Sales][Create] Venda persistida com sucesso no Firestore.', {
+                storeId,
+                docId: docRef.id
+            });
+        }
+
+        if (user && section !== 'logs') {
+            await runWithRetry(
+                'addItem:logs',
+                () => addDoc(getStoreCollectionRef(storeId, 'logs'), {
+                action: `Novo item adicionado em ${section}`,
+                details: `ID: ${docRef.id}`,
+                userEmail: user?.auth?.email || 'N/A',
+                timestamp: new Date()
+                }),
+                { route: currentPage, uid: userId, collection: 'logs' }
+            );
+        }
+
+        return docRef;
     } catch (e) {
+        if (section === 'pedidos') {
+            console.error('[Sales][Create] Erro real ao persistir venda:', e);
+        }
         console.error("Erro ao adicionar documento: ", e);
+        alert(mapCriticalWriteErrorMessage(e));
+        throw e;
     }
   };
 
-  const updateItem = async (section, id, updatedItem) => {
+  const updateItem = async (section, id, updatedItem, targetStoreId = null) => {
     try {
-        const itemDoc = doc(db, section, id);
+        const storeId = targetStoreId || resolveActiveStoreForWrite();
+
+        if (section === 'clientes') {
+            await callClientApi(`/clientes/${id}`, { method: 'PUT', body: updatedItem });
+            return;
+        }
+
+        const itemDoc = getStoreDocRef(storeId, section, id);
         if (user && section !== 'logs') {
              const docSnap = await getDoc(itemDoc);
              if (docSnap.exists()) {
                 const oldData = docSnap.data();
                 const changes = {};
                 for (const key in updatedItem) {
-                    if (Object.prototype.hasOwnProperty.call(updatedItem, key) && 
+
+                    if (Object.prototype.hasOwnProperty.call(updatedItem, key) &&
                         JSON.stringify(oldData[key]) !== JSON.stringify(updatedItem[key])) {
                         changes[key] = { old: oldData[key], new: updatedItem[key] };
                     }
                 }
                 if (Object.keys(changes).length > 0) {
-                     await addDoc(collection(db, 'logs'), {
+                     await runWithRetry(
+                        'updateItem:logs',
+                        () => addDoc(getStoreCollectionRef(storeId, 'logs'), {
                         action: `Item atualizado em ${section}`,
                         details: `ID ${id} com alterações: ${JSON.stringify(changes)}`,
-                        userEmail: user?.auth?.email || 'N/A', // Fallback para email
+                        userEmail: user?.auth?.email || 'N/A',
                         timestamp: new Date()
-                    });
+                        }),
+                        { route: currentPage, uid: userId, collection: 'logs' }
+                    );
                 }
              }
         }
-        await updateDoc(itemDoc, updatedItem);
+        await runWithRetry(
+            `updateItem:${section}`,
+            () => updateDoc(itemDoc, updatedItem),
+            { route: currentPage, uid: userId, collection: section }
+        );
     } catch (e) {
         console.error("Erro ao atualizar documento: ", e);
+        alert(mapCriticalWriteErrorMessage(e));
+        throw e;
     }
   };
 
-  const deleteItem = async (section, id) => {
+  const deleteItem = async (section, id, targetStoreId = null) => {
     try {
-        await deleteDoc(doc(db, section, id));
+        const storeId = targetStoreId || resolveActiveStoreForWrite();
+        await runWithRetry(
+            `deleteItem:${section}`,
+            () => deleteDoc(getStoreDocRef(storeId, section, id)),
+            { route: currentPage, uid: userId, collection: section }
+        );
         if (user && section !== 'logs') {
-            await addDoc(collection(db, 'logs'), {
+            await runWithRetry(
+                'deleteItem:logs',
+                () => addDoc(getStoreCollectionRef(storeId, 'logs'), {
                 action: `Item deletado de ${section}`,
                 details: `ID: ${id}`,
-                userEmail: user?.auth?.email || 'N/A', // Fallback para email
+                userEmail: user?.auth?.email || 'N/A',
                 timestamp: new Date()
-            });
+                }),
+                { route: currentPage, uid: userId, collection: 'logs' }
+            );
         }
     } catch (e) {
         console.error("Erro ao deletar documento: ", e);
+        alert(mapCriticalWriteErrorMessage(e));
+        throw e;
     }
   };
+
+  useEffect(() => {
+    const handleOffline = () => setPedidosConnectivityStatus('offline');
+    const handleOnline = () => setPedidosConnectivityStatus((prev) => (prev === 'offline' ? 'reconnecting' : prev));
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
   
   useEffect(() => {
     const scripts = [
@@ -2415,15 +3634,73 @@ function App() {
   
 	useEffect(() => {
 	  const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-		if (authUser) {
-		  try {
-			const userDocRef = doc(db, "users", authUser.uid);
-			const userDoc = await getDoc(userDocRef);
-			const userData = { 
-			  auth: authUser, 
-			  role: userDoc.exists() ? userDoc.data().role || 'Atendente' : 'Atendente' 
-			};
-			setUser(userData);
+                        if (authUser) {
+                          try {
+                                        const userDocRef = doc(db, "users", authUser.uid);
+                                        const userDoc = await getDoc(userDocRef);
+
+                                        let profile;
+
+                                        if (userDoc.exists()) {
+                                          profile = userDoc.data() || {};
+                                        } else {
+                                          let initialRole = ROLE_CLIENT;
+
+                                          try {
+                                            const anyUserSnap = await getDocs(query(collection(db, "users"), limit(1)));
+                                            if (anyUserSnap.empty) {
+                                              initialRole = ROLE_OWNER;
+                                            }
+                                          } catch (roleCheckError) {
+                                            console.error("Erro ao verificar usuários existentes:", roleCheckError);
+                                            initialRole = ROLE_OWNER;
+                                          }
+
+                                          profile = {
+                                            email: authUser.email || "",
+                                            nome: authUser.displayName || authUser.email || "Usuário",
+                                            role: initialRole,
+                                            lojaId: null,
+                                            lojaIds: [],
+                                          };
+
+                                          await setDoc(userDocRef, profile, { merge: true });
+                                        }
+
+                                        const role = normalizeRole(profile.role);
+                                        const lojaIds = extractStoreIdsFromProfile(profile);
+                                        const permissionsDefaults = getDefaultPermissionsForRole(role);
+                                        const customProfileRef = doc(db, "customProfiles", authUser.uid);
+                                        const customProfileSnap = await getDoc(customProfileRef);
+                                        const customProfileData = customProfileSnap.exists() ? customProfileSnap.data() : null;
+                                        const customPermissions = customProfileData?.permissions
+                                          ? sanitizePermissions(customProfileData.permissions, role)
+                                          : null;
+                                        const permissions = customPermissions || permissionsDefaults;
+
+                                        if (!customProfileSnap.exists()) {
+                                          await setDoc(customProfileRef, {
+                                            uid: authUser.uid,
+                                            role,
+                                            permissions: permissionsDefaults,
+                                          }, { merge: true });
+                                        }
+                                        const userData = {
+                                          auth: authUser,
+                                          role,
+                                          lojaIds,
+                                          lojaId: lojaIds[0] || null,
+                                          canAccessAllStores: role === ROLE_OWNER && lojaIds.length === 0,
+                                          permissions,
+                                          customPermissions,
+                                          hasCustomProfile: Boolean(customProfileData),
+                                        };
+                                        setUser(userData);
+			if (sessionStorage.getItem(GOOGLE_AUTH_FLOW_KEY) === GOOGLE_AUTH_FLOW_REDIRECT) {
+			  setShowLogin(false);
+			  setCurrentPage('dashboard');
+			  sessionStorage.removeItem(GOOGLE_AUTH_FLOW_KEY);
+			}
 			// Tenta inicializar/resumir o AudioManager APÓS o login
 			if (localStorage.getItem("audioUnlocked") === "true") {
 			  audioManager.init().catch((e) => {
@@ -2433,22 +3710,148 @@ function App() {
 
 		  } catch (error) {
 			console.error("Erro ao carregar dados do usuário:", error);
+      setLoginError('Não foi possível carregar seus dados de acesso. Tente sair e entrar novamente.');
+      setShowLogin(true);
+      setCurrentPage('pagina-inicial');
 		  }
-		} else {
-		  setUser(null);
-		  setCurrentPage('pagina-inicial'); 
+                } else {
+                  setUser(null);
+                  storeCollectionsDataRef.current = {};
+                  clientesDataRef.current = [];
+                  setAvailableStores([]);
+                  setStoreInfoMap({});
+                  setSelectedStoreId(null);
+				  setShowStoreManager(false);
+                  setIsCreatingStore(false);
+                  setCurrentPage('pagina-inicial');
            // Não remove mais 'audioUnlocked' do localStorage no logout
            stopAlarm(); // Garante que o alarme pare no logout
-		}
-		setAuthLoading(false);
-	  });
+                }
+                setAuthLoading(false);
+          });
 
 	  return () => unsubscribe();
-	}, [stopAlarm, setCurrentPage]); 
+        }, [stopAlarm, setCurrentPage]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadStoresForUser = async () => {
+            if (!user) {
+                if (isMounted) {
+                    setAvailableStores([]);
+                    setStoreInfoMap({});
+                    storeCollectionsDataRef.current = {};
+                    setSelectedStoreId(null);
+                }
+                return;
+            }
+
+            try {
+                let storeIds = [];
+
+                if (user.role === ROLE_OWNER && user.canAccessAllStores) {
+                    const snapshot = await getDocs(collection(db, 'lojas'));
+                    storeIds = snapshot.docs.map((docSnap) => docSnap.id);
+                } else {
+                    storeIds = user.lojaIds && user.lojaIds.length ? user.lojaIds : (user.lojaId ? [user.lojaId] : []);
+                }
+
+                if (!isMounted) return;
+
+                setAvailableStores(storeIds);
+
+                setSelectedStoreId((prevSelected) => {
+                    if (user.role === ROLE_OWNER) {
+                        if (prevSelected === STORE_ALL_KEY) return STORE_ALL_KEY;
+                        if (prevSelected && storeIds.includes(prevSelected)) return prevSelected;
+                        return STORE_ALL_KEY;
+                    }
+
+                    const preferredStoreId = user.lojaId && storeIds.includes(user.lojaId)
+                        ? user.lojaId
+                        : (storeIds.length ? storeIds[0] : null);
+
+                    if (prevSelected && storeIds.includes(prevSelected)) return prevSelected;
+                    return preferredStoreId;
+                });
+            } catch (error) {
+                console.error('Erro ao carregar lojas do usuário:', error);
+                if (isMounted) {
+                    setAvailableStores([]);
+                }
+            }
+        };
+
+        loadStoresForUser();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [user, setSelectedStoreId]);
+
+    useEffect(() => {
+        let active = true;
+
+        const loadStoreInfos = async () => {
+            if (!availableStores.length) {
+                if (active) {
+                    setStoreInfoMap({});
+                }
+                return;
+            }
+
+            try {
+                const entries = await Promise.all(availableStores.map(async (storeId) => {
+                    try {
+                        const empresaDocRef = doc(db, 'lojas', storeId, 'meuEspaco', 'empresa');
+                        const empresaDocSnap = await getDoc(empresaDocRef);
+                        if (empresaDocSnap.exists()) {
+                            return [storeId, empresaDocSnap.data()];
+                        }
+
+                        const pontoDocSnap = await getDoc(doc(db, 'lojas', storeId, 'meuEspaco', 'ponto'));
+                        if (pontoDocSnap.exists()) {
+                            return [storeId, pontoDocSnap.data()];
+                        }
+
+                        const fallbackDocSnap = await getDoc(doc(db, 'lojas', storeId));
+                        if (fallbackDocSnap.exists()) {
+                            return [storeId, fallbackDocSnap.data()];
+                        }
+                    } catch (error) {
+                        console.error(`Erro ao buscar info da loja ${storeId}:`, error);
+                    }
+                    return [storeId, {}];
+                }));
+
+                if (active) {
+                    setStoreInfoMap(Object.fromEntries(entries));
+                }
+            } catch (error) {
+                console.error('Erro geral ao buscar informações das lojas:', error);
+                if (active) {
+                    setStoreInfoMap({});
+                }
+            }
+        };
+
+        loadStoreInfos();
+
+        return () => {
+            active = false;
+        };
+    }, [availableStores]);
 
     const handleLogin = async () => {
         setLoginError('');
         try {
+            try {
+                await setPersistence(auth, browserLocalPersistence);
+            } catch (persistError) {
+                console.warn('[Auth][Email] local persistence failed, falling back to session:', persistError?.code || persistError);
+                await setPersistence(auth, browserSessionPersistence);
+            }
             await signInWithEmailAndPassword(auth, email, password);
             setShowLogin(false);
             setEmail('');
@@ -2468,30 +3871,86 @@ function App() {
     const handleGoogleSignIn = async () => {
         setLoginError('');
         const provider = new GoogleAuthProvider();
+        const isSafari = isSafariBrowser();
+
+        console.log('[Auth][Google] Browser detect:', isSafari ? 'Safari' : 'Non-Safari');
+
         try {
-            const result = await signInWithPopup(auth, provider);
-            const googleUser = result.user;
-
-            const q = query(collection(db, "users"), where("email", "==", googleUser.email));
-            const querySnapshot = await getDocs(q);
-
-            if (querySnapshot.empty) {
-                await signOut(auth);
-                setLoginError("Usuário não autorizado. Solicite acesso ao administrador.");
-            } else {
-                setShowLogin(false);
-                setCurrentPage('dashboard');
-                 // O onAuthStateChanged cuidará de inicializar o AudioManager se necessário
+            try {
+                await setPersistence(auth, browserLocalPersistence);
+            } catch (persistError) {
+                console.warn('[Auth][Google] local persistence failed, falling back to session:', persistError?.code || persistError);
+                await setPersistence(auth, browserSessionPersistence);
             }
+
+            if (isSafari) {
+                console.log('[Auth][Google] Method: redirect');
+                sessionStorage.setItem(GOOGLE_AUTH_FLOW_KEY, GOOGLE_AUTH_FLOW_REDIRECT);
+                await signInWithRedirect(auth, provider);
+                return;
+            }
+
+            console.log('[Auth][Google] Method: popup');
+            sessionStorage.setItem(GOOGLE_AUTH_FLOW_KEY, GOOGLE_AUTH_FLOW_POPUP);
+            await signInWithPopup(auth, provider);
+            sessionStorage.removeItem(GOOGLE_AUTH_FLOW_KEY);
+            setShowLogin(false);
+            setCurrentPage('dashboard');
         } catch (error) {
-            console.error("Erro no login com Google:", error);
-            if (error.code === 'auth/popup-closed-by-user') {
-                // Não mostra erro se o usuário simplesmente fechou
-            } else if (error.code !== 'auth/cancelled-popup-request') { // Ignora erro comum de popup fechado rapidamente
-                 setLoginError('Ocorreu um erro ao entrar com Google.');
+            const fallbackToRedirect = error?.code === 'auth/popup-blocked' || error?.code === 'auth/cancelled-popup-request';
+
+            if (fallbackToRedirect) {
+                try {
+                    console.log('[Auth][Google] Method fallback: redirect');
+                    sessionStorage.setItem(GOOGLE_AUTH_FLOW_KEY, GOOGLE_AUTH_FLOW_REDIRECT);
+                    await signInWithRedirect(auth, provider);
+                    return;
+                } catch (redirectError) {
+                    console.error('Erro no fallback de redirect do Google:', redirectError?.code || redirectError);
+                }
             }
+            console.error("Erro no login com Google:", error?.code || error);
+            setLoginError('Ocorreu um erro ao entrar com Google.');
         }
     };
+
+    useEffect(() => {
+        let active = true;
+
+        const validateGoogleRedirectResult = async () => {
+            try {
+                const result = await getRedirectResult(auth);
+                const googleUser = result?.user;
+
+                if (result) {
+                    console.log('[Auth][Google] getRedirectResult: success');
+                } else {
+                    console.log('[Auth][Google] getRedirectResult: no pending redirect result');
+                }
+
+                if (!googleUser?.email) {
+                    return;
+                }
+                sessionStorage.removeItem(GOOGLE_AUTH_FLOW_KEY);
+
+                if (active) {
+                    setShowLogin(false);
+                    setCurrentPage('dashboard');
+                }
+            } catch (error) {
+                console.error("Erro ao processar retorno do login com Google:", error?.code || error);
+                if (active) {
+                    setLoginError('Ocorreu um erro ao entrar com Google.');
+                }
+            }
+        };
+
+        validateGoogleRedirectResult();
+
+        return () => {
+            active = false;
+        };
+    }, []);
     
     const handlePasswordReset = async () => {
         if (!passwordResetEmail) {
@@ -2519,21 +3978,47 @@ function App() {
       // O useEffect do onAuthStateChanged agora cuida de resetar a página
   };
 
-  const allMenuItems = [ 
-    { id: 'pagina-inicial', label: 'Página Inicial', icon: Home, roles: ['admin', 'Atendente', null] }, 
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'Atendente'] }, 
-    { id: 'clientes', label: 'Clientes', icon: Users, roles: ['admin', 'Atendente'] }, 
-    { id: 'pedidos', label: 'Pedidos', icon: ShoppingCart, roles: ['admin', 'Atendente'] }, 
-    { id: 'produtos', label: 'Produtos', icon: Package, roles: ['admin', 'Atendente'] }, 
-    { id: 'agenda', label: 'Agenda', icon: Calendar, roles: ['admin', 'Atendente'] },
-    { id: 'fornecedores', label: 'Fornecedores/Estoque', icon: Truck, roles: ['admin', 'Atendente'] },
-    { id: 'relatorios', label: 'Relatórios', icon: BarChart3, roles: ['admin', 'Atendente'] },
-    { id: 'meu-espaco', label: 'Meu Espaço', icon: Clock, roles: ['admin', 'Atendente'] },
-    { id: 'financeiro', label: 'Financeiro', icon: DollarSign, roles: ['admin'] },
-    { id: 'configuracoes', label: 'Configurações', icon: Settings, roles: ['admin'] }, 
+  const allMenuItems = [
+    { id: 'pagina-inicial', permission: 'pagina-inicial', label: 'Página Inicial', icon: Home, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_CLIENT, null] },
+    { id: 'dashboard', permission: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'clientes', permission: 'clientes', label: 'Clientes', icon: Users, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
+    { id: 'pedidos', permission: 'pedidos', label: 'Pedidos', icon: ShoppingCart, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
+    { id: 'produtos', permission: 'produtos', label: 'Produtos', icon: Package, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'entre-lojas', permission: 'entre-lojas', label: 'Entre Lojas', icon: ArrowLeftRight, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
+    { id: 'agenda', permission: 'agenda', label: 'Agenda', icon: Calendar, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
+    { id: 'fornecedores', permission: 'fornecedores', label: 'Fornecedores/Estoque', icon: Truck, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'relatorios', permission: 'relatorios', label: 'Relatórios', icon: BarChart3, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'meu-espaco', permission: 'meu-espaco', label: 'Meu Espaço', icon: Clock, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_CLIENT] },
+    { id: 'financeiro', permission: 'financeiro', label: 'Financeiro', icon: DollarSign, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'configuracoes', permission: 'configuracoes', label: 'Configurações', icon: Settings, roles: [ROLE_OWNER, ROLE_MANAGER] },
   ];
   const currentUserRole = user ? user.role : null;
-  const menuItems = allMenuItems.filter(item => item.roles.includes(currentUserRole));
+  const menuItems = useMemo(() => {
+    if (!user) {
+      return allMenuItems.filter(item => item.roles.includes(null));
+    }
+    if (currentUserRole === ROLE_OWNER && !user?.hasCustomProfile) {
+      return allMenuItems;
+    }
+
+    const permissionKeyFor = (item) => item.permission || item.id;
+    const customPermissions = user.customPermissions;
+    const normalizedPermissions = sanitizePermissions(user.permissions, currentUserRole);
+
+    return allMenuItems.filter(item => {
+      const permissionKey = permissionKeyFor(item);
+
+      if (customPermissions) {
+        return Boolean(customPermissions[permissionKey]);
+      }
+
+      if (item.roles?.includes(currentUserRole)) {
+        return true;
+      }
+
+      return Boolean(normalizedPermissions[permissionKey]);
+    });
+  }, [allMenuItems, currentUserRole, user]);
   
   const ImageSlider = ({ images, onImageClick }) => { 
     const [currentIndex, setCurrentIndex] = useState(0); 
@@ -2565,11 +4050,29 @@ function App() {
             <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Página Inicial</h1>
             <p className="text-gray-600 mt-1">Seja bem-vindo à Ana Guimarães Doceria!</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-              <a href="/cardapio" target="_blank" rel="noopener noreferrer" className="font-medium rounded-xl transition-all flex items-center gap-2 justify-center bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 px-6 py-3 w-full">
-                  <BookOpen className="w-4 h-4" /> Cardápio Delivery
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+                <a
+                    href={`${process.env.PUBLIC_URL}/cardapio-matriz`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium rounded-xl transition-all flex items-center gap-2 justify-center bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 px-6 py-3 w-full"
+              >
+                  <BookOpen className="w-4 h-4" /> Cardápio Delivery Loja Matriz
               </a>
-              <a href="/cardapio-festa" target="_blank" rel="noopener noreferrer" className="font-medium rounded-xl transition-all flex items-center gap-2 justify-center bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 px-6 py-3 w-full">
+                <a
+                    href={`${process.env.PUBLIC_URL}/cardapio-garavelo`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium rounded-xl transition-all flex items-center gap-2 justify-center bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 px-6 py-3 w-full"
+              >
+                  <Store className="w-4 h-4" /> Cardápio Delivery Loja Garavelo
+              </a>
+                <a
+                    href={`${process.env.PUBLIC_URL}/cardapio-festa`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium rounded-xl transition-all flex items-center gap-2 justify-center bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 px-6 py-3 w-full"
+              >
                   <Gift className="w-4 h-4" /> Cardápio de Festas
               </a>
           </div>
@@ -2611,8 +4114,780 @@ function App() {
     );
   };
 
+  const MeuEspaco = ({ user, resolveActiveStoreForWrite, currentStoreIdForDisplay }) => {
+    const now = new Date();
+    const initialMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const [selectedMonth, setSelectedMonth] = useState(initialMonth);
+    const [companyInfo, setCompanyInfo] = useState({
+      nome: '',
+      endereco: '',
+      cnpj: '',
+      atividade: '',
+      horarioTrabalho: '',
+      competencia: `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`,
+      gestorResponsavel: ''
+    });
+    const [companyLoading, setCompanyLoading] = useState(false);
+    const [companySaving, setCompanySaving] = useState(false);
+    const [records, setRecords] = useState([]);
+    const [recordsLoading, setRecordsLoading] = useState(false);
+    const [registerLoading, setRegisterLoading] = useState(false);
+    const [registerMessage, setRegisterMessage] = useState(null);
+    const [selectedEmployee, setSelectedEmployee] = useState('self');
+    const [employees, setEmployees] = useState([]);
+    const [employeesLoading, setEmployeesLoading] = useState(false);
+    const [editingRecord, setEditingRecord] = useState(null);
+    const [editForm, setEditForm] = useState({ horaEntrada: '', horaSaida: '', horaAlmocoSaida: '', horaAlmocoRetorno: '', irregularidade: '', qtde: '', justificativa: '' });
+    const [savingEdit, setSavingEdit] = useState(false);
+    const [todayRecordData, setTodayRecordData] = useState(null);
+
+    const isManager = user ? [ROLE_OWNER, ROLE_MANAGER].includes(user.role) : false;
+    const userId = user?.auth?.uid || '';
+    const userName = user?.auth?.displayName || user?.auth?.email || 'Gestor';
+
+    const competenciaLabel = useMemo(() => {
+      const [year, month] = selectedMonth.split('-');
+      return `${month}/${year}`;
+    }, [selectedMonth]);
+
+    useEffect(() => {
+      if (isManager) {
+        setSelectedEmployee('all');
+      } else if (userId) {
+        setSelectedEmployee(userId);
+      }
+    }, [isManager, userId]);
+
+    useEffect(() => {
+      setCompanyInfo((prev) => ({ ...prev, competencia: competenciaLabel }));
+    }, [competenciaLabel]);
+
+    useEffect(() => {
+      if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) {
+        setCompanyInfo((prev) => ({ ...prev, nome: '', endereco: '', cnpj: '', atividade: '', horarioTrabalho: '', gestorResponsavel: '' }));
+        return;
+      }
+
+      setCompanyLoading(true);
+      const companyDoc = doc(db, 'lojas', currentStoreIdForDisplay, 'meuEspaco', 'empresa');
+      const unsubscribe = onSnapshot(companyDoc, (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          setCompanyInfo((prev) => ({
+            ...prev,
+            ...data,
+            competencia: competenciaLabel,
+          }));
+        } else {
+          setCompanyInfo((prev) => ({ ...prev, nome: '', endereco: '', cnpj: '', atividade: '', horarioTrabalho: '', gestorResponsavel: '' }));
+        }
+        setCompanyLoading(false);
+      }, (error) => {
+        console.error('Erro ao carregar dados da empresa', error);
+        setCompanyLoading(false);
+      }, {
+        __listenerOptions: true,
+        operation: 'meu-espaco-company',
+        route: 'meu-espaco',
+        uid: userId
+      });
+
+      return () => unsubscribe();
+    }, [currentStoreIdForDisplay, competenciaLabel]);
+
+    useEffect(() => {
+      if (!isManager || !currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) {
+        setEmployees([]);
+        setEmployeesLoading(false);
+        return;
+      }
+
+      setEmployeesLoading(true);
+      const fetchEmployees = async () => {
+        try {
+          const snap = await getDocs(collection(db, 'users'));
+          const list = snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+          const filtered = list.filter(item => {
+            const lojas = Array.isArray(item.lojaIds) ? item.lojaIds : (item.lojaId ? [item.lojaId] : []);
+            return lojas.includes(currentStoreIdForDisplay);
+          });
+          setEmployees(filtered);
+        } catch (error) {
+          console.error('Erro ao buscar colaboradores', error);
+        } finally {
+          setEmployeesLoading(false);
+        }
+      };
+
+      fetchEmployees();
+    }, [isManager, currentStoreIdForDisplay]);
+
+    useEffect(() => {
+      if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) {
+        setRecords([]);
+        return;
+      }
+
+      setRecordsLoading(true);
+      const pontosRef = collection(db, 'lojas', currentStoreIdForDisplay, 'pontos');
+      const pontosQuery = query(pontosRef, where('competencia', '==', selectedMonth));
+      const unsubscribe = onSnapshot(pontosQuery, (snapshot) => {
+        const data = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+        setRecords(data);
+        setRecordsLoading(false);
+      }, (error) => {
+        console.error('Erro ao carregar registros de ponto', error);
+        setRecords([]);
+        setRecordsLoading(false);
+      }, {
+        __listenerOptions: true,
+        operation: 'meu-espaco-pontos',
+        route: 'meu-espaco',
+        uid: userId
+      });
+
+      return () => unsubscribe();
+    }, [currentStoreIdForDisplay, selectedMonth]);
+
+    useEffect(() => {
+      if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY || !userId) {
+        setTodayRecordData(null);
+        return;
+      }
+      const today = new Date();
+      const dayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const competenciaKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+      const pontosRef = collection(db, 'lojas', currentStoreIdForDisplay, 'pontos');
+      const todayQuery = query(
+        pontosRef,
+        where('funcionarioId', '==', userId),
+        where('dia', '==', dayKey),
+        where('competencia', '==', competenciaKey),
+        limit(1)
+      );
+      const unsubscribe = onSnapshot(todayQuery, (snapshot) => {
+        if (!snapshot.empty) {
+          setTodayRecordData({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+        } else {
+          setTodayRecordData(null);
+        }
+      }, () => setTodayRecordData(null), {
+        __listenerOptions: true,
+        operation: 'meu-espaco-today',
+        route: 'meu-espaco',
+        uid: userId
+      });
+      return () => unsubscribe();
+    }, [currentStoreIdForDisplay, userId]);
+
+    const getDayInfo = (record) => {
+      if (record.dia) {
+        const [year, month, day] = record.dia.split('-').map(Number);
+        if (year && month && day) {
+          return new Date(year, month - 1, day);
+        }
+      }
+      if (record.data && typeof record.data.toDate === 'function') {
+        return record.data.toDate();
+      }
+      return null;
+    };
+
+    const formatTime = (value) => value || '--:--';
+
+    const formatMinutesToLabel = (minutes) => {
+      const hrs = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      return `${hrs}:${String(mins).padStart(2, '0')}`;
+    };
+
+    const calculateWorkSummary = (registro) => {
+      if (!registro?.horaEntrada || !registro?.horaSaida) {
+        return { workedLabel: '-', irregularidade: '-', workedMinutes: null };
+      }
+
+      const parseTime = (time) => {
+        const [hours, minutes] = (time || '').split(':').map(Number);
+        if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+        return hours * 60 + minutes;
+      };
+
+      const entrada = parseTime(registro.horaEntrada);
+      const saida = parseTime(registro.horaSaida);
+
+      if (entrada === null || saida === null) {
+        return { workedLabel: '-', irregularidade: '-', workedMinutes: null };
+      }
+
+      let workedMinutes = saida - entrada;
+
+      const almocoSaida = parseTime(registro.horaAlmocoSaida);
+      const almocoRetorno = parseTime(registro.horaAlmocoRetorno);
+      if (almocoSaida !== null && almocoRetorno !== null) {
+        workedMinutes -= almocoRetorno - almocoSaida;
+      }
+
+      if (Number.isNaN(workedMinutes) || workedMinutes <= 0) {
+        return { workedLabel: '-', irregularidade: '-', workedMinutes: null };
+      }
+
+      const workedLabel = formatMinutesToLabel(workedMinutes);
+
+      const date = getDayInfo(registro);
+      const dayOfWeek = date ? date.getDay() : null; // 0 = domingo
+      const expectedMinutes = dayOfWeek !== null && dayOfWeek >= 1 && dayOfWeek <= 5 ? 8 * 60 : 0;
+
+      const diff = workedMinutes - expectedMinutes;
+      const irregularidade = dayOfWeek === null
+        ? '-'
+        : diff === 0
+          ? '0:00'
+          : `${diff > 0 ? '+' : '-'}${formatMinutesToLabel(Math.abs(diff))}`;
+
+      return { workedLabel, irregularidade, workedMinutes };
+    };
+
+    const getWorkedTime = (registro) => calculateWorkSummary(registro).workedLabel;
+
+    const getRecordDateTime = (record) => {
+      if (record?.data && typeof record.data.toDate === 'function') {
+        return record.data.toDate();
+      }
+      const baseDate = getDayInfo(record);
+      if (!baseDate) return null;
+      const timeString = record.horaEntrada || record.horaSaida || record.horaAlmocoRetorno || record.horaAlmocoSaida;
+      if (timeString) {
+        const [hours, minutes] = timeString.split(':').map(Number);
+        if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+          return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hours, minutes);
+        }
+      }
+      return baseDate;
+    };
+
+    const filteredRecords = useMemo(() => {
+      const sorted = [...records].sort((a, b) => {
+        const dateA = getRecordDateTime(a);
+        const dateB = getRecordDateTime(b);
+        if (dateA && dateB) {
+          const diff = dateA - dateB;
+          if (diff !== 0) return diff;
+        }
+        if (!dateA && dateB) return -1;
+        if (dateA && !dateB) return 1;
+        const createdA = a?.createdAt && typeof a.createdAt.toDate === 'function' ? a.createdAt.toDate() : null;
+        const createdB = b?.createdAt && typeof b.createdAt.toDate === 'function' ? b.createdAt.toDate() : null;
+        if (createdA && createdB) return createdA - createdB;
+        if (!createdA && createdB) return -1;
+        if (createdA && !createdB) return 1;
+        return 0;
+      });
+      if (isManager) {
+        if (selectedEmployee === 'all') return sorted;
+        return sorted.filter(item => item.funcionarioId === selectedEmployee);
+      }
+      return sorted.filter(item => item.funcionarioId === userId);
+    }, [records, isManager, selectedEmployee, userId]);
+
+    const todayRecord = todayRecordData;
+
+    const requestLocation = () => new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Seu navegador não suporta geolocalização.'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    });
+
+    const getAddressFromCoordinates = async ({ latitude, longitude }) => {
+      if (typeof latitude !== 'number' || typeof longitude !== 'number') return '';
+      const params = new URLSearchParams({
+        format: 'jsonv2',
+        lat: String(latitude),
+        lon: String(longitude),
+        'accept-language': 'pt-BR'
+      });
+
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
+          headers: {
+            'Accept-Language': 'pt-BR'
+          }
+        });
+        if (!response.ok) {
+          throw new Error('Falha ao buscar endereço.');
+        }
+        const data = await response.json();
+        if (data?.display_name) return data.display_name;
+        if (data?.address) {
+          const { road, neighbourhood, suburb, city, town, state, postcode } = data.address;
+          const parts = [road, neighbourhood || suburb, city || town, state, postcode];
+          const filtered = parts.filter(Boolean);
+          if (filtered.length) {
+            return filtered.join(', ');
+          }
+        }
+        return '';
+      } catch (error) {
+        console.error('Erro ao obter endereço da localização', error);
+        return '';
+      }
+    };
+
+    const formatTimeString = (dateObj) => dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    const handleRegisterPoint = async (type) => {
+      try {
+        setRegisterLoading(true);
+        setRegisterMessage(null);
+        const position = await requestLocation();
+        const coords = {
+          latitude: Number(position.coords.latitude.toFixed(6)),
+          longitude: Number(position.coords.longitude.toFixed(6)),
+          capturedAt: new Date().toISOString()
+        };
+        const capturedAddress = await getAddressFromCoordinates(coords);
+        const storeId = resolveActiveStoreForWrite();
+        const pontosRef = collection(db, 'lojas', storeId, 'pontos');
+        const currentDate = new Date();
+        const dayKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+        const competenciaKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+        if (selectedMonth !== competenciaKey) {
+          setSelectedMonth(competenciaKey);
+        }
+        const existingQuery = query(
+          pontosRef,
+          where('funcionarioId', '==', userId),
+          where('dia', '==', dayKey),
+          where('competencia', '==', competenciaKey),
+          limit(1)
+        );
+        const snapshot = await getDocs(existingQuery);
+        const nowTime = formatTimeString(new Date());
+        const payload = {
+          entrada: {
+            horaEntrada: nowTime,
+            localizacaoEntrada: coords,
+            localizacaoEntradaEndereco: capturedAddress || ''
+          },
+          almoco_inicio: {
+            horaAlmocoSaida: nowTime
+          },
+          almoco_fim: {
+            horaAlmocoRetorno: nowTime
+          },
+          saida: {
+            horaSaida: nowTime,
+            localizacaoSaida: coords,
+            localizacaoSaidaEndereco: capturedAddress || ''
+          }
+        }[type];
+
+        if (!payload) {
+          throw new Error('Tipo de registro inválido.');
+        }
+
+        const baseData = {
+          funcionarioId: userId,
+          funcionarioNome: userName,
+          dia: dayKey,
+          data: Timestamp.now(),
+          horaEntrada: '',
+          horaSaida: '',
+          horaAlmocoSaida: '',
+          horaAlmocoRetorno: '',
+          localizacaoEntrada: null,
+          localizacaoEntradaEndereco: '',
+          localizacaoSaida: null,
+          localizacaoSaidaEndereco: '',
+          irregularidade: '',
+          qtde: '',
+          justificativa: '',
+          competencia: competenciaKey,
+          empresaId: currentStoreIdForDisplay,
+          historicoAlteracoes: [],
+          createdAt: serverTimestamp()
+        };
+
+        if (snapshot.empty) {
+          const recordToSave = { ...baseData, ...payload };
+          const summary = calculateWorkSummary(recordToSave);
+          await addDoc(pontosRef, {
+            ...recordToSave,
+            irregularidade: summary.irregularidade !== '-' ? summary.irregularidade : '',
+            qtde: summary.workedLabel !== '-' ? summary.workedLabel : ''
+          });
+        } else {
+          const existingData = snapshot.docs[0].data();
+          const docRef = snapshot.docs[0].ref;
+          const updatedRecord = { ...existingData, ...payload };
+          const summary = calculateWorkSummary(updatedRecord);
+          await updateDoc(docRef, {
+            ...payload,
+            irregularidade: summary.irregularidade !== '-' ? summary.irregularidade : '',
+            qtde: summary.workedLabel !== '-' ? summary.workedLabel : '',
+            updatedAt: serverTimestamp()
+          });
+        }
+        const actionMap = {
+          entrada: 'entrada',
+          almoco_inicio: 'início do almoço',
+          almoco_fim: 'retorno do almoço',
+          saida: 'saída'
+        };
+        setRegisterMessage({ type: 'success', text: `Ponto de ${actionMap[type]} registrado com sucesso!` });
+      } catch (error) {
+        console.error('Erro ao registrar ponto', error);
+        setRegisterMessage({ type: 'error', text: error.message || 'Não foi possível registrar o ponto.' });
+      } finally {
+        setRegisterLoading(false);
+      }
+    };
+
+    const handleSaveCompanyInfo = async (event) => {
+      event.preventDefault();
+      if (!isManager) return;
+      if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) {
+        alert('Selecione uma loja para salvar as informações.');
+        return;
+      }
+
+      try {
+        setCompanySaving(true);
+        const storeId = resolveActiveStoreForWrite();
+        const companyDoc = doc(db, 'lojas', storeId, 'meuEspaco', 'empresa');
+        await setDoc(companyDoc, {
+          nome: companyInfo.nome || '',
+          endereco: companyInfo.endereco || '',
+          cnpj: companyInfo.cnpj || '',
+          atividade: companyInfo.atividade || '',
+          horarioTrabalho: companyInfo.horarioTrabalho || '',
+          competencia: competenciaLabel,
+          gestorResponsavel: companyInfo.gestorResponsavel || userName,
+          gestorId: userId,
+          atualizadoEm: serverTimestamp()
+        }, { merge: true });
+        setRegisterMessage({ type: 'success', text: 'Informações da empresa salvas com sucesso!' });
+      } catch (error) {
+        console.error('Erro ao salvar dados da empresa', error);
+        setRegisterMessage({ type: 'error', text: 'Não foi possível salvar as informações da empresa.' });
+      } finally {
+        setCompanySaving(false);
+      }
+    };
+
+    const openEditModal = (record) => {
+      const summary = calculateWorkSummary(record);
+      setEditingRecord(record);
+      setEditForm({
+        horaEntrada: record.horaEntrada || '',
+        horaSaida: record.horaSaida || '',
+        horaAlmocoSaida: record.horaAlmocoSaida || '',
+        horaAlmocoRetorno: record.horaAlmocoRetorno || '',
+        irregularidade: summary.irregularidade !== '-' ? summary.irregularidade : '',
+        qtde: summary.workedLabel !== '-' ? summary.workedLabel : '',
+        justificativa: record.justificativa || ''
+      });
+    };
+
+    const handleSaveEdit = async () => {
+      if (!editingRecord) return;
+      try {
+        setSavingEdit(true);
+        const storeId = resolveActiveStoreForWrite();
+        const recordRef = doc(db, 'lojas', storeId, 'pontos', editingRecord.id);
+        const nowDate = new Date();
+        const summary = calculateWorkSummary({ ...editingRecord, ...editForm });
+        await updateDoc(recordRef, {
+          horaEntrada: editForm.horaEntrada || '',
+          horaSaida: editForm.horaSaida || '',
+          horaAlmocoSaida: editForm.horaAlmocoSaida || '',
+          horaAlmocoRetorno: editForm.horaAlmocoRetorno || '',
+          irregularidade: summary.irregularidade !== '-' ? summary.irregularidade : '',
+          qtde: summary.workedLabel !== '-' ? summary.workedLabel : '',
+          justificativa: editForm.justificativa || '',
+          gestorId: userId,
+          dataAjuste: serverTimestamp(),
+          historicoAlteracoes: arrayUnion({
+            data: nowDate.toISOString(),
+            gestor: userName,
+            alteracoes: { ...editForm, irregularidade: summary.irregularidade, qtde: summary.workedLabel }
+          })
+        });
+        setRegisterMessage({ type: 'success', text: 'Registro de ponto atualizado.' });
+        setEditingRecord(null);
+      } catch (error) {
+        console.error('Erro ao atualizar registro', error);
+        setRegisterMessage({ type: 'error', text: 'Não foi possível atualizar o registro.' });
+      } finally {
+        setSavingEdit(false);
+      }
+    };
+
+    if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) {
+      return (
+        <div className="p-4 md:p-6">
+          <div className="bg-white rounded-2xl shadow p-6 text-center">
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Selecione uma loja</h2>
+            <p className="text-gray-600">Para acessar o Meu Espaço, escolha uma loja específica no topo do sistema.</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/20 to-rose-50/20 min-h-screen">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold text-gray-800">Meu Espaço</h1>
+          <p className="text-gray-600">Registre seu ponto e acompanhe os horários do mês atual.</p>
+        </div>
+
+        {registerMessage && (
+          <div className={`p-4 rounded-2xl ${registerMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+            {registerMessage.text}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-2xl shadow p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">Registro de ponto</h2>
+                <p className="text-gray-500 text-sm">A localização é capturada automaticamente.</p>
+              </div>
+              <Clock className="w-10 h-10 text-pink-500" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Button
+                onClick={() => handleRegisterPoint('entrada')}
+                disabled={registerLoading}
+              >
+                Registrar entrada
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleRegisterPoint('almoco_inicio')}
+                disabled={registerLoading || !todayRecord?.horaEntrada}
+              >
+                Registrar início do almoço
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleRegisterPoint('almoco_fim')}
+                disabled={registerLoading || !todayRecord?.horaAlmocoSaida}
+              >
+                Registrar retorno do almoço
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => handleRegisterPoint('saida')}
+                disabled={registerLoading}
+              >
+                Registrar saída
+              </Button>
+            </div>
+            {todayRecord && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm bg-gray-50 rounded-xl p-4">
+                <div>
+                  <p className="text-gray-500">Entrada</p>
+                  <p className="font-semibold text-gray-800">{formatTime(todayRecord.horaEntrada)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Saída</p>
+                  <p className="font-semibold text-gray-800">{formatTime(todayRecord.horaSaida)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Início do almoço</p>
+                  <p className="font-semibold text-gray-800">{formatTime(todayRecord.horaAlmocoSaida)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Retorno do almoço</p>
+                  <p className="font-semibold text-gray-800">{formatTime(todayRecord.horaAlmocoRetorno)}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleSaveCompanyInfo} className="bg-white rounded-2xl shadow p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">Informações da empresa</h2>
+                <p className="text-gray-500 text-sm">Dados exibidos no cabeçalho do relatório.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="Nome da empresa" value={companyInfo.nome} onChange={(e) => setCompanyInfo({ ...companyInfo, nome: e.target.value })} disabled={!isManager} required={isManager} />
+              <Input label="CNPJ" value={companyInfo.cnpj} onChange={(e) => setCompanyInfo({ ...companyInfo, cnpj: e.target.value })} disabled={!isManager} />
+              <Input label="Endereço" value={companyInfo.endereco} onChange={(e) => setCompanyInfo({ ...companyInfo, endereco: e.target.value })} disabled={!isManager} />
+              <Input label="Atividade econômica" value={companyInfo.atividade} onChange={(e) => setCompanyInfo({ ...companyInfo, atividade: e.target.value })} disabled={!isManager} />
+              <Input label="Horário de trabalho" value={companyInfo.horarioTrabalho} onChange={(e) => setCompanyInfo({ ...companyInfo, horarioTrabalho: e.target.value })} disabled={!isManager} />
+              <Input label="Competência" value={competenciaLabel} disabled readOnly />
+              <Input label="Gestor responsável" value={companyInfo.gestorResponsavel || userName} onChange={(e) => setCompanyInfo({ ...companyInfo, gestorResponsavel: e.target.value })} disabled={!isManager} />
+            </div>
+            {isManager && (
+              <div className="flex justify-end">
+                <Button type="submit" disabled={companyLoading || companySaving}>{companySaving ? 'Salvando...' : 'Salvar informações'}</Button>
+              </div>
+            )}
+          </form>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow p-6 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">Registros do mês</h2>
+                <p className="text-gray-500 text-sm">Visualização automática do mês selecionado.</p>
+              </div>
+              <span className="inline-flex items-center rounded-full bg-pink-100 text-pink-700 px-3 py-1 text-sm font-semibold">
+                Registros ({filteredRecords.length})
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Input
+                type="month"
+                label="Mês"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="min-w-[160px]"
+              />
+              {isManager && (
+                <Select label="Colaborador" value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)} disabled={employeesLoading} className="min-w-[200px]">
+                  {employeesLoading ? (
+                    <option>Carregando...</option>
+                  ) : (
+                    <>
+                      <option value="all">Todos</option>
+                      {employees.map((employee) => (
+                        <option key={employee.id} value={employee.id}>{employee.nome || employee.email || employee.id}</option>
+                      ))}
+                    </>
+                  )}
+                </Select>
+              )}
+            </div>
+          </div>
+
+          {recordsLoading ? (
+            <div className="py-10 text-center text-gray-500">Carregando registros...</div>
+          ) : filteredRecords.length === 0 ? (
+            <div className="py-10 text-center text-gray-500">Nenhum registro encontrado para o período selecionado.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-500">
+                    <th className="py-3 px-4">Funcionário</th>
+                    <th className="py-3 px-4">Dia da semana</th>
+                    <th className="py-3 px-4">Dia do Mês</th>
+                    <th className="py-3 px-4">Entrada</th>
+                    <th className="py-3 px-4">Saída almoço</th>
+                    <th className="py-3 px-4">Retorno almoço</th>
+                    <th className="py-3 px-4">Saída</th>
+                    <th className="py-3 px-4">Irregularidade</th>
+                    <th className="py-3 px-4">Qtde</th>
+                    <th className="py-3 px-4">Justificativa</th>
+                    {isManager && <th className="py-3 px-4">Localização</th>}
+                    {isManager && <th className="py-3 px-4">Ações</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredRecords.map((registro) => {
+                    const date = getDayInfo(registro);
+                    const diaSemana = date ? date.toLocaleDateString('pt-BR', { weekday: 'long' }) : '-';
+                    const diaMes = date ? String(date.getDate()).padStart(2, '0') : '-';
+                    const workSummary = calculateWorkSummary(registro);
+                    return (
+                      <tr key={registro.id} className="hover:bg-gray-50">
+                        <td className="py-3 px-4">{registro.funcionarioNome || '-'}</td>
+                        <td className="py-3 px-4 capitalize">{diaSemana}</td>
+                        <td className="py-3 px-4">{diaMes}</td>
+                        <td className="py-3 px-4 font-semibold">{formatTime(registro.horaEntrada)}</td>
+                        <td className="py-3 px-4 font-semibold">{formatTime(registro.horaAlmocoSaida)}</td>
+                        <td className="py-3 px-4 font-semibold">{formatTime(registro.horaAlmocoRetorno)}</td>
+                        <td className="py-3 px-4 font-semibold">{formatTime(registro.horaSaida)}</td>
+                        <td className="py-3 px-4">{workSummary.irregularidade}</td>
+                        <td className="py-3 px-4">{workSummary.workedLabel}</td>
+                        <td className="py-3 px-4 max-w-xs">{registro.justificativa || '-'}</td>
+                        {isManager && (
+                          <td className="py-3 px-4">
+                            <div className="space-y-3 text-xs">
+                              {registro.localizacaoEntrada && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1 font-semibold text-pink-600">
+                                    <MapPin className="w-4 h-4" /> Entrada
+                                  </div>
+                                  <p className="text-gray-600">
+                                    {registro.localizacaoEntradaEndereco || 'Endereço não disponível'}
+                                  </p>
+                                  <a
+                                    href={`https://maps.google.com/?q=${registro.localizacaoEntrada.latitude},${registro.localizacaoEntrada.longitude}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-pink-600 hover:underline"
+                                  >
+                                    Ver no mapa
+                                  </a>
+                                </div>
+                              )}
+                              {registro.localizacaoSaida && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1 font-semibold text-emerald-600">
+                                    <MapPin className="w-4 h-4" /> Saída
+                                  </div>
+                                  <p className="text-gray-600">
+                                    {registro.localizacaoSaidaEndereco || 'Endereço não disponível'}
+                                  </p>
+                                  <a
+                                    href={`https://maps.google.com/?q=${registro.localizacaoSaida.latitude},${registro.localizacaoSaida.longitude}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-emerald-600 hover:underline"
+                                  >
+                                    Ver no mapa
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                        {isManager && (
+                          <td className="py-3 px-4">
+                            <Button size="sm" variant="secondary" onClick={() => openEditModal(registro)}>Editar</Button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <Modal isOpen={Boolean(editingRecord)} onClose={() => setEditingRecord(null)} title="Editar registro" size="lg">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="Hora de entrada" type="time" value={editForm.horaEntrada} onChange={(e) => setEditForm({ ...editForm, horaEntrada: e.target.value })} />
+              <Input label="Hora de saída" type="time" value={editForm.horaSaida} onChange={(e) => setEditForm({ ...editForm, horaSaida: e.target.value })} />
+              <Input label="Saída para almoço" type="time" value={editForm.horaAlmocoSaida} onChange={(e) => setEditForm({ ...editForm, horaAlmocoSaida: e.target.value })} />
+              <Input label="Retorno do almoço" type="time" value={editForm.horaAlmocoRetorno} onChange={(e) => setEditForm({ ...editForm, horaAlmocoRetorno: e.target.value })} />
+              <Input label="Irregularidade" value={editForm.irregularidade} onChange={(e) => setEditForm({ ...editForm, irregularidade: e.target.value })} />
+              <Input label="Quantidade (horas)" value={editForm.qtde} onChange={(e) => setEditForm({ ...editForm, qtde: e.target.value })} />
+            </div>
+            <Textarea label="Justificativa" value={editForm.justificativa} onChange={(e) => setEditForm({ ...editForm, justificativa: e.target.value })} />
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setEditingRecord(null)}>Cancelar</Button>
+              <Button onClick={handleSaveEdit} disabled={savingEdit}>{savingEdit ? 'Salvando...' : 'Salvar ajustes'}</Button>
+            </div>
+          </div>
+        </Modal>
+      </div>
+    );
+  };
+
   // --- CORREÇÃO: Props do Dashboard atualizadas ---
-  const Dashboard = ({handleStopAndSnoozeAlarm, isAlarmPlaying, isAlarmSnoozed, hasNewPendingOrders, snoozeEndTime}) => {
+  const Dashboard = ({handleStopAndSnoozeAlarm, isAlarmPlaying, isAlarmSnoozed, hasNewPendingOrders, snoozeEndTime, alarmPauseMinutes}) => {
     const { pedidos, clientes } = data;
     
     // --- CORREÇÃO: Lógica de display da soneca movida para dentro do Dashboard ---
@@ -2793,7 +5068,7 @@ function App() {
                           className="text-xs" // Deixa o botão um pouco menor
                         >
                           <VolumeX className="w-4 h-4 mr-1" />
-                          {isAlarmPlaying ? "Parar" : "Pausar (5min)"}
+                          {isAlarmPlaying ? "Parar" : `Pausar (${alarmPauseMinutes}min)`}
                         </Button>
                       </div>
                     </div>
@@ -2894,7 +5169,7 @@ function App() {
             const { id, ...updateData } = formData;
             await updateItem('clientes', editingClient.id, updateData);
         } else {
-            await addItem('clientes', { ...formData, totalCompras: 0 });
+            await addItem('clientes', { ...formData, numeroDeCompras: 0, valorEmCompras: 0 });
         }
         setShowModal(false);
         resetForm();
@@ -2913,7 +5188,7 @@ function App() {
             return `${day}/${month}`;
           }
         },
-        { header: "Total Compras", render: (row) => (<span className="font-semibold text-green-600">R$ {(row.totalCompras || 0).toFixed(2)}</span>) },
+        { header: "Valor em Compras", render: (row) => (<span className="font-semibold text-green-600">R$ {(row.valorEmCompras || 0).toFixed(2)}</span>) },
         { header: "Última Compra", render: (row) => row.ultimaCompra ? getJSDate(row.ultimaCompra)?.toLocaleDateString('pt-BR') : '-' },
         { header: "Status", render: (row) => (<span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'VIP' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>{row.status}</span>) }
     ];
@@ -2930,165 +5205,480 @@ function App() {
   
   const Produtos = () => {
     const [searchTerm, setSearchTerm] = usePersistentState("produtos_searchTerm", ""); 
+    const [selectedSubcategory, setSelectedSubcategory] = useState('');
+    const [filterActiveOnly, setFilterActiveOnly] = useState(false);
     const [showModal, setShowModal] = useState(false); 
     const [editingProduct, setEditingProduct] = useState(null); 
-    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
-    const [imageFile, setImageFile] = useState(null);
+    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" }); 
+    const [imageFile, setImageFile] = useState(null); 
     const [imagePreview, setImagePreview] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
-    
-    const [showAddSubcategory, setShowAddSubcategory] = useState(false);
-    const [newSubcategoryName, setNewSubcategoryName] = useState("");
+    const [isAddingSubcategory, setIsAddingSubcategory] = useState(false);
+    const [newSubcategory, setNewSubcategory] = useState("");
     const [isSavingSubcategory, setIsSavingSubcategory] = useState(false);
-    const [subcategoryError, setSubcategoryError] = useState("");
-    const [localSubcategorias, setLocalSubcategorias] = useState({});
+    const [stockMovementModal, setStockMovementModal] = useState({ isOpen: false, type: 'entrada', product: null });
+    const [stockMovementQuantity, setStockMovementQuantity] = useState('');
+    const [stockMovementReason, setStockMovementReason] = useState('venda');
+    const [statusLoading, setStatusLoading] = useState({});
+    const [statusOverrides, setStatusOverrides] = useState({});
 
-    const subcategorias = useMemo(() => {
-      const map = {};
-
-      Object.entries(DEFAULT_SUBCATEGORIES).forEach(([categoria, subs]) => {
-        map[categoria] = new Set(subs);
-      });
+    const defaultSubcategorias = useMemo(() => ({
+      Delivery: [ 'Queridinhos', 'Mousse', 'Palha Italiana', 'Bolo no pote', 'Copo da felicidade', 'Bombom aberto', 'Pipoca', 'Cone recheado', 'Bolo gelado', 'Bombom recheado' ],
+      Festa: [ 'Bolo', 'Docinhos', 'Bombom', 'Doces finos', 'Bem casados', 'Cupcakes' ]
+    }), []);
+	
+	  const subcategoriasPorCategoria = useMemo(() => {
+      const map = Object.keys(defaultSubcategorias).reduce((acc, categoria) => {
+        acc[categoria] = [...defaultSubcategorias[categoria]];
+        return acc;
+      }, {});
 
       (data.subcategorias || []).forEach((item) => {
-        if (!item?.categoria || !item?.nome) return;
-        if (!map[item.categoria]) {
-          map[item.categoria] = new Set();
-        }
-        map[item.categoria].add(item.nome);
-      });
-
-      Object.entries(localSubcategorias).forEach(([categoria, subs]) => {
+        if (!item || !item.categoria || !item.nome) return;
+        const categoria = item.categoria;
         if (!map[categoria]) {
-          map[categoria] = new Set();
+          map[categoria] = [];
         }
-        subs.forEach((nome) => map[categoria].add(nome));
+        map[categoria].push(item.nome);
       });
 
-      return Object.fromEntries(
-        Object.entries(map).map(([categoria, values]) => [
-          categoria,
-          Array.from(values).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-        ])
-      );
-    }, [data.subcategorias, localSubcategorias]);
+      Object.keys(map).forEach((categoria) => {
+        const uniqueValues = Array.from(new Set(map[categoria].filter(Boolean)));
+        map[categoria] = uniqueValues.sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+      });
 
-    useEffect(() => {
-      if (formData.categoria && subcategorias[formData.categoria] && !subcategorias[formData.categoria].includes(formData.subcategoria)) {
-          setFormData(prev => ({ ...prev, subcategoria: '' }));
+      return map;
+    }, [data.subcategorias, defaultSubcategorias]);
+
+    const availableSubcategories = useMemo(() => {
+      const list = subcategoriasPorCategoria[formData.categoria] || [];
+      if (formData.subcategoria && !list.includes(formData.subcategoria)) {
+        return [...list, formData.subcategoria];
       }
-    }, [formData.categoria, formData.subcategoria, subcategorias]);
-	
-	  useEffect(() => {
-      if (!data.subcategorias?.length) return;
-      setLocalSubcategorias((prev) => {
-        let hasChanges = false;
-        const updated = { ...prev };
+      return list;
+    }, [formData.categoria, formData.subcategoria, subcategoriasPorCategoria]);
 
-        Object.entries(prev).forEach(([categoria, subs]) => {
-          const persisted = new Set(
-            data.subcategorias
-              .filter((item) => item?.categoria === categoria)
-              .map((item) => item?.nome?.toLowerCase().trim())
-          );
-
-          const filtered = subs.filter((nome) => !persisted.has(nome.toLowerCase().trim()));
-
-          if (filtered.length !== subs.length) {
-            hasChanges = true;
-            if (filtered.length > 0) {
-              updated[categoria] = filtered;
-            } else {
-              delete updated[categoria];
-            }
-          }
-        });
-
-        return hasChanges ? updated : prev;
-      });
-    }, [data.subcategorias]);
 
     useEffect(() => {
-      setShowAddSubcategory(false);
-      setNewSubcategoryName("");
-      setSubcategoryError("");
+      if (formData.categoria && formData.subcategoria && !availableSubcategories.includes(formData.subcategoria)) {
+        setFormData(prev => ({ ...prev, subcategoria: '' }));
+      }
+    }, [formData.categoria, formData.subcategoria, availableSubcategories]);
+
+    useEffect(() => {
+      setIsAddingSubcategory(false);
+      setNewSubcategory("");
     }, [formData.categoria]);
 
+    const handleSubcategoriaChange = (e) => {
+      const value = e.target.value;
+      setIsAddingSubcategory(false);
+      setNewSubcategory("");
+      setFormData(prev => ({ ...prev, subcategoria: value }));
+    };
+
     const handleCreateSubcategory = async () => {
-      const categoriaAtual = formData.categoria;
-      setSubcategoryError("");
-
-      if (!categoriaAtual) {
-        setSubcategoryError('Selecione uma categoria antes de adicionar uma subcategoria.');
+      const trimmed = newSubcategory.trim();
+      if (!trimmed) {
+        alert('Informe o nome da nova subcategoria.');
         return;
       }
 
-      const trimmedName = newSubcategoryName.trim();
-      if (!trimmedName) {
-        setSubcategoryError('Informe o nome da nova subcategoria.');
-        return;
-      }
-
-      const existe = (subcategorias[categoriaAtual] || []).some(
-        (nome) => nome.toLowerCase() === trimmedName.toLowerCase()
-      );
-
-      if (existe) {
-        setSubcategoryError('Essa subcategoria já está cadastrada.');
+      const existing = availableSubcategories.find(sub => sub.toLowerCase() === trimmed.toLowerCase());
+      if (existing) {
+        alert('Esta subcategoria já existe para a categoria selecionada.');
+        setFormData(prev => ({ ...prev, subcategoria: existing }));
+        setIsAddingSubcategory(false);
+        setNewSubcategory("");
         return;
       }
 
       try {
         setIsSavingSubcategory(true);
-        await addItem('subcategorias', { categoria: categoriaAtual, nome: trimmedName });
-        setLocalSubcategorias((prev) => {
-          const atual = new Set(prev[categoriaAtual] || []);
-          atual.add(trimmedName);
-          return { ...prev, [categoriaAtual]: Array.from(atual) };
-        });
-        setFormData((prev) => ({ ...prev, subcategoria: trimmedName }));
-        setShowAddSubcategory(false);
-        setNewSubcategoryName("");
+        await addItem('subcategorias', { nome: trimmed, categoria: formData.categoria });
+        setFormData(prev => ({ ...prev, subcategoria: trimmed }));
+        setIsAddingSubcategory(false);
+        setNewSubcategory("");
       } catch (error) {
-        console.error('Erro ao adicionar subcategoria:', error);
-        setSubcategoryError('Não foi possível adicionar a subcategoria. Tente novamente.');
+        console.error('Erro ao criar subcategoria:', error);
       } finally {
         setIsSavingSubcategory(false);
       }
     };
 
+    const openStockMovementModal = (product, type) => {
+      setStockMovementModal({ isOpen: true, type, product });
+      setStockMovementQuantity('');
+      setStockMovementReason('venda');
+    };
 
-    const filteredProducts = (data.produtos || []).filter(p => p.nome.toLowerCase().includes(searchTerm.toLowerCase()));
-    const resetForm = () => { setShowModal(false); setEditingProduct(null); setFormData({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" }); setImageFile(null); setImagePreview(null); };
+    const closeStockMovementModal = () => {
+      setStockMovementModal({ isOpen: false, type: 'entrada', product: null });
+      setStockMovementQuantity('');
+      setStockMovementReason('venda');
+    };
+
+    const buildReasonLabel = () => {
+      if (stockMovementModal.type === 'saida') {
+        const reasonLabels = {
+          venda: 'Venda',
+          doacao: 'Doação',
+          perca: 'Perda',
+        };
+        return `Saída - ${reasonLabels[stockMovementReason] || 'Movimentação'}`;
+      }
+      return 'Entrada rápida de estoque';
+    };
+
+    const handleStockMovementSubmit = async (event) => {
+      event.preventDefault();
+
+      const quantity = parseFloat(stockMovementQuantity);
+
+      if (!quantity || quantity <= 0) {
+        alert('Informe uma quantidade válida para a movimentação.');
+        return;
+      }
+
+      try {
+        const product = stockMovementModal.product || {};
+        const unitPrice = Number(product.preco || 0) || 0;
+        const subtotal = unitPrice * quantity;
+        const shouldCreateQuickSaleOrder = stockMovementModal.type === 'saida' && stockMovementReason === 'venda';
+        const quickSaleOrder = shouldCreateQuickSaleOrder ? {
+          clienteId: 'loja',
+          clienteNome: 'Loja',
+          itens: [{
+            id: product.id,
+            produtoId: product.id,
+            nome: product.nome || 'Produto',
+            preco: unitPrice,
+            quantity,
+            categoria: product.categoria || 'Delivery',
+            subcategoria: product.subcategoria || '',
+            imageUrl: product.imageUrl || '',
+          }],
+          subtotal,
+          desconto: 0,
+          total: subtotal,
+          status: 'Finalizado',
+          origem: 'Manual',
+          categoria: product.categoria || 'Delivery',
+          dataEntrega: '',
+          observacao: 'Venda registrada automaticamente pela movimentação rápida de estoque.',
+          formaPagamento: 'Não informado',
+          cupom: null,
+        } : null;
+
+        await updateStock(
+          product.id,
+          stockMovementModal.type,
+          quantity,
+          buildReasonLabel(),
+          user,
+          null,
+          quickSaleOrder ? { quickSaleOrder } : {},
+        );
+        closeStockMovementModal();
+      } catch (error) {
+        console.error('Erro ao movimentar estoque', error);
+        alert(error.message || 'Erro ao atualizar estoque.');
+      }
+    };
+
+    const handleToggleStatus = async (product) => {
+      const currentStatus = statusOverrides[product.id] ?? product.status;
+      const newStatus = currentStatus === 'Ativo' ? 'Inativo' : 'Ativo';
+
+      setStatusOverrides(prev => ({ ...prev, [product.id]: newStatus }));
+      setStatusLoading(prev => ({ ...prev, [product.id]: true }));
+
+      try {
+        await updateItem('produtos', product.id, { status: newStatus });
+      } catch (error) {
+        console.error('Erro ao atualizar status do produto', error);
+        alert(error.message || 'Não foi possível atualizar o status.');
+        setStatusOverrides(prev => ({ ...prev, [product.id]: currentStatus }));
+      } finally {
+        setStatusLoading(prev => ({ ...prev, [product.id]: false }));
+      }
+    };
+
+    const subcategoriasCadastradas = useMemo(() => {
+      const subcategorias = (data.produtos || [])
+        .map((product) => (product.subcategoria || '').trim())
+        .filter(Boolean);
+
+      return Array.from(new Set(subcategorias)).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+    }, [data.produtos]);
+
+    const filteredProducts = (data.produtos || [])
+      .filter((p) => (p.nome || '').toLowerCase().includes(searchTerm.toLowerCase()))
+      .filter((p) => selectedSubcategory === '' || p.subcategoria === selectedSubcategory)
+      .filter((p) => {
+        if (!filterActiveOnly) return true;
+        const effectiveStatus = statusOverrides[p.id] ?? p.status;
+        return effectiveStatus === 'Ativo';
+      })
+      .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' }));
+
+    const handleClearFilters = () => {
+      setSelectedSubcategory('');
+      setFilterActiveOnly(false);
+      setSearchTerm('');
+    };
+
+    useEffect(() => {
+      setStatusOverrides(prev => {
+        const updatedOverrides = { ...prev };
+
+        (data.produtos || []).forEach((product) => {
+          if (updatedOverrides[product.id] && updatedOverrides[product.id] === product.status) {
+            delete updatedOverrides[product.id];
+          }
+        });
+
+        return updatedOverrides;
+      });
+    }, [data.produtos]);
+
+    const resetForm = () => {
+      setShowModal(false);
+      setEditingProduct(null);
+      setFormData({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
+      setImageFile(null);
+      setImagePreview(null);
+      setIsAddingSubcategory(false);
+      setNewSubcategory("");
+      setIsSavingSubcategory(false);
+    };
     const handleImageChange = (e) => { if (e.target.files[0]) { const file = e.target.files[0]; setImageFile(file); setImagePreview(URL.createObjectURL(file)); } };
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (isUploading) return;
+
         setIsUploading(true);
-        let imageUrl = formData.imageUrl || "";
-        if (imageFile) {
-            const imageRef = ref(storage, `products/${Date.now()}_${imageFile.name}`);
-            await uploadBytes(imageRef, imageFile);
-            imageUrl = await getDownloadURL(imageRef);
+
+        try {
+            let imageUrl = formData.imageUrl || "";
+            if (imageFile) {
+                const imageRef = ref(storage, `products/${Date.now()}_${imageFile.name}`);
+                await uploadBytes(imageRef, imageFile);
+                imageUrl = await getDownloadURL(imageRef);
+            }
+
+            const productData = { ...formData, preco: parseFloat(formData.preco || 0), custo: parseFloat(formData.custo || 0), estoque: parseInt(formData.estoque || 0), imageUrl: imageUrl };
+            if (editingProduct) {
+                const { id, ...updateData } = productData;
+                await updateItem('produtos', editingProduct.id, updateData);
+            } else {
+                await addItem('produtos', productData);
+            }
+
+            resetForm();
+        } catch (error) {
+            console.error('Erro ao salvar produto:', error);
+            const errorMessage = String(error?.message || '').toLowerCase();
+            const isStorageUploadError =
+                String(error?.code || '').toLowerCase().startsWith('storage/') ||
+                errorMessage.includes('storage') ||
+                errorMessage.includes('cors') ||
+                errorMessage.includes('network') ||
+                errorMessage.includes('failed');
+
+            alert(
+                isStorageUploadError
+                    ? 'Não foi possível enviar a foto do produto. Verifique a conexão e tente salvar novamente.'
+                    : (error?.message || 'Não foi possível salvar o produto. Tente novamente.')
+            );
+        } finally {
+            setIsUploading(false);
         }
-        const productData = { ...formData, preco: parseFloat(formData.preco || 0), custo: parseFloat(formData.custo || 0), estoque: parseInt(formData.estoque || 0), imageUrl: imageUrl };
-        if (editingProduct) {
-            const { id, ...updateData } = productData;
-            await updateItem('produtos', editingProduct.id, updateData);
-        } else {
-            await addItem('produtos', productData);
-        }
-        setIsUploading(false);
-        resetForm();
     };
-    const handleEdit = (product) => { setEditingProduct(product); setFormData({ ...product, preco: String(product.preco), custo: String(product.custo), estoque: String(product.estoque) }); setImagePreview(product.imageUrl || null); setShowModal(true); };
-    const columns = [ { header: "Produto", render: (row) => (<div className="flex items-center gap-3"><img src={row.imageUrl || 'https://placehold.co/40x40/FFC0CB/FFFFFF?text=Doce'} alt={row.nome} className="w-10 h-10 rounded-xl object-cover shadow-md" onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/40x40/FFC0CB/FFFFFF?text=Erro'; }}/><div><p className="font-semibold text-gray-800">{row.nome}</p><p className="text-sm text-gray-500">{row.categoria} / {row.subcategoria}</p></div></div>)}, { header: "Preço", render: (row) => <span className="font-semibold text-green-600">R$ {(row.preco || 0).toFixed(2)}</span> }, { header: "Estoque", render: (row) => <span className={`font-medium ${row.estoque < 10 ? 'text-red-600' : 'text-gray-800'}`}>{row.estoque} un</span> }, { header: "Status", render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'Ativo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{row.status}</span> } ];
+    const handleEdit = (product) => {
+      setEditingProduct(product);
+      setFormData({ ...product, preco: String(product.preco), custo: String(product.custo), estoque: String(product.estoque) });
+      setImagePreview(product.imageUrl || null);
+      setIsAddingSubcategory(false);
+      setNewSubcategory("");
+      setIsSavingSubcategory(false);
+      setShowModal(true);
+    };
+    const columns = [
+      {
+        header: "Produto",
+        render: (row) => (
+          <div className="flex items-center gap-3">
+            <img
+              src={row.imageUrl || 'https://placehold.co/40x40/FFC0CB/FFFFFF?text=Doce'}
+              alt={row.nome}
+              className="w-10 h-10 rounded-xl object-cover shadow-md"
+              onError={(e) => { e.target.onerror = null; e.target.src='https://placehold.co/40x40/FFC0CB/FFFFFF?text=Erro'; }}
+            />
+            <div>
+              <p className="font-semibold text-gray-800">{row.nome}</p>
+              <p className="text-sm text-gray-500">{row.categoria} / {row.subcategoria}</p>
+            </div>
+          </div>
+        )
+      },
+      { header: "Preço", render: (row) => <span className="font-semibold text-green-600">R$ {(row.preco || 0).toFixed(2)}</span> },
+      { header: "Estoque", render: (row) => <span className={`font-medium ${row.estoque < 10 ? 'text-red-600' : 'text-gray-800'}`}>{row.estoque} un</span> },
+      {
+        header: 'Movimentação Rápida',
+        render: (row) => (
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="!px-3 !py-2 text-xs"
+              onClick={() => openStockMovementModal(row, 'entrada')}
+            >
+              + Entrada
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="!px-3 !py-2 text-xs text-red-600 border-red-200 hover:border-red-300 hover:text-red-700"
+              onClick={() => openStockMovementModal(row, 'saida')}
+            >
+              - Saída
+            </Button>
+          </div>
+        )
+      },
+      {
+        header: "Status",
+        render: (row) => {
+          const effectiveStatus = statusOverrides[row.id] ?? row.status;
+          const isActive = effectiveStatus === 'Ativo';
+
+          return (
+            <label className="inline-flex items-center gap-3 select-none">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isActive}
+                onChange={() => handleToggleStatus(row)}
+                disabled={!!statusLoading[row.id]}
+              />
+              <div
+                className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+                  isActive ? 'bg-green-500' : 'bg-gray-200'
+                } ${statusLoading[row.id] ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'} peer-focus:outline-none`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 h-5 w-5 bg-white rounded-full shadow-md transition-transform duration-200 ${
+                    isActive ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </div>
+              <span className={`text-sm font-medium ${isActive ? 'text-green-700' : 'text-gray-600'}`}>
+                {isActive ? 'Ativo' : 'Inativo'}
+              </span>
+            </label>
+          );
+        }
+      }
+    ];
     const actions = [ { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('produtos', row.id) }) } ];
     
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Produtos</h1><p className="text-gray-600 mt-1">Gerencie seu cardápio e estoque</p></div><Button onClick={() => setShowModal(true)} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Novo Produto</Button></div>
-        <div className="relative max-w-md"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" /><input type="text" placeholder="Buscar produtos..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" /></div>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="relative w-full sm:w-auto sm:min-w-[28rem] max-w-md"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" /><input type="text" placeholder="Buscar produtos..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" /></div>
+          {subcategoriasCadastradas.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="px-5 py-2.5 rounded-lg text-base font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Limpar filtro
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterActiveOnly((prev) => !prev)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                  filterActiveOnly
+                    ? 'bg-pink-100 text-pink-700 border-pink-200'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Ativo
+              </button>
+            </>
+          )}
+        </div>
+        {subcategoriasCadastradas.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {subcategoriasCadastradas.map((subcategoria) => {
+              const isSelected = selectedSubcategory === subcategoria;
+
+              return (
+                <button
+                  key={subcategoria}
+                  type="button"
+                  onClick={() => setSelectedSubcategory(subcategoria)}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    isSelected
+                      ? 'bg-pink-100 text-pink-700 border-pink-200'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {subcategoria}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <Table columns={columns} data={filteredProducts} actions={actions} />
+        <Modal
+          isOpen={stockMovementModal.isOpen}
+          onClose={closeStockMovementModal}
+          title={`Registrar ${stockMovementModal.type === 'entrada' ? 'Entrada' : 'Saída'} de Estoque`}
+          size="md"
+        >
+          <form onSubmit={handleStockMovementSubmit} className="space-y-5">
+            <div className="bg-pink-50/80 border border-pink-100 rounded-2xl p-4">
+              <p className="text-sm text-gray-500">Produto selecionado</p>
+              <p className="font-semibold text-gray-900">{stockMovementModal.product?.nome || '-'}</p>
+            </div>
+
+            <Input
+              label="Quantidade"
+              type="number"
+              min="0"
+              step="1"
+              value={stockMovementQuantity}
+              onChange={(e) => setStockMovementQuantity(e.target.value)}
+              required
+            />
+
+            {stockMovementModal.type === 'saida' && (
+              <Select
+                label="Motivo da Saída"
+                value={stockMovementReason}
+                onChange={(e) => setStockMovementReason(e.target.value)}
+                required
+              >
+                <option value="venda">Venda</option>
+                <option value="doacao">Doação</option>
+                <option value="perca">Perda</option>
+              </Select>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="secondary" type="button" onClick={closeStockMovementModal}>
+                Cancelar
+              </Button>
+              <Button type="submit">
+                <Save className="w-4 h-4" /> Confirmar
+              </Button>
+            </div>
+          </form>
+        </Modal>
         <Modal isOpen={showModal} onClose={resetForm} title={editingProduct ? "Editar Produto" : "Novo Produto"} size="xl">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -3096,72 +5686,52 @@ function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <Input label="Nome do Produto" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required />
                   <Select label="Categoria" value={formData.categoria} onChange={(e) => setFormData({...formData, categoria: e.target.value})} required><option value="Delivery">Delivery</option><option value="Festa">Festa</option></Select>
-                  <div className="space-y-2">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-end">
-                      <Select
-                        label="Subcategoria"
-                        value={formData.subcategoria}
-                        onChange={e => setFormData({ ...formData, subcategoria: e.target.value })}
-                        required
-                        className="flex-1"
-                      >
-                        <option value="">Selecione...</option>
-                        {(subcategorias[formData.categoria] || []).map(sub => (
-                          <option key={sub} value={sub}>{sub}</option>
-                        ))}
-                      </Select>
-                      <Button
+                  <div className="space-y-1 w-full">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-sm font-medium text-gray-700">Subcategoria</label>
+                      <button
                         type="button"
-                        variant="secondary"
-                        size="sm"
+                        className="text-xs font-semibold text-pink-600 hover:text-pink-700"
                         onClick={() => {
-                          setShowAddSubcategory(prev => !prev);
-                          setSubcategoryError("");
-                          setNewSubcategoryName("");
+                          setIsAddingSubcategory(true);
+                          setNewSubcategory("");
+                          setFormData(prev => ({ ...prev, subcategoria: '' }));
                         }}
-                        className="md:mt-6 whitespace-nowrap"
                       >
-                        <Plus className="w-4 h-4" /> Nova
-                      </Button>
+                        + Nova subcategoria
+                      </button>
                     </div>
-                    {showAddSubcategory && (
-                      <div className="flex flex-col gap-2 md:flex-row md:items-end">
-                        <Input
-                          label="Nova Subcategoria"
-                          type="text"
-                          value={newSubcategoryName}
-                          onChange={(e) => {
-                            setNewSubcategoryName(e.target.value);
-                            if (subcategoryError) setSubcategoryError("");
-                          }}
-                          className="flex-1"
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            onClick={handleCreateSubcategory}
-                            disabled={isSavingSubcategory}
-                          >
-                            {isSavingSubcategory ? 'Salvando...' : 'Adicionar'}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setShowAddSubcategory(false);
-                              setNewSubcategoryName("");
-                              setSubcategoryError("");
-                            }}
-                          >
-                            Cancelar
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    {subcategoryError && (
-                      <p className="text-sm text-red-600">{subcategoryError}</p>
-                    )}
+                    <select
+                      value={formData.subcategoria}
+                      onChange={handleSubcategoriaChange}
+                      required
+                      className="w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white border-gray-300"
+                    >
+                      <option value="">Selecione...</option>
+                      {availableSubcategories.map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                    </select>
                   </div>
+					  {isAddingSubcategory && (
+						<div className="md:col-span-2 bg-pink-50/80 border border-pink-100 rounded-2xl p-4 space-y-4">
+						  <div className="flex items-center justify-between flex-wrap gap-2">
+							<p className="text-sm font-semibold text-pink-700">Cadastrar nova subcategoria para "{formData.categoria}"</p>
+							<button type="button" className="text-xs text-pink-600 hover:underline" onClick={() => { setIsAddingSubcategory(false); setNewSubcategory(""); }}>Cancelar</button>
+						  </div>
+						  <div className="md:grid md:grid-cols-3 md:gap-4 space-y-4 md:space-y-0">
+							<div className="md:col-span-2">
+							  <Input label="Nova Subcategoria" placeholder="Digite o nome da subcategoria" value={newSubcategory} onChange={(e) => setNewSubcategory(e.target.value)} />
+							</div>
+							<div className="flex gap-2 items-end justify-end">
+							  <Button type="button" onClick={handleCreateSubcategory} disabled={isSavingSubcategory} className="w-full md:w-auto">
+								<PackagePlus className="w-4 h-4" />
+								{isSavingSubcategory ? 'Salvando...' : 'Salvar'}
+							  </Button>
+							</div>
+						  </div>
+						</div>
+					  )}
                   <Input label="Preço (R$)" type="number" step="0.01" value={formData.preco} onChange={(e) => setFormData({...formData, preco: e.target.value})} />
                   <Input label="Custo (R$)" type="number" step="0.01" value={formData.custo} onChange={(e) => setFormData({...formData, custo: e.target.value})} />
                   <Input label="Estoque" type="number" value={formData.estoque} onChange={(e) => setFormData({...formData, estoque: e.target.value})} />
@@ -3191,20 +5761,53 @@ function App() {
     );
   };
   
-const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, deleteItem }) => {
+	const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, deleteItem, availableStores, storeInfoMap, resolveActiveStoreForWrite, selectedStoreId }) => {
     const [activeTab, setActiveTab] = usePersistentState('configuracoes_activeTab', 'users');
-    
+
     // States para Usuários
     const [usuarios, setUsuarios] = useState([]);
-	const [userSearchTerm, setUserSearchTerm] = useState('');
+    const [userSearchTerm, setUserSearchTerm] = useState('');
     const [userExcludeTerm, setUserExcludeTerm] = useState('');
     const [userEmailFilter, setUserEmailFilter] = useState('any');
     const [userRoleFilter, setUserRoleFilter] = useState('all');
-    const [showUserModal, setShowUserModal] = useState(false); 
+    const [showUserModal, setShowUserModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
-    const [editingUser, setEditingUser] = useState(null); 
-    const [userFormData, setUserFormData] = useState({ email: "", senha: "", nome: "", role: "user" }); 
+    const [editingUser, setEditingUser] = useState(null);
+    const [selectedExistingUserId, setSelectedExistingUserId] = useState('');
+    const [userFormData, setUserFormData] = useState({
+        email: "",
+        senha: "",
+        nome: "",
+        role: ROLE_ATTENDANT,
+        lojaId: "",
+        lojaIds: [],
+        permissions: getDefaultPermissionsForRole(ROLE_ATTENDANT),
+        applyCustomProfile: true,
+        uid: ''
+    });
     const [newPassword, setNewPassword] = useState("");
+	
+	const effectiveStoreId = useMemo(() => {
+	if (!user) return null;
+	if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
+		return null;
+	}
+	try {
+		return resolveActiveStoreForWrite();
+	} catch (error) {
+		return null;
+	}
+}, [resolveActiveStoreForWrite, selectedStoreId, user]);
+
+const effectiveStoreName = useMemo(() => {
+	if (effectiveStoreId) {
+		return storeInfoMap[effectiveStoreId]?.nome || effectiveStoreId;
+	}
+	if (user?.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
+		return 'Visão Geral';
+	}
+	return 'Selecione uma loja para gerenciar';
+}, [effectiveStoreId, storeInfoMap, user, selectedStoreId]);
 
     // States para Cupons
     const [cupons, setCupons] = useState([]);
@@ -3254,7 +5857,6 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
         setUserRoleFilter('all');
     }, []);
 
-
     // 🔄 Carregar dados da aba ativa
     useEffect(() => {
         let unsubscribe = () => {}; // Função de cleanup vazia
@@ -3266,7 +5868,25 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
             listAllUsersFn()
                 .then((result) => {
                     if (result.data.users) {
-                        setUsuarios(result.data.users);
+                        const normalizedUsers = result.data.users.map((u) => {
+                            const lojas = Array.isArray(u.lojaIds)
+                                ? u.lojaIds
+                                : (u.lojaId ? [u.lojaId] : []);
+                            const normalizedRole = normalizeRole(u.role);
+                            return {
+                                ...u,
+                                role: normalizedRole,
+                                lojaIds: lojas,
+                                lojaId: lojas[0] || null,
+                                permissions: sanitizePermissions(u.permissions, normalizedRole)
+                            };
+                        });
+
+                        const filteredUsers = (!effectiveStoreId || user.role === ROLE_OWNER)
+                            ? normalizedUsers
+                            : normalizedUsers.filter(u => (u.lojaIds || []).includes(effectiveStoreId));
+
+                        setUsuarios(filteredUsers)
                     }
                 })
                 .catch((error) => {
@@ -3275,9 +5895,43 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
                 });
 
         } else if (activeTab === 'cupons') {
-            unsubscribe = onSnapshot(collection(db, "cupons"), (snap) => {
-                setCupons(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            });
+            if (!effectiveStoreId) {
+                setCupons([]);
+            } else {
+                const primaryRef = getStoreCollectionRef(effectiveStoreId, 'cupons');
+                const legacyRef = getStoreCollectionRef(effectiveStoreId, 'cupons', true);
+                let legacyUnsub = null;
+
+                const unsubscribePrimary = onSnapshot(primaryRef, (snap) => {
+                    const items = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setCupons(items);
+
+                    if (!items.length && !legacyUnsub) {
+                        legacyUnsub = onSnapshot(legacyRef, (legacySnap) => {
+                            if (items.length) return;
+                            setCupons(legacySnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                        }, undefined, {
+                            __listenerOptions: true,
+                            operation: 'config-cupons-legacy',
+                            route: 'configuracoes',
+                            uid: user?.auth?.uid || null
+                        });
+                    } else if (items.length && legacyUnsub) {
+                        legacyUnsub();
+                        legacyUnsub = null;
+                    }
+                }, undefined, {
+                    __listenerOptions: true,
+                    operation: 'config-cupons',
+                    route: 'configuracoes',
+                    uid: user?.auth?.uid || null
+                });
+
+                unsubscribe = () => {
+                    unsubscribePrimary();
+                    if (legacyUnsub) legacyUnsub();
+                };
+            }
         }
         
         return () => {
@@ -3285,28 +5939,132 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
                 unsubscribe();
             }
         };
-    }, [activeTab]);
+    }, [activeTab, effectiveStoreId, user]);
     
     // States para Configuração de Frete
     const [freteConfig, setFreteConfig] = useState({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
     const [isSavingFrete, setIsSavingFrete] = useState(false);
 
+    const [storeHoursConfig, setStoreHoursConfig] = useState(getDefaultStoreHoursConfig());
+    const [isSavingStoreHours, setIsSavingStoreHours] = useState(false);
+    const [entreLojasConfig, setEntreLojasConfig] = useState({ percentualRepasse: 0 });
+    const [isSavingEntreLojasConfig, setIsSavingEntreLojasConfig] = useState(false);
+    const canEditEntreLojasConfig = user?.role === ROLE_OWNER;
+
     useEffect(() => {
-        if (activeTab === 'frete') {
-            const fetchFreteConfig = async () => {
-                try {
-                    const docRef = doc(db, "configuracoes", "frete");
-                    const docSnap = await getDoc(docRef);
-                    if (docSnap.exists()) {
-                        setFreteConfig(docSnap.data());
-                    }
-                } catch (error) {
-                    console.error("Erro ao buscar configurações de frete:", error);
-                }
-            };
-            fetchFreteConfig();
+        if (activeTab !== 'frete') return;
+
+        if (!effectiveStoreId) {
+            setFreteConfig({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
+            return;
         }
-    }, [activeTab]);
+
+        const fetchFreteConfig = async () => {
+            try {
+                const configRef = getStoreConfigDocRef(effectiveStoreId);
+                const configSnap = await getDoc(configRef);
+
+                if (configSnap.exists()) {
+                    const configData = configSnap.data() || {};
+                    const freteData = configData.frete || configData;
+
+                    if (freteData && Object.keys(freteData).length) {
+                        setFreteConfig(freteData);
+                        return;
+                    }
+                }
+
+                const legacyFreteRef = doc(db, 'lojas', effectiveStoreId, 'configuracoes', 'frete');
+                const legacyFreteSnap = await getDoc(legacyFreteRef);
+                if (legacyFreteSnap.exists()) {
+                    const freteData = legacyFreteSnap.data();
+                    setFreteConfig(freteData || { enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
+                    await setDoc(configRef, { frete: freteData || {} }, { merge: true });
+                    return;
+                }
+
+                const legacyInfoSnap = await getDoc(doc(db, 'lojas', effectiveStoreId, 'info', 'dados'));
+                if (legacyInfoSnap.exists()) {
+                    const infoData = legacyInfoSnap.data();
+                    const freteData = infoData?.frete || {};
+                    if (Object.keys(freteData).length) {
+                        setFreteConfig(freteData);
+                        await setDoc(configRef, { frete: freteData }, { merge: true });
+                        return;
+                    }
+                }
+
+                setFreteConfig({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
+            } catch (error) {
+                console.error("Erro ao buscar configurações de frete:", error);
+            }
+        };
+        fetchFreteConfig();
+
+    }, [activeTab, effectiveStoreId]);
+
+
+    useEffect(() => {
+        if (activeTab !== 'funcionamento') return;
+
+        if (!effectiveStoreId) {
+            setStoreHoursConfig(getDefaultStoreHoursConfig());
+            return;
+        }
+
+        const fetchStoreHoursConfig = async () => {
+            try {
+                const configRef = getStoreConfigDocRef(effectiveStoreId);
+                const configSnap = await getDoc(configRef);
+                if (!configSnap.exists()) {
+                    setStoreHoursConfig(getDefaultStoreHoursConfig());
+                    return;
+                }
+
+                const configData = configSnap.data() || {};
+                const mergedSchedule = {
+                    ...buildDefaultStoreSchedule(),
+                    ...(configData.schedule || {})
+                };
+
+                setStoreHoursConfig({
+                    timezone: configData.timezone || DEFAULT_STORE_TIMEZONE,
+                    schedule: mergedSchedule,
+                    alarmPauseMinutes: sanitizeAlarmPauseMinutes(configData.alarmPauseMinutes),
+                    manualOverride: {
+                        mode: configData?.manualOverride?.mode || 'auto',
+                        updatedAt: configData?.manualOverride?.updatedAt || null,
+                        updatedBy: configData?.manualOverride?.updatedBy || ''
+                    }
+                });
+            } catch (error) {
+                console.error('Erro ao carregar horário de funcionamento:', error);
+            }
+        };
+
+        fetchStoreHoursConfig();
+    }, [activeTab, effectiveStoreId]);
+
+    useEffect(() => {
+        if (activeTab !== 'entre-lojas') return;
+        if (!effectiveStoreId) {
+            setEntreLojasConfig({ percentualRepasse: 0 });
+            return;
+        }
+        const fetchEntreLojasConfig = async () => {
+            try {
+                const configSnap = await getDoc(getStoreConfigDocRef(effectiveStoreId));
+                const percentual = Number(configSnap.data()?.entreLojas?.percentualRepasse);
+                setEntreLojasConfig({
+                    percentualRepasse: Number.isFinite(percentual) && percentual >= 0 ? percentual : 0
+                });
+            } catch (error) {
+                console.error('Erro ao carregar configuração de Entre Lojas:', error);
+                setEntreLojasConfig({ percentualRepasse: 0 });
+            }
+        };
+        fetchEntreLojasConfig();
+    }, [activeTab, effectiveStoreId]);
 	
 	//Limpeza quando o componente desmontar
         useEffect(() => {
@@ -3321,17 +6079,110 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
           };
   }, []);
     
+    const getCustomPermissionsForUser = useCallback(async (userProfile) => {
+        const normalizedRole = normalizeRole(userProfile?.role || ROLE_ATTENDANT);
+        const fallbackPermissions = sanitizePermissions(userProfile?.permissions, normalizedRole);
+        const uid = userProfile?.uid || userProfile?.id;
+
+        if (!uid) {
+            return { permissions: fallbackPermissions, hasCustomProfile: false, normalizedRole };
+        }
+
+        try {
+            const customProfileSnap = await getDoc(doc(db, 'customProfiles', uid));
+            if (customProfileSnap.exists()) {
+                return {
+                    permissions: sanitizePermissions(customProfileSnap.data()?.permissions, normalizedRole),
+                    hasCustomProfile: true,
+                    normalizedRole,
+                };
+            }
+        } catch (err) {
+            console.error('Erro ao carregar perfil personalizado:', err);
+        }
+
+        return { permissions: fallbackPermissions, hasCustomProfile: false, normalizedRole };
+    }, []);
+
+    const buildUserFormState = useCallback(async (userToEdit = null) => {
+        if (!userToEdit) {
+            setEditingUser(null);
+            setSelectedExistingUserId('');
+            setUserFormData({
+                email: "",
+                senha: "",
+                nome: "",
+                role: ROLE_ATTENDANT,
+                lojaId: effectiveStoreId || '',
+                lojaIds: effectiveStoreId ? [effectiveStoreId] : [],
+                permissions: getDefaultPermissionsForRole(ROLE_ATTENDANT),
+                applyCustomProfile: true,
+                uid: ''
+            });
+            return;
+        }
+
+        const lojas = Array.isArray(userToEdit.lojaIds)
+            ? userToEdit.lojaIds
+            : (userToEdit.lojaId ? [userToEdit.lojaId] : []);
+
+        const { permissions, hasCustomProfile, normalizedRole } = await getCustomPermissionsForUser(userToEdit);
+        setEditingUser(userToEdit);
+        setSelectedExistingUserId(userToEdit.uid || userToEdit.id || '');
+        setUserFormData({
+            email: userToEdit.email || "",
+            senha: "",
+            nome: userToEdit.nome || "",
+            role: normalizedRole,
+            lojaId: lojas[0] || '',
+            lojaIds: lojas,
+            permissions,
+            applyCustomProfile: hasCustomProfile,
+            uid: userToEdit.uid || userToEdit.id || ''
+        });
+    }, [effectiveStoreId, getCustomPermissionsForUser]);
+
     // Handlers para Usuários
-    const handleNewUser = () => { 
-        setEditingUser(null); 
-        setUserFormData({ email: "", senha: "", nome: "", role: "user" }); 
-        setShowUserModal(true); 
+    const handleNewUser = () => {
+        buildUserFormState();
+        setShowUserModal(true);
     };
-    const handleEditUser = (userToEdit) => { 
-        setEditingUser(userToEdit); 
-        setUserFormData(userToEdit); 
-        setShowUserModal(true); 
+
+    const handleEditUser = (userToEdit) => {
+        buildUserFormState(userToEdit);
+        setShowUserModal(true);
     };
+
+    const handleExistingUserSelect = async (uid) => {
+        setSelectedExistingUserId(uid);
+        if (!uid) {
+            await buildUserFormState();
+            return;
+        }
+
+        const selectedUser = (usuarios || []).find((u) => (u.uid || u.id) === uid);
+        if (selectedUser) {
+            await buildUserFormState(selectedUser);
+        }
+    };
+
+    const toggleUserStoreSelection = useCallback((storeId, checked) => {
+        setUserFormData((prev) => {
+            const currentStores = Array.isArray(prev.lojaIds)
+                ? prev.lojaIds
+                : (prev.lojaId ? [prev.lojaId] : []);
+
+            const nextStores = checked
+                ? Array.from(new Set([...currentStores, storeId]))
+                : currentStores.filter((id) => id !== storeId);
+
+            return {
+                ...prev,
+                lojaIds: nextStores,
+                lojaId: nextStores[0] || ''
+            };
+        });
+    }, []);
 
 	const handleUserSubmit = async (e) => {
 	  e.preventDefault();
@@ -3345,39 +6196,104 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
 		alert('A senha é obrigatória e deve ter pelo menos 6 caracteres');
 		return;
 	  }
+          try {
+                const selectedRole = normalizeRole(userFormData.role);
+                const lojasSelecionadas = selectedRole === ROLE_OWNER
+                    ? (userFormData.lojaIds && userFormData.lojaIds.length ? userFormData.lojaIds : [])
+                    : (userFormData.lojaIds && userFormData.lojaIds.length
+                        ? userFormData.lojaIds
+                        : (userFormData.lojaId ? [userFormData.lojaId] : (effectiveStoreId ? [effectiveStoreId] : [])));
+                const singleStoreId = selectedRole === ROLE_OWNER ? null : (lojasSelecionadas[0] || null);
 
-	  try {
-		if (editingUser) {
-		  const updateUserFn = httpsCallable(functions, 'updateUser');
-		  await updateUserFn({
-			uid: editingUser.uid,
-			nome: userFormData.nome,
-			role: userFormData.role,
-			email: userFormData.email
-		  });
-		  alert('Usuário atualizado com sucesso!');
-		} else {
-		  const createUserFn = httpsCallable(functions, 'createUser');
-		  await createUserFn({
-			email: userFormData.email,
-			senha: userFormData.senha,
-			nome: userFormData.nome,
-			role: userFormData.role,
-		  });
-		  alert('Usuário criado com sucesso!');
-		}
-		
-		setShowUserModal(false);
-		
-		// Recarrega a lista de usuários
-		const listAllUsersFn = httpsCallable(functions, 'listAllUsers');
-		const result = await listAllUsersFn();
-		setUsuarios(result.data.users);
-		
-	  } catch (error) {
-		console.error('Erro completo:', error);
-		alert("Erro ao salvar usuário: " + error.message);
-	  }
+                if (selectedRole !== ROLE_OWNER && !lojasSelecionadas.length) {
+                    alert('Selecione uma loja para este usuário.');
+                    return;
+                }
+
+                const sanitizedPermissions = sanitizePermissions(userFormData.permissions, selectedRole);
+                const applyCustomProfile = Boolean(userFormData.applyCustomProfile);
+                const permissionsToPersist = applyCustomProfile
+                    ? sanitizedPermissions
+                    : getDefaultPermissionsForRole(selectedRole);
+
+                let updatedUserId = editingUser?.uid || editingUser?.id;
+
+                if (editingUser) {
+                  const updateUserFn = httpsCallable(functions, 'updateUser');
+                  await updateUserFn({
+                        uid: editingUser.uid,
+                        nome: userFormData.nome,
+                        role: selectedRole,
+                        email: userFormData.email,
+                        lojaId: singleStoreId || null,
+                        lojaIds: lojasSelecionadas,
+                        permissions: permissionsToPersist
+                  });
+                  updatedUserId = editingUser.uid;
+                  alert('Usuário atualizado com sucesso!');
+                } else {
+                  const createUserFn = httpsCallable(functions, 'createUser');
+                  const result = await createUserFn({
+                        email: userFormData.email,
+                        senha: userFormData.senha,
+                        nome: userFormData.nome,
+                        role: selectedRole,
+                        lojaId: singleStoreId || null,
+                        lojaIds: lojasSelecionadas,
+                        permissions: permissionsToPersist
+                  });
+                  updatedUserId = result?.data?.uid || updatedUserId;
+                  alert('Usuário criado com sucesso!');
+                }
+
+                if (!applyCustomProfile && updatedUserId) {
+                    try {
+                        await deleteDoc(doc(db, 'customProfiles', updatedUserId));
+                    } catch (deleteError) {
+                        console.error('Erro ao remover perfil personalizado:', deleteError);
+                    }
+                }
+
+                if (updatedUserId && user?.auth?.uid === updatedUserId) {
+                    setUser((prev) => prev ? {
+                        ...prev,
+                        permissions: permissionsToPersist,
+                        customPermissions: applyCustomProfile ? permissionsToPersist : null,
+                        hasCustomProfile: applyCustomProfile,
+                    } : prev);
+                }
+
+                setShowUserModal(false);
+
+                // Recarrega a lista de usuários
+                const listAllUsersFn = httpsCallable(functions, 'listAllUsers');
+                const result = await listAllUsersFn();
+                if (result.data.users) {
+                    const normalizedUsers = result.data.users.map((u) => {
+                        const lojas = Array.isArray(u.lojaIds)
+                            ? u.lojaIds
+                            : (u.lojaId ? [u.lojaId] : []);
+                        const normalizedRole = normalizeRole(u.role);
+                        return {
+                            ...u,
+                            role: normalizedRole,
+                            lojaIds: lojas,
+                            lojaId: lojas[0] || null,
+                            permissions: sanitizePermissions(u.permissions, normalizedRole)
+                        };
+                    });
+
+                    const filteredUsers = (!effectiveStoreId || user.role === ROLE_OWNER)
+                        ? normalizedUsers
+                        : normalizedUsers.filter(u => (u.lojaIds || []).includes(effectiveStoreId));
+
+                    setUsuarios(filteredUsers);
+                }
+
+          } catch (error) {
+                console.error('Erro completo:', error);
+                alert("Erro ao salvar usuário: " + error.message);
+          }
 	};
 
     const handleDeleteUser = async (userToDelete) => {
@@ -3429,8 +6345,13 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
     
     const handleCupomSubmit = async (e) => {
       e.preventDefault();
-      
+
       try {
+        if (!effectiveStoreId) {
+            alert('Selecione uma loja para gerenciar cupons.');
+            return;
+        }
+
         const dataToSave = {
           codigo: cupomFormData.codigo.toUpperCase().trim(),
           tipoDesconto: cupomFormData.tipoDesconto,
@@ -3460,19 +6381,160 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
         e.preventDefault();
         setIsSavingFrete(true);
         try {
-            const freteDoc = doc(db, "configuracoes", "frete");
+
+            if (!effectiveStoreId) {
+                alert('Selecione uma loja específica para salvar as configurações.');
+                return;
+            }
+
+            const freteDoc = getStoreConfigDocRef(effectiveStoreId);
             await setDoc(freteDoc, {
+                frete: {
+                    ...freteConfig,
+                    valorPorKm: parseFloat(freteConfig.valorPorKm || 0),
+                    updatedAt: new Date(),
+                    updatedBy: user?.auth?.email || 'Sistema'
+                }
+            }, { merge: true });
+            await setDoc(doc(db, 'lojas', effectiveStoreId, 'info', 'dados'), {
+                frete: {
+                    ...freteConfig,
+                    valorPorKm: parseFloat(freteConfig.valorPorKm || 0),
+                    updatedAt: new Date(),
+                    updatedBy: user?.auth?.email || 'Sistema'
+                }
+            }, { merge: true });
+            await setDoc(doc(db, 'lojas', effectiveStoreId, 'configuracoes', 'frete'), {
                 ...freteConfig,
                 valorPorKm: parseFloat(freteConfig.valorPorKm || 0),
                 updatedAt: new Date(),
                 updatedBy: user?.auth?.email || 'Sistema'
-            });
+            }, { merge: true });
             alert('Configurações de frete salvas com sucesso!');
         } catch (error) {
             console.error("Erro ao salvar frete:", error);
             alert('Ocorreu um erro ao salvar as configurações.');
         } finally {
             setIsSavingFrete(false);
+        }
+    };
+
+
+    const updateScheduleDay = (dayKey, field, value) => {
+        setStoreHoursConfig((prev) => ({
+            ...prev,
+            schedule: {
+                ...prev.schedule,
+                [dayKey]: {
+                    ...(prev.schedule?.[dayKey] || { enabled: false, open: '08:00', close: '18:00' }),
+                    [field]: value
+                }
+            }
+        }));
+    };
+
+    const handleSaveStoreHoursConfig = async (event) => {
+        event.preventDefault();
+
+        if (!effectiveStoreId) {
+            alert('Selecione uma loja específica para salvar o horário de funcionamento.');
+            return;
+        }
+
+        for (const day of WEEKDAYS) {
+            const dayConfig = storeHoursConfig.schedule?.[day.key];
+            if (!dayConfig?.enabled) continue;
+            if (!dayConfig.open || !dayConfig.close) {
+                alert(`Preencha abre e fecha para ${day.label}.`);
+                return;
+            }
+            if (dayConfig.close <= dayConfig.open) {
+                alert(`O horário de fechamento de ${day.label} deve ser maior que o de abertura.`);
+                return;
+            }
+        }
+
+        setIsSavingStoreHours(true);
+        try {
+            const configRef = getStoreConfigDocRef(effectiveStoreId);
+            await setDoc(configRef, {
+                timezone: storeHoursConfig.timezone || DEFAULT_STORE_TIMEZONE,
+                schedule: storeHoursConfig.schedule || buildDefaultStoreSchedule(),
+                alarmPauseMinutes: sanitizeAlarmPauseMinutes(storeHoursConfig.alarmPauseMinutes),
+                manualOverride: {
+                    ...(storeHoursConfig.manualOverride || { mode: 'auto' }),
+                    updatedAt: serverTimestamp(),
+                    updatedBy: user?.auth?.email || user?.email || 'Sistema'
+                }
+            }, { merge: true });
+            alert('Horário de funcionamento salvo com sucesso!');
+        } catch (error) {
+            console.error('Erro ao salvar horário de funcionamento:', error);
+            alert('Não foi possível salvar o horário de funcionamento.');
+        } finally {
+            setIsSavingStoreHours(false);
+        }
+    };
+
+    const handleManualOverrideChange = async (mode) => {
+        if (!effectiveStoreId) {
+            alert('Selecione uma loja específica para alterar o status da loja.');
+            return;
+        }
+
+        try {
+            const configRef = getStoreConfigDocRef(effectiveStoreId);
+            await setDoc(configRef, {
+                manualOverride: {
+                    mode,
+                    updatedAt: serverTimestamp(),
+                    updatedBy: user?.auth?.email || user?.email || 'Sistema'
+                }
+            }, { merge: true });
+            setStoreHoursConfig((prev) => ({
+                ...prev,
+                manualOverride: {
+                    ...prev.manualOverride,
+                    mode,
+                    updatedBy: user?.auth?.email || user?.email || 'Sistema'
+                }
+            }));
+        } catch (error) {
+            console.error('Erro ao atualizar override manual da loja:', error);
+            alert('Não foi possível atualizar o status da loja.');
+        }
+    };
+
+    const handleSaveEntreLojasConfig = async (event) => {
+        event.preventDefault();
+        if (!effectiveStoreId) {
+            alert('Selecione uma loja específica para salvar a configuração de Entre Lojas.');
+            return;
+        }
+        if (!canEditEntreLojasConfig) {
+            alert('Você não tem permissão para alterar essa configuração.');
+            return;
+        }
+        const percentual = Number(entreLojasConfig.percentualRepasse || 0);
+        if (percentual < 0) {
+            alert('Percentual de repasse não pode ser negativo.');
+            return;
+        }
+        setIsSavingEntreLojasConfig(true);
+        try {
+            await setDoc(getStoreConfigDocRef(effectiveStoreId), {
+                entreLojas: {
+                    percentualRepasse: Number.isFinite(percentual) ? percentual : 0,
+                    updatedAt: serverTimestamp(),
+                    updatedBy: user?.auth?.email || user?.email || 'Sistema'
+                }
+            }, { merge: true });
+            alert('Configuração de Entre Lojas salva com sucesso!');
+        } catch (error) {
+            console.error('Erro ao salvar configuração de Entre Lojas:', error);
+            alert('Não foi possível salvar a configuração de Entre Lojas.');
+        } finally {
+            setIsSavingEntreLojasConfig(false);
         }
     };
 
@@ -3520,18 +6582,31 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
                 ...log,
                 user: log.userEmail || 'Não registrado',
                 formattedDetails: formattedDetails,
+
+                lojaNome: log.lojaId ? (storeInfoMap[log.lojaId]?.nome || log.lojaId) : effectiveStoreName
             };
         }).sort((a, b) => {
             const dateA = getJSDate(a.timestamp) || new Date(0);
             const dateB = getJSDate(b.timestamp) || new Date(0);
             return dateB - dateA;
         });
-    }, [data]);
-    
-    const userColumns = [ 
+
+    }, [data, storeInfoMap, effectiveStoreName]);
+
+    const userColumns = [
         { header: "Nome", key: "nome" },
-        { header: "Email", key: "email" }, 
-        { header: "Permissão", render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>{row.role}</span> } 
+        { header: "Email", key: "email" },
+        { header: "Permissão", render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${normalizeRole(row.role) === ROLE_OWNER ? 'bg-purple-100 text-purple-800' : normalizeRole(row.role) === ROLE_MANAGER ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>{normalizeRole(row.role)}</span> },
+        { header: "Loja", render: (row) => {
+            const lojas = Array.isArray(row.lojaIds) ? row.lojaIds : (row.lojaId ? [row.lojaId] : []);
+            if (normalizeRole(row.role) === ROLE_OWNER && lojas.length === 0) {
+                return 'Todas as lojas';
+            }
+            if (!lojas.length) {
+                return 'Não definida';
+            }
+            return lojas.map((id) => storeInfoMap[id]?.nome || id).join(', ');
+        } }
     ];
     const userActions = [ 
         { icon: Edit, label: "Editar", onClick: handleEditUser }, 
@@ -3557,6 +6632,8 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
             return date ? date.toLocaleString('pt-BR') : '-';
         }},
         { header: "Usuário", key: "user" },
+		{ header: "Loja", render: (row) => row.lojaNome || '-' },
+
         { header: "Ação", key: "action" },
         { header: "Detalhes", key: "formattedDetails" },
     ];
@@ -3578,6 +6655,12 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
                     </button>
                     <button onClick={() => setActiveTab('frete')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'frete' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Frete
+                    </button>
+                    <button onClick={() => setActiveTab('funcionamento')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'funcionamento' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
+                        Funcionamento
+                    </button>
+                    <button onClick={() => setActiveTab('entre-lojas')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'entre-lojas' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
+                        Entre Lojas
                     </button>
                     <button onClick={() => setActiveTab('logs')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'logs' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Logs de Atividade
@@ -3646,6 +6729,7 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
                         <p className="text-gray-500">Nenhum usuário encontrado.</p>
                         <p className="text-sm text-gray-400 mt-2">Clique em "Novo Usuário" para criar o primeiro usuário.</p>
                     </div>
+
 				) : (filteredUsuarios.length === 0 ? (
                     <div className="text-center p-8 bg-white rounded-2xl shadow-lg">
                         <p className="text-gray-500">Nenhum usuário corresponde aos filtros selecionados.</p>
@@ -3660,16 +6744,26 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
             
             {activeTab === 'cupons' && (
               <div>
-                <div className="flex justify-end my-4">
-                    <Button onClick={handleNewCupom}><Ticket className="w-4 h-4" /> Novo Cupom</Button>
-                </div>
-                {(!cupons || cupons.length === 0) ? (
+
+                {!effectiveStoreId ? (
                     <div className="text-center p-8 bg-white rounded-2xl shadow-lg">
-                        <p className="text-gray-500">Nenhum cupom cadastrado.</p>
-                        <p className="text-sm text-gray-400 mt-2">Clique em "Novo Cupom" para criar o primeiro cupom.</p>
+                        <p className="text-gray-500">Selecione uma loja no topo da página para gerenciar os cupons.</p>
                     </div>
                 ) : (
-                    <Table columns={cupomColumns} data={cupons} actions={cupomActions} />
+                    <>
+                        <div className="flex justify-between items-center my-4">
+                            <p className="text-sm text-gray-500">Gerenciando cupons da loja <strong>{effectiveStoreName}</strong></p>
+                            <Button onClick={handleNewCupom}><Ticket className="w-4 h-4" /> Novo Cupom</Button>
+                        </div>
+                        {(!cupons || cupons.length === 0) ? (
+                            <div className="text-center p-8 bg-white rounded-2xl shadow-lg">
+                                <p className="text-gray-500">Nenhum cupom cadastrado.</p>
+                                <p className="text-sm text-gray-400 mt-2">Clique em "Novo Cupom" para criar o primeiro cupom.</p>
+                            </div>
+                        ) : (
+                            <Table columns={cupomColumns} data={cupons} actions={cupomActions} />
+                        )}
+                    </>
                 )}
               </div>
             )}
@@ -3688,18 +6782,48 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
             )}
             
             {activeTab === 'frete' && (
-                <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-                    <form onSubmit={handleSaveFreteConfig} className="space-y-4 max-w-lg">
-                        <h3 className="text-xl font-bold text-gray-800">Configurações de Entrega</h3>
-                        <p className="text-sm text-gray-500">
-                            Defina o endereço de partida dos seus pedidos e o valor cobrado por quilômetro. As coordenadas podem ser encontradas no Google Maps.
-                        </p>
-                        <Input 
-                            label="Endereço da Loja (para referência)" 
-                            placeholder="Ex: Av. Comercial, 433, Goiânia"
-                            value={freteConfig.enderecoLoja || ''} 
-                            onChange={e => setFreteConfig({ ...freteConfig, enderecoLoja: e.target.value })} 
-                            required 
+
+                !effectiveStoreId ? (
+                    <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center text-gray-500">
+                        Selecione uma loja no topo da página para configurar o frete.
+                    </div>
+                ) : (
+                    <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+                        <form onSubmit={handleSaveFreteConfig} className="space-y-4 max-w-lg">
+                            <h3 className="text-xl font-bold text-gray-800">Configurações de Entrega</h3>
+                            <p className="text-sm text-gray-500">
+                                Defina o endereço de partida dos seus pedidos e o valor cobrado por quilômetro. As coordenadas podem ser encontradas no Google Maps.
+                            </p>
+                            <Input
+                                label="Endereço da Loja (para referência)"
+                                placeholder="Av. Comercial, 433 - Jardim Nova Esperança, Goiânia - GO"
+                                value={freteConfig.enderecoLoja || ''}
+                                onChange={e => setFreteConfig({ ...freteConfig, enderecoLoja: e.target.value })}
+                            />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Input
+                                    label="Latitude da Loja"
+                                    placeholder="-16.6725019"
+                                    value={freteConfig.lat || ''}
+                                    onChange={e => setFreteConfig({ ...freteConfig, lat: e.target.value })}
+                                    required
+                                />
+                                <Input
+                                    label="Longitude da Loja"
+                                    placeholder="-49.3274707"
+                                    value={freteConfig.lng || ''}
+                                    onChange={e => setFreteConfig({ ...freteConfig, lng: e.target.value })}
+                                    required
+                                />
+                            </div>
+                            <Input
+                                label="Valor por KM (R$)"
+                                type="number"
+                                step="0.01"
+                                placeholder="Ex: 1.50"
+                                value={freteConfig.valorPorKm || ''}
+                                onChange={e => setFreteConfig({ ...freteConfig, valorPorKm: e.target.value })}
+                                required
                         />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Input 
@@ -3717,60 +6841,346 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
                                 required 
                             />
                         </div>
-                        <Input 
-                            label="Valor por KM (R$)" 
-                            type="number" 
-                            step="0.01" 
-                            placeholder="Ex: 1.50"
-                            value={freteConfig.valorPorKm || ''} 
-                            onChange={e => setFreteConfig({ ...freteConfig, valorPorKm: e.target.value })} 
-                            required 
-                        />
-                        <div className="pt-4">
-                            <Button type="submit" disabled={isSavingFrete}>
-                                <Save className="w-4 h-4" /> {isSavingFrete ? 'Salvando...' : 'Salvar Configurações'}
+                            <div className="pt-4">
+                                <Button type="submit" disabled={isSavingFrete}>
+                                    <Save className="w-4 h-4" /> {isSavingFrete ? 'Salvando...' : 'Salvar Configurações'}
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                )
+
+            )}
+
+            {activeTab === 'funcionamento' && (
+                !effectiveStoreId ? (
+                    <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center text-gray-500">
+                        Selecione uma loja no topo da página para configurar o funcionamento.
+                    </div>
+                ) : (
+                    <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6 space-y-6">
+                        <div>
+                            <h3 className="text-xl font-bold text-gray-800">Horário de funcionamento</h3>
+                            <p className="text-sm text-gray-500">Defina o fuso e os horários por dia da semana para esta loja.</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input
+                                label="Fuso horário"
+                                value={storeHoursConfig.timezone || DEFAULT_STORE_TIMEZONE}
+                                onChange={(e) => setStoreHoursConfig((prev) => ({ ...prev, timezone: e.target.value }))}
+                                placeholder="America/Sao_Paulo"
+                            />
+                            <Input
+                                label="Tempo de pausa do alarme (min)"
+                                type="number"
+                                min={MIN_ALARM_PAUSE_MINUTES}
+                                max={MAX_ALARM_PAUSE_MINUTES}
+                                value={storeHoursConfig.alarmPauseMinutes ?? DEFAULT_ALARM_PAUSE_MINUTES}
+                                onChange={(e) => setStoreHoursConfig((prev) => ({
+                                    ...prev,
+                                    alarmPauseMinutes: sanitizeAlarmPauseMinutes(e.target.value)
+                                }))}
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            {WEEKDAYS.map((day) => {
+                                const dayConfig = storeHoursConfig.schedule?.[day.key] || { enabled: false, open: '08:00', close: '18:00' };
+                                return (
+                                    <div key={day.key} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border border-gray-100 rounded-xl p-3">
+                                        <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                                            <input
+                                                type="checkbox"
+                                                checked={Boolean(dayConfig.enabled)}
+                                                onChange={(e) => updateScheduleDay(day.key, 'enabled', e.target.checked)}
+                                            />
+                                            {day.label}
+                                        </label>
+                                        <Input
+                                            label="Abre"
+                                            type="time"
+                                            value={dayConfig.open || '08:00'}
+                                            onChange={(e) => updateScheduleDay(day.key, 'open', e.target.value)}
+                                            disabled={!dayConfig.enabled}
+                                        />
+                                        <Input
+                                            label="Fecha"
+                                            type="time"
+                                            value={dayConfig.close || '18:00'}
+                                            onChange={(e) => updateScheduleDay(day.key, 'close', e.target.value)}
+                                            disabled={!dayConfig.enabled}
+                                        />
+                                        <p className="text-xs text-gray-500">{dayConfig.enabled ? 'Dia ativo' : 'Fechado neste dia'}</p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="border border-gray-100 rounded-xl p-4 space-y-3">
+                            <h4 className="font-semibold text-gray-800">Status da loja (override manual)</h4>
+                            <div className="flex flex-wrap gap-2">
+                                <Button type="button" variant={storeHoursConfig.manualOverride?.mode === 'force_open' ? 'primary' : 'secondary'} onClick={() => handleManualOverrideChange('force_open')}>
+                                    Abrir agora
+                                </Button>
+                                <Button type="button" variant={storeHoursConfig.manualOverride?.mode === 'force_closed' ? 'primary' : 'secondary'} onClick={() => handleManualOverrideChange('force_closed')}>
+                                    Fechar agora
+                                </Button>
+                                <Button type="button" variant={storeHoursConfig.manualOverride?.mode === 'auto' ? 'primary' : 'secondary'} onClick={() => handleManualOverrideChange('auto')}>
+                                    Usar horário automático
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <Button type="button" onClick={handleSaveStoreHoursConfig} disabled={isSavingStoreHours}>
+                                <Save className="w-4 h-4" /> {isSavingStoreHours ? 'Salvando...' : 'Salvar horário de funcionamento'}
                             </Button>
                         </div>
-                    </form>
-                </div>
+                    </div>
+                )
+            )}
+
+            {activeTab === 'entre-lojas' && (
+                !effectiveStoreId ? (
+                    <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center text-gray-500">
+                        Selecione uma loja no topo da página para configurar o repasse do módulo Entre Lojas.
+                    </div>
+                ) : (
+                    <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+                        <form onSubmit={handleSaveEntreLojasConfig} className="space-y-4 max-w-xl">
+                            <h3 className="text-xl font-bold text-gray-800">Configuração de Repasse — Entre Lojas</h3>
+                            <p className="text-sm text-gray-500">
+                                Este percentual será somado ao custo do produto para calcular automaticamente o valor de repasse nas remessas entre lojas.
+                            </p>
+                            <Input
+                                label="Percentual de acréscimo do repasse (%)"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={entreLojasConfig.percentualRepasse}
+                                onChange={(e) => setEntreLojasConfig((prev) => ({ ...prev, percentualRepasse: Math.max(0, Number(e.target.value || 0)) }))}
+                                disabled={!canEditEntreLojasConfig}
+                            />
+                            <div className="rounded-lg border bg-pink-50 p-3 text-sm text-gray-700">
+                                <p><strong>Custo:</strong> R$ 8,00</p>
+                                <p><strong>Percentual:</strong> {Number(entreLojasConfig.percentualRepasse || 0).toFixed(2)}%</p>
+                                <p><strong>Repasse calculado:</strong> R$ {(8 * (1 + (Number(entreLojasConfig.percentualRepasse || 0) / 100))).toFixed(2)}</p>
+                            </div>
+                            {!canEditEntreLojasConfig && (
+                                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                                    Apenas Admin/Dono pode alterar esse percentual.
+                                </p>
+                            )}
+                            <div className="pt-2">
+                                <Button type="submit" disabled={isSavingEntreLojasConfig || !canEditEntreLojasConfig}>
+                                    <Save className="w-4 h-4" /> {isSavingEntreLojasConfig ? 'Salvando...' : 'Salvar Configurações'}
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                )
             )}
             
             <Modal isOpen={showUserModal} onClose={() => setShowUserModal(false)} title={editingUser ? "Editar Usuário" : "Novo Usuário"}>
                  <form onSubmit={handleUserSubmit} className="space-y-4">
+                    <div className="space-y-1">
+                        <label className="block text-sm font-medium text-gray-700" title="Escolha um usuário já cadastrado para carregar os dados automaticamente">Selecionar usuário existente</label>
+                        <select
+                            value={selectedExistingUserId}
+                            onChange={(e) => handleExistingUserSelect(e.target.value)}
+                            className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                        >
+                            <option value="">Cadastrar novo usuário</option>
+                            {(usuarios || []).map((u) => (
+                                <option key={u.uid || u.id} value={u.uid || u.id}>
+                                    {(u.nome || u.email || 'Usuário').trim()} • {(u.email || 'sem email')} ({normalizeRole(u.role)})
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-gray-500">Use esta lista para localizar rapidamente um perfil e editar as permissões personalizadas.</p>
+                    </div>
                     <Input label="Nome" value={userFormData.nome || ''} onChange={e => setUserFormData({...userFormData, nome: e.target.value})} required />
-                    <Input 
-                        label="Email" 
-                        type="email" 
+                    <Input
+                        label="Email"
+                        type="email"
                         value={userFormData.email || ''}
-                        onChange={(e) => setUserFormData({...userFormData, email: e.target.value})} 
-                        required 
+                        onChange={(e) => setUserFormData({...userFormData, email: e.target.value})}
+                        required
                     />
                     {!editingUser && (
-                        <Input 
-                            label="Senha" 
-                            type="password" 
-                            value={userFormData.senha || ''} 
-                            onChange={(e) => setUserFormData({...userFormData, senha: e.target.value})} 
-                            required 
+                        <Input
+                            label="Senha"
+                            type="password"
+                            value={userFormData.senha || ''}
+                            onChange={(e) => setUserFormData({...userFormData, senha: e.target.value})}
+                            required
                             minLength="6"
                             placeholder="Mínimo 6 caracteres"
                         />
                     )}
-                    <Select 
-                        label="Permissão" 
-                        value={userFormData.role || 'user'} 
-                        onChange={(e) => setUserFormData({...userFormData, role: e.target.value})} 
+
+                    <Select
+                        label="Permissão"
+                        value={userFormData.role || ROLE_ATTENDANT}
+                        onChange={(e) => {
+                            const newRole = normalizeRole(e.target.value);
+                            if (newRole === ROLE_OWNER) {
+                                setUserFormData({
+                                    ...userFormData,
+                                    role: newRole,
+                                    lojaId: '',
+                                    lojaIds: userFormData.lojaIds || [],
+                                    permissions: getDefaultPermissionsForRole(newRole)
+                                });
+                            } else {
+                                const roleStores = userFormData.lojaIds && userFormData.lojaIds.length
+                                    ? userFormData.lojaIds
+                                    : (userFormData.lojaId ? [userFormData.lojaId] : (effectiveStoreId ? [effectiveStoreId] : []));
+                                setUserFormData({
+                                    ...userFormData,
+                                    role: newRole,
+                                    lojaId: roleStores[0] || '',
+                                    lojaIds: roleStores,
+                                    permissions: getDefaultPermissionsForRole(newRole)
+                                });
+                            }
+                        }}
                         required
                     >
-                        <option value="user">Usuário</option>
-                        <option value="Atendente">Atendente</option>
-                        <option value="admin">Administrador</option>
+                        <option value={ROLE_CLIENT}>Cliente</option>
+                        <option value={ROLE_ATTENDANT}>Atendente</option>
+                        <option value={ROLE_MANAGER}>Gerente</option>
+                        <option value={ROLE_OWNER}>Dono</option>
                     </Select>
-                    
+
+                    {normalizeRole(userFormData.role) === ROLE_OWNER ? (
+                        <div className="space-y-1">
+                            <label className="block text-sm font-medium text-gray-700">Lojas com acesso</label>
+                            <select
+                                multiple
+                                value={userFormData.lojaIds || []}
+                                onChange={(e) => {
+                                    const values = Array.from(e.target.selectedOptions).map(opt => opt.value);
+                                    setUserFormData({ ...userFormData, lojaIds: values });
+                                }}
+                                className="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                            >
+                                {availableStores.map(storeId => (
+                                    <option key={storeId} value={storeId}>{storeInfoMap[storeId]?.nome || storeId}</option>
+                                ))}
+                            </select>
+                            <p className="text-xs text-gray-500">Deixe sem seleção para conceder acesso a todas as lojas.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-1">
+                            <label className="block text-sm font-medium text-gray-700">Lojas com acesso</label>
+                            <div className="w-full px-4 py-3 border rounded-xl bg-white space-y-2 max-h-44 overflow-auto">
+                                {availableStores.map((storeId) => {
+                                    const selectedStores = userFormData.lojaIds && userFormData.lojaIds.length
+                                        ? userFormData.lojaIds
+                                        : (userFormData.lojaId ? [userFormData.lojaId] : []);
+                                    const isChecked = selectedStores.includes(storeId);
+
+                                    return (
+                                        <label key={storeId} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                onChange={(e) => toggleUserStoreSelection(storeId, e.target.checked)}
+                                            />
+                                            <span>{storeInfoMap[storeId]?.nome || storeId}</span>
+                                        </label>
+                                    );
+                                })}
+                                {!availableStores.length && (
+                                    <p className="text-xs text-red-500">Nenhuma loja disponível. Ajuste a seleção no topo da página antes de criar o usuário.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-semibold text-gray-800">Permissões personalizadas</p>
+                                <p className="text-xs text-gray-500">Selecione quais menus o usuário pode acessar.</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-2 text-xs text-gray-600" title="Ative para personalizar o menu deste usuário">
+                                    <input
+                                        type="checkbox"
+                                        checked={Boolean(userFormData.applyCustomProfile)}
+                                        onChange={(e) => {
+                                            const useCustom = e.target.checked;
+                                            setUserFormData((prev) => ({
+                                                ...prev,
+                                                applyCustomProfile: useCustom,
+                                                permissions: useCustom ? prev.permissions : getDefaultPermissionsForRole(prev.role)
+                                            }));
+                                        }}
+                                    />
+                                    Ativar perfil personalizado
+                                </label>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    title="Voltar para o padrão do papel selecionado"
+                                    onClick={() => setUserFormData({
+                                        ...userFormData,
+                                        permissions: getDefaultPermissionsForRole(userFormData.role),
+                                        applyCustomProfile: false,
+                                    })}
+                                >
+                                    Usar padrão do papel
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    title="Recarrega a checklist com o padrão do papel, mantendo o perfil personalizado ativo"
+                                    onClick={() => setUserFormData({
+                                        ...userFormData,
+                                        permissions: getDefaultPermissionsForRole(userFormData.role),
+                                        applyCustomProfile: true,
+                                    })}
+                                >
+                                    Restaurar checklist
+                                </Button>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {allMenuItems.map((item) => (
+                                <label
+                                    key={item.id}
+                                    className={`flex items-center gap-2 text-sm text-gray-700 ${!userFormData.applyCustomProfile ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    title={`Permitir acesso ao menu "${item.label}"`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={Boolean(userFormData.permissions?.[item.id])}
+                                        disabled={!userFormData.applyCustomProfile}
+                                        onChange={(e) => {
+                                            setUserFormData({
+                                                ...userFormData,
+                                                permissions: {
+                                                    ...sanitizePermissions(userFormData.permissions, userFormData.role),
+                                                    [item.id]: e.target.checked
+                                                }
+                                            });
+                                        }}
+                                    />
+                                    {item.label}
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="flex justify-end gap-3 pt-4">
                         <Button variant="secondary" type="button" onClick={() => setShowUserModal(false)}>Cancelar</Button>
                         <Button type="submit">
-                            <Save className="w-4 h-4" /> 
+                            <Save className="w-4 h-4" />
                             Salvar
                         </Button>
                     </div>
@@ -3837,15 +7247,49 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
     const [statusFilter, setStatusFilter] = usePersistentState("pedidos_statusFilter", 'Todos');
     const [showModal, setShowModal] = useState(false);
     const [editingOrder, setEditingOrder] = useState(null);
+    const [isSavingOrder, setIsSavingOrder] = useState(false);
+    const [saveOrderError, setSaveOrderError] = useState('');
     const [formData, setFormData] = useState({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: 'Pix', cupom: null });
     const [viewingOrder, setViewingOrder] = useState(null);
+            const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
     const [descontoValor, setDescontoValor] = useState('');
     const [descontoPercentual, setDescontoPercentual] = useState('');
+    const [productSearchTerm, setProductSearchTerm] = useState('');
+
+    const deliveryProviders = useMemo(
+        () => (data.fornecedores || []).filter(f => (f.status || 'Ativo') !== 'Inativo'),
+        [data.fornecedores]
+    );
+
+    const canSendToDeliverer = (order) => {
+        if (!order) return false;
+        const { enderecoTexto } = getOrderAddressDetails(order, data.clientes);
+        if (!enderecoTexto || enderecoTexto === 'Não informado' || enderecoTexto === 'Retirar na Loja') {
+            return false;
+        }
+        return deliveryProviders.length > 0;
+    };
 
     const pedidosComNomes = (data.pedidos || []).map(pedido => {
         const cliente = data.clientes.find(c => c.id === pedido.clienteId);
         return { ...pedido, clienteNome: cliente ? cliente.nome : (pedido.clienteNome || 'Cliente não encontrado') };
     });
+
+    const filteredProducts = useMemo(() => {
+        const term = productSearchTerm.trim().toLowerCase();
+
+        return (data.produtos || [])
+            .filter(p => p.categoria === formData.categoria && p.status === 'Ativo')
+            .filter(p => {
+                if (!term) return true;
+
+                const nome = (p.nome || '').toLowerCase();
+                const descricao = (p.descricao || '').toLowerCase();
+
+                return nome.includes(term) || descricao.includes(term);
+            })
+            .sort((a, b) => a.nome.localeCompare(b.nome, undefined, { sensitivity: 'base' }));
+    }, [data.produtos, formData.categoria, productSearchTerm]);
 
     const filteredOrders = useMemo(() => pedidosComNomes.filter(p => {
         // **MELHORIA:** Lógica de busca por nome do cliente OU ID do pedido
@@ -3883,9 +7327,11 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
 
     const resetForm = () => {
         setEditingOrder(null);
+        setSaveOrderError('');
         setFormData({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: 'Pix', cupom: null });
         setDescontoValor('');
         setDescontoPercentual('');
+        setProductSearchTerm('');
     };
     
     // **MELHORIA:** Função para limpar todos os filtros, incluindo as datas
@@ -3971,92 +7417,144 @@ const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, dele
 
 const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsSavingOrder(true);
+    setSaveOrderError('');
+    console.log('[Sales][Create] Iniciando tentativa de criar pedido pelo modal.', {
+        isEditing: Boolean(editingOrder),
+        authCurrentUserUid: auth.currentUser?.uid || null,
+        authStateUserUid: user?.auth?.uid || null
+    });
     // Garante que clienteNome seja definido mesmo se não for encontrado
     const clienteSelecionado = data.clientes.find(c => c.id === formData.clienteId);
     const orderData = { 
         ...formData, 
         clienteNome: clienteSelecionado ? clienteSelecionado.nome : 'Cliente não selecionado' 
     };
-    
-    if (editingOrder) {
-        const { id, ...updateData } = orderData;
-        await updateItem('pedidos', editingOrder.id, updateData);
-        
-        // Atualiza estoque se status mudou para/de Finalizado
-        if (orderData.status === 'Finalizado' && editingOrder.status !== 'Finalizado') {
-            await updateStockForOrder(orderData.itens, 'decrease');
+
+    try {
+        const resolveOrderStoreId = () => (
+            editingOrder?.lojaId ||
+            orderData?.lojaId ||
+            resolveActiveStoreForWrite()
+        );
+
+        const isFinalizedStatus = (status) => status === 'Finalizado';
+
+        const getOrderItemProductId = (item) => item?.produtoId || item?.productId || item?.id || null;
+
+        const getOrderItemQuantity = (item) => {
+            const parsed = Number(item?.quantity ?? item?.quantidade ?? 0);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+        };
+
+        const mapOrderItemsByProduct = (items = []) => {
+            const grouped = new Map();
+
+            items.forEach((item) => {
+                const productId = getOrderItemProductId(item);
+                if (!productId) {
+                    console.error('[Stock][Pedidos] Item sem identificador de produto. Item ignorado.', item);
+                    return;
+                }
+
+                const quantity = getOrderItemQuantity(item);
+                if (quantity <= 0) return;
+
+                grouped.set(productId, (grouped.get(productId) || 0) + quantity);
+            });
+
+            return grouped;
+        };
+
+        const calculateOrderStockDelta = (oldItems = [], newItems = []) => {
+            const oldMap = mapOrderItemsByProduct(oldItems);
+            const newMap = mapOrderItemsByProduct(newItems);
+            const productIds = new Set([...oldMap.keys(), ...newMap.keys()]);
+            const delta = {};
+
+            productIds.forEach((productId) => {
+                const oldQty = oldMap.get(productId) || 0;
+                const newQty = newMap.get(productId) || 0;
+                const diff = newQty - oldQty;
+                if (diff !== 0) {
+                    delta[productId] = diff;
+                }
+            });
+
+            return delta;
+        };
+
+        const applyStockDelta = async (deltaByProduct = {}, storeId) => {
+            const entries = Object.entries(deltaByProduct).filter(([, delta]) => delta !== 0);
+            if (entries.length === 0) return;
+
+            await runTransaction(db, async (transaction) => {
+                for (const [productId, delta] of entries) {
+                    if (!productId) {
+                        console.error('[Stock][Pedidos] Produto sem ID ao aplicar delta. Item ignorado.');
+                        continue;
+                    }
+
+                    const productRef = getStoreDocRef(storeId, 'produtos', productId);
+                    const productSnap = await transaction.get(productRef);
+
+                    if (!productSnap.exists()) {
+                        console.error(`[Stock][Pedidos] Produto ${productId} não encontrado em lojas/${storeId}/produtos. Delta ignorado.`);
+                        continue;
+                    }
+
+                    const currentStockRaw = Number(productSnap.data()?.estoque ?? 0);
+                    const currentStock = Number.isFinite(currentStockRaw) ? currentStockRaw : 0;
+                    const nextStock = currentStock - delta;
+
+                    if (nextStock < 0) {
+                        throw new Error(`Estoque insuficiente para o produto ${productSnap.data()?.nome || productId}.`);
+                    }
+
+                    transaction.update(productRef, {
+                        estoque: nextStock,
+                        updatedAt: serverTimestamp()
+                    });
+                }
+            });
+        };
+
+        if (editingOrder) {
+            const { id, ...updateData } = orderData;
+            await updateItem('pedidos', editingOrder.id, updateData);
+
+            const storeId = resolveOrderStoreId();
+            const wasFinalized = isFinalizedStatus(editingOrder.status);
+            const isNowFinalized = isFinalizedStatus(orderData.status);
+            let stockDelta = {};
+
+            if (!wasFinalized && isNowFinalized) {
+                stockDelta = calculateOrderStockDelta([], orderData.itens || []);
+            } else if (wasFinalized && !isNowFinalized) {
+                stockDelta = calculateOrderStockDelta(editingOrder.itens || [], []);
+            } else if (wasFinalized && isNowFinalized) {
+                stockDelta = calculateOrderStockDelta(editingOrder.itens || [], orderData.itens || []);
+            }
+
+            await applyStockDelta(stockDelta, storeId);
+        } else {
+            await addItem('pedidos', orderData);
+
+            if (isFinalizedStatus(orderData.status)) {
+                const stockDelta = calculateOrderStockDelta([], orderData.itens || []);
+                await applyStockDelta(stockDelta, resolveOrderStoreId());
+            }
         }
-        else if (orderData.status !== 'Finalizado' && editingOrder.status === 'Finalizado') {
-            await updateStockForOrder(editingOrder.itens, 'increase');
-        }
-    } else {
-        await addItem('pedidos', orderData);
-        
-        // Atualiza estoque se novo pedido já é Finalizado
-        if (orderData.status === 'Finalizado') {
-            await updateStockForOrder(orderData.itens, 'decrease');
-        }
+
+        setShowModal(false);
+        resetForm();
+    } catch (error) {
+        console.error('[Sales][Create] Fluxo de cadastro abortado por falha na persistência.', error);
+        setSaveOrderError(error?.message || 'Não foi possível salvar o pedido. Tente novamente.');
+    } finally {
+        setIsSavingOrder(false);
     }
-    
-    setShowModal(false);
-    resetForm();
 };
-
-	// Função para atualizar estoque (com verificação de item.id)
-	const updateStockForOrder = async (itens, operation) => {
-		if (!itens || itens.length === 0) return;
-		
-		try {
-			for (const item of itens) {
-                // --- CORREÇÃO: Adiciona verificação para item.id ---
-                if (!item.id) {
-                    console.warn("Item de pedido sem ID, pulando atualização de estoque:", item);
-                    continue; // Pula este item e vai para o próximo
-                }
-				const productRef = doc(db, 'produtos', item.id);
-				const productSnap = await getDoc(productRef);
-				
-				if (productSnap.exists()) {
-					const productData = productSnap.data();
-					// Garante que estoque seja um número, tratando NaN ou undefined
-                    let currentStock = Number(productData.estoque);
-                    if (isNaN(currentStock)) {
-                        console.warn(`Estoque inválido para ${item.nome} (ID: ${item.id}). Definindo como 0.`);
-                        currentStock = 0;
-                    }
-
-                    // ✅✅✅ CORREÇÃO APLICADA AQUI ✅✅✅
-                    // 'const' foi mudado para 'let' para permitir reatribuição no 'if' abaixo
-                    let quantityChange = Number(item.quantity || 1);
-                     if (isNaN(quantityChange)) {
-                        console.warn(`Quantidade inválida para ${item.nome} no pedido. Usando 1.`);
-                        quantityChange = 1;
-                    }
-					
-					let newStock = currentStock;
-					
-					if (operation === 'decrease') {
-						newStock = Math.max(0, currentStock - quantityChange);
-					} else if (operation === 'increase') {
-						newStock = currentStock + quantityChange;
-					}
-					
-                    // Só atualiza se o estoque mudou
-                    if (newStock !== currentStock) {
-                        await updateDoc(productRef, { estoque: newStock });
-                        console.log(`Estoque atualizado: ${item.nome} - ${operation === 'decrease' ? 'Baixa' : 'Restauração'} de ${quantityChange}. Estoque anterior: ${currentStock}, Novo estoque: ${newStock}`);
-                    } else {
-                         console.log(`Estoque de ${item.nome} permaneceu ${currentStock}. Operação: ${operation}, Quantidade: ${quantityChange}`);
-                    }
-				} else {
-                    console.warn(`Produto com ID ${item.id} (${item.nome || 'Nome desconhecido'}) não encontrado no estoque.`);
-                }
-			}
-		} catch (error) {
-			console.error('Erro geral ao atualizar estoque:', error);
-			alert('Erro ao atualizar estoque dos produtos. Verifique o console para mais detalhes.');
-		}
-	};
     
     const handleEdit = (order) => {
         setEditingOrder(order);
@@ -4065,6 +7563,7 @@ const handleSubmit = async (e) => {
         const total = subtotal - desconto;
         
         // Garante que todos os campos necessários estejam presentes, mesmo que vazios
+
         const defaultOrderData = {
             clienteId: '',
             clienteNome: '',
@@ -4096,7 +7595,7 @@ const handleSubmit = async (e) => {
     };
 
     const getStatusClass = (status) => { switch (status) { case 'Pendente': return 'bg-yellow-100 text-yellow-800'; case 'Em Produção': return 'bg-blue-100 text-blue-800'; case 'Finalizado': return 'bg-green-100 text-green-800'; case 'Cancelado': return 'bg-red-100 text-red-800'; default: return 'bg-gray-100 text-gray-800'; } };
-    const columns = [ { header: "ID do Pedido", render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.substring(0, 8) || 'N/A'}</span> }, { header: "Cliente", key: "clienteNome" }, { header: "Total", render: (row) => <span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span> }, { header: "Data", render: (row) => { const date = getJSDate(row.createdAt); return date ? date.toLocaleDateString('pt-BR') : '-'; } }, { header: "Origem", key: "origem"}, { header: "Status", render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusClass(row.status)}`}>{row.status}</span> } ];
+    const columns = [ { header: "ID do Pedido", render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.substring(0, 8) || 'N/A'}</span> }, { header: "Cliente", key: "clienteNome" }, { header: "Total", render: (row) => <span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span> }, { header: "Data", render: (row) => { const date = getJSDate(row.createdAt); return date ? date.toLocaleDateString('pt-BR') : '-'; } }, { header: "Origem", key: "origem"}, { header: "Status", render: (row) => { const isPendingSync = row._isPendingSync; return <span className={`px-3 py-1 rounded-full text-xs font-medium ${isPendingSync ? 'bg-gray-100 text-gray-600' : getStatusClass(row.status)}`}>{isPendingSync ? 'Sincronizando...' : row.status}</span>; } } ];
     const actions = [ { icon: Eye, label: "Ver", onClick: (row) => setViewingOrder(row) }, { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidos', row.id) }) } ];
     
     return (
@@ -4170,8 +7669,15 @@ const handleSubmit = async (e) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-2">
                             <h3 className="font-semibold">Adicionar Produtos</h3>
+                            <Input
+                                label="Buscar produto"
+                                placeholder="Buscar por nome ou descrição"
+                                value={productSearchTerm}
+                                onChange={(e) => setProductSearchTerm(e.target.value)}
+                            />
                             <div className="max-h-60 overflow-y-auto border rounded-lg p-2 space-y-1">
-                                {data.produtos.filter(p => p.categoria === formData.categoria && p.status === 'Ativo').map(p => (<div key={p.id} className="flex justify-between items-center p-2 rounded hover:bg-gray-50"><span>{p.nome} - R$ {(p.preco || 0).toFixed(2)}</span><Button size="sm" variant="secondary" onClick={() => handleAddItemToOrder(p)}>+</Button></div>))}
+                                {filteredProducts
+                                    .map(p => (<div key={p.id} className="flex justify-between items-center p-2 rounded hover:bg-gray-50"><span>{p.nome} - R$ {(p.preco || 0).toFixed(2)}</span><Button size="sm" variant="secondary" onClick={() => handleAddItemToOrder(p)}>+</Button></div>))}
                             </div>
                         </div>
                         <div className="space-y-2">
@@ -4195,7 +7701,13 @@ const handleSubmit = async (e) => {
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4" />{editingOrder ? "Salvar Alterações" : "Criar Pedido"}</Button></div>
+                    {saveOrderError && (
+                        <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">
+                            {saveOrderError}
+                        </div>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit" disabled={isSavingOrder}><Save className="w-4 h-4" />{isSavingOrder ? "Salvando..." : (editingOrder ? "Salvar Alterações" : "Criar Pedido")}</Button></div>
                 </form>
             </Modal>
             <Modal isOpen={!!viewingOrder} onClose={() => setViewingOrder(null)} title="Detalhes do Pedido" size="lg">
@@ -4204,555 +7716,20 @@ const handleSubmit = async (e) => {
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
                     const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
-					const normalizeCoordinate = (value) => {
-                        if (value === null || value === undefined) return null;
-                        const numeric = typeof value === 'number' ? value : parseFloat(String(value).replace(',', '.'));
-                        return Number.isFinite(numeric) ? numeric : null;
-                    };
+					const frete = parseFloat(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0) || 0;
 
-                    const pickCoordinate = (...values) => {
-                        for (const value of values) {
-                            const coord = normalizeCoordinate(value);
-                            if (coord !== null) return coord;
-                        }
-                        return null;
-                    };
-
-                    const addressMatch = cliente?.enderecos?.find((addr) => {
-                        const storedAddress = (addr?.enderecoCompleto || addr?.endereco || '').trim().toLowerCase();
-                        const orderAddress = (viewingOrder.clienteEndereco || '').trim().toLowerCase();
-                        return storedAddress && orderAddress && storedAddress === orderAddress;
-                    });
-
-                    const latitude = pickCoordinate(
-                        viewingOrder.clienteLat,
-                        viewingOrder.lat,
-                        viewingOrder.latitude,
-                        viewingOrder.enderecoLat,
-                        addressMatch?.lat,
-                        addressMatch?.latitude,
-                        addressMatch?.latLng?.lat,
-                        addressMatch?.latlng?.lat
-                    );
-                    const longitude = pickCoordinate(
-                        viewingOrder.clienteLng,
-                        viewingOrder.lng,
-                        viewingOrder.longitude,
-                        viewingOrder.enderecoLng,
-                        addressMatch?.lng,
-                        addressMatch?.longitude,
-                        addressMatch?.latLng?.lng,
-                        addressMatch?.latlng?.lng
-                    );
-
-                    const mapLink = viewingOrder.localizacaoLink
-                        || viewingOrder.locationLink
-                        || viewingOrder.mapLink
-                        || viewingOrder.linkLocalizacao
-                        || viewingOrder.mapaUrl
-                        || addressMatch?.mapLink
-                        || addressMatch?.locationLink
-                        || addressMatch?.googleMapsUrl
-                        || (latitude !== null && longitude !== null ? `https://www.google.com/maps?q=${latitude},${longitude}` : null);
-
-                    const entregadores = (data.fornecedores || []).filter((fornecedor) => (fornecedor.categoria || '').toLowerCase() === 'entregador');
-                    const canSendToDeliverer = !!mapLink && entregadores.length > 0 && endereco !== 'Não informado' && endereco !== 'Retirar na Loja';
-
-                    const formatPhoneForWhatsApp = (phone) => {
-                        if (!phone) return '';
-                        const digits = phone.replace(/\D/g, '');
-                        if (!digits) return '';
-                        if (digits.length === 13 && digits.startsWith('55')) return digits;
-                        if (digits.length === 11) return `55${digits}`;
-                        if (digits.length === 12 && digits.startsWith('55')) return digits;
-                        return digits.length > 0 ? `55${digits}` : '';
-                    };
-					const freteNumber = Number(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0);
-                    const frete = Number.isFinite(freteNumber) ? freteNumber : 0;
                     
                     const handleSendToWhatsApp = () => {
                         if (!telefone) {
                            alert("Telefone do cliente não encontrado para enviar mensagem.");
                            return;
                         }
-                        const whatsappNumber = formatPhoneForWhatsApp(telefone);
-                        if (!whatsappNumber) {
-                            alert('Telefone do cliente inválido para WhatsApp.');
-                            return;
-                        }
-
-                        let message = `Olá, *${viewingOrder.clienteNome || 'Cliente'}!*\n\n`;
-                        message += `Aqui está um resumo do seu pedido na Ana Guimarães Doceria:\n\n`;
-                        if (endereco !== 'Não informado') {
-                            message += `*Endereço de Entrega:*\n${endereco}\n\n`;
-                        }
-                        message += `*Itens do Pedido:*\n`;
-                        (viewingOrder.itens || []).forEach(item => {
-                            message += `  • ${item.quantity || 1}x ${item.nome}\n`;
-                        });
-                        message += `\n`;
-
-                        if (viewingOrder.cupom?.valorDesconto > 0) {
-                            message += `*Subtotal:* R$ ${subtotal.toFixed(2)}\n`;
-                            message += `*Desconto (${viewingOrder.cupom.codigo}):* - R$ ${viewingOrder.cupom.valorDesconto.toFixed(2)}\n`;
-                        } else if (viewingOrder.desconto > 0) {
-                             message += `*Subtotal:* R$ ${subtotal.toFixed(2)}\n`;
-                             message += `*Desconto Manual:* - R$ ${viewingOrder.desconto.toFixed(2)}\n`;
-                        }
-
-						message += `*Frete:* R$ ${frete.toFixed(2)}\n`;
-                        message += `*Total:* R$ ${(viewingOrder.total || 0).toFixed(2)}\n`;
-                        if(viewingOrder.formaPagamento) message += `*Pagamento:* ${viewingOrder.formaPagamento}\n`;
-                        message += `*Status:* ${viewingOrder.status}\n\n`;
-                        if(viewingOrder.observacao) message += `*Observações:* ${viewingOrder.observacao}\n\n`;
-
-                        message += `Agradecemos a sua preferência!`;
-
-                        const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
-                        window.open(whatsappUrl, '_blank');
-                    };
-
-
-                    const handleSendAddressToDeliverer = () => {
-                        if (!canSendToDeliverer) {
-                            alert('Não há informações suficientes para enviar o endereço ao entregador.');
-                            return;
-                        }
-
-                        let selectedDeliverer = entregadores[0];
-                        if (entregadores.length > 1) {
-                            const options = entregadores.map((entregador, index) => {
-                                const contact = entregador.contato_whatsapp || entregador.contato_telefone || 'Sem contato';
-                                return `${index + 1} - ${entregador.nome || 'Entregador'} (${contact})`;
-                            }).join('\n');
-                            const choice = window.prompt(`Selecione o entregador:\n${options}`, '1');
-                            if (!choice) return;
-                            const selectedIndex = parseInt(choice, 10) - 1;
-                            if (Number.isNaN(selectedIndex) || !entregadores[selectedIndex]) {
-                                alert('Entregador selecionado inválido.');
-                                return;
-                            }
-                            selectedDeliverer = entregadores[selectedIndex];
-                        }
-
-                        const whatsappNumber = formatPhoneForWhatsApp(selectedDeliverer.contato_whatsapp || selectedDeliverer.contato_telefone || '');
-                        if (!whatsappNumber) {
-                            alert('O entregador selecionado não possui um número de WhatsApp válido.');
-                            return;
-                        }
-
-                        const linhasMensagem = [
-                            `Olá${selectedDeliverer.nome ? ` ${selectedDeliverer.nome}` : ''}!`,
-                            `Endereço para entrega do pedido de ${viewingOrder.clienteNome || 'cliente'}:`,
-                        ];
-
-                        if (telefone) {
-                            linhasMensagem.push(`Telefone do cliente: ${telefone}`);
-                        }
-
-                        linhasMensagem.push(endereco);
-                        linhasMensagem.push('');
-                        linhasMensagem.push(`Localização: ${mapLink}`);
-
-                        const mensagem = linhasMensagem.join('\n');
-                        const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(mensagem)}`;
-                        window.open(whatsappUrl, '_blank');
-                    };
-
-                    const handlePrint = () => {
-                        const printWindow = window.open('', '_blank');
-                        if (!printWindow) {
-                            alert("Por favor, habilite pop-ups para imprimir.");
-                            return;
-                        }
-                        printWindow.document.write('<html><head><title>Cupom do Pedido</title>');
-                        printWindow.document.write('<style> body { font-family: monospace; margin: 0; padding: 10px; width: 300px; font-size: 10pt; } h2, h3 { text-align: center; margin: 5px 0; } hr { border: none; border-top: 1px dashed black; margin: 5px 0; } table { width: 100%; border-collapse: collapse; margin-bottom: 5px;} td { padding: 1px 0; vertical-align: top;} .right { text-align: right; } p { margin: 2px 0; } .total { font-weight: bold; font-size: 11pt;} </style>');
-                        printWindow.document.write('</head><body>');
-                        printWindow.document.write('<h2>Ana Guimarães Doceria</h2>');
-                        printWindow.document.write(`<p>Cliente: ${viewingOrder.clienteNome || 'N/A'}</p>`);
-                        if (endereco !== 'Não informado') printWindow.document.write(`<p>Endereço: ${endereco}</p>`);
-                        if (telefone) printWindow.document.write(`<p>Telefone: ${telefone}</p>`);
-                        printWindow.document.write(`<p>Data: ${getJSDate(viewingOrder.createdAt)?.toLocaleString('pt-BR') || '-'}</p>`);
-                        if (viewingOrder.dataEntrega) printWindow.document.write(`<p>Entrega: ${new Date(viewingOrder.dataEntrega + 'T03:00:00Z').toLocaleDateString('pt-BR')}</p>`);
-                        printWindow.document.write('<hr>');
-                        printWindow.document.write('<h3>Itens</h3>');
-                        printWindow.document.write('<table>');
-                        (viewingOrder.itens || []).forEach(item => {
-                            printWindow.document.write(`<tr><td>${item.quantity || 1}x ${item.nome}</td><td class="right">R$ ${((item.preco || 0) * (item.quantity || 1)).toFixed(2)}</td></tr>`);
-                        });
-                        printWindow.document.write('</table>');
-                        printWindow.document.write('<hr>');
-
-                        if (viewingOrder.cupom?.valorDesconto > 0 || viewingOrder.desconto > 0) {
-                            printWindow.document.write(`<p>Subtotal:<span style="float: right;">R$ ${subtotal.toFixed(2)}</span></p>`);
-                             if (viewingOrder.cupom) {
-                                printWindow.document.write(`<p>Desconto (${viewingOrder.cupom.codigo}):<span style="float: right;">- R$ ${viewingOrder.cupom.valorDesconto.toFixed(2)}</span></p>`);
-                            } else {
-                                printWindow.document.write(`<p>Desconto:<span style="float: right;">- R$ ${viewingOrder.desconto.toFixed(2)}</span></p>`);
-                            }
-                        }
-
-                        printWindow.document.write(`<p>Frete:<span style="float: right;">R$ ${frete.toFixed(2)}</span></p>`);						
-                        printWindow.document.write(`<p class="total">Total:<span style="float: right;">R$ ${(viewingOrder.total || 0).toFixed(2)}</span></p>`);
-                        if(viewingOrder.formaPagamento) printWindow.document.write(`<p>Pagamento: ${viewingOrder.formaPagamento}</p>`);
-
-                        if(viewingOrder.observacao) {
-                            printWindow.document.write(`<hr><h3>Observações:</h3><p>${viewingOrder.observacao}</p>`);
-                        }
-                        printWindow.document.write('<hr><p style="text-align: center;">Obrigado!</p>');
-                        printWindow.document.write('</body></html>');
-                        printWindow.document.close();
-                         // Adiciona um pequeno delay para garantir que o conteúdo foi escrito antes de imprimir
-                        setTimeout(() => {
-                           printWindow.focus(); // Necessário para alguns navegadores
-                           printWindow.print();
-                           // printWindow.close(); // Comentar se quiser manter a janela aberta para debug
-                        }, 250);
-                    };
-
-                    return (
-                        <div className="space-y-4 text-sm text-gray-700">
-                            <div className="p-4 bg-gray-50 rounded-lg">
-                                <h3 className="font-bold text-lg text-gray-800 mb-2">Informações do Cliente</h3>
-                                <p><strong>Nome:</strong> {viewingOrder.clienteNome || 'N/A'}</p>
-                                <p><strong>Endereço:</strong> {endereco}</p>
-                                <p><strong>Telefone:</strong> {telefone || 'Não informado'}</p>
-                            </div>
-
-                            <div className="p-4 bg-gray-50 rounded-lg">
-                                <h3 className="font-bold text-lg text-gray-800 mb-2">Informações do Pedido</h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <p><strong>Status:</strong> <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClass(viewingOrder.status)}`}>{viewingOrder.status}</span></p>
-                                    <p><strong>Data do Pedido:</strong> {viewingOrder.createdAt ? getJSDate(viewingOrder.createdAt)?.toLocaleString('pt-BR') : '-'}</p>
-                                    <p><strong>Origem:</strong> {viewingOrder.origem}</p>
-                                    <p><strong>Pagamento:</strong> {viewingOrder.formaPagamento || 'Não informado'}</p>
-                                    {viewingOrder.categoria && (<p><strong>Categoria:</strong> {viewingOrder.categoria}</p>)}
-                                    {viewingOrder.dataEntrega && (<p><strong>Data de Entrega:</strong> {new Date(viewingOrder.dataEntrega + 'T03:00:00Z').toLocaleDateString('pt-BR')}</p>)}
-                                </div>
-                            </div>
-                            
-                             {viewingOrder.observacao && (
-                                <div className="p-4 bg-yellow-50 rounded-lg">
-                                    <h3 className="font-bold text-lg text-yellow-800 mb-2">Observações</h3>
-                                    <p>{viewingOrder.observacao}</p>
-                                </div>
-                            )}
-
-                            <div>
-                                <h4 className="font-bold text-lg text-gray-800 mt-4 mb-2">Itens do Pedido:</h4>
-                                <ul className="space-y-2">
-                                    {(viewingOrder.itens || []).map((item, index) => (
-                                        <li key={item.id || index} className="flex justify-between items-center p-2 bg-pink-50/50 rounded-md">
-                                            <span>{item.quantity || 1}x {item.nome}</span>
-                                            <span>R$ {((item.preco || 0) * (item.quantity || 1)).toFixed(2)}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-
-                            <div className="text-right pt-4 border-t mt-4 space-y-1">
-                                { (viewingOrder.cupom?.valorDesconto > 0 || viewingOrder.desconto > 0) && (
-                                    <>
-                                        <p className="text-sm text-gray-600">Subtotal: R$ {subtotal.toFixed(2)}</p>
-                                        <p className="text-sm text-red-600">
-                                            Desconto {viewingOrder.cupom ? `(${viewingOrder.cupom.codigo})` : ''}:
-                                            - R$ {(viewingOrder.cupom?.valorDesconto || viewingOrder.desconto || 0).toFixed(2)}
-                                        </p>
-                                    </>
-                                )}
-								<p className="text-sm text-gray-600">Frete: R$ {frete.toFixed(2)}</p>
-                                <p className="font-bold text-2xl text-pink-600">
-                                    Total: R$ ${(viewingOrder.total || 0).toFixed(2)}
-                                </p>
-                           </div>
-
-                            <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
-                                <Button 
-                                    onClick={handlePrint}
-                                    variant="secondary"
-                                    size="sm"
-                                >
-                                    <Printer className="w-4 h-4" />
-                                    Imprimir Cupom
-                                </Button>
-                                <Button
-                                    onClick={handleSendAddressToDeliverer}
-                                    disabled={!canSendToDeliverer}
-                                    className="bg-gradient-to-r from-sky-500 to-blue-600 text-white hover:from-sky-600 hover:to-blue-700 disabled:from-gray-300 disabled:to-gray-400 disabled:text-gray-600 disabled:cursor-not-allowed"
-                                    size="sm"
-                                >
-                                    <MapPin className="w-4 h-4" />
-                                    Enviar Endereço para Entregador
-                                </Button>
-                                <Button
-                                    onClick={handleSendToWhatsApp}
-                                    disabled={!telefone}
-                                    className="bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none disabled:transform-none"
-                                    size="sm"
-                                >
-                                    <MessageCircle className="w-4 h-4" />
-                                    Enviar Resumo Cliente
-                                </Button>
-                            </div>
-                        </div>
-                    );
-                })()}
-            </Modal>
-        </div>
-    );
-  }
-  
-  const Agenda = () => {
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [selectedDay, setSelectedDay] = useState(null);
-    const [viewingOrder, setViewingOrder] = useState(null);
-    
-    const getStatusClass = (status) => { 
-        switch (status) { 
-            case 'Pendente': return 'bg-yellow-400'; 
-            case 'Em Produção': return 'bg-blue-400'; 
-            case 'Finalizado': return 'bg-green-400'; 
-            case 'Cancelado': return 'bg-red-400'; 
-            default: return 'bg-gray-400'; 
-        } 
-    };
-    
-    const getStatusClassText = (status) => { 
-        switch (status) { 
-            case 'Pendente': return 'bg-yellow-100 text-yellow-800'; 
-            case 'Em Produção': return 'bg-blue-100 text-blue-800'; 
-            case 'Finalizado': return 'bg-green-100 text-green-800'; 
-            case 'Cancelado': return 'bg-red-100 text-red-800'; 
-            default: return 'bg-gray-100 text-gray-800'; 
-        } 
-    };
-
-    const daysOfWeek = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
-    const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-
-    const changeMonth = (offset) => {
-        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
-    };
-
-    const pedidosDoMes = (data.pedidos || []).filter(p => {
-		const relevantDateStr = p.categoria === 'Festa' && p.dataEntrega ? p.dataEntrega : p.createdAt;
-		let pedidoDate = getJSDate(relevantDateStr);
-		if (p.categoria === 'Festa' && p.dataEntrega) {
-			const [year, month, day] = p.dataEntrega.split('-');
-			const y = parseInt(year, 10);
-			const m = parseInt(month, 10) - 1;
-			const d = parseInt(day, 10);
-			pedidoDate = new Date(Date.UTC(y, m, d));
-		  }
-	  return pedidoDate && pedidoDate.getFullYear() === currentDate.getFullYear() &&
-			 pedidoDate.getMonth() === currentDate.getMonth();
-	});
-
-    const clientes = data.clientes || [];
-    const aniversariantesDoMes = useMemo(() => {
-        return clientes.filter(cliente => {
-            if (!cliente.aniversario || !/^\d{4}-\d{2}-\d{2}$/.test(cliente.aniversario)) return false;
-            // Usa UTC para evitar problemas de fuso
-            const [year, month, day] = cliente.aniversario.split('-');
-            const birthMonth = parseInt(month, 10) - 1; // Mês é 0-indexado
-            return birthMonth === currentDate.getMonth();
-        });
-    }, [data.clientes, currentDate]);
-
-    return (
-        <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
-             <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Agenda</h1>
-                <p className="text-gray-600 mt-1">Visualize entregas e aniversários</p>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 md:p-6">
-                <div className="flex justify-between items-center mb-4">
-                    <Button variant="secondary" size="sm" onClick={() => changeMonth(-1)}><ChevronLeft/></Button>
-                    <h2 className="text-xl font-bold text-gray-800 text-center">{currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</h2>
-                    <Button variant="secondary" size="sm" onClick={() => changeMonth(1)}><ChevronRight/></Button>
-                </div>
-
-                <div className="grid grid-cols-7 gap-1 text-center text-sm font-semibold text-gray-600">
-                    {daysOfWeek.map(day => <div key={day} className="py-2">{day}</div>)}
-                </div>
-
-                <div className="grid grid-cols-7 gap-1 md:gap-2">
-                    {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} className="border rounded-lg aspect-square"></div>)}
-                    {Array.from({ length: daysInMonth }).map((_, day) => {
-                        const dayNumber = day + 1;
-                        
-                        const today = new Date();
-                        const isToday = today.getDate() === dayNumber && today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear();
-                        
-                        const pedidosDoDia = pedidosDoMes.filter(p => {
-                            const relevantDateStr = p.categoria === 'Festa' && p.dataEntrega ? p.dataEntrega : p.createdAt;
-                            const pedidoDate = getJSDate(relevantDateStr);
-                            if (!pedidoDate) return false;
-                            // Se for Festa, compara com UTC
-                             if (p.categoria === 'Festa' && p.dataEntrega) {
-                                const [year, month, d] = p.dataEntrega.split('-');
-                                return parseInt(d, 10) === dayNumber;
-                             }
-                             // Senão, compara data local
-                            return pedidoDate.getDate() === dayNumber;
-                        });
-
-                        const aniversariantesDoDia = aniversariantesDoMes.filter(c => {
-                             const [, , dayString] = c.aniversario.split('-');
-                             return parseInt(dayString, 10) === dayNumber;
-                        });
-
-                        const hasEvents = pedidosDoDia.length > 0 || aniversariantesDoDia.length > 0;
-                        
-                        return (
-                            <div key={dayNumber} onClick={() => hasEvents && setSelectedDay({ day: dayNumber, pedidos: pedidosDoDia, aniversariantes: aniversariantesDoDia })} className={`border rounded-lg p-1 md:p-2 aspect-square flex flex-col ${hasEvents ? 'cursor-pointer hover:bg-pink-50' : ''} transition-colors ${isToday ? 'bg-pink-100' : ''}`}>
-                                <span className={`font-bold text-xs md:text-base ${isToday ? 'text-pink-600' : 'text-gray-800'}`}>{dayNumber}</span>
-                                <div className="mt-1 space-y-1 overflow-y-auto text-[10px] md:text-xs">
-                                    {pedidosDoDia.map(p => (
-                                        <div key={p.id} className={`w-full text-white rounded px-1 truncate ${getStatusClass(p.status)}`} title={`${p.clienteNome} (${p.status})`}>
-                                            {p.categoria === 'Festa' ? <Gift size={10} className="inline mr-1"/> : <ShoppingCart size={10} className="inline mr-1"/>}
-                                            {p.clienteNome}
-                                        </div>
-                                    ))}
-                                    {aniversariantesDoDia.map(c => (
-                                        <div key={c.id} className="w-full bg-yellow-300 text-yellow-800 rounded px-1 truncate flex items-center gap-1" title={`${c.nome} (Aniversário)`}>
-                                            <Cake size={10} />
-                                            {c.nome}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
             
-            <Modal isOpen={!!selectedDay} onClose={() => setSelectedDay(null)} title={`Eventos do dia ${selectedDay?.day}`}>
-                {selectedDay && (
-                    <div className="space-y-4">
-                        {selectedDay.pedidos.length > 0 && (
-                            <div>
-                                <h3 className="font-bold text-lg mb-2 text-gray-700">Pedidos ({selectedDay.pedidos.length})</h3>
-                                <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
-                                {selectedDay.pedidos.map(p => (
-                                    <div key={p.id} onClick={() => { setSelectedDay(null); setViewingOrder(p); }} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer flex justify-between items-center">
-                                        <div>
-                                            <p className="font-bold flex items-center gap-1">
-                                                {p.categoria === 'Festa' ? <Gift size={14} className="text-purple-500"/> : <ShoppingCart size={14} className="text-blue-500"/>}
-                                                {p.clienteNome}
-                                            </p>
-                                            <p className="text-sm text-gray-600">Total: R$ {p.total.toFixed(2)}</p>
-                                        </div>
-                                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusClassText(p.status)}`}>{p.status}</span>
-                                    </div>
-                                ))}
-                                </div>
-                            </div>
-                        )}
-                        {selectedDay.aniversariantes.length > 0 && (
-                             <div>
-                                <h3 className="font-bold text-lg mb-2 text-gray-700">Aniversariantes ({selectedDay.aniversariantes.length})</h3>
-                                 <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
-                                {selectedDay.aniversariantes.map(c => (
-                                    <div key={c.id} className="p-3 bg-yellow-50 rounded-lg flex items-center gap-3">
-                                        <Cake className="w-5 h-5 text-yellow-600" />
-                                        <p className="font-semibold text-yellow-800">{c.nome}</p>
-                                    </div>
-                                ))}
-                                </div>
-                            </div>
-                        )}
-                        {selectedDay.pedidos.length === 0 && selectedDay.aniversariantes.length === 0 && <p>Nenhum evento para este dia.</p>}
-                    </div>
-                )}
-            </Modal>
-             {/* Modal de Detalhes do Pedido (igual ao do componente Pedidos) */}
-             <Modal isOpen={!!viewingOrder} onClose={() => setViewingOrder(null)} title="Detalhes do Pedido" size="lg">
-                 {viewingOrder && (() => {
-                    const cliente = data.clientes.find(c => c.id === viewingOrder.clienteId);
-                    const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
-                    const telefone = viewingOrder.telefone || cliente?.telefone || '';
-                    const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
+                        const formattedPhone = telefone.replace(/\D/g, '');
+                        // Adiciona 55 se não tiver, e garante que tenha 11 ou 13 dígitos (com 55)
+                        const whatsappNumber = formattedPhone.length === 11 ? `55${formattedPhone}` : formattedPhone.length === 13 && formattedPhone.startsWith('55') ? formattedPhone : `55${formattedPhone}`; // Assume DDD + 9 dígitos se não tiver 55
 
-                    const normalizeCoordinate = (value) => {
-                        if (value === null || value === undefined) return null;
-                        const numeric = typeof value === 'number' ? value : parseFloat(String(value).replace(',', '.'));
-                        return Number.isFinite(numeric) ? numeric : null;
-                    };
-
-                    const pickCoordinate = (...values) => {
-                        for (const value of values) {
-                            const coord = normalizeCoordinate(value);
-                            if (coord !== null) return coord;
-                        }
-                        return null;
-                    };
-
-                    const addressMatch = cliente?.enderecos?.find((addr) => {
-                        const storedAddress = (addr?.enderecoCompleto || addr?.endereco || '').trim().toLowerCase();
-                        const orderAddress = (viewingOrder.clienteEndereco || '').trim().toLowerCase();
-                        return storedAddress && orderAddress && storedAddress === orderAddress;
-                    });
-
-                    const latitude = pickCoordinate(
-                        viewingOrder.clienteLat,
-                        viewingOrder.lat,
-                        viewingOrder.latitude,
-                        viewingOrder.enderecoLat,
-                        addressMatch?.lat,
-                        addressMatch?.latitude,
-                        addressMatch?.latLng?.lat,
-                        addressMatch?.latlng?.lat
-                    );
-                    const longitude = pickCoordinate(
-                        viewingOrder.clienteLng,
-                        viewingOrder.lng,
-                        viewingOrder.longitude,
-                        viewingOrder.enderecoLng,
-                        addressMatch?.lng,
-                        addressMatch?.longitude,
-                        addressMatch?.latLng?.lng,
-                        addressMatch?.latlng?.lng
-                    );
-
-                    const mapLink = viewingOrder.localizacaoLink
-                        || viewingOrder.locationLink
-                        || viewingOrder.mapLink
-                        || viewingOrder.linkLocalizacao
-                        || viewingOrder.mapaUrl
-                        || addressMatch?.mapLink
-                        || addressMatch?.locationLink
-                        || addressMatch?.googleMapsUrl
-                        || (latitude !== null && longitude !== null ? `https://www.google.com/maps?q=${latitude},${longitude}` : null);
-
-                    const entregadores = (data.fornecedores || []).filter((fornecedor) => (fornecedor.categoria || '').toLowerCase() === 'entregador');
-                    const canSendToDeliverer = !!mapLink && entregadores.length > 0 && endereco !== 'Não informado' && endereco !== 'Retirar na Loja';
-
-                    const formatPhoneForWhatsApp = (phone) => {
-                        if (!phone) return '';
-                        const digits = phone.replace(/\D/g, '');
-                        if (!digits) return '';
-                        if (digits.length === 13 && digits.startsWith('55')) return digits;
-                        if (digits.length === 11) return `55${digits}`;
-                        if (digits.length === 12 && digits.startsWith('55')) return digits;
-                        return digits.length > 0 ? `55${digits}` : '';
-                    };
-
-                    const handleSendToWhatsApp = () => {
-                        if (!telefone) {
-                           alert("Telefone do cliente não encontrado para enviar mensagem.");
-                           return;
-                        }
-
-                        const whatsappNumber = formatPhoneForWhatsApp(telefone);
-                        if (!whatsappNumber) {
-                            alert('Telefone do cliente inválido para WhatsApp.');
-                            return;
-                        }
-
-                        let message = `Olá, *${viewingOrder.clienteNome || 'Cliente'}!*\n\n`;
+                        let message = `Olá, *${viewingOrder.clienteNome || 'Cliente'}*!\n\n`;
                         message += `Aqui está um resumo do seu pedido na Ana Guimarães Doceria:\n\n`;
                         if (endereco !== 'Não informado') {
                             message += `*Endereço de Entrega:*\n${endereco}\n\n`;
@@ -4771,62 +7748,18 @@ const handleSubmit = async (e) => {
                              message += `*Desconto Manual:* - R$ ${viewingOrder.desconto.toFixed(2)}\n`;
                         }
 
+                        message += `*Frete:* R$ ${frete.toFixed(2)}\n`;
                         message += `*Total:* R$ ${(viewingOrder.total || 0).toFixed(2)}\n`;
                         if(viewingOrder.formaPagamento) message += `*Pagamento:* ${viewingOrder.formaPagamento}\n`;
                         message += `*Status:* ${viewingOrder.status}\n\n`;
                         if(viewingOrder.observacao) message += `*Observações:* ${viewingOrder.observacao}\n\n`;
-
+                        
                         message += `Agradecemos a sua preferência! ❤`;
 
                         const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
                         window.open(whatsappUrl, '_blank');
                     };
-
-                    const handleSendAddressToDeliverer = () => {
-                        if (!canSendToDeliverer) {
-                            alert('Não há informações suficientes para enviar o endereço ao entregador.');
-                            return;
-                        }
-
-                        let selectedDeliverer = entregadores[0];
-                        if (entregadores.length > 1) {
-                            const options = entregadores.map((entregador, index) => {
-                                const contact = entregador.contato_whatsapp || entregador.contato_telefone || 'Sem contato';
-                                return `${index + 1} - ${entregador.nome || 'Entregador'} (${contact})`;
-                            }).join('\n');
-                            const choice = window.prompt(`Selecione o entregador:\n${options}`, '1');
-                            if (!choice) return;
-                            const selectedIndex = parseInt(choice, 10) - 1;
-                            if (Number.isNaN(selectedIndex) || !entregadores[selectedIndex]) {
-                                alert('Entregador selecionado inválido.');
-                                return;
-                            }
-                            selectedDeliverer = entregadores[selectedIndex];
-                        }
-
-                        const whatsappNumber = formatPhoneForWhatsApp(selectedDeliverer.contato_whatsapp || selectedDeliverer.contato_telefone || '');
-                        if (!whatsappNumber) {
-                            alert('O entregador selecionado não possui um número de WhatsApp válido.');
-                            return;
-                        }
-
-                        const linhasMensagem = [
-                            `Olá${selectedDeliverer.nome ? ` ${selectedDeliverer.nome}` : ''}!`,
-                            `Endereço para entrega do pedido de ${viewingOrder.clienteNome || 'cliente'}:`,
-                        ];
-
-                        if (telefone) {
-                            linhasMensagem.push(`Telefone do cliente: ${telefone}`);
-                        }
-
-                        linhasMensagem.push(endereco);
-                        linhasMensagem.push('');
-                        linhasMensagem.push(`Localização: ${mapLink}`);
-
-                        const mensagem = linhasMensagem.join('\n');
-                        const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(mensagem)}`;
-                        window.open(whatsappUrl, '_blank');
-                    };
+                    
                     const handlePrint = () => {
                         const printWindow = window.open('', '_blank');
                         if (!printWindow) {
@@ -4927,28 +7860,20 @@ const handleSubmit = async (e) => {
                                         </p>
                                     </>
                                 )}
+                                <p className="text-sm text-gray-600">Frete: R$ {frete.toFixed(2)}</p>
                                 <p className="font-bold text-2xl text-pink-600">
                                     Total: R$ ${(viewingOrder.total || 0).toFixed(2)}
                                 </p>
                            </div>
 
                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
-                                <Button
+                                 <Button 
                                     onClick={handlePrint}
                                     variant="secondary"
                                     size="sm"
                                 >
                                     <Printer className="w-4 h-4" />
                                     Imprimir Cupom
-                                </Button>
-                                <Button
-                                    onClick={handleSendAddressToDeliverer}
-                                    disabled={!canSendToDeliverer}
-                                    className="bg-gradient-to-r from-sky-500 to-blue-600 text-white hover:from-sky-600 hover:to-blue-700 disabled:from-gray-300 disabled:to-gray-400 disabled:text-gray-600 disabled:cursor-not-allowed"
-                                    size="sm"
-                                >
-                                    <MapPin className="w-4 h-4" />
-                                    Enviar Endereço para Entregador
                                 </Button>
                                 <Button
                                     onClick={handleSendToWhatsApp}
@@ -4959,40 +7884,1264 @@ const handleSubmit = async (e) => {
                                     <MessageCircle className="w-4 h-4" />
                                     Enviar Resumo Cliente
                                 </Button>
+                                <Button
+                                    onClick={() => setOrderToSendToDeliverer(viewingOrder)}
+                                    disabled={!canSendToDeliverer(viewingOrder)}
+                                    className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700"
+                                    size="sm"
+                                >
+                                    <Truck className="w-4 h-4" />
+                                    Enviar Endereço para Entregador
+                                </Button>
                             </div>
                         </div>
                     );
                 })()}
-             </Modal>
+            </Modal>
+            <DeliveryModal
+                isOpen={!!orderToSendToDeliverer}
+                order={orderToSendToDeliverer}
+                clientes={data.clientes}
+                fornecedores={data.fornecedores}
+                onClose={() => setOrderToSendToDeliverer(null)}
+            />
+        </div>
+    );
+  }
+  
+  const EntreLojas = () => {
+    const [transferencias, setTransferencias] = useState([]);
+    const [activeTab, setActiveTab] = useState('todas');
+    const [statusFilter, setStatusFilter] = useState('todos');
+    const [origemFilter, setOrigemFilter] = useState('todos');
+    const [destinoFilter, setDestinoFilter] = useState('todos');
+    const [startDateFilter, setStartDateFilter] = useState('');
+    const [endDateFilter, setEndDateFilter] = useState('');
+    const [showModal, setShowModal] = useState(false);
+    const [viewingTransfer, setViewingTransfer] = useState(null);
+    const [editingTransfer, setEditingTransfer] = useState(null);
+    const [isSavingTransfer, setIsSavingTransfer] = useState(false);
+    const [formError, setFormError] = useState('');
+    const [repasseConfigPercentual, setRepasseConfigPercentual] = useState(0);
+    const [actionComment, setActionComment] = useState('');
+    const [formData, setFormData] = useState({
+      lojaOrigemId: '',
+      lojaDestinoId: '',
+      dataRemessa: new Date().toISOString().slice(0, 10),
+      observacaoOrigem: '',
+      itens: []
+    });
+
+    const userStoreIds = useMemo(() => {
+      if (!user) return [];
+      const stores = Array.isArray(user.lojaIds) && user.lojaIds.length ? user.lojaIds : (user.lojaId ? [user.lojaId] : []);
+      return Array.from(new Set(stores.filter(Boolean)));
+    }, [user]);
+
+    const canAccessAllTransfers = user?.role === ROLE_OWNER;
+    const allowedOriginStoreIds = useMemo(() => {
+      if (!user) return [];
+      if (user.role === ROLE_OWNER) return availableStores;
+      if (user.role === ROLE_MANAGER) return userStoreIds;
+      if (user.role === ROLE_ATTENDANT) return userStoreIds.slice(0, 1);
+      return [];
+    }, [availableStores, user, userStoreIds]);
+
+    const canMarkAsPaid = user?.role === ROLE_OWNER || user?.role === ROLE_MANAGER;
+    const canConfirmPaymentByRole = user?.role === ROLE_OWNER || user?.role === ROLE_MANAGER;
+    const isEditingTransfer = !!editingTransfer?.id;
+    const canChangeOriginStore = allowedOriginStoreIds.length > 1;
+
+    const DEBUG_ENTRE_LOJAS = false;
+    const entreLojasLog = (...args) => {
+      if (DEBUG_ENTRE_LOJAS) console.log('[EntreLojas][DEBUG]', ...args);
+    };
+
+    const normalizeStoreId = (value) => String(value || '').trim();
+
+    const allowedStoreIds = useMemo(() => Array.from(new Set(userStoreIds.map(normalizeStoreId).filter(Boolean))).slice(0, 10), [userStoreIds]);
+
+    const selectedStoreIdForView = useMemo(() => {
+      if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) return null;
+      return normalizeStoreId(currentStoreIdForDisplay);
+    }, [currentStoreIdForDisplay]);
+
+    const getDefaultOriginStoreId = useCallback(() => {
+      if (!allowedOriginStoreIds.length) return '';
+      if (currentStoreIdForDisplay && currentStoreIdForDisplay !== STORE_ALL_KEY && allowedOriginStoreIds.includes(currentStoreIdForDisplay)) {
+        return currentStoreIdForDisplay;
+      }
+      return allowedOriginStoreIds[0] || '';
+    }, [allowedOriginStoreIds, currentStoreIdForDisplay]);
+
+    useEffect(() => {
+      if (!user) return undefined;
+      const transfersRef = collection(db, 'transferenciasEntreLojas');
+
+      if (canAccessAllTransfers) {
+        const baseQuery = query(transfersRef, orderBy('dataCriacao', 'desc'), limit(250));
+        return onSnapshot(baseQuery, (snapshot) => {
+          const rows = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+          setTransferencias(rows);
+        }, (error) => {
+          console.error('[EntreLojas] Erro ao carregar transferências:', error);
+        });
+      }
+
+      if (!allowedStoreIds.length) {
+        console.warn('[EntreLojas] Usuário sem lojas permitidas para Entre Lojas', { role: user?.role, userStoreIds });
+        setTransferencias([]);
+        return undefined;
+      }
+
+      entreLojasLog('Contexto de carregamento', {
+        userProfileRole: user?.role,
+        selectedStoreId,
+        currentStoreIdForDisplay,
+        selectedStoreIdForView,
+        allowedStoreIds,
+        allowedOriginStoreIds,
+        availableStores: availableStores.map((storeId) => ({ id: storeId, nome: storeInfoMap[storeId]?.nome || storeId }))
+      });
+      const originQuery = query(transfersRef, where('lojaOrigemId', 'in', allowedStoreIds), limit(250));
+      const destinationQuery = query(transfersRef, where('lojaDestinoId', 'in', allowedStoreIds), limit(250));
+
+      const mergeTransfers = (originDocs, destinationDocs) => {
+        const merged = new Map();
+        [...originDocs, ...destinationDocs].forEach((docSnap) => {
+          merged.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+        });
+        const sortedRows = Array.from(merged.values()).sort((a, b) => {
+          const dateA = getJSDate(a.dataCriacao)?.getTime() || 0;
+          const dateB = getJSDate(b.dataCriacao)?.getTime() || 0;
+          return dateB - dateA;
+        });
+        const limitedRows = sortedRows.slice(0, 250);
+        entreLojasLog('Merge de transferências', {
+          origem: originDocs.length,
+          destino: destinationDocs.length,
+          totalMesclado: limitedRows.length,
+          transferencias: limitedRows.map((item) => ({ id: item.id, numero: item.numero, lojaOrigemId: item.lojaOrigemId, lojaDestinoId: item.lojaDestinoId, status: item.status }))
+        });
+        setTransferencias(limitedRows);
+      };
+
+      let originDocs = [];
+      let destinationDocs = [];
+
+      const unsubscribeOrigin = onSnapshot(originQuery, (snapshot) => {
+        originDocs = snapshot.docs;
+        entreLojasLog('Resultado query origem', { quantidade: originDocs.length, ids: originDocs.map((docSnap) => docSnap.id) });
+        mergeTransfers(originDocs, destinationDocs);
+      }, (error) => {
+        console.error('[EntreLojas] Erro ao carregar transferências por origem:', error);
+      });
+
+      const unsubscribeDestination = onSnapshot(destinationQuery, (snapshot) => {
+        destinationDocs = snapshot.docs;
+        entreLojasLog('Resultado query destino', { quantidade: destinationDocs.length, ids: destinationDocs.map((docSnap) => docSnap.id) });
+        mergeTransfers(originDocs, destinationDocs);
+      }, (error) => {
+        console.error('[EntreLojas] Erro ao carregar transferências por destino:', error);
+      });
+
+      return () => {
+        unsubscribeOrigin();
+        unsubscribeDestination();
+      };
+    }, [allowedOriginStoreIds, allowedStoreIds, canAccessAllTransfers, currentStoreIdForDisplay, selectedStoreId, selectedStoreIdForView, user, userStoreIds]);
+
+    const storesForSelect = useMemo(
+      () => availableStores.map((storeId) => ({ id: storeId, nome: storeInfoMap[storeId]?.nome || storeId })),
+      [availableStores, storeInfoMap]
+    );
+
+    const productOptions = useMemo(() => (data.produtos || []).map((item) => ({
+      id: item.id,
+      nome: item.nome || item.descricao || 'Produto sem nome',
+      preco: Number(item.preco || item.precoVenda || item.valor || 0),
+      custo: [item.custo, item.precoCusto, item.valorCusto, item.custoUnitario, item.precoCompra]
+        .map((value) => Number(value))
+        .find((value) => Number.isFinite(value) && value >= 0)
+    })), [data.produtos]);
+
+    useEffect(() => {
+      if (!formData.lojaOrigemId) {
+        setRepasseConfigPercentual(0);
+        return;
+      }
+      const fetchRepasseConfig = async () => {
+        try {
+          const configSnap = await getDoc(getStoreConfigDocRef(formData.lojaOrigemId));
+          const percentual = Number(configSnap.data()?.entreLojas?.percentualRepasse);
+          setRepasseConfigPercentual(Number.isFinite(percentual) && percentual >= 0 ? percentual : 0);
+        } catch (error) {
+          console.error('[EntreLojas] Erro ao carregar percentual de repasse:', error);
+          setRepasseConfigPercentual(0);
+        }
+      };
+      fetchRepasseConfig();
+    }, [formData.lojaOrigemId]);
+
+    const computeTotals = useCallback((items = []) => {
+      return items.reduce((acc, item) => {
+        const quantidade = Number(item.quantidade) || 0;
+        const valorUnitarioRepasse = Number(item.valorUnitarioRepasse) || 0;
+        const valorUnitarioRevenda = Number(item.valorUnitarioRevenda) || 0;
+        acc.quantidadeTotalItens += quantidade;
+        acc.totalRepasse += quantidade * valorUnitarioRepasse;
+        acc.totalRevenda += quantidade * valorUnitarioRevenda;
+        return acc;
+      }, { quantidadeTotalItens: 0, totalRepasse: 0, totalRevenda: 0 });
+    }, []);
+
+    const resetForm = () => {
+      setFormError('');
+      setEditingTransfer(null);
+      setFormData({
+        lojaOrigemId: getDefaultOriginStoreId(),
+        lojaDestinoId: '',
+        dataRemessa: new Date().toISOString().slice(0, 10),
+        observacaoOrigem: '',
+        itens: []
+      });
+    };
+
+    useEffect(() => {
+      if (!showModal || isEditingTransfer) return;
+      setFormData((prev) => {
+        if (prev.lojaOrigemId && allowedOriginStoreIds.includes(prev.lojaOrigemId)) return prev;
+        return { ...prev, lojaOrigemId: getDefaultOriginStoreId() };
+      });
+    }, [allowedOriginStoreIds, getDefaultOriginStoreId, isEditingTransfer, showModal]);
+
+    useEffect(() => {
+      setFormData((prev) => {
+        if (!prev.lojaOrigemId || !prev.lojaDestinoId) return prev;
+        if (prev.lojaOrigemId !== prev.lojaDestinoId) return prev;
+        return { ...prev, lojaDestinoId: '' };
+      });
+    }, [formData.lojaOrigemId]);
+
+    const openNewTransferModal = () => {
+      resetForm();
+      setShowModal(true);
+    };
+
+    const formatMoney = (value) => `R$ ${(Number(value) || 0).toFixed(2)}`;
+    const statusLabelMap = {
+      rascunho: 'Rascunho',
+      aguardando_conferencia: 'Aguardando conferência',
+      conferencia_sem_divergencia: 'Conferida sem divergência',
+      conferencia_com_divergencia: 'Conferida com divergência',
+      pagamento_informado: 'Pagamento informado',
+      pagamento_confirmado: 'Pagamento confirmado',
+      pagamento_contestado: 'Pagamento contestado',
+      cancelado: 'Cancelado'
+    };
+    const statusClassMap = {
+      pagamento_confirmado: 'bg-green-100 text-green-700',
+      pagamento_informado: 'bg-orange-100 text-orange-700',
+    };
+
+    const getStatusClassName = (status) => statusClassMap[status] || 'bg-pink-100 text-pink-700';
+
+    const addItemToTransfer = () => {
+      setFormData((prev) => ({
+        ...prev,
+        itens: [...prev.itens, { produtoId: '', produtoBusca: '', nome: '', quantidade: 1, valorUnitarioRepasse: '', valorUnitarioRevenda: 0, semCusto: false }]
+      }));
+    };
+
+    const updateItemField = (index, field, value) => {
+      setFormData((prev) => ({
+        ...prev,
+        itens: prev.itens.map((item, itemIndex) => {
+          if (itemIndex !== index) return item;
+          if (field === 'produtoId') {
+            const selected = productOptions.find((option) => option.id === value);
+            const custo = selected?.custo;
+            const hasCusto = Number.isFinite(custo);
+            const repasseCalculado = hasCusto ? Number((custo * (1 + (repasseConfigPercentual / 100))).toFixed(2)) : '';
+            return {
+              ...item,
+              produtoId: value,
+              produtoBusca: selected?.nome || '',
+              nome: selected?.nome || '',
+              valorUnitarioRepasse: repasseCalculado,
+              valorUnitarioRevenda: item.valorUnitarioRevenda || (selected?.preco || 0),
+              semCusto: Boolean(value) && !hasCusto
+            };
+          }
+          return { ...item, [field]: value };
+        })
+      }));
+    };
+
+    const updateProductSearch = (index, value) => {
+      const search = String(value || '');
+      const selected = productOptions.find((option) => option.nome.toLowerCase() === search.toLowerCase());
+      if (selected) {
+        updateItemField(index, 'produtoId', selected.id);
+        return;
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        itens: prev.itens.map((item, itemIndex) => (
+          itemIndex === index
+            ? { ...item, produtoBusca: search, produtoId: '', nome: '', valorUnitarioRepasse: '', semCusto: false }
+            : item
+        ))
+      }));
+    };
+
+    const removeItem = (index) => {
+      setFormData((prev) => ({ ...prev, itens: prev.itens.filter((_, itemIndex) => itemIndex !== index) }));
+    };
+
+    const validateTransfer = () => {
+      if (!formData.lojaOrigemId || !formData.lojaDestinoId || !formData.itens.length) {
+        return 'Informe loja origem, loja destino e pelo menos um item.';
+      }
+      if (formData.lojaOrigemId === formData.lojaDestinoId) {
+        return 'A loja destino deve ser diferente da loja origem.';
+      }
+      if (!allowedOriginStoreIds.includes(formData.lojaOrigemId)) {
+        return isEditingTransfer
+          ? 'Você não pode editar remessa para essa loja de origem.'
+          : 'Você não pode criar remessa para essa loja de origem.';
+      }
+      for (const item of formData.itens) {
+        if (!item.produtoId) return 'Selecione um produto para todos os itens.';
+        if (Number(item.quantidade) <= 0) return 'A quantidade deve ser maior que zero.';
+        if (Number(item.valorUnitarioRepasse) < 0) return 'Valor unitário de repasse não pode ser negativo.';
+        if (Number(item.valorUnitarioRevenda) < 0) return 'Valor unitário de revenda não pode ser negativo.';
+      }
+      return '';
+    };
+
+    const isTransferLockedForEdit = (transfer) => ['pagamento_informado', 'pagamento_confirmado', 'cancelado', 'cancelada'].includes(transfer?.status);
+
+    const isOriginStoreAllowed = (transfer) => {
+      if (!transfer) return false;
+      if (user?.role === ROLE_OWNER) return true;
+      const originId = normalizeStoreId(transfer.lojaOrigemId);
+      return allowedStoreIds.includes(originId);
+    };
+
+    const canEditTransfer = (transfer) => {
+      if (!user || !transfer) return false;
+      if (isTransferLockedForEdit(transfer)) return false;
+      if (user.role === ROLE_OWNER) return true;
+      if (user.role === ROLE_MANAGER || user.role === ROLE_ATTENDANT) return isOriginStoreAllowed(transfer);
+      return false;
+    };
+
+    const canDeleteTransfer = (transfer) => {
+      if (!user || !transfer) return false;
+      return transfer.status === 'aguardando_conferencia' && isOriginStoreAllowed(transfer);
+    };
+
+    const startEditingTransfer = (transfer) => {
+      if (!canEditTransfer(transfer)) return;
+      setFormError('');
+      setEditingTransfer(transfer);
+      setFormData({
+        lojaOrigemId: transfer.lojaOrigemId || '',
+        lojaDestinoId: transfer.lojaDestinoId || '',
+        dataRemessa: transfer.dataRemessa || new Date().toISOString().slice(0, 10),
+        observacaoOrigem: transfer.observacaoOrigem || '',
+        itens: (transfer.itens || []).map((item) => ({
+          produtoId: item.produtoId || '',
+          produtoBusca: item.nome || '',
+          nome: item.nome || '',
+          quantidade: Number(item.quantidade) || 0,
+          valorUnitarioRepasse: Number(item.valorUnitarioRepasse) || 0,
+          valorUnitarioRevenda: Number(item.valorUnitarioRevenda) || 0,
+          semCusto: false
+        }))
+      });
+      setShowModal(true);
+    };
+
+    const saveTransfer = async (mode = 'rascunho') => {
+      if (isEditingTransfer && (!editingTransfer || !canEditTransfer(editingTransfer))) {
+        const blockedByStatus = isTransferLockedForEdit(editingTransfer);
+        setFormError(blockedByStatus ? 'Remessa com pagamento confirmado não pode ser editada.' : 'Você não tem permissão para editar esta remessa.');
+        return;
+      }
+      const validationError = validateTransfer();
+      if (validationError) {
+        setFormError(validationError);
+        return;
+      }
+      setIsSavingTransfer(true);
+      setFormError('');
+      try {
+        const totals = computeTotals(formData.itens);
+        const itemsPayload = formData.itens.map((item) => {
+          const quantidade = Number(item.quantidade) || 0;
+          const valorUnitarioRepasse = Number(item.valorUnitarioRepasse) || 0;
+          const valorUnitarioRevenda = Number(item.valorUnitarioRevenda) || 0;
+          return {
+            produtoId: item.produtoId,
+            nome: item.nome,
+            quantidade,
+            valorUnitarioRepasse,
+            valorUnitarioRevenda,
+            totalRepasse: quantidade * valorUnitarioRepasse,
+            totalRevenda: quantidade * valorUnitarioRevenda
+          };
+        });
+
+        const origemNome = storeInfoMap[formData.lojaOrigemId]?.nome || formData.lojaOrigemId;
+        const destinoNome = storeInfoMap[formData.lojaDestinoId]?.nome || formData.lojaDestinoId;
+        const finalStatus = isEditingTransfer
+          ? (mode === 'enviar' && editingTransfer?.status === 'rascunho' ? 'aguardando_conferencia' : (editingTransfer?.status || 'rascunho'))
+          : (mode === 'enviar' ? 'aguardando_conferencia' : 'rascunho');
+        const now = serverTimestamp();
+        if (isEditingTransfer && editingTransfer?.id) {
+          const transferRef = doc(db, 'transferenciasEntreLojas', editingTransfer.id);
+          await updateDoc(transferRef, {
+            lojaOrigemId: formData.lojaOrigemId,
+            lojaOrigemNome: origemNome,
+            lojaDestinoId: formData.lojaDestinoId,
+            lojaDestinoNome: destinoNome,
+            status: finalStatus,
+            dataRemessa: formData.dataRemessa || null,
+            dataEnvio: mode === 'enviar' && editingTransfer?.status === 'rascunho' ? now : (editingTransfer.dataEnvio || null),
+            enviadoPorUid: mode === 'enviar' && editingTransfer?.status === 'rascunho' ? (user?.auth?.uid || '') : (editingTransfer.enviadoPorUid || null),
+            enviadoPorNome: mode === 'enviar' && editingTransfer?.status === 'rascunho' ? (user?.name || user?.email || '') : (editingTransfer.enviadoPorNome || null),
+            observacaoOrigem: formData.observacaoOrigem || '',
+            totalRepasse: totals.totalRepasse,
+            totalRevenda: totals.totalRevenda,
+            quantidadeTotalItens: totals.quantidadeTotalItens,
+            itens: itemsPayload,
+            storeVisibility: Array.from(new Set([formData.lojaOrigemId, formData.lojaDestinoId])),
+            historico: arrayUnion({
+              acao: editingTransfer?.status === 'rascunho'
+                ? (mode === 'enviar' ? 'enviado_para_conferencia' : 'rascunho_atualizado')
+                : 'remessa_atualizada',
+              status: finalStatus,
+              data: Timestamp.now(),
+              usuarioUid: user?.auth?.uid || '',
+              usuarioNome: user?.name || user?.email || '',
+              comentario: editingTransfer?.status === 'rascunho'
+                ? (mode === 'enviar' ? 'Rascunho enviado para conferência' : 'Rascunho atualizado')
+                : 'Remessa atualizada sem alteração automática de status'
+            })
+          });
+        } else {
+          await addDoc(collection(db, 'transferenciasEntreLojas'), {
+            numero: Date.now(),
+            lojaOrigemId: formData.lojaOrigemId,
+            lojaOrigemNome: origemNome,
+            lojaDestinoId: formData.lojaDestinoId,
+            lojaDestinoNome: destinoNome,
+            status: finalStatus,
+            dataCriacao: now,
+            dataRemessa: formData.dataRemessa || null,
+            dataEnvio: mode === 'enviar' ? now : null,
+            dataConferencia: null,
+            dataPagamentoInformado: null,
+            dataPagamentoConfirmado: null,
+            criadoPorUid: user?.auth?.uid || '',
+            criadoPorNome: user?.name || user?.email || '',
+            enviadoPorUid: mode === 'enviar' ? (user?.auth?.uid || '') : null,
+            enviadoPorNome: mode === 'enviar' ? (user?.name || user?.email || '') : null,
+            conferidoPorUid: null,
+            conferidoPorNome: null,
+            pagamentoInformadoPorUid: null,
+            pagamentoInformadoPorNome: null,
+            pagamentoConfirmadoPorUid: null,
+            pagamentoConfirmadoPorNome: null,
+            observacaoOrigem: formData.observacaoOrigem || '',
+            observacaoDestino: '',
+            observacaoPagamento: '',
+            formaPagamento: '',
+            dataPagamento: null,
+            totalRepasse: totals.totalRepasse,
+            totalRevenda: totals.totalRevenda,
+            quantidadeTotalItens: totals.quantidadeTotalItens,
+            itens: itemsPayload,
+            stockIntegration: { enabled: false, status: 'pendente' },
+            storeVisibility: Array.from(new Set([formData.lojaOrigemId, formData.lojaDestinoId])),
+            historico: [{
+              acao: mode === 'enviar' ? 'remessa_enviada' : 'remessa_criada',
+              status: finalStatus,
+              data: Timestamp.now(),
+              usuarioUid: user?.auth?.uid || '',
+              usuarioNome: user?.name || user?.email || '',
+              comentario: mode === 'enviar' ? 'Remessa enviada para conferência' : 'Remessa salva como rascunho'
+            }]
+          });
+        }
+
+        setShowModal(false);
+        resetForm();
+      } catch (error) {
+        console.error('[EntreLojas] Erro ao salvar remessa:', error);
+        setFormError(error?.message || 'Não foi possível salvar a remessa.');
+      } finally {
+        setIsSavingTransfer(false);
+      }
+    };
+
+    const canActOnTransfer = (transfer, action) => {
+      if (!user || !transfer) return false;
+      if (action === 'editar_remessa') return canEditTransfer(transfer);
+      if (action === 'excluir_remessa') return canDeleteTransfer(transfer);
+      if (user.role === ROLE_OWNER) return true;
+      const originAllowed = allowedStoreIds.includes(normalizeStoreId(transfer.lojaOrigemId));
+      const destinationAllowed = allowedStoreIds.includes(normalizeStoreId(transfer.lojaDestinoId));
+      if (action === 'conferir') return destinationAllowed;
+      if (action === 'marcar_pago') return canMarkAsPaid && destinationAllowed;
+      if (action === 'confirmar_pagamento') return canConfirmPaymentByRole && originAllowed;
+      if (action === 'contestar_pagamento') return canConfirmPaymentByRole && originAllowed;
+      return originAllowed || destinationAllowed;
+    };
+
+    const deleteTransfer = async (transfer) => {
+      if (!canDeleteTransfer(transfer)) {
+        alert('Você não tem permissão para excluir esta remessa.');
+        return;
+      }
+
+      try {
+        await deleteDoc(doc(db, 'transferenciasEntreLojas', transfer.id));
+        if (viewingTransfer?.id === transfer.id) {
+          setViewingTransfer(null);
+        }
+      } catch (error) {
+        console.error('[EntreLojas] Erro ao excluir remessa:', error);
+        alert(error?.message || 'Não foi possível excluir a remessa.');
+      }
+    };
+
+    const confirmDeleteTransfer = (transfer) => {
+      if (!canDeleteTransfer(transfer)) return;
+      setConfirmDelete({
+        isOpen: true,
+        onConfirm: () => deleteTransfer(transfer)
+      });
+    };
+
+    const patchTransfer = async (transfer, payload, historyEntry) => {
+      const transferRef = doc(db, 'transferenciasEntreLojas', transfer.id);
+      await updateDoc(transferRef, {
+        ...payload,
+        historico: arrayUnion({
+          ...historyEntry,
+          data: Timestamp.now(),
+          usuarioUid: user?.auth?.uid || '',
+          usuarioNome: user?.name || user?.email || ''
+        })
+      });
+    };
+
+    const handleTransferAction = async (transfer, action) => {
+      try {
+        if (action === 'conferir_sem_divergencia' && canActOnTransfer(transfer, 'conferir')) {
+          await patchTransfer(transfer, {
+            status: 'conferencia_sem_divergencia',
+            dataConferencia: serverTimestamp(),
+            conferidoPorUid: user?.auth?.uid || '',
+            conferidoPorNome: user?.name || user?.email || '',
+            observacaoDestino: actionComment || ''
+          }, {
+            acao: 'conferencia_sem_divergencia',
+            status: 'conferencia_sem_divergencia',
+            comentario: actionComment || 'Conferência sem divergência'
+          });
+        }
+        if (action === 'conferir_com_divergencia' && canActOnTransfer(transfer, 'conferir')) {
+          await patchTransfer(transfer, {
+            status: 'conferencia_com_divergencia',
+            dataConferencia: serverTimestamp(),
+            conferidoPorUid: user?.auth?.uid || '',
+            conferidoPorNome: user?.name || user?.email || '',
+            observacaoDestino: actionComment || ''
+          }, {
+            acao: 'conferencia_com_divergencia',
+            status: 'conferencia_com_divergencia',
+            comentario: actionComment || 'Conferência com divergência'
+          });
+        }
+        if (action === 'marcar_pago' && canActOnTransfer(transfer, 'marcar_pago')) {
+          await patchTransfer(transfer, {
+            status: 'pagamento_informado',
+            dataPagamentoInformado: serverTimestamp(),
+            pagamentoInformadoPorUid: user?.auth?.uid || '',
+            pagamentoInformadoPorNome: user?.name || user?.email || '',
+            observacaoPagamento: actionComment || ''
+          }, {
+            acao: 'pagamento_informado',
+            status: 'pagamento_informado',
+            comentario: actionComment || 'Pagamento informado pela loja destino'
+          });
+        }
+        if (action === 'confirmar_pagamento' && canActOnTransfer(transfer, 'confirmar_pagamento')) {
+          await patchTransfer(transfer, {
+            status: 'pagamento_confirmado',
+            dataPagamentoConfirmado: serverTimestamp(),
+            pagamentoConfirmadoPorUid: user?.auth?.uid || '',
+            pagamentoConfirmadoPorNome: user?.name || user?.email || '',
+            observacaoPagamento: actionComment || transfer.observacaoPagamento || ''
+          }, {
+            acao: 'pagamento_confirmado',
+            status: 'pagamento_confirmado',
+            comentario: actionComment || 'Pagamento confirmado pela loja origem'
+          });
+        }
+        if (action === 'contestar_pagamento' && canActOnTransfer(transfer, 'contestar_pagamento')) {
+          await patchTransfer(transfer, {
+            status: 'pagamento_contestado',
+            observacaoPagamento: actionComment || transfer.observacaoPagamento || ''
+          }, {
+            acao: 'pagamento_contestado',
+            status: 'pagamento_contestado',
+            comentario: actionComment || 'Pagamento contestado pela loja origem'
+          });
+        }
+        setActionComment('');
+      } catch (error) {
+        console.error('[EntreLojas] Erro ao executar ação:', error);
+        alert(error?.message || 'Não foi possível executar a ação.');
+      }
+    };
+
+    const canViewTransfer = useCallback((transfer) => {
+      if (canAccessAllTransfers) return true;
+      const originId = normalizeStoreId(transfer?.lojaOrigemId);
+      const destinationId = normalizeStoreId(transfer?.lojaDestinoId);
+      return allowedStoreIds.includes(originId) || allowedStoreIds.includes(destinationId);
+    }, [allowedStoreIds, canAccessAllTransfers]);
+
+    const matchesSelectedStoreView = useCallback((transfer) => {
+      if (!selectedStoreIdForView) return true;
+      const originId = normalizeStoreId(transfer?.lojaOrigemId);
+      const destinationId = normalizeStoreId(transfer?.lojaDestinoId);
+      return originId === selectedStoreIdForView || destinationId === selectedStoreIdForView;
+    }, [selectedStoreIdForView]);
+
+    const filteredTransfers = useMemo(() => {
+      return (transferencias || []).filter((item) => {
+        const originId = normalizeStoreId(item.lojaOrigemId);
+        const destinationId = normalizeStoreId(item.lojaDestinoId);
+
+        if (!canViewTransfer(item)) {
+          entreLojasLog('Remessa removida por canViewTransfer', { id: item.id, originId, destinationId, allowedStoreIds });
+          return false;
+        }
+
+        if (!matchesSelectedStoreView(item)) {
+          entreLojasLog('Remessa removida por matchesSelectedStoreView', { id: item.id, originId, destinationId, selectedStoreIdForView });
+          return false;
+        }
+
+        if (activeTab === 'enviadas' && !(originId && (canAccessAllTransfers || allowedStoreIds.includes(originId)))) return false;
+        if (activeTab === 'recebidas' && !(destinationId && (canAccessAllTransfers || allowedStoreIds.includes(destinationId)))) return false;
+        if (activeTab === 'aguardando_conferencia' && item.status !== 'aguardando_conferencia') return false;
+        if (activeTab === 'aguardando_pagamento' && !['pagamento_informado', 'conferencia_com_divergencia', 'conferencia_sem_divergencia'].includes(item.status)) return false;
+        if (statusFilter !== 'todos' && item.status !== statusFilter) return false;
+        if (origemFilter !== 'todos' && item.lojaOrigemId !== origemFilter) return false;
+        if (destinoFilter !== 'todos' && item.lojaDestinoId !== destinoFilter) return false;
+        const createdAtDate = getJSDate(item.dataCriacao);
+        if (startDateFilter && createdAtDate && createdAtDate < new Date(`${startDateFilter}T00:00:00`)) return false;
+        if (endDateFilter && createdAtDate && createdAtDate > new Date(`${endDateFilter}T23:59:59`)) return false;
+        return true;
+      });
+    }, [activeTab, allowedStoreIds, canAccessAllTransfers, canViewTransfer, destinoFilter, endDateFilter, matchesSelectedStoreView, origemFilter, selectedStoreIdForView, startDateFilter, statusFilter, transferencias]);
+
+    const summary = useMemo(() => filteredTransfers.reduce((acc, item) => {
+      acc.total += 1;
+      acc.totalRepasse += Number(item.totalRepasse) || 0;
+      acc.totalRevenda += Number(item.totalRevenda) || 0;
+      if (item.status === 'aguardando_conferencia') acc.aguardandoConferencia += 1;
+      if (item.status === 'pagamento_informado') acc.aguardandoConfirmacao += 1;
+      return acc;
+    }, { total: 0, totalRepasse: 0, totalRevenda: 0, aguardandoConferencia: 0, aguardandoConfirmacao: 0 }), [filteredTransfers]);
+
+    const columns = [
+      { header: 'Nº', render: (row) => <span className="font-semibold text-pink-600">#{row.numero || '-'}</span> },
+      { header: 'Origem', render: (row) => row.lojaOrigemNome || row.lojaOrigemId || '-' },
+      { header: 'Destino', render: (row) => row.lojaDestinoNome || row.lojaDestinoId || '-' },
+      { header: 'Itens', key: 'quantidadeTotalItens' },
+      { header: 'Repasse', render: (row) => <span className="font-semibold">{formatMoney(row.totalRepasse)}</span> },
+      { header: 'Revenda', render: (row) => <span className="font-semibold">{formatMoney(row.totalRevenda)}</span> },
+      { header: 'Status', render: (row) => <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClassName(row.status)}`}>{statusLabelMap[row.status] || row.status}</span> },
+      { header: 'Criada em', render: (row) => getJSDate(row.dataCriacao)?.toLocaleString('pt-BR') || '-' }
+    ];
+
+    const actions = [
+      { icon: Eye, label: 'Visualizar', onClick: (row) => setViewingTransfer(row) },
+      {
+        icon: Edit,
+        label: (row) => (row.status === 'rascunho' ? 'Editar rascunho' : 'Editar remessa'),
+        onClick: (row) => startEditingTransfer(row),
+        isVisible: (row) => canActOnTransfer(row, 'editar_remessa')
+      },
+      {
+        icon: Trash2,
+        label: 'Excluir remessa',
+        onClick: (row) => confirmDeleteTransfer(row),
+        isVisible: (row) => canActOnTransfer(row, 'excluir_remessa')
+      }
+    ];
+
+    const transferTotals = computeTotals(formData.itens);
+
+    return (
+      <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
+        <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Entre Lojas</h1>
+            <p className="text-gray-600 mt-1">Controle de remessas e conferências entre unidades.</p>
+          </div>
+          <Button onClick={openNewTransferModal} className="w-full md:w-auto">
+            <Plus className="w-4 h-4" /> Nova Remessa
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Remessas</p><p className="text-xl font-bold">{summary.total}</p></div>
+          <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Aguardando conferência</p><p className="text-xl font-bold">{summary.aguardandoConferencia}</p></div>
+          <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Aguardando confirmação</p><p className="text-xl font-bold">{summary.aguardandoConfirmacao}</p></div>
+          <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Total repasse</p><p className="text-xl font-bold">{formatMoney(summary.totalRepasse)}</p></div>
+          <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Total revenda</p><p className="text-xl font-bold">{formatMoney(summary.totalRevenda)}</p></div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'todas', label: 'Todas' },
+              { id: 'enviadas', label: 'Enviadas' },
+              { id: 'recebidas', label: 'Recebidas' },
+              { id: 'aguardando_conferencia', label: 'Aguardando Conferência' },
+              { id: 'aguardando_pagamento', label: 'Aguardando Pagamento' },
+              { id: 'historico', label: 'Histórico' }
+            ].map((tab) => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-3 py-2 text-sm rounded-lg ${activeTab === tab.id ? 'bg-pink-100 text-pink-700' : 'bg-gray-50 text-gray-600'}`}>{tab.label}</button>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <Select value={origemFilter} onChange={(e) => setOrigemFilter(e.target.value)}>
+              <option value="todos">Todas origens</option>
+              {storesForSelect.map((store) => <option key={store.id} value={store.id}>{store.nome}</option>)}
+            </Select>
+            <Select value={destinoFilter} onChange={(e) => setDestinoFilter(e.target.value)}>
+              <option value="todos">Todos destinos</option>
+              {storesForSelect.map((store) => <option key={store.id} value={store.id}>{store.nome}</option>)}
+            </Select>
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="todos">Todos status</option>
+              {Object.keys(statusLabelMap).map((status) => <option key={status} value={status}>{statusLabelMap[status]}</option>)}
+            </Select>
+            <Input type="date" value={startDateFilter} onChange={(e) => setStartDateFilter(e.target.value)} />
+            <Input type="date" value={endDateFilter} onChange={(e) => setEndDateFilter(e.target.value)} />
+          </div>
+        </div>
+
+        <Table columns={columns} data={filteredTransfers} actions={actions} />
+
+        <Modal
+          isOpen={showModal}
+          onClose={() => { setShowModal(false); resetForm(); }}
+          title={isEditingTransfer ? 'Editar Remessa Entre Lojas' : 'Nova Remessa Entre Lojas'}
+          size="xl"
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select
+                label="Loja origem"
+                value={formData.lojaOrigemId}
+                disabled={!canChangeOriginStore}
+                onChange={(e) => setFormData((prev) => ({ ...prev, lojaOrigemId: e.target.value }))}
+              >
+                <option value="">Selecione</option>
+                {storesForSelect.filter((store) => allowedOriginStoreIds.includes(store.id)).map((store) => (
+                  <option key={store.id} value={store.id}>{store.nome}</option>
+                ))}
+              </Select>
+              <Select label="Loja destino" disabled={isEditingTransfer && editingTransfer?.status !== 'rascunho'} value={formData.lojaDestinoId} onChange={(e) => setFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
+                <option value="">Selecione</option>
+                {storesForSelect.filter((store) => store.id !== formData.lojaOrigemId).map((store) => (
+                  <option key={store.id} value={store.id}>{store.nome}</option>
+                ))}
+              </Select>
+              <Input label="Data da remessa" type="date" value={formData.dataRemessa} onChange={(e) => setFormData((prev) => ({ ...prev, dataRemessa: e.target.value }))} />
+            </div>
+            <Textarea label="Observação da origem" value={formData.observacaoOrigem} onChange={(e) => setFormData((prev) => ({ ...prev, observacaoOrigem: e.target.value }))} rows={3} />
+
+            <div className="border rounded-xl p-4 space-y-3">
+              <div className="flex items-center">
+                <h3 className="font-semibold text-gray-800">Itens da remessa</h3>
+              </div>
+              {!formData.itens.length && <p className="text-sm text-gray-500">Nenhum item adicionado.</p>}
+              {formData.itens.map((item, index) => {
+                const totalRepasse = (Number(item.quantidade) || 0) * (Number(item.valorUnitarioRepasse) || 0);
+                const totalRevenda = (Number(item.quantidade) || 0) * (Number(item.valorUnitarioRevenda) || 0);
+                return (
+                  <div key={`item-${index}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border rounded-lg p-3">
+                    <div className="md:col-span-4">
+                      <Input
+                        label="Produto"
+                        list={`produtos-remessa-${index}`}
+                        placeholder="Buscar produto"
+                        value={item.produtoBusca ?? item.nome ?? ''}
+                        onChange={(e) => updateProductSearch(index, e.target.value)}
+                      />
+                      <datalist id={`produtos-remessa-${index}`}>
+                        {productOptions.map((product) => <option key={product.id} value={product.nome} />)}
+                      </datalist>
+                    </div>
+                    <div className="md:col-span-2"><Input label="Qtd." type="number" min="1" value={item.quantidade} onChange={(e) => updateItemField(index, 'quantidade', e.target.value)} /></div>
+                    <div className="md:col-span-2"><Input label="Repasse (R$)" type="number" min="0" step="0.01" value={item.valorUnitarioRepasse} onChange={(e) => updateItemField(index, 'valorUnitarioRepasse', e.target.value)} /></div>
+                    <div className="md:col-span-2"><Input label="Revenda (R$)" type="number" min="0" step="0.01" value={item.valorUnitarioRevenda} onChange={(e) => updateItemField(index, 'valorUnitarioRevenda', e.target.value)} /></div>
+                    <div className="md:col-span-1 text-xs text-gray-700">
+                      <p>Repasse</p>
+                      <p className="font-semibold">{formatMoney(totalRepasse)}</p>
+                      <p>Revenda</p>
+                      <p className="font-semibold">{formatMoney(totalRevenda)}</p>
+                    </div>
+                    <div className="md:col-span-1"><Button size="sm" variant="danger" onClick={() => removeItem(index)}><Trash2 className="w-4 h-4" /></Button></div>
+                    {item.semCusto && (
+                      <div className="md:col-span-12 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                        Produto sem custo cadastrado.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-pink-50 rounded-lg p-3 text-sm">
+                <p>Quantidade total: <strong>{transferTotals.quantidadeTotalItens}</strong></p>
+                <p>Total repasse: <strong>{formatMoney(transferTotals.totalRepasse)}</strong></p>
+                <p>Total revenda: <strong>{formatMoney(transferTotals.totalRevenda)}</strong></p>
+              </div>
+            </div>
+
+            {formError && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{formError}</div>}
+
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <Button size="sm" variant="secondary" onClick={addItemToTransfer} className="w-full sm:w-auto">
+                <Plus className="w-4 h-4" /> Adicionar item
+              </Button>
+              <div className="flex flex-col sm:flex-row justify-end gap-2">
+                <Button variant="secondary" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button>
+                {(!isEditingTransfer || editingTransfer?.status === 'rascunho') && (
+                  <>
+                    <Button variant="outline" disabled={isSavingTransfer} onClick={() => saveTransfer('rascunho')}>Salvar Rascunho</Button>
+                    <Button disabled={isSavingTransfer} onClick={() => saveTransfer('enviar')}>{isSavingTransfer ? 'Salvando...' : 'Enviar para Conferência'}</Button>
+                  </>
+                )}
+                {isEditingTransfer && editingTransfer?.status !== 'rascunho' && (
+                  <Button disabled={isSavingTransfer} onClick={() => saveTransfer('editar')}>{isSavingTransfer ? 'Salvando...' : 'Salvar Alterações'}</Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal isOpen={!!viewingTransfer} onClose={() => { setViewingTransfer(null); setActionComment(''); }} title="Detalhe da Remessa" size="xl">
+          {viewingTransfer && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-gray-50 rounded-xl p-4 text-sm">
+                <p><strong>Número:</strong> #{viewingTransfer.numero}</p>
+                <p><strong>Origem:</strong> {viewingTransfer.lojaOrigemNome}</p>
+                <p><strong>Destino:</strong> {viewingTransfer.lojaDestinoNome}</p>
+                <p><strong>Status:</strong> {statusLabelMap[viewingTransfer.status] || viewingTransfer.status}</p>
+                <p><strong>Total repasse:</strong> {formatMoney(viewingTransfer.totalRepasse)}</p>
+                <p><strong>Total revenda:</strong> {formatMoney(viewingTransfer.totalRevenda)}</p>
+              </div>
+              <div className="bg-white border rounded-xl p-4 text-sm">
+                <p className="font-semibold text-gray-800 mb-1">Observação da origem</p>
+                <p className="text-gray-700 whitespace-pre-wrap">{viewingTransfer.observacaoOrigem || 'Sem observação registrada.'}</p>
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-semibold">Itens</h3>
+                {(viewingTransfer.itens || []).map((item, idx) => (
+                  <div key={`${item.produtoId}-${idx}`} className="grid grid-cols-2 md:grid-cols-6 gap-2 bg-white border rounded-lg p-2 text-sm">
+                    <p className="md:col-span-2"><strong>{item.nome}</strong></p>
+                    <p>Qtd: {item.quantidade}</p>
+                    <p>Repasse: {formatMoney(item.valorUnitarioRepasse)}</p>
+                    <p>Revenda: {formatMoney(item.valorUnitarioRevenda)}</p>
+                    <p>Total: {formatMoney(item.totalRepasse)}</p>
+                  </div>
+                ))}
+              </div>
+              <Textarea
+                label="Comentário / observação para ação"
+                value={actionComment}
+                onChange={(e) => setActionComment(e.target.value)}
+                rows={3}
+                placeholder="Descreva divergências, detalhes do pagamento ou contestação."
+              />
+              <div className="flex flex-wrap gap-2">
+                {['aguardando_conferencia'].includes(viewingTransfer.status) && canActOnTransfer(viewingTransfer, 'conferir') && (
+                  <>
+                    <Button variant="outline" onClick={() => handleTransferAction(viewingTransfer, 'conferir_sem_divergencia')}>Conferir sem divergência</Button>
+                    <Button variant="secondary" onClick={() => handleTransferAction(viewingTransfer, 'conferir_com_divergencia')}>Conferir com divergência</Button>
+                  </>
+                )}
+                {['conferencia_sem_divergencia', 'conferencia_com_divergencia', 'aguardando_conferencia'].includes(viewingTransfer.status) && canActOnTransfer(viewingTransfer, 'marcar_pago') && (
+                  <Button onClick={() => handleTransferAction(viewingTransfer, 'marcar_pago')}>Marcar como pago</Button>
+                )}
+                {viewingTransfer.status === 'pagamento_informado' && canActOnTransfer(viewingTransfer, 'confirmar_pagamento') && (
+                  <Button onClick={() => handleTransferAction(viewingTransfer, 'confirmar_pagamento')}>Confirmar pagamento</Button>
+                )}
+                {viewingTransfer.status === 'pagamento_informado' && canActOnTransfer(viewingTransfer, 'contestar_pagamento') && (
+                  <Button variant="danger" onClick={() => handleTransferAction(viewingTransfer, 'contestar_pagamento')}>Contestar pagamento</Button>
+                )}
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-semibold">Histórico</h3>
+                <div className="max-h-56 overflow-y-auto border rounded-lg p-2 space-y-2">
+                  {(viewingTransfer.historico || []).length === 0 && <p className="text-sm text-gray-500">Sem histórico registrado.</p>}
+                  {(viewingTransfer.historico || []).map((evt, idx) => (
+                    <div key={`hist-${idx}`} className="text-sm bg-gray-50 rounded p-2">
+                      <p className="font-medium">{evt.acao}</p>
+                      <p className="text-xs text-gray-500">{getJSDate(evt.data)?.toLocaleString('pt-BR') || '-'}</p>
+                      <p className="text-xs text-gray-500">{evt.usuarioNome || '-'}</p>
+                      {evt.comentario && <p>{evt.comentario}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </Modal>
+      </div>
+    );
+  };
+
+  const Agenda = () => {
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [selectedDay, setSelectedDay] = useState(null);
+    const [viewingOrder, setViewingOrder] = useState(null);
+    const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
+
+    const deliveryProviders = useMemo(
+        () => (data.fornecedores || []).filter(f => (f.status || 'Ativo') !== 'Inativo'),
+        [data.fornecedores]
+    );
+
+    const canSendToDeliverer = (order) => {
+        if (!order) return false;
+        const { enderecoTexto } = getOrderAddressDetails(order, data.clientes);
+        if (!enderecoTexto || enderecoTexto === 'Não informado' || enderecoTexto === 'Retirar na Loja') {
+            return false;
+        }
+        return deliveryProviders.length > 0;
+    };
+    
+    const getStatusClass = (status) => { 
+        switch (status) { 
+            case 'Pendente': return 'bg-yellow-400'; 
+            case 'Em Produção': return 'bg-blue-400'; 
+            case 'Finalizado': return 'bg-green-400'; 
+            case 'Cancelado': return 'bg-red-400'; 
+            default: return 'bg-gray-400'; 
+        } 
+    };
+    
+    const getStatusClassText = (status) => { 
+        switch (status) { 
+            case 'Pendente': return 'bg-yellow-100 text-yellow-800'; 
+            case 'Em Produção': return 'bg-blue-100 text-blue-800'; 
+            case 'Finalizado': return 'bg-green-100 text-green-800'; 
+            case 'Cancelado': return 'bg-red-100 text-red-800'; 
+            default: return 'bg-gray-100 text-gray-800'; 
+        } 
+    };
+
+    const daysOfWeek = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
+    const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+
+    const changeMonth = (offset) => {
+        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
+    };
+
+    const pedidosDoMes = (data.pedidos || []).filter(p => {
+		const relevantDateStr = p.categoria === 'Festa' && p.dataEntrega ? p.dataEntrega : p.createdAt;
+		let pedidoDate = getJSDate(relevantDateStr);
+		if (p.categoria === 'Festa' && p.dataEntrega) {
+			const [year, month, day] = p.dataEntrega.split('-');
+			const y = parseInt(year, 10);
+			const m = parseInt(month, 10) - 1;
+			const d = parseInt(day, 10);
+			pedidoDate = new Date(Date.UTC(y, m, d));
+		  }
+	  return pedidoDate && pedidoDate.getFullYear() === currentDate.getFullYear() &&
+			 pedidoDate.getMonth() === currentDate.getMonth();
+	});
+
+    const clientes = data.clientes || [];
+    const aniversariantesDoMes = useMemo(() => {
+        return clientes.filter(cliente => {
+            if (!cliente.aniversario || !/^\d{4}-\d{2}-\d{2}$/.test(cliente.aniversario)) return false;
+            // Usa UTC para evitar problemas de fuso
+            const [year, month, day] = cliente.aniversario.split('-');
+            const birthMonth = parseInt(month, 10) - 1; // Mês é 0-indexado
+            return birthMonth === currentDate.getMonth();
+        });
+    }, [data.clientes, currentDate]);
+
+    return (
+        <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
+             <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Agenda</h1>
+                <p className="text-gray-600 mt-1">Visualize entregas e aniversários</p>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 md:p-6">
+                <div className="flex justify-between items-center mb-4">
+                    <Button variant="secondary" size="sm" onClick={() => changeMonth(-1)}><ChevronLeft/></Button>
+                    <h2 className="text-xl font-bold text-gray-800 text-center">{currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</h2>
+                    <Button variant="secondary" size="sm" onClick={() => changeMonth(1)}><ChevronRight/></Button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 text-center text-sm font-semibold text-gray-600">
+                    {daysOfWeek.map(day => <div key={day} className="py-2">{day}</div>)}
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 md:gap-2">
+                    {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} className="border rounded-lg aspect-square"></div>)}
+                    {Array.from({ length: daysInMonth }).map((_, day) => {
+                        const dayNumber = day + 1;
+                        
+                        const today = new Date();
+                        const isToday = today.getDate() === dayNumber && today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear();
+                        
+                        const pedidosDoDia = pedidosDoMes.filter(p => {
+                            const relevantDateStr = p.categoria === 'Festa' && p.dataEntrega ? p.dataEntrega : p.createdAt;
+                            const pedidoDate = getJSDate(relevantDateStr);
+                            if (!pedidoDate) return false;
+                            // Se for Festa, compara com UTC
+                             if (p.categoria === 'Festa' && p.dataEntrega) {
+                                const [year, month, d] = p.dataEntrega.split('-');
+                                return parseInt(d, 10) === dayNumber;
+                             }
+                             // Senão, compara data local
+                            return pedidoDate.getDate() === dayNumber;
+                        });
+
+                        const aniversariantesDoDia = aniversariantesDoMes.filter(c => {
+
+                             const [, , dayString] = c.aniversario.split('-');
+                             return parseInt(dayString, 10) === dayNumber;
+                        });
+
+                        const hasEvents = pedidosDoDia.length > 0 || aniversariantesDoDia.length > 0;
+                        
+                        return (
+                            <div key={dayNumber} onClick={() => hasEvents && setSelectedDay({ day: dayNumber, pedidos: pedidosDoDia, aniversariantes: aniversariantesDoDia })} className={`border rounded-lg p-1 md:p-2 aspect-square flex flex-col ${hasEvents ? 'cursor-pointer hover:bg-pink-50' : ''} transition-colors ${isToday ? 'bg-pink-100' : ''}`}>
+                                <span className={`font-bold text-xs md:text-base ${isToday ? 'text-pink-600' : 'text-gray-800'}`}>{dayNumber}</span>
+                                <div className="mt-1 space-y-1 overflow-y-auto text-[10px] md:text-xs">
+                                    {pedidosDoDia.map(p => (
+                                        <div key={p.id} className={`w-full text-white rounded px-1 truncate ${getStatusClass(p.status)}`} title={`${p.clienteNome} (${p.status})`}>
+                                            {p.categoria === 'Festa' ? <Gift size={10} className="inline mr-1"/> : <ShoppingCart size={10} className="inline mr-1"/>}
+                                            {p.clienteNome}
+                                        </div>
+                                    ))}
+                                    {aniversariantesDoDia.map(c => (
+                                        <div key={c.id} className="w-full bg-yellow-300 text-yellow-800 rounded px-1 truncate flex items-center gap-1" title={`${c.nome} (Aniversário)`}>
+                                            <Cake size={10} />
+                                            {c.nome}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+            
+            <Modal isOpen={!!selectedDay} onClose={() => setSelectedDay(null)} title={`Eventos do dia ${selectedDay?.day}`}>
+                {selectedDay && (
+                    <div className="space-y-4">
+                        {selectedDay.pedidos.length > 0 && (
+                            <div>
+                                <h3 className="font-bold text-lg mb-2 text-gray-700">Pedidos ({selectedDay.pedidos.length})</h3>
+                                <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
+                                {selectedDay.pedidos.map(p => (
+                                    <div key={p.id} onClick={() => { setSelectedDay(null); setViewingOrder(p); }} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer flex justify-between items-center">
+                                        <div>
+                                            <p className="font-bold flex items-center gap-1">
+                                                {p.categoria === 'Festa' ? <Gift size={14} className="text-purple-500"/> : <ShoppingCart size={14} className="text-blue-500"/>}
+                                                {p.clienteNome}
+                                            </p>
+                                            <p className="text-sm text-gray-600">Total: R$ {p.total.toFixed(2)}</p>
+                                        </div>
+                                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusClassText(p.status)}`}>{p.status}</span>
+                                    </div>
+                                ))}
+                                </div>
+                            </div>
+                        )}
+                        {selectedDay.aniversariantes.length > 0 && (
+                             <div>
+                                <h3 className="font-bold text-lg mb-2 text-gray-700">Aniversariantes ({selectedDay.aniversariantes.length})</h3>
+                                 <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
+                                {selectedDay.aniversariantes.map(c => (
+                                    <div key={c.id} className="p-3 bg-yellow-50 rounded-lg flex items-center gap-3">
+                                        <Cake className="w-5 h-5 text-yellow-600" />
+                                        <p className="font-semibold text-yellow-800">{c.nome}</p>
+                                    </div>
+                                ))}
+                                </div>
+                            </div>
+                        )}
+                        {selectedDay.pedidos.length === 0 && selectedDay.aniversariantes.length === 0 && <p>Nenhum evento para este dia.</p>}
+                    </div>
+                )}
+            </Modal>
+             {/* Modal de Detalhes do Pedido (igual ao do componente Pedidos) */}
+             <Modal isOpen={!!viewingOrder} onClose={() => setViewingOrder(null)} title="Detalhes do Pedido" size="lg">
+                 {/* Reutiliza a mesma lógica de exibição do modal de detalhes */}
+                 {viewingOrder && (() => {
+                    const cliente = data.clientes.find(c => c.id === viewingOrder.clienteId);
+                    const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
+                    const telefone = viewingOrder.telefone || cliente?.telefone || '';
+                    const handleSendToWhatsApp = () => { /* ... (código igual ao do Pedidos.js) ... */ };
+                    const handlePrint = () => { /* ... (código igual ao do Pedidos.js) ... */ };
+
+                    return ( 
+                         <div className="space-y-4 text-sm text-gray-700">
+                            {/* ... (Conteúdo idêntico ao modal do Pedidos.js) ... */}
+                            <div className="p-4 bg-gray-50 rounded-lg">
+                                <h3 className="font-bold text-lg text-gray-800 mb-2">Informações do Cliente</h3>
+                                <p><strong>Nome:</strong> {viewingOrder.clienteNome || 'N/A'}</p>
+                                <p><strong>Endereço:</strong> {endereco}</p>
+                                <p><strong>Telefone:</strong> {telefone || 'Não informado'}</p>
+                            </div>
+                            {/* ... (resto do conteúdo) ... */}
+                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
+                                 <Button 
+                                    onClick={handlePrint}
+                                    variant="secondary"
+                                    size="sm"
+                                >
+                                    <Printer className="w-4 h-4" />
+                                    Imprimir Cupom
+                                </Button>
+                        <Button
+                    onClick={handleSendToWhatsApp}
+                    disabled={!telefone}
+                    className="bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none disabled:transform-none"
+                    size="sm"
+                >
+                    <MessageCircle className="w-4 h-4" />
+                    Enviar Resumo Cliente
+                </Button>
+                <Button
+                    onClick={() => setOrderToSendToDeliverer(viewingOrder)}
+                    disabled={!canSendToDeliverer(viewingOrder)}
+                    className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700"
+                    size="sm"
+                >
+                    <Truck className="w-4 h-4" />
+                    Enviar Endereço para Entregador
+                </Button>
+              </div>
+            </div>
+         );
+      })()}
+    </Modal>
+    <DeliveryModal
+        isOpen={!!orderToSendToDeliverer}
+        order={orderToSendToDeliverer}
+        clientes={data.clientes}
+        fornecedores={data.fornecedores}
+        onClose={() => setOrderToSendToDeliverer(null)}
+    />
         </div>
     );
   };
 
 
   const PlaceholderPage = ({ title }) => (<div className="p-6"><h1 className="text-3xl font-bold text-pink-600">{title}</h1><p>Em desenvolvimento...</p></div>);
+  const userHasPermission = useCallback((menuId) => {
+    if (!user) return menuId === 'pagina-inicial';
+
+    if (user.role === ROLE_OWNER && !user?.hasCustomProfile) return true;
+
+    const menuItem = allMenuItems.find(item => item.id === menuId);
+    const permissionKey = menuItem?.permission || menuId;
+
+    if (user.customPermissions) {
+      return Boolean(user.customPermissions[permissionKey]);
+    }
+
+    const normalizedPermissions = sanitizePermissions(user.permissions, user.role);
+
+    if (menuItem?.roles?.includes(user.role)) {
+      return true;
+    }
+
+    return Boolean(normalizedPermissions[permissionKey]);
+  }, [allMenuItems, user]);
+
+  const canCreateStores = useMemo(() => {
+    if (!user) return false;
+    return user.role === ROLE_OWNER || user.role === ROLE_MANAGER;
+  }, [user]);
+
+  const effectiveStoreId = useMemo(() => {
+    if (!user) return null;
+    if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
+      return null;
+    }
+    try {
+      return resolveActiveStoreForWrite();
+    } catch (error) {
+      return null;
+    }
+  }, [resolveActiveStoreForWrite, selectedStoreId, user]);
+
+  const currentStoreIdForDisplay = useMemo(() => {
+    if (!user) return null;
+    if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
+      return STORE_ALL_KEY;
+    }
+    if (selectedStoreId) return selectedStoreId;
+    const ids = resolveStoreIdsForView();
+    return ids.length ? ids[0] : null;
+  }, [user, selectedStoreId, resolveStoreIdsForView]);
 
   const renderCurrentPage = () => {
     if (authLoading || (loading && user)) {
       return (<div className="flex h-full w-full items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-pink-500"></div></div>);
     }
-    
+
     switch (currentPage) {
       case 'pagina-inicial': return <PaginaInicial />;
-      case 'dashboard': return user ? <Dashboard 
+      case 'dashboard': return userHasPermission('dashboard') ? <Dashboard
                                         handleStopAndSnoozeAlarm={handleStopAndSnoozeAlarm}
                                         isAlarmPlaying={isAlarmPlaying}
                                         isAlarmSnoozed={isAlarmSnoozed}
-                                        snoozeEndTime={snoozeEndTime} 
+                                        snoozeEndTime={snoozeEndTime}
                                         hasNewPendingOrders={hasNewPendingOrders}
+                                        alarmPauseMinutes={resolvedAlarmPauseMinutes}
                                         // --- REMOVIDO: unlockAudio e audioUnlocked ---
                                         /> : <PaginaInicial />;
-      case 'clientes': return user ? <Clientes /> : <PaginaInicial />;
-      case 'produtos': return user ? <Produtos /> : <PaginaInicial />;
-      case 'pedidos': return user ? <Pedidos /> : <PaginaInicial />;
-      case 'agenda': return user ? <Agenda /> : <PaginaInicial />;
-      case 'fornecedores': return user ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
-      case 'relatorios': return user ? <Relatorios data={data} /> : <PaginaInicial />;
-      case 'meu-espaco': return user ? <MeuEspaco user={user} data={data} /> : <PaginaInicial />;
+      case 'clientes': return userHasPermission('clientes') ? <Clientes /> : <PaginaInicial />;
+      case 'produtos': return userHasPermission('produtos') ? <Produtos /> : <PaginaInicial />;
+      case 'pedidos': return userHasPermission('pedidos') ? <Pedidos /> : <PaginaInicial />;
+      case 'entre-lojas': return userHasPermission('entre-lojas') ? <EntreLojas /> : <PaginaInicial />;
+      case 'agenda': return userHasPermission('agenda') ? <Agenda /> : <PaginaInicial />;
+      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} /> : <PaginaInicial />;
+      case 'relatorios': return userHasPermission('relatorios') ? <Relatorios data={data} /> : <PaginaInicial />;
+      case 'meu-espaco': return userHasPermission('meu-espaco') ? (
+        <MeuEspaco
+          user={user}
+          resolveActiveStoreForWrite={resolveActiveStoreForWrite}
+          currentStoreIdForDisplay={currentStoreIdForDisplay}
+        />
+      ) : <PaginaInicial />;
+          case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
+      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} /> : <PaginaInicial />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
       default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;
@@ -5001,13 +9150,14 @@ const handleSubmit = async (e) => {
 
   return (
     // --- REMOVIDO: onClick={unlockAudio} da div principal ---
-    <div className="relative md:flex h-screen bg-gray-100 font-sans"> 
+    <div className="relative md:flex h-screen bg-gray-100 font-sans">
         {/* --- NOVO: Botão de ativação global renderizado condicionalmente --- */}
-        {showActivateSoundButton && (
+                {showActivateSoundButton && (
              <button
                 id="btn-ativar-som"
                 onClick={async () => {
-                    await audioManager.userUnlock();
+                    await audioManager.userUnlock({ userGesture: true });
+                    setAudioAllowed(audioManager.unlocked);
                     setShowActivateSoundButton(!audioManager.unlocked); // Esconde se desbloqueado
                 }}
                 className="fixed bottom-4 right-4 z-[9999] px-4 py-2 rounded-xl bg-pink-600 text-white border-none shadow-lg hover:bg-pink-700 transition-colors cursor-pointer"
@@ -5015,7 +9165,16 @@ const handleSubmit = async (e) => {
                 🔊 Ativar som de pedidos
              </button>
         )}
-        
+
+        {isiOS && !soundUnlocked && (
+          <div className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/50 px-4">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 text-center max-w-sm w-full space-y-3">
+              <p className="text-lg font-semibold text-gray-800">Toque na tela para ativar o som</p>
+              <p className="text-sm text-gray-600">Precisamos da sua interação para liberar os alertas de pedidos no iOS.</p>
+            </div>
+          </div>
+        )}
+
         {!isDesktop && sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30"></div>}
         
         <div className={`fixed md:relative flex flex-col bg-white shadow-lg h-full transition-transform duration-300 z-40 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${isDesktop ? (sidebarOpen ? 'w-64' : 'w-20') : 'w-64'}`}>
@@ -5048,11 +9207,81 @@ const handleSubmit = async (e) => {
             <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-pink-50 md:hidden">
                 <Menu className="w-6 h-6 text-gray-600" />
             </button>
-            <div className="flex-1"></div>
+
+            <div className="flex-1 flex items-center justify-center md:justify-start">
+                {user && (
+                    user.role === ROLE_OWNER ? (
+                        <div className="flex items-center gap-3 flex-wrap">
+                            {availableStores.length > 0 && (
+                                <>
+                                    <span className="text-sm text-gray-500 hidden sm:block">Visão:</span>
+                                    <select value={currentStoreIdForDisplay || ''} onChange={handleStoreChange} className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500">
+                                        <option value={STORE_ALL_KEY}>Visão Geral</option>
+                                        {availableStores.map(storeId => (
+                                            <option key={storeId} value={storeId}>{storeInfoMap[storeId]?.nome || storeId}</option>
+                                        ))}
+                                    </select>
+                                </>
+                            )}
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setShowStoreManager(true)}
+                                className="hidden sm:flex items-center gap-2"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Adicionar Loja
+                            </Button>
+                            <button
+                                type="button"
+                                onClick={() => setShowStoreManager(true)}
+                                className="sm:hidden inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 text-pink-600 hover:bg-pink-50 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                                title="Adicionar Loja"
+                            >
+                                <Plus className="w-5 h-5" />
+                                <span className="sr-only">Adicionar Loja</span>
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-3 flex-wrap">
+                            {availableStores.length > 0 ? (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-500 hidden sm:block">Loja:</span>
+                                    <select value={currentStoreIdForDisplay || ''} onChange={handleStoreChange} className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500">
+                                        {availableStores.map(storeId => (
+                                            <option key={storeId} value={storeId}>{storeInfoMap[storeId]?.nome || storeId}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : (
+                                <span className="text-sm text-gray-500 hidden sm:block">Nenhuma loja cadastrada</span>
+                            )}
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setShowStoreManager(true)}
+                                className="hidden sm:flex items-center gap-2"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Adicionar Loja
+                            </Button>
+                            <button
+                                type="button"
+                                onClick={() => setShowStoreManager(true)}
+                                className="sm:hidden inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 text-pink-600 hover:bg-pink-50 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                                title="Adicionar Loja"
+                            >
+                                <Plus className="w-5 h-5" />
+                                <span className="sr-only">Adicionar Loja</span>
+                            </button>
+                        </div>
+                    )
+                )}
+            </div>
             <div className="flex items-center gap-4">
-				{user && (
-					<div className="relative">
-						<button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-full hover:bg-gray-100">
+                                {user && (
+                                        <div className="relative">
+                                                <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-full hover:bg-gray-100">
 							<Bell className="w-5 h-5 text-gray-600" />
 							{pendingOrders.length > 0 && 
 								<span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center animate-pulse">
@@ -5105,10 +9334,34 @@ const handleSubmit = async (e) => {
 				</div>
 			</div>
         </div>
+        {pedidosConnectivityStatus !== 'online' && (
+          <div className={`mx-4 mt-3 rounded-lg border px-4 py-2 text-sm ${
+            pedidosConnectivityStatus === 'offline'
+              ? 'border-amber-200 bg-amber-50 text-amber-800'
+              : 'border-blue-200 bg-blue-50 text-blue-800'
+          }`}>
+            {pedidosConnectivityStatus === 'offline'
+              ? 'Sem conexão com o Firestore para pedidos no momento. Os dados podem estar desatualizados.'
+              : 'Reconectando com o Firestore de pedidos... atualizando dados em segundo plano.'}
+          </div>
+        )}
         <main className="flex-1 overflow-y-auto">
             {renderCurrentPage()}
         </main>
       </div>
+
+      <StoreManagerModal
+        isOpen={showStoreManager}
+        onClose={() => setShowStoreManager(false)}
+        availableStores={availableStores}
+        storeInfoMap={storeInfoMap}
+        onCreateStore={handleCreateStore}
+        onSelectStore={selectStoreById}
+        canCreate={canCreateStores}
+        allowAllOption={user?.role === ROLE_OWNER}
+        currentStoreId={currentStoreIdForDisplay}
+        isCreatingStore={isCreatingStore}
+      />
 
       <Modal isOpen={showLogin} onClose={() => {setShowLogin(false); setLoginError(''); setPasswordResetMessage({ text: '', type: '' });}} title={showPasswordReset ? "Recuperar Senha" : "Login"} size="sm">
         {showPasswordReset ? (
@@ -5185,4 +9438,3 @@ const handleSubmit = async (e) => {
 }
 
 export default App;
-

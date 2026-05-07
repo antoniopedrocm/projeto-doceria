@@ -1,6 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
 match /databases/{database}/documents {
+function isPublicRead() {
+  return true;
+}
+
+function isSignedIn() {
+  return request.auth != null;
+}
+
+function isOwnerByUid() {
+  return isSignedIn() && resource.data.uid == request.auth.uid;
+}
+
+function isCreatingOwnClient() {
+  return isSignedIn() && request.resource.data.uid == request.auth.uid;
+}
 
 // --- REGRAS PARA COLEÇÕES PÚBLICAS (Leitura permitida para todos) ---
 
@@ -14,8 +29,8 @@ match /produtos/{produtoId} {
 // PERMITE que qualquer visitante leia as configurações da loja (como valor de frete).
 // APENAS usuários autenticados podem alterar as configurações.
 match /configuracoes/{docId} {
-  allow read: if true;
-  allow write: if request.auth != null;
+  allow get, list: if isPublicRead();
+  allow create, update, delete: if isSignedIn();
 }
 
 // PERMITE que qualquer visitante leia as informações de um cupom para validação.
@@ -28,12 +43,13 @@ match /cupons/{cupomId} {
 // --- REGRAS PARA COLEÇÕES COM ACESSO RESTRITO ---
 
 // PERMITE que a página do cardápio CRIE um novo cliente, mas não leia a lista toda.
-// PERMITE a leitura apenas se for uma busca por telefone OU se o usuário estiver logado no CRM.
+// Fluxo público deve usar Cloud Function para identificação por telefone, sem leitura direta no cliente.
+// Apenas usuários autenticados (CRM) podem ler documentos de clientes.
 match /clientes/{clienteId} {
-  allow create: if true;
-  allow read: if request.auth != null || resource.data.keys().hasOnly(['telefone']);
-  allow update: if true; // ✅ permite que a página do cardápio atualize endereços
-  allow delete: if request.auth != null;
+  allow create: if isCreatingOwnClient();
+  allow read: if isSignedIn();
+  allow update: if isOwnerByUid() && request.resource.data.uid == resource.data.uid;
+  allow delete: if isOwnerByUid();
 }
 
 
@@ -42,6 +58,32 @@ match /clientes/{clienteId} {
 match /pedidos/{pedidoId} {
   allow create: if true;
   allow read, update, delete: if request.auth != null;
+}
+
+// --- REGRAS PARA LOJAS (MULTILOJAS) ---
+match /lojas/{lojaId} {
+  match /produtos/{produtoId} {
+    allow read: if true;
+    allow write: if request.auth != null;
+  }
+
+  match /configuracoes/{docId} {
+    // Libera leitura anônima dos caminhos usados no cardápio:
+    // - /lojas/{lojaId}/configuracoes/config
+    // - /lojas/{lojaId}/configuracoes/frete
+    allow get, list: if isPublicRead();
+    allow create, update, delete: if isSignedIn();
+
+    match /{subcollection}/{configDocId} {
+      allow get, list: if isPublicRead();
+      allow create, update, delete: if isSignedIn();
+    }
+  }
+
+  match /cupons/{cupomId} {
+    allow read: if true;
+    allow write: if request.auth != null;
+  }
 }
 
 // --- REGRAS PARA OUTRAS COLEÇÕES (Acesso somente para usuários autenticados no CRM) ---

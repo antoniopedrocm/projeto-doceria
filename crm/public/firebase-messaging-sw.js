@@ -1,37 +1,11 @@
 /* eslint-disable no-undef */
 
-const CACHE_NAME = 'doceria-crm-cache-v1';
-const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/logo192.png',
-  '/logo512.png',
-  '/mixkit-vintage-warning-alarm-990.wav'
-];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)).catch((error) => {
-      console.error('[service-worker] Falha ao pré-carregar assets:', error);
-    })
-  );
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) =>
-      Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-          return Promise.resolve();
-        })
-      )
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil(self.clients.claim());
 });
 
 self.addEventListener('message', (event) => {
@@ -40,64 +14,13 @@ self.addEventListener('message', (event) => {
   }
 });
 
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-
-  if (request.method !== 'GET' || request.url.startsWith('chrome-extension')) {
-    return;
-  }
-
-  const requestUrl = new URL(request.url);
-
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clonedResponse = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clonedResponse));
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          return cached || caches.match('/index.html');
-        })
-    );
-    return;
-  }
-
-  if (requestUrl.origin !== self.location.origin) {
-    return;
-  }
-
-  event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      const fetchPromise = fetch(request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type === 'opaque') {
-            return response;
-          }
-
-          const clonedResponse = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clonedResponse));
-          return response;
-        })
-        .catch((error) => {
-          if (!cachedResponse) {
-            console.warn('[service-worker] Falha na requisição:', error);
-          }
-          return cachedResponse;
-        });
-
-      return cachedResponse || fetchPromise;
-    })
-  );
-});
-
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
+const GOOGLE_API_KEY = 'AIzaSyCNU5ZEl60OcW5eZyL_ZoD0tFKpweQvhwU';
+
 const firebaseConfig = {
-  apiKey: 'AIzaSyCNU5ZEl60OcW5eZyL_ZoD0tFKpweQvhwU',
+  apiKey: GOOGLE_API_KEY,
   authDomain: 'crmdoceria-9959e.firebaseapp.com',
   projectId: 'crmdoceria-9959e',
   storageBucket: 'crmdoceria-9959e.firebasestorage.app',
@@ -112,7 +35,7 @@ if (!firebase.apps.length) {
 
 const messaging = firebase.messaging();
 const PUSH_EVENT_TYPE = 'NEW_ORDER_PUSH';
-const DEFAULT_AUDIO_URL = '/mixkit-vintage-warning-alarm-990.wav';
+const DEFAULT_AUDIO_URL = '/audio/mixkit_vintage_warning_alarm_990.mp3';
 
 async function notifyClients(message) {
   try {

@@ -730,7 +730,7 @@
         <script type="module">
           import { db, doc, getDoc } from "./firebaseClientConfig.js";
 
-          const DEFAULT_STORE_ID = 'ana-guimaraes-matriz';
+          const DEFAULT_STORE_ID = 'ana-guimaraes-garavelo';
           const STORE_ID = new URLSearchParams(window.location.search).get('store') || DEFAULT_STORE_ID;
           window.STORE_ID = STORE_ID;
           const CONFIG_DOC_ID = 'config';
@@ -1228,7 +1228,7 @@
         const WHATSAPP_NUMBER = '5562991056075';
         const API_BASE_URL = 'https://us-central1-crmdoceria-9959e.cloudfunctions.net/api';
         const DEFAULT_STORE_TIMEZONE = 'America/Sao_Paulo';
-        const STORE_ID = window.STORE_ID || 'ana-guimaraes-matriz';
+        const STORE_ID = window.STORE_ID || 'ana-guimaraes-garavelo';
         const CONFIG_DOC_ID = 'config';
         const CONFIG_COLLECTIONS = new Set(['cupons', 'logs']);
         const storeConfigDocPath = (...segments) => ['lojas', STORE_ID, 'configuracoes', CONFIG_DOC_ID, ...segments];

@@ -68,6 +68,12 @@ Em "Seus apps", selecione seu app da Web e copie os valores de firebaseConfig.
 
 Preencha o arquivo crm/.env com esses valores.
 
+> Importante: use uma chave de API liberada para o domínio de produção. Chaves
+> restritas ou de outro projeto fazem o Firebase Auth retornar 403 no login
+> ("requests to this API are blocked"). O aplicativo agora lê os valores do
+> arquivo .env e só recorre aos valores de exemplo se algum campo não estiver
+> definido.
+
 c. Configuração do Backend (functions/)
 Navegue até a pasta de functions:
 
