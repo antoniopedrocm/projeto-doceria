@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
   Clock, Edit, Trash2, Eye, X, Save, MessageCircle, Cake, Gift, ChevronLeft, ChevronRight, Printer, Home, Store, BookOpen, Instagram, MapPin, Image as ImageIcon, MessageSquare, VolumeX, ArrowUpCircle, ArrowDownCircle, Banknote, PackagePlus, Ticket,
-  Key, ArrowLeftRight // Ícone adicionado
+  Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle // Ícone adicionado
 } from 'lucide-react';
 
 // --- CORREÇÃO ---
@@ -88,6 +88,7 @@ const MENU_PERMISSION_KEYS = [
   'relatorios',
   'meu-espaco',
   'financeiro',
+  'nota-fiscal',
   'configuracoes'
 ];
 
@@ -166,6 +167,8 @@ const COLLECTIONS_TO_SYNC = [
   'kardex',
   'perdasDescarte',
   'receitas',
+  'fiscalProducts',
+  'invoices',
   'logs',
   'cupons',
   'pedidos'
@@ -277,6 +280,7 @@ const getDefaultPermissionsForRole = (role) => {
       relatorios: true,
       'meu-espaco': true,
       financeiro: true,
+      'nota-fiscal': true,
       configuracoes: true,
     };
   }
@@ -3990,6 +3994,7 @@ function App() {
     { id: 'relatorios', permission: 'relatorios', label: 'Relatórios', icon: BarChart3, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'meu-espaco', permission: 'meu-espaco', label: 'Meu Espaço', icon: Clock, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_CLIENT] },
     { id: 'financeiro', permission: 'financeiro', label: 'Financeiro', icon: DollarSign, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'nota-fiscal', permission: 'nota-fiscal', label: 'Nota Fiscal', icon: FileText, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'configuracoes', permission: 'configuracoes', label: 'Configurações', icon: Settings, roles: [ROLE_OWNER, ROLE_MANAGER] },
   ];
   const currentUserRole = user ? user.role : null;
@@ -5149,13 +5154,17 @@ function App() {
     const [searchTerm, setSearchTerm] = usePersistentState("clientes_searchTerm", "");
     const [showModal, setShowModal] = useState(false);
     const [editingClient, setEditingClient] = useState(null);
-    const [formData, setFormData] = useState({ nome: "", email: "", telefone: "", endereco: "", aniversario: "", status: "Ativo" });
+    const [formData, setFormData] = useState({ nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", aniversario: "", status: "Ativo" });
 
-    const filteredClients = useMemo(() => (clientes || []).filter(c => (c.nome && c.nome.toLowerCase().includes(searchTerm.toLowerCase())) || (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase())) ), [clientes, searchTerm]);
+    const filteredClients = useMemo(() => {
+      const term = searchTerm.toLowerCase();
+      const digitsTerm = searchTerm.replace(/\D/g, '');
+      return (clientes || []).filter(c => (c.nome && c.nome.toLowerCase().includes(term)) || (c.email && c.email.toLowerCase().includes(term)) || (digitsTerm && (c.cpf || c.documento) && String(c.cpf || c.documento).includes(digitsTerm)));
+    }, [clientes, searchTerm]);
     
     const resetForm = () => {
       setEditingClient(null);
-      setFormData({ nome: "", email: "", telefone: "", endereco: "", aniversario: "", status: "Ativo" });
+      setFormData({ nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", aniversario: "", status: "Ativo" });
     };
 
     const handleNewClient = () => {
@@ -5165,16 +5174,23 @@ function App() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        const fiscalDocument = String(formData.cpf || formData.documento || '').replace(/\D/g, '');
+        const updateData = {
+            ...formData,
+            cpf: fiscalDocument,
+            documento: fiscalDocument,
+            cep: String(formData.cep || '').replace(/\D/g, '')
+        };
         if (editingClient) {
-            const { id, ...updateData } = formData;
-            await updateItem('clientes', editingClient.id, updateData);
+            const { id, ...clientData } = updateData;
+            await updateItem('clientes', editingClient.id, clientData);
         } else {
-            await addItem('clientes', { ...formData, numeroDeCompras: 0, valorEmCompras: 0 });
+            await addItem('clientes', { ...updateData, numeroDeCompras: 0, valorEmCompras: 0 });
         }
         setShowModal(false);
         resetForm();
     };
-    const handleEdit = (client) => { setEditingClient(client); setFormData(client); setShowModal(true); };
+    const handleEdit = (client) => { setEditingClient(client); setFormData({ ...client, cpf: client.cpf || client.documento || '', documento: client.documento || client.cpf || '', cep: client.cep || '' }); setShowModal(true); };
     const columns = [
         { header: "Cliente", render: (row) => (<div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white font-bold shadow-md">{row.nome.charAt(0).toUpperCase()}</div><div><p className="font-semibold text-gray-800">{row.nome}</p><p className="text-sm text-gray-500">{row.email}</p></div></div>) },
         { header: "Telefone", key: 'telefone' },
@@ -5198,7 +5214,7 @@ function App() {
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Clientes</h1><p className="text-gray-600 mt-1">Gerencie seus clientes</p></div><Button onClick={handleNewClient} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Novo Cliente</Button></div>
         <div className="relative max-w-md"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" /><input type="text" placeholder="Buscar clientes..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" /></div>
         <Table columns={columns} data={filteredClients} actions={actions} />
-        <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingClient ? "Editar Cliente" : "Novo Cliente"} size="lg"><form onSubmit={handleSubmit} className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><Input label="Nome Completo" type="text" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required /><Input label="Email" type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} /><Input label="Telefone" type="tel" value={formData.telefone} onChange={(e) => setFormData({...formData, telefone: e.target.value})} /><Input label="Data de Aniversário" type="date" value={formData.aniversario} onChange={(e) => setFormData({...formData, aniversario: e.target.value})} /></div><Input label="Endereço" type="text" value={formData.endereco} onChange={(e) => setFormData({...formData, endereco: e.target.value})} /><div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4" />{editingClient ? "Salvar Alterações" : "Criar Cliente"}</Button></div></form></Modal>
+        <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingClient ? "Editar Cliente" : "Novo Cliente"} size="lg"><form onSubmit={handleSubmit} className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><Input label="Nome Completo" type="text" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required /><Input label="Email" type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} /><Input label="Telefone" type="tel" value={formData.telefone} onChange={(e) => setFormData({...formData, telefone: e.target.value})} /><Input label="CPF" type="text" value={formData.cpf || formData.documento || ''} onChange={(e) => setFormData({...formData, cpf: e.target.value, documento: e.target.value})} /><Input label="Data de Aniversário" type="date" value={formData.aniversario} onChange={(e) => setFormData({...formData, aniversario: e.target.value})} /><Input label="CEP" type="text" value={formData.cep || ''} onChange={(e) => setFormData({...formData, cep: e.target.value})} /></div><Input label="Endereço" type="text" value={formData.endereco} onChange={(e) => setFormData({...formData, endereco: e.target.value})} /><div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4" />{editingClient ? "Salvar Alterações" : "Criar Cliente"}</Button></div></form></Modal>
       </div>
     );
   };
@@ -7715,6 +7731,7 @@ const handleSubmit = async (e) => {
                     const cliente = data.clientes.find(c => c.id === viewingOrder.clienteId);
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
+                    const cpfCliente = viewingOrder.clienteDocumento || cliente?.cpf || cliente?.documento || '';
                     const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
 					const frete = parseFloat(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0) || 0;
 
@@ -7815,6 +7832,7 @@ const handleSubmit = async (e) => {
                             <div className="p-4 bg-gray-50 rounded-lg">
                                 <h3 className="font-bold text-lg text-gray-800 mb-2">Informações do Cliente</h3>
                                 <p><strong>Nome:</strong> {viewingOrder.clienteNome || 'N/A'}</p>
+                                <p><strong>CPF:</strong> {cpfCliente || 'Não informado'}</p>
                                 <p><strong>Endereço:</strong> {endereco}</p>
                                 <p><strong>Telefone:</strong> {telefone || 'Não informado'}</p>
                             </div>
@@ -9061,6 +9079,569 @@ const handleSubmit = async (e) => {
   };
 
 
+  const NotaFiscal = ({
+    data,
+    addItem,
+    updateItem,
+    deleteItem,
+    setConfirmDelete,
+    effectiveStoreId,
+    selectedStoreId,
+    storeInfoMap
+  }) => {
+    const [activeTab, setActiveTab] = usePersistentState('nota_fiscal_activeTab', 'emitir');
+    const [orderSearch, setOrderSearch] = usePersistentState('nota_fiscal_orderSearch', '');
+    const [modelOverride, setModelOverride] = usePersistentState('nota_fiscal_modelOverride', '');
+    const [busyOrderId, setBusyOrderId] = useState('');
+    const [message, setMessage] = useState(null);
+    const [validationByOrder, setValidationByOrder] = useState({});
+    const [showProductModal, setShowProductModal] = useState(false);
+    const [editingFiscalProduct, setEditingFiscalProduct] = useState(null);
+    const [productForm, setProductForm] = useState({
+      productId: '',
+      code: '',
+      description: '',
+      ncm: '',
+      cfopNfe: '5101',
+      cfopNfce: '5101',
+      unit: 'un',
+      origin: 0,
+      csosn: '102',
+      pisCst: '49',
+      cofinsCst: '49',
+      cBenef: ''
+    });
+    const [issuerForm, setIssuerForm] = useState({
+      cnpj: '37185245000140',
+      legalName: 'ANA GUIMARAES DOCERIA LTDA',
+      tradeName: 'ANA GUIMARAES DOCERIA',
+      stateRegistration: '108911454',
+      taxRegime: 1,
+      address: {
+        street: 'AV COMERCIAL',
+        number: '441',
+        district: 'JD NOVA ESPERANCA',
+        city: 'Goiania',
+        cityCode: '5208707',
+        state: 'GO',
+        zip: '74465120',
+        phone: '62993398602'
+      }
+    });
+    const [settingsForm, setSettingsForm] = useState({
+      environment: 'homologation',
+      nfeSeries: 1,
+      nfceSeries: 1,
+      operationNature: 'Venda de producao do estabelecimento',
+      defaultPaymentMethodCode: '99',
+      defaultPresence: 2,
+      serviceUrl: ''
+    });
+    const [configLoading, setConfigLoading] = useState(false);
+    const [configSaving, setConfigSaving] = useState(false);
+
+    const storeName = effectiveStoreId
+      ? (storeInfoMap[effectiveStoreId]?.nome || effectiveStoreId)
+      : (selectedStoreId === STORE_ALL_KEY ? 'Todas as lojas' : 'Nenhuma loja selecionada');
+
+    const invoices = data.invoices || [];
+    const fiscalProducts = data.fiscalProducts || [];
+    const orders = data.pedidos || [];
+
+    const invoicesByOrderId = useMemo(() => {
+      const map = new Map();
+      invoices.forEach((invoice) => {
+        if (!invoice.orderId) return;
+        const current = map.get(invoice.orderId);
+        const currentDate = getJSDate(current?.createdAt)?.getTime() || 0;
+        const nextDate = getJSDate(invoice.createdAt)?.getTime() || 0;
+        if (!current || nextDate >= currentDate) map.set(invoice.orderId, invoice);
+      });
+      return map;
+    }, [invoices]);
+
+    const statusLabel = {
+      validating: 'Validando',
+      authorized: 'Autorizada',
+      rejected: 'Rejeitada',
+      cancelled: 'Cancelada',
+      denied: 'Denegada',
+      pending_return: 'Retorno pendente'
+    };
+
+    const statusClass = {
+      validating: 'bg-blue-100 text-blue-800',
+      authorized: 'bg-green-100 text-green-800',
+      rejected: 'bg-red-100 text-red-800',
+      cancelled: 'bg-gray-100 text-gray-700',
+      denied: 'bg-orange-100 text-orange-800',
+      pending_return: 'bg-yellow-100 text-yellow-800'
+    };
+
+    const formatDateTime = (value) => {
+      const date = getJSDate(value);
+      return date ? date.toLocaleString('pt-BR') : '-';
+    };
+
+    const fiscalStats = useMemo(() => ({
+      authorized: invoices.filter((item) => item.status === 'authorized').length,
+      rejected: invoices.filter((item) => item.status === 'rejected' || item.status === 'denied').length,
+      pending: invoices.filter((item) => item.status === 'validating' || item.status === 'pending_return').length,
+      products: fiscalProducts.length
+    }), [invoices, fiscalProducts]);
+
+    const eligibleOrders = useMemo(() => {
+      const term = orderSearch.trim().toLowerCase();
+      return orders
+        .filter((order) => ['Finalizado', 'Aprovado', 'ready_for_invoice', 'approved'].includes(order.status) || order.approvedForInvoice)
+        .filter((order) => {
+          if (!term) return true;
+          return [
+            order.id,
+            order.clienteNome,
+            order.formaPagamento,
+            order.status
+          ].some((value) => String(value || '').toLowerCase().includes(term));
+        })
+        .sort((a, b) => (getJSDate(b.createdAt)?.getTime() || 0) - (getJSDate(a.createdAt)?.getTime() || 0));
+    }, [orders, orderSearch]);
+
+    useEffect(() => {
+      if (!effectiveStoreId) return undefined;
+      setConfigLoading(true);
+      let cancelled = false;
+
+      Promise.all([
+        getDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'issuer')),
+        getDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'settings'))
+      ]).then(([issuerSnap, settingsSnap]) => {
+        if (cancelled) return;
+        if (issuerSnap.exists()) {
+          setIssuerForm((prev) => ({ ...prev, ...issuerSnap.data(), address: { ...prev.address, ...(issuerSnap.data().address || {}) } }));
+        }
+        if (settingsSnap.exists()) {
+          setSettingsForm((prev) => ({ ...prev, ...settingsSnap.data() }));
+        }
+      }).catch((error) => {
+        console.error('[NotaFiscal] Erro ao carregar configuração fiscal:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível carregar a configuração fiscal.' });
+      }).finally(() => {
+        if (!cancelled) setConfigLoading(false);
+      });
+
+      return () => { cancelled = true; };
+    }, [effectiveStoreId]);
+
+    const callablePayload = (extra = {}) => ({
+      lojaId: effectiveStoreId,
+      ...extra
+    });
+
+    const setIssuerField = (field, value) => {
+      setIssuerForm((prev) => ({ ...prev, [field]: value }));
+    };
+
+    const setIssuerAddressField = (field, value) => {
+      setIssuerForm((prev) => ({ ...prev, address: { ...(prev.address || {}), [field]: value } }));
+    };
+
+    const resetProductForm = () => {
+      setEditingFiscalProduct(null);
+      setProductForm({
+        productId: '',
+        code: '',
+        description: '',
+        ncm: '',
+        cfopNfe: '5101',
+        cfopNfce: '5101',
+        unit: 'un',
+        origin: 0,
+        csosn: '102',
+        pisCst: '49',
+        cofinsCst: '49',
+        cBenef: ''
+      });
+    };
+
+    const handleValidateOrder = async (order) => {
+      if (!effectiveStoreId) {
+        setMessage({ type: 'error', text: 'Selecione uma loja específica para validar notas.' });
+        return;
+      }
+      setBusyOrderId(`validate:${order.id}`);
+      setMessage(null);
+
+      try {
+        const fn = httpsCallable(functions, 'fiscalValidateOrder');
+        const response = await fn(callablePayload({
+          orderId: order.id,
+          modelOverride: modelOverride ? Number(modelOverride) : undefined
+        }));
+        setValidationByOrder((prev) => ({ ...prev, [order.id]: response.data }));
+        const hasErrors = Array.isArray(response.data?.errors) && response.data.errors.length > 0;
+        setMessage({
+          type: hasErrors ? 'error' : 'success',
+          text: hasErrors ? response.data.errors.join(' ') : 'Pedido validado para emissão fiscal.'
+        });
+      } catch (error) {
+        console.error('[NotaFiscal] Validação fiscal falhou:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível validar o pedido.' });
+      } finally {
+        setBusyOrderId('');
+      }
+    };
+
+    const handleIssueOrder = async (order) => {
+      if (!effectiveStoreId) {
+        setMessage({ type: 'error', text: 'Selecione uma loja específica para emitir notas.' });
+        return;
+      }
+      const confirmed = window.confirm(`Emitir nota fiscal do pedido ${order.id?.slice(0, 8) || ''}?`);
+      if (!confirmed) return;
+
+      setBusyOrderId(`issue:${order.id}`);
+      setMessage(null);
+
+      try {
+        const fn = httpsCallable(functions, 'fiscalIssueInvoice');
+        const response = await fn(callablePayload({
+          orderId: order.id,
+          modelOverride: modelOverride ? Number(modelOverride) : undefined,
+          justification: 'Emissão manual pelo painel Nota Fiscal'
+        }));
+        setMessage({ type: response.data?.status === 'authorized' ? 'success' : 'error', text: response.data?.xMotivo || 'Retorno fiscal recebido.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Emissão fiscal falhou:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível emitir a nota.' });
+      } finally {
+        setBusyOrderId('');
+      }
+    };
+
+    const handleCancelInvoice = async (invoice) => {
+      const reason = window.prompt('Informe a justificativa de cancelamento (mínimo 15 caracteres):');
+      if (!reason) return;
+      setBusyOrderId(`cancel:${invoice.id}`);
+      setMessage(null);
+
+      try {
+        const fn = httpsCallable(functions, 'fiscalCancelInvoice');
+        const response = await fn(callablePayload({ invoiceId: invoice.id, reason }));
+        setMessage({ type: response.data?.status === 'cancelled' ? 'success' : 'error', text: response.data?.xMotivo || 'Cancelamento processado.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Cancelamento fiscal falhou:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível cancelar a nota.' });
+      } finally {
+        setBusyOrderId('');
+      }
+    };
+
+    const handleSaveFiscalConfig = async (event) => {
+      event.preventDefault();
+      if (!effectiveStoreId) return;
+      setConfigSaving(true);
+      setMessage(null);
+      try {
+        await Promise.all([
+          setDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'issuer'), {
+            ...issuerForm,
+            taxRegime: Number(issuerForm.taxRegime || 1),
+            updatedAt: serverTimestamp()
+          }, { merge: true }),
+          setDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'settings'), {
+            ...settingsForm,
+            nfeSeries: Number(settingsForm.nfeSeries || 1),
+            nfceSeries: Number(settingsForm.nfceSeries || 1),
+            defaultPresence: Number(settingsForm.defaultPresence || 2),
+            updatedAt: serverTimestamp()
+          }, { merge: true })
+        ]);
+        setMessage({ type: 'success', text: 'Configuração fiscal salva.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Erro ao salvar configuração:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível salvar a configuração fiscal.' });
+      } finally {
+        setConfigSaving(false);
+      }
+    };
+
+    const handleEditFiscalProduct = (row) => {
+      setEditingFiscalProduct(row);
+      setProductForm({
+        productId: row.id || '',
+        code: row.code || '',
+        description: row.description || '',
+        ncm: row.ncm || '',
+        cfopNfe: row.cfopNfe || row.cfop || '5101',
+        cfopNfce: row.cfopNfce || row.cfop || '5101',
+        unit: row.unit || 'un',
+        origin: Number(row.origin ?? 0),
+        csosn: row.csosn || '102',
+        pisCst: row.pisCst || '49',
+        cofinsCst: row.cofinsCst || '49',
+        cBenef: row.cBenef || ''
+      });
+      setShowProductModal(true);
+    };
+
+    const handleSaveFiscalProduct = async (event) => {
+      event.preventDefault();
+      if (!effectiveStoreId) return;
+      const productId = (editingFiscalProduct?.id || productForm.productId || productForm.code || productForm.description).trim();
+      if (!productId) {
+        setMessage({ type: 'error', text: 'Informe o produto ou código para salvar o cadastro fiscal.' });
+        return;
+      }
+
+      const payload = {
+        code: productForm.code || productId,
+        description: productForm.description,
+        ncm: productForm.ncm.replace(/\D/g, ''),
+        cfopNfe: productForm.cfopNfe,
+        cfopNfce: productForm.cfopNfce,
+        unit: productForm.unit || 'un',
+        origin: Number(productForm.origin || 0),
+        csosn: productForm.csosn || '102',
+        pisCst: productForm.pisCst || '49',
+        cofinsCst: productForm.cofinsCst || '49',
+        cBenef: productForm.cBenef || '',
+        updatedAt: new Date()
+      };
+
+      try {
+        if (editingFiscalProduct) {
+          await updateItem('fiscalProducts', productId, payload, effectiveStoreId);
+        } else {
+          await setDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', productId), {
+            ...payload,
+            createdAt: serverTimestamp()
+          }, { merge: true });
+        }
+        setShowProductModal(false);
+        resetProductForm();
+        setMessage({ type: 'success', text: 'Cadastro fiscal do produto salvo.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Erro ao salvar produto fiscal:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível salvar o cadastro fiscal.' });
+      }
+    };
+
+    const orderColumns = [
+      { header: 'Pedido', render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.slice(0, 8) || '-'}</span> },
+      { header: 'Cliente', key: 'clienteNome' },
+      { header: 'Total', render: (row) => <span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span> },
+      { header: 'Data', render: (row) => formatDateTime(row.createdAt) },
+      { header: 'Nota', render: (row) => {
+        const invoice = invoicesByOrderId.get(row.id);
+        if (!invoice) return <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Pendente</span>;
+        return <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[invoice.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[invoice.status] || invoice.status}</span>;
+      } }
+    ];
+
+    const orderActions = [
+      { icon: RefreshCw, label: 'Validar', onClick: handleValidateOrder },
+      { icon: Printer, label: 'Emitir', onClick: handleIssueOrder }
+    ];
+
+    const invoiceColumns = [
+      { header: 'Número', render: (row) => `${row.model || '-'} / ${row.series || '-'} / ${row.number || '-'}` },
+      { header: 'Pedido', render: (row) => <span className="font-mono text-xs">{row.orderId?.slice(0, 8) || '-'}</span> },
+      { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[row.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[row.status] || row.status}</span> },
+      { header: 'Chave', render: (row) => <span className="font-mono text-xs text-gray-500">{row.key || '-'}</span> },
+      { header: 'Emissão', render: (row) => formatDateTime(row.createdAt) }
+    ];
+
+    const invoiceActions = [
+      { icon: X, label: 'Cancelar', onClick: handleCancelInvoice }
+    ];
+
+    const fiscalProductColumns = [
+      { header: 'Produto', render: (row) => <div><p className="font-medium text-gray-800">{row.description || row.nome || row.id}</p><p className="text-xs text-gray-500">{row.code || row.id}</p></div> },
+      { header: 'NCM', key: 'ncm' },
+      { header: 'CFOP', render: (row) => `${row.cfopNfe || row.cfop || '-'} / ${row.cfopNfce || row.cfop || '-'}` },
+      { header: 'CSOSN/CST', render: (row) => row.csosn || row.cst || '-' },
+      { header: 'Un.', render: (row) => row.unit || 'un' }
+    ];
+
+    const productActions = [
+      { icon: Edit, label: 'Editar', onClick: handleEditFiscalProduct },
+      { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('fiscalProducts', row.id, effectiveStoreId) }) }
+    ];
+
+    if (!effectiveStoreId) {
+      return (
+        <div className="p-4 md:p-6 min-h-screen bg-gradient-to-br from-pink-50/30 to-rose-50/30">
+          <div className="bg-white border border-yellow-200 rounded-2xl p-6 shadow-lg max-w-3xl">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-yellow-600 mt-1" />
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Nota Fiscal</h1>
+                <p className="text-gray-600 mt-2">Selecione uma loja específica no topo da tela para configurar e emitir NF-e/NFC-e.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Nota Fiscal</h1>
+            <p className="text-gray-600 mt-1">Emissão direta de NF-e/NFC-e para {storeName}</p>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 bg-white border rounded-xl shadow-sm text-sm text-gray-700">
+            <CheckCircle className="w-4 h-4 text-green-600" />
+            Ambiente: {settingsForm.environment === 'production' ? 'Produção' : 'Homologação'}
+          </div>
+        </div>
+
+        {message && (
+          <div className={`p-4 rounded-xl border text-sm ${message.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+            {message.text}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl shadow-lg border border-gray-100"><p className="text-sm text-gray-500">Autorizadas</p><p className="text-2xl font-bold text-green-600">{fiscalStats.authorized}</p></div>
+          <div className="bg-white p-5 rounded-2xl shadow-lg border border-gray-100"><p className="text-sm text-gray-500">Rejeitadas</p><p className="text-2xl font-bold text-red-600">{fiscalStats.rejected}</p></div>
+          <div className="bg-white p-5 rounded-2xl shadow-lg border border-gray-100"><p className="text-sm text-gray-500">Pendentes</p><p className="text-2xl font-bold text-yellow-600">{fiscalStats.pending}</p></div>
+          <div className="bg-white p-5 rounded-2xl shadow-lg border border-gray-100"><p className="text-sm text-gray-500">Produtos fiscais</p><p className="text-2xl font-bold text-pink-600">{fiscalStats.products}</p></div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 bg-white rounded-2xl p-2 shadow-lg border border-gray-100">
+          {[
+            ['emitir', 'Emitir'],
+            ['notas', 'Notas emitidas'],
+            ['produtos', 'Produtos fiscais'],
+            ['configuracao', 'Configuração']
+          ].map(([id, label]) => (
+            <button key={id} onClick={() => setActiveTab(id)} className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${activeTab === id ? 'bg-pink-100 text-pink-700' : 'text-gray-600 hover:bg-pink-50'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'emitir' && (
+          <div className="space-y-4">
+            <div className="flex flex-col md:flex-row gap-3 bg-white rounded-2xl p-4 shadow-lg border border-gray-100">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input value={orderSearch} onChange={(e) => setOrderSearch(e.target.value)} placeholder="Buscar pedido por cliente ou ID" className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" />
+              </div>
+              <Select value={modelOverride} onChange={(e) => setModelOverride(e.target.value)} className="md:w-56">
+                <option value="">Modelo automático</option>
+                <option value="55">Forçar NF-e 55</option>
+                <option value="65">Forçar NFC-e 65</option>
+              </Select>
+            </div>
+            <Table columns={orderColumns} data={eligibleOrders} actions={orderActions} />
+            {Object.entries(validationByOrder).map(([orderId, result]) => (
+              <div key={orderId} className={`p-4 rounded-xl border text-sm ${result.ok === false ? 'bg-red-50 border-red-200 text-red-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                <p className="font-semibold">Validação do pedido {orderId.slice(0, 8)}</p>
+                {result.errors?.length ? <p>{result.errors.join(' ')}</p> : <p>Modelo {result.model}, série {result.series}, próximo número {result.number}. Total: R$ {(result.totals?.invoice || 0).toFixed(2)}</p>}
+                {result.warnings?.length ? <p className="mt-1">{result.warnings.join(' ')}</p> : null}
+              </div>
+            ))}
+            {busyOrderId && <p className="text-sm text-gray-500">Processando operação fiscal...</p>}
+          </div>
+        )}
+
+        {activeTab === 'notas' && (
+          <Table columns={invoiceColumns} data={invoices.slice().sort((a, b) => (getJSDate(b.createdAt)?.getTime() || 0) - (getJSDate(a.createdAt)?.getTime() || 0))} actions={invoiceActions} />
+        )}
+
+        {activeTab === 'produtos' && (
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button onClick={() => { resetProductForm(); setShowProductModal(true); }}><Plus className="w-4 h-4" /> Produto fiscal</Button>
+            </div>
+            <Table columns={fiscalProductColumns} data={fiscalProducts} actions={productActions} />
+          </div>
+        )}
+
+        {activeTab === 'configuracao' && (
+          <form onSubmit={handleSaveFiscalConfig} className="space-y-6">
+            <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
+              <h3 className="text-lg font-bold text-gray-800">Emitente</h3>
+              {configLoading && <p className="text-sm text-gray-500">Carregando configuração...</p>}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Input label="CNPJ" value={issuerForm.cnpj || ''} onChange={(e) => setIssuerField('cnpj', e.target.value)} />
+                <Input label="Razão social" value={issuerForm.legalName || ''} onChange={(e) => setIssuerField('legalName', e.target.value)} />
+                <Input label="Nome fantasia" value={issuerForm.tradeName || ''} onChange={(e) => setIssuerField('tradeName', e.target.value)} />
+                <Input label="Inscrição estadual" value={issuerForm.stateRegistration || ''} onChange={(e) => setIssuerField('stateRegistration', e.target.value)} />
+                <Select label="Regime tributário" value={issuerForm.taxRegime || 1} onChange={(e) => setIssuerField('taxRegime', Number(e.target.value))}>
+                  <option value={1}>Simples Nacional</option>
+                  <option value={2}>Simples excesso sublimite</option>
+                  <option value={3}>Regime normal</option>
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Input label="Logradouro" value={issuerForm.address?.street || ''} onChange={(e) => setIssuerAddressField('street', e.target.value)} />
+                <Input label="Número" value={issuerForm.address?.number || ''} onChange={(e) => setIssuerAddressField('number', e.target.value)} />
+                <Input label="Bairro" value={issuerForm.address?.district || ''} onChange={(e) => setIssuerAddressField('district', e.target.value)} />
+                <Input label="CEP" value={issuerForm.address?.zip || ''} onChange={(e) => setIssuerAddressField('zip', e.target.value)} />
+                <Input label="Município" value={issuerForm.address?.city || ''} onChange={(e) => setIssuerAddressField('city', e.target.value)} />
+                <Input label="Código IBGE" value={issuerForm.address?.cityCode || ''} onChange={(e) => setIssuerAddressField('cityCode', e.target.value)} />
+                <Input label="UF" value={issuerForm.address?.state || ''} onChange={(e) => setIssuerAddressField('state', e.target.value.toUpperCase())} />
+                <Input label="Telefone" value={issuerForm.address?.phone || ''} onChange={(e) => setIssuerAddressField('phone', e.target.value)} />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
+              <h3 className="text-lg font-bold text-gray-800">Emissão</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Select label="Ambiente" value={settingsForm.environment} onChange={(e) => setSettingsForm({ ...settingsForm, environment: e.target.value })}>
+                  <option value="homologation">Homologação</option>
+                  <option value="production">Produção</option>
+                </Select>
+                <Input label="Série NF-e 55" type="number" value={settingsForm.nfeSeries || 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfeSeries: e.target.value })} />
+                <Input label="Série NFC-e 65" type="number" value={settingsForm.nfceSeries || 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfceSeries: e.target.value })} />
+                <Input label="Natureza da operação" value={settingsForm.operationNature || ''} onChange={(e) => setSettingsForm({ ...settingsForm, operationNature: e.target.value })} />
+                <Input label="Pagamento padrão" value={settingsForm.defaultPaymentMethodCode || '99'} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPaymentMethodCode: e.target.value })} />
+                <Input label="Indicador de presença" type="number" value={settingsForm.defaultPresence || 2} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPresence: e.target.value })} />
+                <div className="md:col-span-3"><Input label="URL do serviço fiscal" value={settingsForm.serviceUrl || ''} onChange={(e) => setSettingsForm({ ...settingsForm, serviceUrl: e.target.value })} /></div>
+              </div>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={configSaving}><Save className="w-4 h-4" /> {configSaving ? 'Salvando...' : 'Salvar configuração fiscal'}</Button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        <Modal isOpen={showProductModal} onClose={() => { setShowProductModal(false); resetProductForm(); }} title={editingFiscalProduct ? 'Editar produto fiscal' : 'Novo produto fiscal'} size="lg">
+          <form onSubmit={handleSaveFiscalProduct} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select label="Produto vinculado" value={productForm.productId} onChange={(e) => {
+                const product = (data.produtos || []).find((item) => item.id === e.target.value);
+                setProductForm({ ...productForm, productId: e.target.value, description: product?.nome || productForm.description, code: product?.codigo || e.target.value });
+              }} disabled={Boolean(editingFiscalProduct)}>
+                <option value="">Selecione ou preencha manualmente</option>
+                {(data.produtos || []).map((produto) => <option key={produto.id} value={produto.id}>{produto.nome}</option>)}
+              </Select>
+              <Input label="Código" value={productForm.code} onChange={(e) => setProductForm({ ...productForm, code: e.target.value })} />
+              <Input label="Descrição fiscal" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} required />
+              <Input label="NCM" value={productForm.ncm} onChange={(e) => setProductForm({ ...productForm, ncm: e.target.value })} required />
+              <Input label="CFOP NF-e" value={productForm.cfopNfe} onChange={(e) => setProductForm({ ...productForm, cfopNfe: e.target.value })} required />
+              <Input label="CFOP NFC-e" value={productForm.cfopNfce} onChange={(e) => setProductForm({ ...productForm, cfopNfce: e.target.value })} required />
+              <Input label="Unidade" value={productForm.unit} onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })} />
+              <Input label="Origem" type="number" value={productForm.origin} onChange={(e) => setProductForm({ ...productForm, origin: e.target.value })} />
+              <Input label="CSOSN" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
+              <Input label="PIS CST" value={productForm.pisCst} onChange={(e) => setProductForm({ ...productForm, pisCst: e.target.value })} />
+              <Input label="COFINS CST" value={productForm.cofinsCst} onChange={(e) => setProductForm({ ...productForm, cofinsCst: e.target.value })} />
+              <Input label="cBenef" value={productForm.cBenef} onChange={(e) => setProductForm({ ...productForm, cBenef: e.target.value })} />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="secondary" type="button" onClick={() => { setShowProductModal(false); resetProductForm(); }}>Cancelar</Button>
+              <Button type="submit"><Save className="w-4 h-4" /> Salvar</Button>
+            </div>
+          </form>
+        </Modal>
+      </div>
+    );
+  };
+
   const PlaceholderPage = ({ title }) => (<div className="p-6"><h1 className="text-3xl font-bold text-pink-600">{title}</h1><p>Em desenvolvimento...</p></div>);
   const userHasPermission = useCallback((menuId) => {
     if (!user) return menuId === 'pagina-inicial';
@@ -9141,6 +9722,7 @@ const handleSubmit = async (e) => {
         />
       ) : <PaginaInicial />;
           case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
+      case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} /> : <PaginaInicial />;
       case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} /> : <PaginaInicial />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;

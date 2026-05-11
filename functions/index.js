@@ -14,6 +14,7 @@ const admin = require("firebase-admin");
 const express = require("express");
 const cors = require("cors");
 const crypto = require('crypto');
+const {createFiscalFunctions} = require('./fiscal');
 
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
@@ -37,6 +38,7 @@ const MENU_PERMISSION_KEYS = [
   'relatorios',
   'meu-espaco',
   'financeiro',
+  'nota-fiscal',
   'configuracoes',
 ];
 
@@ -79,6 +81,7 @@ const getDefaultPermissionsForRole = (role) => {
       relatorios: true,
       'meu-espaco': true,
       financeiro: true,
+      'nota-fiscal': true,
       configuracoes: true,
     };
   }
@@ -1701,3 +1704,14 @@ exports.notifyNewOrder = onDocumentCreated({
         logger.error("Erro ao enviar notificações de novo pedido:", error);
     }
 });
+
+Object.assign(exports, createFiscalFunctions({
+    admin,
+    db,
+    onCall,
+    HttpsError,
+    logger,
+    verifyManagementAccess,
+    userHasAccessToStores,
+    STORE_ALL_KEY,
+}));

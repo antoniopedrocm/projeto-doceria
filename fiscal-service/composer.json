@@ -1,0 +1,15 @@
+{
+  "name": "ana-guimaraes/fiscal-service",
+  "description": "Cloud Run service for direct NF-e/NFC-e emission in Goias.",
+  "type": "project",
+  "require": {
+    "php": "^8.3",
+    "nfephp-org/sped-nfe": "^5.2",
+    "nfephp-org/sped-da": "^1.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "AnaGuimaraes\\Fiscal\\": "src/"
+    }
+  }
+}

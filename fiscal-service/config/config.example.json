@@ -1,0 +1,17 @@
+{
+  "razaosocial": "ANA GUIMARAES DOCERIA LTDA",
+  "siglaUF": "GO",
+  "cnpj": "37185245000140",
+  "schemes": "PL_010_V1",
+  "versao": "4.00",
+  "CSC": "configure-em-secret",
+  "CSCid": "000001",
+  "tokenIBPT": "",
+  "aProxyConf": {
+    "proxyIp": "",
+    "proxyPort": "",
+    "proxyUser": "",
+    "proxyPass": ""
+  }
+}
+
