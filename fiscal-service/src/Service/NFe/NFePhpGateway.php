@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AnaGuimaraes\Fiscal\Service\NFe;
 
+use AnaGuimaraes\Fiscal\Service\Google\SecretManagerClient;
 use NFePHP\Common\Certificate;
 use NFePHP\NFe\Common\Standardize;
 use NFePHP\NFe\Common\Complements;
@@ -35,6 +36,49 @@ final class NFePhpGateway
             'tokenIBPT' => getenv('NFE_TOKEN_IBPT') ?: '',
             'CSC' => getenv('NFCE_CSC') ?: '',
             'CSCid' => getenv('NFCE_CSC_ID') ?: '',
+            'aProxyConf' => [
+                'proxyIp' => getenv('NFE_PROXY_IP') ?: '',
+                'proxyPort' => getenv('NFE_PROXY_PORT') ?: '',
+                'proxyUser' => getenv('NFE_PROXY_USER') ?: '',
+                'proxyPass' => getenv('NFE_PROXY_PASS') ?: '',
+            ],
+        ];
+
+        $certificate = Certificate::readPfx($pfx, $password);
+        return new self(new Tools(json_encode($config, JSON_UNESCAPED_SLASHES), $certificate));
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    public static function fromPayload(array $payload): self
+    {
+        $secrets = is_array($payload['fiscalSecrets'] ?? null) ? $payload['fiscalSecrets'] : [];
+        $secretClient = new SecretManagerClient();
+
+        $pfxBase64 = self::valueFromSecretOrEnv($secretClient, $secrets['certPfxSecretVersion'] ?? '', 'CERT_PFX_BASE64');
+        $password = self::valueFromSecretOrEnv($secretClient, $secrets['certPasswordSecretVersion'] ?? '', 'CERT_PASSWORD');
+        if ($pfxBase64 === '' || $password === '') {
+            throw new RuntimeException('Certificado A1 da loja nao configurado no Secret Manager.');
+        }
+
+        $pfx = self::certificateBytesFromBase64($pfxBase64);
+        $issuer = is_array($payload['issuer'] ?? null) ? $payload['issuer'] : [];
+        $address = is_array($issuer['address'] ?? null) ? $issuer['address'] : [];
+        $nfceCsc = self::valueFromSecretOrEnv($secretClient, $secrets['nfceCscSecretVersion'] ?? '', 'NFCE_CSC');
+        $nfceCscId = self::valueFromSecretOrEnv($secretClient, $secrets['nfceCscIdSecretVersion'] ?? '', 'NFCE_CSC_ID');
+
+        $config = [
+            'atualizacao' => date('Y-m-d H:i:s'),
+            'tpAmb' => (int)($payload['environment'] ?? (getenv('NFE_TP_AMB') ?: 2)),
+            'razaosocial' => (string)($issuer['legalName'] ?? (getenv('NFE_RAZAO_SOCIAL') ?: 'ANA GUIMARAES DOCERIA LTDA')),
+            'siglaUF' => (string)($address['state'] ?? (getenv('NFE_UF') ?: 'GO')),
+            'cnpj' => (string)($issuer['cnpj'] ?? (getenv('NFE_CNPJ') ?: '')),
+            'schemes' => getenv('NFE_SCHEMES') ?: 'PL_010_V1',
+            'versao' => '4.00',
+            'tokenIBPT' => getenv('NFE_TOKEN_IBPT') ?: '',
+            'CSC' => $nfceCsc,
+            'CSCid' => $nfceCscId,
             'aProxyConf' => [
                 'proxyIp' => getenv('NFE_PROXY_IP') ?: '',
                 'proxyPort' => getenv('NFE_PROXY_PORT') ?: '',
@@ -167,11 +211,7 @@ final class NFePhpGateway
     {
         $base64 = getenv('CERT_PFX_BASE64') ?: '';
         if ($base64 !== '') {
-            $decoded = base64_decode($base64, true);
-            if ($decoded === false) {
-                throw new RuntimeException('CERT_PFX_BASE64 invalido.');
-            }
-            return $decoded;
+            return self::certificateBytesFromBase64($base64);
         }
 
         $path = getenv('CERT_PFX_PATH') ?: '';
@@ -180,5 +220,24 @@ final class NFePhpGateway
         }
 
         return '';
+    }
+
+    private static function certificateBytesFromBase64(string $base64): string
+    {
+        $decoded = base64_decode($base64, true);
+        if ($decoded === false) {
+            throw new RuntimeException('CERT_PFX_BASE64 invalido.');
+        }
+        return $decoded;
+    }
+
+    private static function valueFromSecretOrEnv(SecretManagerClient $secretClient, mixed $secretVersion, string $envName): string
+    {
+        $name = is_string($secretVersion) ? trim($secretVersion) : '';
+        if ($name !== '') {
+            return $secretClient->access($name);
+        }
+
+        return getenv($envName) ?: '';
     }
 }

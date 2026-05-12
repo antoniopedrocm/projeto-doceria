@@ -25,7 +25,7 @@ try {
     $payload = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
     $service = $path === '/validate'
         ? FiscalService::validationOnly()
-        : FiscalService::fromEnvironment();
+        : FiscalService::fromPayload($payload);
 
     $result = match ($path) {
         '/validate' => $service->validate($payload),

@@ -9139,6 +9139,14 @@ const handleSubmit = async (e) => {
     });
     const [configLoading, setConfigLoading] = useState(false);
     const [configSaving, setConfigSaving] = useState(false);
+    const [certificateInfo, setCertificateInfo] = useState(null);
+    const [certificateUploading, setCertificateUploading] = useState(false);
+    const [certificateForm, setCertificateForm] = useState({
+      file: null,
+      password: '',
+      cscId: '',
+      csc: ''
+    });
 
     const storeName = effectiveStoreId
       ? (storeInfoMap[effectiveStoreId]?.nome || effectiveStoreId)
@@ -9213,8 +9221,9 @@ const handleSubmit = async (e) => {
 
       Promise.all([
         getDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'issuer')),
-        getDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'settings'))
-      ]).then(([issuerSnap, settingsSnap]) => {
+        getDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'settings')),
+        getDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'certificate'))
+      ]).then(([issuerSnap, settingsSnap, certificateSnap]) => {
         if (cancelled) return;
         if (issuerSnap.exists()) {
           setIssuerForm((prev) => ({ ...prev, ...issuerSnap.data(), address: { ...prev.address, ...(issuerSnap.data().address || {}) } }));
@@ -9222,6 +9231,7 @@ const handleSubmit = async (e) => {
         if (settingsSnap.exists()) {
           setSettingsForm((prev) => ({ ...prev, ...settingsSnap.data() }));
         }
+        setCertificateInfo(certificateSnap.exists() ? certificateSnap.data() : null);
       }).catch((error) => {
         console.error('[NotaFiscal] Erro ao carregar configuração fiscal:', error);
         setMessage({ type: 'error', text: error?.message || 'Não foi possível carregar a configuração fiscal.' });
@@ -9362,6 +9372,51 @@ const handleSubmit = async (e) => {
         setMessage({ type: 'error', text: error?.message || 'Não foi possível salvar a configuração fiscal.' });
       } finally {
         setConfigSaving(false);
+      }
+    };
+
+    const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || '').split(',').pop());
+      reader.onerror = () => reject(reader.error || new Error('Não foi possível ler o certificado.'));
+      reader.readAsDataURL(file);
+    });
+
+    const handleUploadCertificate = async (event) => {
+      event?.preventDefault?.();
+      if (!effectiveStoreId) {
+        setMessage({ type: 'error', text: 'Selecione uma loja específica para enviar o certificado.' });
+        return;
+      }
+      if (!certificateForm.file) {
+        setMessage({ type: 'error', text: 'Selecione o arquivo .pfx do certificado A1.' });
+        return;
+      }
+      if (!certificateForm.password) {
+        setMessage({ type: 'error', text: 'Informe a senha do certificado A1.' });
+        return;
+      }
+
+      setCertificateUploading(true);
+      setMessage(null);
+      try {
+        const certificateBase64 = await readFileAsBase64(certificateForm.file);
+        const fn = httpsCallable(functions, 'fiscalUploadCertificate');
+        const response = await fn(callablePayload({
+          certificateBase64,
+          filename: certificateForm.file.name,
+          password: certificateForm.password,
+          cscId: certificateForm.cscId,
+          csc: certificateForm.csc
+        }));
+        setCertificateInfo(response.data?.certificate || null);
+        setCertificateForm({ file: null, password: '', cscId: '', csc: '' });
+        setMessage({ type: 'success', text: 'Certificado fiscal salvo com segurança.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Upload do certificado falhou:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível salvar o certificado.' });
+      } finally {
+        setCertificateUploading(false);
       }
     };
 
@@ -9590,6 +9645,40 @@ const handleSubmit = async (e) => {
             </div>
 
             <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800">Certificado digital A1</h3>
+                  <p className="text-sm text-gray-500">Envie o .pfx da loja. O arquivo e a senha ficam no Secret Manager.</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${certificateInfo?.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                  {certificateInfo?.status === 'active' ? 'Certificado ativo' : 'Certificado pendente'}
+                </span>
+              </div>
+              {certificateInfo?.status === 'active' && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm bg-gray-50 rounded-xl p-4">
+                  <p><strong>CNPJ:</strong> {certificateInfo.cnpj || '-'}</p>
+                  <p><strong>Validade:</strong> {certificateInfo.validUntil ? formatDateTime(certificateInfo.validUntil) : '-'}</p>
+                  <p><strong>Arquivo:</strong> {certificateInfo.filename || '-'}</p>
+                  <p><strong>NFC-e CSC:</strong> {certificateInfo.nfceCscSecretVersion || certificateInfo.hasCsc ? 'Configurado' : 'Pendente'}</p>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1 md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">Certificado A1 (.pfx)</label>
+                  <input type="file" accept=".pfx,.p12,application/x-pkcs12" onChange={(e) => setCertificateForm({ ...certificateForm, file: e.target.files?.[0] || null })} className="w-full px-4 py-3 border rounded-xl border-gray-300 bg-white" />
+                </div>
+                <Input label="Senha do certificado" type="password" value={certificateForm.password} onChange={(e) => setCertificateForm({ ...certificateForm, password: e.target.value })} />
+                <Input label="ID CSC" value={certificateForm.cscId} onChange={(e) => setCertificateForm({ ...certificateForm, cscId: e.target.value })} />
+                <div className="md:col-span-3"><Input label="CSC NFC-e" type="password" value={certificateForm.csc} onChange={(e) => setCertificateForm({ ...certificateForm, csc: e.target.value })} /></div>
+                <div className="flex items-end">
+                  <Button type="button" disabled={certificateUploading} onClick={handleUploadCertificate} className="w-full">
+                    <Save className="w-4 h-4" /> {certificateUploading ? 'Enviando...' : 'Salvar certificado'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
               <h3 className="text-lg font-bold text-gray-800">Emissão</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Select label="Ambiente" value={settingsForm.environment} onChange={(e) => setSettingsForm({ ...settingsForm, environment: e.target.value })}>
@@ -9601,7 +9690,7 @@ const handleSubmit = async (e) => {
                 <Input label="Natureza da operação" value={settingsForm.operationNature || ''} onChange={(e) => setSettingsForm({ ...settingsForm, operationNature: e.target.value })} />
                 <Input label="Pagamento padrão" value={settingsForm.defaultPaymentMethodCode || '99'} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPaymentMethodCode: e.target.value })} />
                 <Input label="Indicador de presença" type="number" value={settingsForm.defaultPresence || 2} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPresence: e.target.value })} />
-                <div className="md:col-span-3"><Input label="URL do serviço fiscal" value={settingsForm.serviceUrl || ''} onChange={(e) => setSettingsForm({ ...settingsForm, serviceUrl: e.target.value })} /></div>
+                <div className="md:col-span-3"><Input label="URL única do serviço fiscal (Cloud Run)" value={settingsForm.serviceUrl || ''} onChange={(e) => setSettingsForm({ ...settingsForm, serviceUrl: e.target.value })} /></div>
               </div>
               <div className="flex justify-end">
                 <Button type="submit" disabled={configSaving}><Save className="w-4 h-4" /> {configSaving ? 'Salvando...' : 'Salvar configuração fiscal'}</Button>

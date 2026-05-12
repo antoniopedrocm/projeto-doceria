@@ -1,4 +1,9 @@
 const {GoogleAuth} = require('google-auth-library');
+const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
+const forge = require('node-forge');
+
+const secretManager = new SecretManagerServiceClient();
+const MAX_CERTIFICATE_BYTES = 5 * 1024 * 1024;
 
 const INVOICE_STATUS = {
   VALIDATING: 'validating',
@@ -123,6 +128,109 @@ const validatePreparedPayload = (payload) => {
 
 const cleanText = (value) => String(value || '').trim();
 
+const getProjectId = () => {
+  if (process.env.GCLOUD_PROJECT) return process.env.GCLOUD_PROJECT;
+  if (process.env.GCP_PROJECT) return process.env.GCP_PROJECT;
+  try {
+    return JSON.parse(process.env.FIREBASE_CONFIG || '{}').projectId || '';
+  } catch (error) {
+    return '';
+  }
+};
+
+const safeSecretIdPart = (value) => cleanText(value)
+  .toLowerCase()
+  .replace(/[^a-z0-9_-]/g, '_')
+  .replace(/_+/g, '_')
+  .slice(0, 120);
+
+const secretResourceName = (projectId, secretId) => `projects/${projectId}/secrets/${secretId}`;
+
+const ensureSecret = async (projectId, secretId, labels = {}) => {
+  const name = secretResourceName(projectId, secretId);
+  try {
+    await secretManager.getSecret({name});
+    return name;
+  } catch (error) {
+    if (error?.code !== 5 && error?.code !== 'NOT_FOUND') throw error;
+  }
+
+  const [secret] = await secretManager.createSecret({
+    parent: `projects/${projectId}`,
+    secretId,
+    secret: {
+      replication: {automatic: {}},
+      labels,
+    },
+  });
+  return secret.name;
+};
+
+const addSecretVersion = async (projectId, secretId, value) => {
+  const [version] = await secretManager.addSecretVersion({
+    parent: secretResourceName(projectId, secretId),
+    payload: {data: Buffer.from(String(value), 'utf8')},
+  });
+  return version.name;
+};
+
+const parsePfxCertificate = (certificateBase64, password) => {
+  const pfxBuffer = Buffer.from(certificateBase64, 'base64');
+  if (!pfxBuffer.length || pfxBuffer.length > MAX_CERTIFICATE_BYTES) {
+    const error = new Error('Certificado A1 inválido ou maior que 5 MB.');
+    error.code = 'invalid-argument';
+    throw error;
+  }
+
+  try {
+    const p12Asn1 = forge.asn1.fromDer(pfxBuffer.toString('binary'));
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, password);
+    const certBags = p12.getBags({bagType: forge.pki.oids.certBag})[forge.pki.oids.certBag] || [];
+    const cert = certBags.find((bag) => bag.cert)?.cert;
+    if (!cert) throw new Error('Nenhum certificado encontrado no arquivo PFX.');
+
+    const attributes = cert.subject.attributes.map((attr) => ({
+      type: attr.type,
+      name: attr.shortName || attr.name || attr.type,
+      value: String(attr.value || ''),
+    }));
+    const subjectText = attributes.map((attr) => `${attr.name}=${attr.value}`).join(', ');
+    const cnpjAttribute = attributes.find((attr) => attr.type === '2.16.76.1.3.3');
+    const documentCandidates = [
+      onlyDigits(cnpjAttribute?.value),
+      ...(subjectText.match(/\d{14}/g) || []),
+    ].filter(Boolean);
+    const cnpj = documentCandidates.find((value) => value.length === 14) || '';
+
+    return {
+      cnpj,
+      subject: subjectText,
+      commonName: attributes.find((attr) => attr.name === 'CN')?.value || '',
+      validFrom: cert.validity.notBefore.toISOString(),
+      validUntil: cert.validity.notAfter.toISOString(),
+    };
+  } catch (error) {
+    const wrapped = new Error('Não foi possível abrir o certificado A1. Confira o arquivo .pfx e a senha.');
+    wrapped.code = 'invalid-argument';
+    wrapped.details = error?.message || null;
+    throw wrapped;
+  }
+};
+
+const publicCertificateInfo = (certificate = {}) => ({
+  status: certificate.status || 'missing',
+  filename: certificate.filename || '',
+  cnpj: certificate.cnpj || '',
+  subject: certificate.subject || '',
+  commonName: certificate.commonName || '',
+  validFrom: certificate.validFrom || null,
+  validUntil: certificate.validUntil || null,
+  hasCsc: Boolean(certificate.nfceCscSecretVersion),
+  hasCscId: Boolean(certificate.nfceCscIdSecretVersion),
+  uploadedByUid: certificate.uploadedByUid || '',
+  updatedAt: certificate.updatedAt || null,
+});
+
 const getServiceConfig = (settings = {}) => ({
   serviceUrl: cleanText(process.env.FISCAL_SERVICE_URL || settings.serviceUrl || settings.fiscalServiceUrl),
   sharedSecret: cleanText(process.env.FISCAL_SHARED_SECRET || settings.sharedSecret || settings.fiscalSharedSecret),
@@ -138,7 +246,7 @@ const callFiscalService = async (path, body, serviceConfig = {}) => {
 
   const url = new URL(path, serviceUrl.endsWith('/') ? serviceUrl : `${serviceUrl}/`).toString();
 
-  if (sharedSecret || /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/i.test(serviceUrl)) {
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/i.test(serviceUrl)) {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -162,7 +270,10 @@ const callFiscalService = async (path, body, serviceConfig = {}) => {
     url,
     method: 'POST',
     data: body,
-    headers: {'Content-Type': 'application/json'},
+    headers: {
+      'Content-Type': 'application/json',
+      ...(sharedSecret ? {'X-Fiscal-Service-Token': sharedSecret} : {}),
+    },
   });
   return response.data;
 };
@@ -181,8 +292,8 @@ const createFiscalFunctions = ({
 
   const normalizeHttpsError = (error) => {
     if (error instanceof HttpsError) return error;
-    if (error?.code === 'failed-precondition') {
-      return new HttpsError('failed-precondition', error.message);
+    if (['invalid-argument', 'failed-precondition', 'permission-denied', 'not-found', 'already-exists', 'aborted'].includes(error?.code)) {
+      return new HttpsError(error.code, error.message, error.details || null);
     }
     return new HttpsError('internal', error?.message || 'Falha fiscal inesperada.', error?.details || null);
   };
@@ -239,6 +350,25 @@ const createFiscalFunctions = ({
       processVersion: settings.processVersion || 'ana-guimaraes-fiscal-1.0.0',
       serviceUrl: settings.serviceUrl || settings.fiscalServiceUrl || '',
       sharedSecret: settings.sharedSecret || settings.fiscalSharedSecret || '',
+    };
+  };
+
+  const loadCertificate = async (lojaId) => {
+    const snap = await db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('certificate').get();
+    const certificate = snap.exists ? snap.data() || {} : {};
+    const ready = certificate.status === 'active'
+      && Boolean(certificate.certPfxSecretVersion)
+      && Boolean(certificate.certPasswordSecretVersion);
+
+    return {
+      ...certificate,
+      ready,
+      fiscalSecrets: ready ? {
+        certPfxSecretVersion: certificate.certPfxSecretVersion,
+        certPasswordSecretVersion: certificate.certPasswordSecretVersion,
+        nfceCscSecretVersion: certificate.nfceCscSecretVersion || null,
+        nfceCscIdSecretVersion: certificate.nfceCscIdSecretVersion || null,
+      } : null,
     };
   };
 
@@ -319,10 +449,11 @@ const createFiscalFunctions = ({
       throw new HttpsError('failed-precondition', 'A nota só pode ser emitida para pedido finalizado ou aprovado.');
     }
 
-    const [issuer, settings, customer] = await Promise.all([
+    const [issuer, settings, customer, certificate] = await Promise.all([
       loadIssuer(lojaId),
       loadSettings(lojaId),
       loadCustomer(order),
+      loadCertificate(lojaId),
     ]);
 
     const model = inferInvoiceModel(order, customer, issuer, modelOverride);
@@ -403,12 +534,14 @@ const createFiscalFunctions = ({
       },
       additionalInfo: order.observacao || order.additionalInfo || '',
       requestedByUid: uid,
+      fiscalSecrets: certificate.fiscalSecrets,
     };
 
     return {
       payload,
       order,
       settings,
+      certificate,
       model,
       series,
       errors: validatePreparedPayload(payload),
@@ -542,7 +675,11 @@ const createFiscalFunctions = ({
         const localResult = {
           ok: prepared.errors.length === 0,
           errors: prepared.errors,
-          warnings: getServiceConfig(prepared.settings).serviceUrl ? [] : ['Serviço fiscal ainda não configurado; validação feita apenas localmente.'],
+          warnings: [
+            ...(getServiceConfig(prepared.settings).serviceUrl ? [] : ['Serviço fiscal ainda não configurado; validação feita apenas localmente.']),
+            ...(prepared.certificate.ready ? [] : ['Certificado A1 da loja ainda não foi enviado.']),
+            ...(prepared.model === 65 && (!prepared.certificate.nfceCscSecretVersion || !prepared.certificate.nfceCscIdSecretVersion) ? ['CSC e ID CSC da NFC-e ainda não foram cadastrados.'] : []),
+          ],
           model: prepared.model,
           series: prepared.series,
           number: nextNumber,
@@ -553,6 +690,106 @@ const createFiscalFunctions = ({
         return await callFiscalService('/validate', payload, prepared.settings);
       } catch (error) {
         logger.error('fiscalValidateOrder failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
+    fiscalUploadCertificate: onCall({timeoutSeconds: 120, memory: '512MiB'}, async (request) => {
+      try {
+        const {uid, lojaId} = await requireCallableContext(request);
+        const certificateBase64 = cleanText(request.data?.certificateBase64).replace(/^data:.*;base64,/, '');
+        const password = String(request.data?.password || '');
+        const filename = cleanText(request.data?.filename || 'certificado-a1.pfx');
+        const csc = cleanText(request.data?.csc);
+        const cscId = cleanText(request.data?.cscId);
+
+        if (!certificateBase64) {
+          throw new HttpsError('invalid-argument', 'Envie o arquivo do certificado A1 em formato .pfx.');
+        }
+        if (!password) {
+          throw new HttpsError('invalid-argument', 'Informe a senha do certificado A1.');
+        }
+
+        const issuer = await loadIssuer(lojaId);
+        const metadata = parsePfxCertificate(certificateBase64, password);
+        if (metadata.cnpj && issuer.cnpj && metadata.cnpj !== issuer.cnpj) {
+          throw new HttpsError(
+            'failed-precondition',
+            `O CNPJ do certificado (${metadata.cnpj}) é diferente do CNPJ do emitente (${issuer.cnpj}).`
+          );
+        }
+
+        const projectId = getProjectId();
+        if (!projectId) {
+          throw new HttpsError('failed-precondition', 'Não foi possível identificar o projeto Google Cloud para criar secrets.');
+        }
+
+        const safeLojaId = safeSecretIdPart(lojaId);
+        const labels = {
+          app: 'doceria',
+          module: 'fiscal',
+          loja: safeLojaId.slice(0, 63),
+        };
+        const secretIds = {
+          certPfx: `fiscal_${safeLojaId}_cert_pfx_base64`,
+          certPassword: `fiscal_${safeLojaId}_cert_password`,
+          nfceCsc: `fiscal_${safeLojaId}_nfce_csc`,
+          nfceCscId: `fiscal_${safeLojaId}_nfce_csc_id`,
+        };
+
+        await Promise.all([
+          ensureSecret(projectId, secretIds.certPfx, labels),
+          ensureSecret(projectId, secretIds.certPassword, labels),
+          csc ? ensureSecret(projectId, secretIds.nfceCsc, labels) : Promise.resolve(),
+          cscId ? ensureSecret(projectId, secretIds.nfceCscId, labels) : Promise.resolve(),
+        ]);
+
+        const previousSnap = await db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('certificate').get();
+        const previous = previousSnap.exists ? previousSnap.data() || {} : {};
+        const [certPfxSecretVersion, certPasswordSecretVersion, nfceCscSecretVersion, nfceCscIdSecretVersion] = await Promise.all([
+          addSecretVersion(projectId, secretIds.certPfx, certificateBase64),
+          addSecretVersion(projectId, secretIds.certPassword, password),
+          csc ? addSecretVersion(projectId, secretIds.nfceCsc, csc) : Promise.resolve(previous.nfceCscSecretVersion || null),
+          cscId ? addSecretVersion(projectId, secretIds.nfceCscId, cscId) : Promise.resolve(previous.nfceCscIdSecretVersion || null),
+        ]);
+
+        const certificate = {
+          status: 'active',
+          filename,
+          cnpj: metadata.cnpj || issuer.cnpj,
+          subject: metadata.subject,
+          commonName: metadata.commonName,
+          validFrom: metadata.validFrom,
+          validUntil: metadata.validUntil,
+          certPfxSecretName: secretResourceName(projectId, secretIds.certPfx),
+          certPfxSecretVersion,
+          certPasswordSecretName: secretResourceName(projectId, secretIds.certPassword),
+          certPasswordSecretVersion,
+          nfceCscSecretName: nfceCscSecretVersion ? secretResourceName(projectId, secretIds.nfceCsc) : previous.nfceCscSecretName || null,
+          nfceCscSecretVersion,
+          nfceCscIdSecretName: nfceCscIdSecretVersion ? secretResourceName(projectId, secretIds.nfceCscId) : previous.nfceCscIdSecretName || null,
+          nfceCscIdSecretVersion,
+          uploadedByUid: uid,
+          uploadedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+
+        await db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('certificate').set(certificate, {merge: true});
+        await db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').set({
+          certificateReady: true,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+
+        return {
+          ok: true,
+          certificate: publicCertificateInfo({
+            ...certificate,
+            uploadedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }),
+        };
+      } catch (error) {
+        logger.error('fiscalUploadCertificate failed', error);
         throw normalizeHttpsError(error);
       }
     }),
@@ -574,6 +811,12 @@ const createFiscalFunctions = ({
         }
         if (!getServiceConfig(prepared.settings).serviceUrl) {
           throw new HttpsError('failed-precondition', 'Configure a URL do serviço fiscal na aba Configuração antes de emitir notas.');
+        }
+        if (!prepared.certificate.ready) {
+          throw new HttpsError('failed-precondition', 'Faça upload do certificado digital A1 da loja antes de emitir notas.');
+        }
+        if (prepared.model === 65 && (!prepared.certificate.nfceCscSecretVersion || !prepared.certificate.nfceCscIdSecretVersion)) {
+          throw new HttpsError('failed-precondition', 'Cadastre o CSC e o ID CSC da NFC-e junto com o certificado para emitir NFC-e.');
         }
 
         const environment = prepared.settings.environment || 'homologation';
@@ -638,9 +881,16 @@ const createFiscalFunctions = ({
         if (invoice.status !== INVOICE_STATUS.AUTHORIZED) {
           throw new HttpsError('failed-precondition', 'Somente notas autorizadas podem ser canceladas.');
         }
-        const settings = await loadSettings(lojaId);
+        const [settings, issuer] = await Promise.all([
+          loadSettings(lojaId),
+          loadIssuer(lojaId),
+        ]);
         if (!getServiceConfig(settings).serviceUrl) {
           throw new HttpsError('failed-precondition', 'Configure a URL do serviço fiscal na aba Configuração antes de cancelar notas.');
+        }
+        const certificate = await loadCertificate(lojaId);
+        if (!certificate.ready) {
+          throw new HttpsError('failed-precondition', 'Faça upload do certificado digital A1 da loja antes de cancelar notas.');
         }
 
         const result = await callFiscalService('/cancel', {
@@ -649,6 +899,9 @@ const createFiscalFunctions = ({
           key: invoice.key,
           protocol: invoice.protocol,
           reason,
+          environment: environmentCode(settings.environment),
+          issuer,
+          fiscalSecrets: certificate.fiscalSecrets,
         }, settings);
 
         await invoiceRef.set({

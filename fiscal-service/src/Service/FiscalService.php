@@ -41,6 +41,19 @@ final class FiscalService
 
     /**
      * @param array<string, mixed> $payload
+     */
+    public static function fromPayload(array $payload): self
+    {
+        return new self(
+            new PayloadValidator(),
+            new InvoiceXmlBuilder(),
+            NFePhpGateway::fromPayload($payload),
+            new DanfeRenderer()
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
     public function validate(array $payload): array

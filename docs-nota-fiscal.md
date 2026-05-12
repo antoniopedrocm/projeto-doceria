@@ -9,6 +9,8 @@ O menu **Nota Fiscal** fica entre Financeiro e Configurações e usa a loja sele
 - Produtos fiscais: `lojas/{lojaId}/fiscalProducts`
 - Configuração do emitente: `lojas/{lojaId}/fiscalConfig/issuer`
 - Configuração de emissão: `lojas/{lojaId}/fiscalConfig/settings`
+- Metadados do certificado: `lojas/{lojaId}/fiscalConfig/certificate`
+- Segredos por loja: Google Secret Manager (`fiscal_{lojaId}_cert_pfx_base64`, senha e CSC)
 - Numeração: `lojas/{lojaId}/fiscalCounters`
 
 ## Cloud Functions
@@ -17,8 +19,9 @@ O menu **Nota Fiscal** fica entre Financeiro e Configurações e usa a loja sele
 - `fiscalIssueInvoice`
 - `fiscalCancelInvoice`
 - `fiscalGetInvoice`
+- `fiscalUploadCertificate`
 
-Enquanto a URL do serviço fiscal não estiver configurada, a validação roda localmente e a emissão real fica bloqueada. Para emitir de fato, publique `fiscal-service/` no Cloud Run e preencha **Nota Fiscal > Configuração > URL do serviço fiscal** ou configure `FISCAL_SERVICE_URL` nas Cloud Functions.
+Enquanto a URL única do serviço fiscal não estiver configurada, a validação roda localmente e a emissão real fica bloqueada. Para emitir de fato, publique `fiscal-service/` no Cloud Run e configure `FISCAL_SERVICE_URL` nas Cloud Functions. O certificado A1, senha e CSC são enviados pela tela **Nota Fiscal > Configuração > Certificado digital A1** e ficam no Secret Manager por loja.
 
 ## Atenção operacional
 
