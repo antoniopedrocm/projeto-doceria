@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CheckCircle, Clock, DollarSign, Moon, Package,
-  RefreshCw, Save, Search, Settings, ShoppingCart, Sun, Truck, Wifi, WifiOff, X
+  Pencil, RefreshCw, Save, Search, Settings, ShoppingCart, Sun, Truck, Wifi, WifiOff, X
 } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebaseConfig.js';
@@ -83,6 +83,36 @@ const inputClass = (dark) => `h-11 w-full rounded-lg border px-3 text-sm outline
   dark ? 'border-slate-700 bg-slate-950 text-slate-100 placeholder:text-slate-500' : 'border-gray-200 bg-white text-gray-800'
 }`;
 
+const ProtectedSecretField = ({
+  label, stored, editing, value, onChange, onEdit, onCancel, emptyHint, dark,
+}) => (
+  <Field
+    dark={dark}
+    label={label}
+    hint={stored ? 'Armazenado no Secret Manager. Use Substituir para cadastrar um novo valor.' : emptyHint}
+  >
+    <div className="flex items-center gap-2">
+      <input
+        type={stored && !editing ? 'text' : 'password'}
+        readOnly={stored && !editing}
+        className={inputClass(dark)}
+        value={stored && !editing ? '********' : value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {stored && !editing && (
+        <Button dark={dark} onClick={onEdit}>
+          <Pencil className="h-4 w-4" />Substituir
+        </Button>
+      )}
+      {stored && editing && (
+        <Button dark={dark} onClick={onCancel}>
+          <X className="h-4 w-4" />Cancelar
+        </Button>
+      )}
+    </div>
+  </Field>
+);
+
 const Metric = ({label, value, icon: Icon, tone, dark}) => (
   <div className={`rounded-lg border p-4 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
     <div className="flex items-start justify-between gap-2">
@@ -109,6 +139,7 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   const [dark, setDark] = useState(() => window.localStorage.getItem('ifood-hub-theme') === 'dark');
   const [config, setConfig] = useState(initialConfig);
   const [secrets, setSecrets] = useState({clientId: '', clientSecret: '', webhookSecret: ''});
+  const [editingSecrets, setEditingSecrets] = useState({clientId: false, clientSecret: false, webhookSecret: false});
   const [remoteHealth, setRemoteHealth] = useState({status: 'not_configured'});
   const [merchants, setMerchants] = useState([]);
   const [mapping, setMapping] = useState({productId: '', iFoodProductId: '', externalCode: '', catalogItemId: ''});
@@ -141,6 +172,8 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   useEffect(() => {
     setMessage(null);
     setConfig(initialConfig);
+    setSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
+    setEditingSecrets({clientId: false, clientSecret: false, webhookSecret: false});
     setMerchants([]);
     loadConfiguration();
   }, [loadConfiguration]);
@@ -266,7 +299,28 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
       const saved = await invoke('ifoodSaveConfiguration', {...config, ...secrets});
       setConfig({...initialConfig, ...saved});
       setSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
-    }, 'Configuracao salva. Os campos protegidos ficam vazios na tela e permanecem no Google Secret Manager.');
+      setEditingSecrets({clientId: false, clientSecret: false, webhookSecret: false});
+    }, 'Configuracao salva. Os valores protegidos ficam ocultos na tela e permanecem no Google Secret Manager.');
+  };
+
+  const editSecret = (field) => {
+    setSecrets((current) => ({...current, [field]: ''}));
+    setEditingSecrets((current) => ({...current, [field]: true}));
+  };
+
+  const cancelSecretEdit = (field) => {
+    setSecrets((current) => ({...current, [field]: ''}));
+    setEditingSecrets((current) => ({...current, [field]: false}));
+  };
+
+  const editCredentials = () => {
+    setSecrets((current) => ({...current, clientId: '', clientSecret: ''}));
+    setEditingSecrets((current) => ({...current, clientId: true, clientSecret: true}));
+  };
+
+  const cancelCredentialsEdit = () => {
+    setSecrets((current) => ({...current, clientId: '', clientSecret: ''}));
+    setEditingSecrets((current) => ({...current, clientId: false, clientSecret: false}));
   };
 
   const loadMerchants = () => perform('merchant-load', async () => {
@@ -530,11 +584,11 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
                 </select>
               )}
             </Field>
-            <Field dark={dark} label="Client ID" hint={config.credentialsReady ? 'Armazenado no Secret Manager. Preencha somente para substituir.' : ''}><input className={inputClass(dark)} placeholder={config.credentialsReady ? 'Credencial ja armazenada' : ''} value={secrets.clientId} onChange={(event) => setSecrets({...secrets, clientId: event.target.value})} /></Field>
-            <Field dark={dark} label="Client Secret" hint={config.credentialsReady ? 'Armazenado no Secret Manager. Preencha somente para substituir.' : ''}><input type="password" className={inputClass(dark)} placeholder={config.credentialsReady ? 'Credencial ja armazenada' : ''} value={secrets.clientSecret} onChange={(event) => setSecrets({...secrets, clientSecret: event.target.value})} /></Field>
+            <ProtectedSecretField dark={dark} label="Client ID" stored={config.credentialsReady} editing={editingSecrets.clientId} value={secrets.clientId} onChange={(value) => setSecrets({...secrets, clientId: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
+            <ProtectedSecretField dark={dark} label="Client Secret" stored={config.credentialsReady} editing={editingSecrets.clientSecret} value={secrets.clientSecret} onChange={(value) => setSecrets({...secrets, clientSecret: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
             <Field dark={dark} label="API base URL"><input className={inputClass(dark)} value={config.apiBaseUrl} onChange={(event) => setConfig({...config, apiBaseUrl: event.target.value})} /></Field>
             <Field dark={dark} label="URL de autenticacao"><input className={inputClass(dark)} value={config.authUrl} onChange={(event) => setConfig({...config, authUrl: event.target.value})} /></Field>
-            <Field dark={dark} label="Segredo de webhook futuro" hint={config.webhookSecretReady ? 'Armazenado no Secret Manager. Preencha somente para substituir.' : 'Deixe vazio enquanto utilizar polling.'}><input type="password" className={inputClass(dark)} placeholder={config.webhookSecretReady ? 'Segredo ja armazenado' : ''} value={secrets.webhookSecret} onChange={(event) => setSecrets({...secrets, webhookSecret: event.target.value})} /></Field>
+            <ProtectedSecretField dark={dark} label="Segredo de webhook futuro" stored={config.webhookSecretReady} editing={editingSecrets.webhookSecret} value={secrets.webhookSecret} onChange={(value) => setSecrets({...secrets, webhookSecret: value})} onEdit={() => editSecret('webhookSecret')} onCancel={() => cancelSecretEdit('webhookSecret')} emptyHint="Deixe vazio enquanto utilizar polling." />
           </div>
           <div>
             <h3 className="mb-3 text-sm font-medium">Automacao operacional</h3>
