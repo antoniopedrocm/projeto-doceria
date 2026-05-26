@@ -102,7 +102,7 @@ const Toggle = ({label, checked, onChange, dark}) => (
   </label>
 );
 
-export default function IfoodHub({data, effectiveStoreId, selectedStoreId, storeInfoMap}) {
+export default function IfoodHub({data, effectiveStoreId, selectedStoreId, availableStores = [], storeInfoMap, onSelectStore}) {
   const [tab, setTab] = useState('operacao');
   const [dark, setDark] = useState(() => window.localStorage.getItem('ifood-hub-theme') === 'dark');
   const [config, setConfig] = useState(initialConfig);
@@ -281,10 +281,32 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, store
 
   if (!effectiveStoreId) {
     return (
-      <div className="p-6">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-800">
-          <h1 className="text-xl font-semibold">iFood Hub</h1>
-          <p className="mt-2 text-sm">Selecione uma loja especifica no topo para configurar credenciais, estoque e pedidos do iFood.</p>
+      <div className="min-h-full bg-gray-50 p-4 sm:p-6">
+        <div className="rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
+          <h1 className="text-2xl font-semibold text-gray-900">iFood Hub</h1>
+          <p className="mt-2 text-sm text-gray-600">Escolha uma loja para configurar credenciais, estoque e pedidos do iFood.</p>
+          {availableStores.length ? (
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {availableStores.map((storeId) => (
+                <button
+                  key={storeId}
+                  type="button"
+                  onClick={() => onSelectStore?.(storeId)}
+                  className="flex items-center justify-between gap-4 rounded-lg border border-gray-200 bg-white px-4 py-4 text-left transition hover:border-pink-300 hover:bg-pink-50"
+                >
+                  <span>
+                    <span className="block text-sm font-medium text-gray-900">{storeInfoMap?.[storeId]?.nome || storeId}</span>
+                    <span className="mt-1 block text-xs text-gray-500">{storeId}</span>
+                  </span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-pink-600" />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              Nenhuma loja cadastrada foi identificada para este usuario.
+            </div>
+          )}
         </div>
       </div>
     );
