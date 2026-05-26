@@ -8,13 +8,15 @@
  */
 
 const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onDocumentCreated, onDocumentWritten} = require("firebase-functions/v2/firestore");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const express = require("express");
 const cors = require("cors");
 const crypto = require('crypto');
 const {createFiscalFunctions} = require('./fiscal');
+const {createIfoodFunctions} = require('./ifood');
 
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
@@ -39,6 +41,7 @@ const MENU_PERMISSION_KEYS = [
   'meu-espaco',
   'financeiro',
   'nota-fiscal',
+  'ifood',
   'configuracoes',
 ];
 
@@ -82,6 +85,7 @@ const getDefaultPermissionsForRole = (role) => {
       'meu-espaco': true,
       financeiro: true,
       'nota-fiscal': true,
+      ifood: true,
       configuracoes: true,
     };
   }
@@ -1709,6 +1713,20 @@ Object.assign(exports, createFiscalFunctions({
     admin,
     db,
     onCall,
+    HttpsError,
+    logger,
+    verifyManagementAccess,
+    userHasAccessToStores,
+    STORE_ALL_KEY,
+}));
+
+Object.assign(exports, createIfoodFunctions({
+    admin,
+    db,
+    onCall,
+    onRequest,
+    onSchedule,
+    onDocumentWritten,
     HttpsError,
     logger,
     verifyManagementAccess,

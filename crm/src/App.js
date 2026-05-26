@@ -39,6 +39,7 @@ import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceW
 import { updateStock as updateStockService } from './services/stockService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
+import IfoodHub from './components/ifood/IfoodHub';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
@@ -89,6 +90,7 @@ const MENU_PERMISSION_KEYS = [
   'meu-espaco',
   'financeiro',
   'nota-fiscal',
+  'ifood',
   'configuracoes'
 ];
 
@@ -169,6 +171,11 @@ const COLLECTIONS_TO_SYNC = [
   'receitas',
   'fiscalProducts',
   'invoices',
+  'ifoodOrders',
+  'ifoodAlerts',
+  'ifoodProductMappings',
+  'ifoodAudit',
+  'ifoodHealth',
   'logs',
   'cupons',
   'pedidos'
@@ -281,6 +288,7 @@ const getDefaultPermissionsForRole = (role) => {
       'meu-espaco': true,
       financeiro: true,
       'nota-fiscal': true,
+      ifood: true,
       configuracoes: true,
     };
   }
@@ -3995,6 +4003,7 @@ function App() {
     { id: 'meu-espaco', permission: 'meu-espaco', label: 'Meu Espaço', icon: Clock, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_CLIENT] },
     { id: 'financeiro', permission: 'financeiro', label: 'Financeiro', icon: DollarSign, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'nota-fiscal', permission: 'nota-fiscal', label: 'Nota Fiscal', icon: FileText, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'ifood', permission: 'ifood', label: 'iFood Hub', icon: Store, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'configuracoes', permission: 'configuracoes', label: 'Configurações', icon: Settings, roles: [ROLE_OWNER, ROLE_MANAGER] },
   ];
   const currentUserRole = user ? user.role : null;
@@ -9810,8 +9819,9 @@ const handleSubmit = async (e) => {
           currentStoreIdForDisplay={currentStoreIdForDisplay}
         />
       ) : <PaginaInicial />;
-          case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
+      case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} /> : <PaginaInicial />;
+      case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} /> : <PaginaInicial />;
       case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} /> : <PaginaInicial />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
