@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CheckCircle, Clock, DollarSign, Moon, Package,
-  RefreshCw, Save, Settings, ShoppingCart, Sun, Truck, Wifi, WifiOff, X
+  RefreshCw, Save, Search, Settings, ShoppingCart, Sun, Truck, Wifi, WifiOff, X
 } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebaseConfig.js';
@@ -25,6 +25,7 @@ const initialConfig = {
   inventoryEndpointTemplate: '',
   inventoryMethod: 'POST',
   credentialsReady: false,
+  webhookSecretReady: false,
 };
 
 const money = (value) => (Number(value) || 0).toLocaleString('pt-BR', {
@@ -70,10 +71,11 @@ const Button = ({children, onClick, disabled, primary = false, dark = false, typ
   </button>
 );
 
-const Field = ({label, dark, children}) => (
+const Field = ({label, hint, dark, children}) => (
   <label className="block space-y-2">
     <span className={`text-sm font-medium ${dark ? 'text-slate-300' : 'text-gray-600'}`}>{label}</span>
     {children}
+    {hint && <span className={`block text-xs ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{hint}</span>}
   </label>
 );
 
@@ -108,6 +110,7 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   const [config, setConfig] = useState(initialConfig);
   const [secrets, setSecrets] = useState({clientId: '', clientSecret: '', webhookSecret: ''});
   const [remoteHealth, setRemoteHealth] = useState({status: 'not_configured'});
+  const [merchants, setMerchants] = useState([]);
   const [mapping, setMapping] = useState({productId: '', iFoodProductId: '', externalCode: '', catalogItemId: ''});
   const [catalogProducts, setCatalogProducts] = useState([]);
   const [cancellation, setCancellation] = useState({order: null, reasons: [], reason: ''});
@@ -138,6 +141,7 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   useEffect(() => {
     setMessage(null);
     setConfig(initialConfig);
+    setMerchants([]);
     loadConfiguration();
   }, [loadConfiguration]);
 
@@ -262,8 +266,17 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
       const saved = await invoke('ifoodSaveConfiguration', {...config, ...secrets});
       setConfig({...initialConfig, ...saved});
       setSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
-    }, 'Configuracao salva. Segredos foram protegidos no Google Secret Manager.');
+    }, 'Configuracao salva. Os campos protegidos ficam vazios na tela e permanecem no Google Secret Manager.');
   };
+
+  const loadMerchants = () => perform('merchant-load', async () => {
+    const result = await invoke('ifoodLoadMerchants');
+    const availableMerchants = result.merchants || [];
+    setMerchants(availableMerchants);
+    if (availableMerchants.length === 1) {
+      setConfig((current) => ({...current, merchantId: availableMerchants[0].id}));
+    }
+  }, 'Lojas autorizadas localizadas. Confirme o Merchant ID selecionado e salve a configuracao.');
 
   const saveMapping = (event) => {
     event.preventDefault();
@@ -497,13 +510,31 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
             <div><h2 className="font-semibold">Conexao oficial iFood Developer</h2><p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Credenciais e webhook sao armazenados como segredos independentes para esta loja.</p></div>
             <span className={`rounded-full px-3 py-1 text-xs font-medium ${config.credentialsReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{config.credentialsReady ? 'Credenciais protegidas' : 'Credenciais pendentes'}</span>
           </div>
+          {config.credentialsReady && !config.merchantId && (
+            <div className={`rounded-lg border p-4 text-sm ${dark ? 'border-amber-700/50 bg-amber-400/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+              Suas credenciais ja foram armazenadas. Use <strong>Localizar lojas iFood</strong> para selecionar o Merchant ID autorizado e concluir a configuracao.
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-3">
-            <Field dark={dark} label="Merchant ID"><input className={inputClass(dark)} value={config.merchantId} onChange={(event) => setConfig({...config, merchantId: event.target.value})} /></Field>
-            <Field dark={dark} label="Client ID"><input className={inputClass(dark)} placeholder={config.credentialsReady ? 'Manter segredo atual' : ''} value={secrets.clientId} onChange={(event) => setSecrets({...secrets, clientId: event.target.value})} /></Field>
-            <Field dark={dark} label="Client Secret"><input type="password" className={inputClass(dark)} placeholder={config.credentialsReady ? 'Manter segredo atual' : ''} value={secrets.clientSecret} onChange={(event) => setSecrets({...secrets, clientSecret: event.target.value})} /></Field>
+            <Field dark={dark} label="Merchant ID" hint="Identificador da loja no iFood; nao e o CNPJ nem o Client ID.">
+              <input className={inputClass(dark)} placeholder="Selecione ou informe o Merchant ID" value={config.merchantId} onChange={(event) => setConfig({...config, merchantId: event.target.value})} />
+              <Button dark={dark} disabled={!config.credentialsReady || busy === 'merchant-load'} onClick={loadMerchants}>
+                <Search className={`h-4 w-4 ${busy === 'merchant-load' ? 'animate-pulse' : ''}`} />Localizar lojas iFood
+              </Button>
+              {merchants.length > 0 && (
+                <select className={inputClass(dark)} value={config.merchantId} onChange={(event) => setConfig({...config, merchantId: event.target.value})}>
+                  <option value="">Selecione a loja autorizada</option>
+                  {merchants.map((merchant) => (
+                    <option key={merchant.id} value={merchant.id}>{merchant.name || merchant.corporateName || merchant.id}</option>
+                  ))}
+                </select>
+              )}
+            </Field>
+            <Field dark={dark} label="Client ID" hint={config.credentialsReady ? 'Armazenado no Secret Manager. Preencha somente para substituir.' : ''}><input className={inputClass(dark)} placeholder={config.credentialsReady ? 'Credencial ja armazenada' : ''} value={secrets.clientId} onChange={(event) => setSecrets({...secrets, clientId: event.target.value})} /></Field>
+            <Field dark={dark} label="Client Secret" hint={config.credentialsReady ? 'Armazenado no Secret Manager. Preencha somente para substituir.' : ''}><input type="password" className={inputClass(dark)} placeholder={config.credentialsReady ? 'Credencial ja armazenada' : ''} value={secrets.clientSecret} onChange={(event) => setSecrets({...secrets, clientSecret: event.target.value})} /></Field>
             <Field dark={dark} label="API base URL"><input className={inputClass(dark)} value={config.apiBaseUrl} onChange={(event) => setConfig({...config, apiBaseUrl: event.target.value})} /></Field>
             <Field dark={dark} label="URL de autenticacao"><input className={inputClass(dark)} value={config.authUrl} onChange={(event) => setConfig({...config, authUrl: event.target.value})} /></Field>
-            <Field dark={dark} label="Segredo de webhook futuro"><input type="password" className={inputClass(dark)} value={secrets.webhookSecret} onChange={(event) => setSecrets({...secrets, webhookSecret: event.target.value})} /></Field>
+            <Field dark={dark} label="Segredo de webhook futuro" hint={config.webhookSecretReady ? 'Armazenado no Secret Manager. Preencha somente para substituir.' : 'Deixe vazio enquanto utilizar polling.'}><input type="password" className={inputClass(dark)} placeholder={config.webhookSecretReady ? 'Segredo ja armazenado' : ''} value={secrets.webhookSecret} onChange={(event) => setSecrets({...secrets, webhookSecret: event.target.value})} /></Field>
           </div>
           <div>
             <h3 className="mb-3 text-sm font-medium">Automacao operacional</h3>

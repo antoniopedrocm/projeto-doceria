@@ -107,6 +107,7 @@ Todas as colecoes abaixo ficam sob `lojas/{lojaId}`.
 | `ifoodGetConfiguration` | Callable | Carregar configuracao publica e health |
 | `ifoodSaveConfiguration` | Callable | Salvar configuracao e segredos por loja |
 | `ifoodTestConnection` | Callable | Validar OAuth iFood |
+| `ifoodLoadMerchants` | Callable | Listar lojas autorizadas pela credencial e preencher o Merchant ID |
 | `ifoodPollNow` | Callable | Consulta imediata de eventos |
 | `ifoodOrderAction` | Callable | Confirmar, preparar, despachar, cancelar ou validar codigo |
 | `ifoodGetCancellationReasons` | Callable | Buscar motivos de cancelamento validos antes da solicitacao |
@@ -154,7 +155,7 @@ firebase deploy --only functions,firestore:rules,hosting --project crmdoceria-99
 ```
 
 4. No CRM, escolha uma loja especifica e abra `iFood Hub > Configuracao`.
-5. Preencha Merchant ID, Client ID e Client Secret. Ao salvar, a Function cria automaticamente segredos exclusivos da loja:
+5. Preencha `Client ID` e `Client Secret`. Ao salvar, a Function cria automaticamente segredos exclusivos da loja; por seguranca, os campos de segredo voltam vazios na tela:
 
 ```text
 ifood_<lojaId>_client_id
@@ -162,10 +163,11 @@ ifood_<lojaId>_client_secret
 ifood_<lojaId>_webhook_secret   (somente quando informado)
 ```
 
-6. Marque `Integracao ativa`, `Polling automatico` e, quando apropriado, `Confirmar pedidos`.
-7. Clique em `Testar conexao`; o selo da API deve ficar online.
-8. Em `Catalogo e estoque`, clique em `Importar catalogo iFood` e mapeie cada produto interno ao produto correspondente.
-9. Clique em `Reconciliar estoque`; deixe `Endpoint alternativo` vazio para usar automaticamente o inventario Catalog v2.0 oficial.
+6. Clique em `Localizar lojas iFood`; a Function usa `GET /merchant/v1.0/merchants`, selecione a loja autorizada e salve novamente para persistir o `Merchant ID`.
+7. Marque `Integracao ativa`, `Polling automatico` e, quando apropriado, `Confirmar pedidos`.
+8. Clique em `Testar conexao`; o selo da API deve ficar online.
+9. Em `Catalogo e estoque`, clique em `Importar catalogo iFood` e mapeie cada produto interno ao produto correspondente.
+10. Clique em `Reconciliar estoque`; deixe `Endpoint alternativo` vazio para usar automaticamente o inventario Catalog v2.0 oficial.
 
 ## Seguranca e operacao
 

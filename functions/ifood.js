@@ -275,6 +275,7 @@ const createIfoodFunctions = ({
     pollingEnabled: Boolean(config.pollingEnabled),
     webhookEnabled: Boolean(config.webhookEnabled),
     credentialsReady: Boolean(config.clientIdSecretVersion && config.clientSecretSecretVersion),
+    webhookSecretReady: Boolean(config.webhookSecretVersion),
     merchantId: config.merchantId || '',
     apiBaseUrl: config.apiBaseUrl || DEFAULT_API_URL,
     authUrl: config.authUrl || DEFAULT_AUTH_URL,
@@ -814,6 +815,30 @@ const createIfoodFunctions = ({
         latencyMs: Date.now() - started,
       }, {merge: true});
       return {ok: true, latencyMs: Date.now() - started};
+    }),
+
+    ifoodLoadMerchants: onCall(async (request) => {
+      const {lojaId} = await requireCallableStore(request);
+      const config = await loadConfig(lojaId);
+      if (!config.clientIdSecretVersion || !config.clientSecretSecretVersion) {
+        throw new HttpsError('failed-precondition', 'Salve Client ID e Client Secret antes de localizar lojas.');
+      }
+      const payload = await requestIfood(lojaId, config, '/merchant/v1.0/merchants');
+      const records = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload.merchants) ? payload.merchants : (Array.isArray(payload.data) ? payload.data : []));
+      const merchants = records
+        .map((merchant) => ({
+          id: cleanText(merchant.id),
+          name: cleanText(merchant.name),
+          corporateName: cleanText(merchant.corporateName),
+        }))
+        .filter((merchant) => merchant.id);
+      if (!merchants.length) {
+        throw new HttpsError('not-found', 'Nenhuma loja autorizada foi encontrada para estas credenciais iFood.');
+      }
+      await audit(lojaId, 'merchants.loaded', {count: merchants.length});
+      return {merchants};
     }),
 
     ifoodPollNow: onCall({timeoutSeconds: 120}, async (request) => {
