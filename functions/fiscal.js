@@ -108,10 +108,11 @@ const validatePreparedPayload = (payload) => {
   if (!payload.invoice?.number || payload.invoice.number < 1) errors.push('Número fiscal inválido.');
 
   payload.items.forEach((item, index) => {
-    if (!item.ncm || item.ncm.length !== 8) errors.push(`Item ${index + 1} com NCM inválido.`);
-    if (!item.cfop || item.cfop.length !== 4) errors.push(`Item ${index + 1} com CFOP inválido.`);
-    if (!item.tax?.csosn && !item.tax?.cst) errors.push(`Item ${index + 1} sem CSOSN/CST.`);
-    if (item.discount > item.total) errors.push(`Item ${index + 1} com desconto maior que o total.`);
+    const label = item.description || `Item ${index + 1}`;
+    if (!item.ncm || item.ncm.length !== 8) errors.push(`${label}: informe um NCM válido com 8 dígitos.`);
+    if (!item.cfop || item.cfop.length !== 4) errors.push(`${label}: informe um CFOP válido com 4 dígitos.`);
+    if (!item.tax?.csosn && !item.tax?.cst) errors.push(`${label}: informe CSOSN/CST.`);
+    if (item.discount > item.total) errors.push(`${label}: desconto maior que o total.`);
   });
 
   const itemDiscounts = money(payload.items.reduce((sum, item) => sum + (item.discount || 0), 0));
@@ -125,6 +126,25 @@ const validatePreparedPayload = (payload) => {
 
   return errors;
 };
+
+const collectFiscalItemIssues = (payload) => payload.items.reduce((issues, item, index) => {
+  const fields = [];
+  if (!item.ncm || item.ncm.length !== 8) fields.push('NCM');
+  if (!item.cfop || item.cfop.length !== 4) fields.push('CFOP');
+  if (!item.tax?.csosn && !item.tax?.cst) fields.push('CSOSN/CST');
+  if (!fields.length) return issues;
+
+  issues.push({
+    index,
+    productId: item.productId || '',
+    code: item.code || '',
+    description: item.description || `Item ${index + 1}`,
+    ncm: item.ncm || '',
+    cfop: item.cfop || '',
+    fields,
+  });
+  return issues;
+}, []);
 
 const cleanText = (value) => String(value || '').trim();
 const titularCnpjFromAttributes = (attributes = []) => {
@@ -444,17 +464,25 @@ const createFiscalFunctions = ({
   };
 
   const loadFiscalProduct = async (lojaId, item) => {
-    const productId = item.produtoId || item.productId || item.id;
+    const productId = cleanText(item.produtoId || item.productId || item.id);
+    const fiscalLookupIds = [...new Set(
+      [productId, item.codigo, item.sku]
+        .map((value) => cleanText(value))
+        .filter((value) => value && !value.includes('/'))
+    )];
     let productData = {};
     let fiscalData = {};
 
-    if (productId) {
-      const [productSnap, fiscalSnap] = await Promise.all([
-        db.collection('lojas').doc(lojaId).collection('produtos').doc(productId).get(),
-        db.collection('lojas').doc(lojaId).collection('fiscalProducts').doc(productId).get(),
-      ]);
+    if (productId && !productId.includes('/')) {
+      const productSnap = await db.collection('lojas').doc(lojaId).collection('produtos').doc(productId).get();
       productData = productSnap.exists ? productSnap.data() || {} : {};
-      fiscalData = fiscalSnap.exists ? fiscalSnap.data() || {} : {};
+    }
+    if (fiscalLookupIds.length) {
+      const fiscalSnaps = await Promise.all([
+        ...fiscalLookupIds.map((id) => db.collection('lojas').doc(lojaId).collection('fiscalProducts').doc(id).get()),
+      ]);
+      const fiscalSnap = fiscalSnaps.find((snapshot) => snapshot.exists);
+      fiscalData = fiscalSnap ? fiscalSnap.data() || {} : {};
     }
 
     return {
@@ -774,6 +802,7 @@ const createFiscalFunctions = ({
         const localResult = {
           ok: prepared.errors.length === 0,
           errors: prepared.errors,
+          itemIssues: collectFiscalItemIssues(payload),
           warnings: [
             ...(getServiceConfig(prepared.settings).serviceUrl ? [] : ['Serviço fiscal ainda não configurado; validação feita apenas localmente.']),
             ...(prepared.certificate.ready ? [] : ['Certificado A1 da loja ainda não foi enviado.']),
