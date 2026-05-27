@@ -4,6 +4,7 @@ const forge = require('node-forge');
 
 const secretManager = new SecretManagerServiceClient();
 const MAX_CERTIFICATE_BYTES = 5 * 1024 * 1024;
+const MAX_ADDITIONAL_INFO_LENGTH = 5000;
 
 const INVOICE_STATUS = {
   VALIDATING: 'validating',
@@ -494,7 +495,7 @@ const createFiscalFunctions = ({
     };
   };
 
-  const buildPreparedPayload = async ({lojaId, orderId, modelOverride, number = 1, invoiceId, uid}) => {
+  const buildPreparedPayload = async ({lojaId, orderId, modelOverride, number = 1, invoiceId, uid, additionalInfo}) => {
     const orderRef = db.collection('lojas').doc(lojaId).collection('pedidos').doc(orderId);
     const orderSnap = await orderRef.get();
     if (!orderSnap.exists) {
@@ -529,6 +530,13 @@ const createFiscalFunctions = ({
     const freight = money(order.valorFrete || order.frete || 0);
     const invoiceTotal = money(productTotal - orderDiscount + freight);
     const paymentCode = order.payment?.methodCode || paymentMethodToNFeCode(order.formaPagamento);
+
+    const invoiceAdditionalInfo = cleanText(
+      additionalInfo === undefined ? (order.observacao || order.additionalInfo || '') : additionalInfo
+    );
+    if (invoiceAdditionalInfo.length > MAX_ADDITIONAL_INFO_LENGTH) {
+      throw new HttpsError('invalid-argument', 'A observação da nota fiscal deve ter no máximo 5000 caracteres.');
+    }
 
     const payload = {
       invoiceId,
@@ -589,7 +597,7 @@ const createFiscalFunctions = ({
         other: 0,
         invoice: invoiceTotal,
       },
-      additionalInfo: order.observacao || order.additionalInfo || '',
+      additionalInfo: invoiceAdditionalInfo,
       requestedByUid: uid,
       fiscalSecrets: certificate.fiscalSecrets,
     };
@@ -605,7 +613,7 @@ const createFiscalFunctions = ({
     };
   };
 
-  const reserveInvoice = async ({lojaId, orderId, environment, model, series, uid, justification}) => {
+  const reserveInvoice = async ({lojaId, orderId, environment, model, series, uid, justification, additionalInfo}) => {
     const storeRef = db.collection('lojas').doc(lojaId);
     const orderRef = storeRef.collection('pedidos').doc(orderId);
     const counterRef = storeRef.collection('fiscalCounters').doc(counterId(environment, model, series));
@@ -641,6 +649,7 @@ const createFiscalFunctions = ({
         environment,
         status: INVOICE_STATUS.VALIDATING,
         justification: justification || null,
+        additionalInfo: additionalInfo || '',
         requestedByUid: uid,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -939,6 +948,7 @@ const createFiscalFunctions = ({
           orderId,
           modelOverride: request.data?.modelOverride,
           uid,
+          additionalInfo: request.data?.additionalInfo,
         });
         if (prepared.errors.length) {
           throw new HttpsError('failed-precondition', prepared.errors.join(' '));
@@ -962,6 +972,7 @@ const createFiscalFunctions = ({
           series: prepared.series,
           uid,
           justification: request.data?.justification,
+          additionalInfo: prepared.payload.additionalInfo,
         });
         const payload = {
           ...prepared.payload,
@@ -1007,6 +1018,9 @@ const createFiscalFunctions = ({
         if (reason.length < 15) {
           throw new HttpsError('invalid-argument', 'A justificativa de cancelamento precisa ter ao menos 15 caracteres.');
         }
+        if (reason.length > 255) {
+          throw new HttpsError('invalid-argument', 'A justificativa de cancelamento deve ter no máximo 255 caracteres.');
+        }
 
         const invoiceRef = db.collection('lojas').doc(lojaId).collection('invoices').doc(invoiceId);
         const invoiceSnap = await invoiceRef.get();
@@ -1038,22 +1052,25 @@ const createFiscalFunctions = ({
           fiscalSecrets: certificate.fiscalSecrets,
         }, settings);
 
+        const cancellationAccepted = result.status === INVOICE_STATUS.CANCELLED;
+        const invoiceStatus = cancellationAccepted ? INVOICE_STATUS.CANCELLED : INVOICE_STATUS.AUTHORIZED;
         await invoiceRef.set({
-          status: result.status || INVOICE_STATUS.REJECTED,
+          status: invoiceStatus,
           cancelReason: reason,
           cancelRequestedByUid: uid,
+          cancelRequestStatus: result.status || INVOICE_STATUS.REJECTED,
           cancelCStat: result.cStat || null,
           cancelMotivo: result.xMotivo || null,
           updatedAt: FieldValue.serverTimestamp(),
           history: FieldValue.arrayUnion({
-            status: result.status || INVOICE_STATUS.REJECTED,
+            status: cancellationAccepted ? INVOICE_STATUS.CANCELLED : 'cancel_rejected',
             at: admin.firestore.Timestamp.now(),
             by: uid,
             message: result.xMotivo || 'Cancelamento solicitado.',
           }),
         }, {merge: true});
 
-        return result;
+        return {...result, status: invoiceStatus, cancellationAccepted};
       } catch (error) {
         logger.error('fiscalCancelInvoice failed', error);
         throw normalizeHttpsError(error);

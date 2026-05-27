@@ -25,6 +25,12 @@ Enquanto a URL única do serviço fiscal não estiver configurada, a validação
 
 O papel **Contador** pode receber acesso de consulta aos módulos selecionados pelo administrador. Em **Nota Fiscal**, ele visualiza dados fiscais e notas da loja vinculada sem poder emitir, cancelar, editar produtos fiscais ou substituir o certificado.
 
+## Operações da nota
+
+- Antes da emissão, o operador pode informar observações da nota; o texto é transmitido como informação complementar e armazenado junto à nota para consulta.
+- Notas autorizadas exibem a ação de cancelamento. A justificativa é obrigatória, tem no mínimo 15 caracteres e é gravada no histórico fiscal.
+- No cadastro de produtos fiscais, a aplicação oferece links para consulta da NCM na Receita Federal e do CFOP no CONFAZ; a seleção dos códigos deve ser validada pelo responsável fiscal.
+
 ## Atenção operacional
 
 Antes de produção, cadastre os dados fiscais dos produtos, configure o certificado A1 no Cloud Run, homologue NF-e/NFC-e na SEFAZ GO e confira série/numeração com o contador.

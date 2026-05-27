@@ -9206,6 +9206,12 @@ const handleSubmit = async (e) => {
     const [showProductModal, setShowProductModal] = useState(false);
     const [editingFiscalProduct, setEditingFiscalProduct] = useState(null);
     const [productCorrectionOrderId, setProductCorrectionOrderId] = useState('');
+    const [orderToIssue, setOrderToIssue] = useState(null);
+    const [issueAdditionalInfo, setIssueAdditionalInfo] = useState('');
+    const [issueError, setIssueError] = useState('');
+    const [invoiceToCancel, setInvoiceToCancel] = useState(null);
+    const [cancelReason, setCancelReason] = useState('');
+    const [cancelError, setCancelError] = useState('');
     const [productForm, setProductForm] = useState({
       productId: '',
       code: '',
@@ -9434,37 +9440,72 @@ const handleSubmit = async (e) => {
           setMessage({ type: 'error', text: 'Corrija a classificação fiscal indicada abaixo antes de emitir a nota.' });
           return;
         }
-        const confirmed = window.confirm(`Emitir nota fiscal do pedido ${order.id?.slice(0, 8) || ''}?`);
-        if (!confirmed) return;
+        setOrderToIssue(order);
+        setIssueAdditionalInfo(order.observacao || order.additionalInfo || '');
+        setIssueError('');
+      } catch (error) {
+        console.error('[NotaFiscal] Pré-validação da emissão falhou:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível validar a nota antes da emissão.' });
+      } finally {
+        setBusyOrderId('');
+      }
+    };
 
+    const handleConfirmIssue = async (event) => {
+      event.preventDefault();
+      if (isReadOnly || !orderToIssue) return;
+      setBusyOrderId(`issue:${orderToIssue.id}`);
+      setMessage(null);
+      setIssueError('');
+
+      try {
         const fn = httpsCallable(functions, 'fiscalIssueInvoice');
         const response = await fn(callablePayload({
-          orderId: order.id,
+          orderId: orderToIssue.id,
           modelOverride: modelOverride ? Number(modelOverride) : undefined,
-          justification: 'Emissão manual pelo painel Nota Fiscal'
+          justification: 'Emissão manual pelo painel Nota Fiscal',
+          additionalInfo: issueAdditionalInfo.trim()
         }));
+        setOrderToIssue(null);
+        setIssueAdditionalInfo('');
         setMessage({ type: response.data?.status === 'authorized' ? 'success' : 'error', text: response.data?.xMotivo || 'Retorno fiscal recebido.' });
       } catch (error) {
         console.error('[NotaFiscal] Emissão fiscal falhou:', error);
+        setIssueError(error?.message || 'Não foi possível emitir a nota.');
         setMessage({ type: 'error', text: error?.message || 'Não foi possível emitir a nota.' });
       } finally {
         setBusyOrderId('');
       }
     };
 
-    const handleCancelInvoice = async (invoice) => {
+    const handleOpenCancelInvoice = (invoice) => {
       if (isReadOnly) return;
-      const reason = window.prompt('Informe a justificativa de cancelamento (mínimo 15 caracteres):');
-      if (!reason) return;
-      setBusyOrderId(`cancel:${invoice.id}`);
+      setInvoiceToCancel(invoice);
+      setCancelReason('');
+      setCancelError('');
+    };
+
+    const handleConfirmCancelInvoice = async (event) => {
+      event.preventDefault();
+      if (isReadOnly || !invoiceToCancel) return;
+      const normalizedReason = cancelReason.trim();
+      if (normalizedReason.length < 15) {
+        setCancelError('A justificativa de cancelamento precisa ter ao menos 15 caracteres.');
+        return;
+      }
+      setBusyOrderId(`cancel:${invoiceToCancel.id}`);
       setMessage(null);
+      setCancelError('');
 
       try {
         const fn = httpsCallable(functions, 'fiscalCancelInvoice');
-        const response = await fn(callablePayload({ invoiceId: invoice.id, reason }));
-        setMessage({ type: response.data?.status === 'cancelled' ? 'success' : 'error', text: response.data?.xMotivo || 'Cancelamento processado.' });
+        const response = await fn(callablePayload({ invoiceId: invoiceToCancel.id, reason: normalizedReason }));
+        setInvoiceToCancel(null);
+        setCancelReason('');
+        setMessage({ type: response.data?.cancellationAccepted ? 'success' : 'error', text: response.data?.xMotivo || 'Cancelamento processado.' });
       } catch (error) {
         console.error('[NotaFiscal] Cancelamento fiscal falhou:', error);
+        setCancelError(error?.message || 'Não foi possível cancelar a nota.');
         setMessage({ type: 'error', text: error?.message || 'Não foi possível cancelar a nota.' });
       } finally {
         setBusyOrderId('');
@@ -9668,11 +9709,13 @@ const handleSubmit = async (e) => {
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs">{row.orderId?.slice(0, 8) || '-'}</span> },
       { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[row.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[row.status] || row.status}</span> },
       { header: 'Chave', render: (row) => <span className="font-mono text-xs text-gray-500">{row.key || '-'}</span> },
+      { header: 'Observação', render: (row) => <span className="block max-w-xs truncate" title={row.additionalInfo || ''}>{row.additionalInfo || '-'}</span> },
+      { header: 'Justificativa de cancelamento', render: (row) => <span className="block max-w-xs truncate" title={row.cancelReason || ''}>{row.cancelReason || '-'}</span> },
       { header: 'Emissão', render: (row) => formatDateTime(row.createdAt) }
     ];
 
     const invoiceActions = isReadOnly ? [] : [
-      { icon: X, label: 'Cancelar', onClick: handleCancelInvoice }
+      { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => row.status === 'authorized' }
     ];
 
     const fiscalProductColumns = [
@@ -9894,6 +9937,10 @@ const handleSubmit = async (e) => {
         <Modal isOpen={showProductModal} onClose={() => { setShowProductModal(false); setProductCorrectionOrderId(''); resetProductForm(); }} title={editingFiscalProduct ? 'Editar produto fiscal' : 'Novo produto fiscal'} size="lg">
           <form onSubmit={handleSaveFiscalProduct} className="space-y-4">
             <p className="text-sm text-gray-600">Informe a tributação validada pelo contador. O NCM deve ter 8 dígitos e cada CFOP deve ter 4 dígitos.</p>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <a href="https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior/classificacao-fiscal-de-mercadorias/ncm" target="_blank" rel="noreferrer" className="text-pink-700 underline hover:text-pink-800">Consultar NCM na Receita Federal</a>
+              <a href="https://www.confaz.fazenda.gov.br/legislacao/ajustes/sinief/cfop_cvsn_70_vigente" target="_blank" rel="noreferrer" className="text-pink-700 underline hover:text-pink-800">Consultar CFOP no CONFAZ</a>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Select label="Produto vinculado" value={productForm.productId} onChange={(e) => {
                 const product = (data.produtos || []).find((item) => item.id === e.target.value);
@@ -9917,6 +9964,51 @@ const handleSubmit = async (e) => {
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="secondary" type="button" onClick={() => { setShowProductModal(false); resetProductForm(); }}>Cancelar</Button>
               <Button type="submit"><Save className="w-4 h-4" /> Salvar</Button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal isOpen={Boolean(orderToIssue)} onClose={() => { if (!busyOrderId) { setOrderToIssue(null); setIssueAdditionalInfo(''); setIssueError(''); } }} title="Emitir nota fiscal" size="lg">
+          <form onSubmit={handleConfirmIssue} className="space-y-4">
+            <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 text-sm text-gray-700">
+              <p><strong>Pedido:</strong> {orderToIssue?.id?.slice(0, 8) || '-'}</p>
+              <p><strong>Cliente:</strong> {orderToIssue?.clienteNome || '-'}</p>
+              <p><strong>Total:</strong> R$ {(orderToIssue?.total || 0).toFixed(2)}</p>
+            </div>
+            <Textarea
+              label="Informações adicionais da nota fiscal"
+              rows={4}
+              maxLength={5000}
+              value={issueAdditionalInfo}
+              onChange={(event) => setIssueAdditionalInfo(event.target.value)}
+            />
+            {issueError && <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-800">{issueError}</div>}
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="secondary" type="button" disabled={Boolean(busyOrderId)} onClick={() => { setOrderToIssue(null); setIssueAdditionalInfo(''); setIssueError(''); }}>Cancelar</Button>
+              <Button type="submit" disabled={Boolean(busyOrderId)}><Printer className="w-4 h-4" /> {busyOrderId ? 'Emitindo...' : 'Confirmar emissão'}</Button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal isOpen={Boolean(invoiceToCancel)} onClose={() => { if (!busyOrderId) { setInvoiceToCancel(null); setCancelReason(''); setCancelError(''); } }} title="Cancelar nota fiscal" size="md">
+          <form onSubmit={handleConfirmCancelInvoice} className="space-y-4">
+            <div className="rounded-xl bg-red-50 border border-red-100 p-4 text-sm text-red-800">
+              <p><strong>Nota:</strong> {invoiceToCancel ? `${invoiceToCancel.model || '-'} / ${invoiceToCancel.series || '-'} / ${invoiceToCancel.number || '-'}` : '-'}</p>
+              <p><strong>Chave:</strong> {invoiceToCancel?.key || '-'}</p>
+            </div>
+            <Textarea
+              label="Justificativa do cancelamento"
+              rows={4}
+              minLength={15}
+              maxLength={255}
+              value={cancelReason}
+              onChange={(event) => setCancelReason(event.target.value)}
+              required
+            />
+            {cancelError && <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-800">{cancelError}</div>}
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="secondary" type="button" disabled={Boolean(busyOrderId)} onClick={() => { setInvoiceToCancel(null); setCancelReason(''); setCancelError(''); }}>Voltar</Button>
+              <Button variant="danger" type="submit" disabled={Boolean(busyOrderId)}><X className="w-4 h-4" /> {busyOrderId ? 'Cancelando...' : 'Confirmar cancelamento'}</Button>
             </div>
           </form>
         </Modal>
