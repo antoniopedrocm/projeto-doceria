@@ -495,7 +495,7 @@ const createFiscalFunctions = ({
     };
   };
 
-  const buildPreparedPayload = async ({lojaId, orderId, modelOverride, number = 1, invoiceId, uid, additionalInfo}) => {
+  const buildPreparedPayload = async ({lojaId, orderId, modelOverride, number = 1, invoiceId, uid, additionalInfo, operationCfop}) => {
     const orderRef = db.collection('lojas').doc(lojaId).collection('pedidos').doc(orderId);
     const orderSnap = await orderRef.get();
     if (!orderSnap.exists) {
@@ -530,6 +530,10 @@ const createFiscalFunctions = ({
     const freight = money(order.valorFrete || order.frete || 0);
     const invoiceTotal = money(productTotal - orderDiscount + freight);
     const paymentCode = order.payment?.methodCode || paymentMethodToNFeCode(order.formaPagamento);
+    const selectedOperationCfop = onlyDigits(operationCfop || '5101');
+    if (selectedOperationCfop.length !== 4) {
+      throw new HttpsError('invalid-argument', 'Selecione um CFOP válido para a operação fiscal.');
+    }
 
     const invoiceAdditionalInfo = cleanText(
       additionalInfo === undefined ? (order.observacao || order.additionalInfo || '') : additionalInfo
@@ -552,6 +556,7 @@ const createFiscalFunctions = ({
         presence: settings.defaultPresence,
         finalConsumer: customer.isFinalConsumer,
         destinationType: issuer.address.state === customer.address.state ? 1 : 2,
+        operationCfop: selectedOperationCfop,
         processVersion: settings.processVersion,
         payment: {
           methodCode: paymentCode || settings.defaultPaymentMethodCode,
@@ -565,7 +570,7 @@ const createFiscalFunctions = ({
         const fiscal = fiscalItems[index] || {};
         const quantity = Number(item.quantity || item.quantidade || 1);
         const unitPrice = money(item.preco || item.unitPrice || 0);
-        const cfop = fiscal.cfop || (model === 55 ? fiscal.cfopNfe : fiscal.cfopNfce);
+        const cfop = selectedOperationCfop || fiscal.cfop || (model === 55 ? fiscal.cfopNfe : fiscal.cfopNfce);
 
         return {
           productId: item.produtoId || item.productId || item.id || null,
@@ -613,7 +618,7 @@ const createFiscalFunctions = ({
     };
   };
 
-  const reserveInvoice = async ({lojaId, orderId, environment, model, series, uid, justification, additionalInfo}) => {
+  const reserveInvoice = async ({lojaId, orderId, environment, model, series, uid, justification, additionalInfo, operationCfop}) => {
     const storeRef = db.collection('lojas').doc(lojaId);
     const orderRef = storeRef.collection('pedidos').doc(orderId);
     const counterRef = storeRef.collection('fiscalCounters').doc(counterId(environment, model, series));
@@ -650,6 +655,7 @@ const createFiscalFunctions = ({
         status: INVOICE_STATUS.VALIDATING,
         justification: justification || null,
         additionalInfo: additionalInfo || '',
+        operationCfop: operationCfop || null,
         requestedByUid: uid,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -800,6 +806,7 @@ const createFiscalFunctions = ({
           orderId,
           modelOverride: request.data?.modelOverride,
           uid,
+          operationCfop: request.data?.operationCfop,
         });
         const environment = prepared.settings.environment || 'homologation';
         const nextNumber = await previewNextNumber(lojaId, environment, prepared.model, prepared.series);
@@ -820,6 +827,7 @@ const createFiscalFunctions = ({
           model: prepared.model,
           series: prepared.series,
           number: nextNumber,
+          operationCfop: payload.invoice.operationCfop,
           totals: payload.totals,
         };
 
@@ -949,6 +957,7 @@ const createFiscalFunctions = ({
           modelOverride: request.data?.modelOverride,
           uid,
           additionalInfo: request.data?.additionalInfo,
+          operationCfop: request.data?.operationCfop,
         });
         if (prepared.errors.length) {
           throw new HttpsError('failed-precondition', prepared.errors.join(' '));
@@ -973,6 +982,7 @@ const createFiscalFunctions = ({
           uid,
           justification: request.data?.justification,
           additionalInfo: prepared.payload.additionalInfo,
+          operationCfop: prepared.payload.invoice.operationCfop,
         });
         const payload = {
           ...prepared.payload,

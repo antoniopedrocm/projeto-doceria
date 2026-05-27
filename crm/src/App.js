@@ -56,6 +56,15 @@ const ROLE_ACCOUNTANT = 'contador';
 const ROLE_CLIENT = 'cliente';
 const ROLE_DEFAULT = ROLE_ATTENDANT;
 const STORE_ALL_KEY = '__all__';
+const DEFAULT_CFOP_OPERATION = '5101';
+const CFOP_OPERATION_OPTIONS = [
+  { value: '5101', label: '5101 - Produção própria dentro de GO' },
+  { value: '5102', label: '5102 - Revenda dentro de GO' },
+  { value: '6101', label: '6101 - Produção própria interestadual' },
+  { value: '6107', label: '6107 - Produção própria interestadual para não contribuinte' },
+  { value: '6102', label: '6102 - Revenda interestadual' },
+  { value: '6108', label: '6108 - Revenda interestadual para não contribuinte' },
+];
 const DEFAULT_FORNECEDOR_CATEGORIES = ['Insumos', 'Embalagens', 'Bebidas', 'Decoração', 'Serviços'];
 const CONFIG_DOC_ID = 'config';
 const DEFAULT_ALARM_PAUSE_MINUTES = 5;
@@ -9200,6 +9209,7 @@ const handleSubmit = async (e) => {
     const [activeTab, setActiveTab] = usePersistentState('nota_fiscal_activeTab', 'emitir');
     const [orderSearch, setOrderSearch] = usePersistentState('nota_fiscal_orderSearch', '');
     const [modelOverride, setModelOverride] = usePersistentState('nota_fiscal_modelOverride', '');
+    const [operationCfop, setOperationCfop] = usePersistentState('nota_fiscal_operationCfop', DEFAULT_CFOP_OPERATION);
     const [busyOrderId, setBusyOrderId] = useState('');
     const [message, setMessage] = useState(null);
     const [validationByOrder, setValidationByOrder] = useState({});
@@ -9217,8 +9227,8 @@ const handleSubmit = async (e) => {
       code: '',
       description: '',
       ncm: '',
-      cfopNfe: '',
-      cfopNfce: '',
+      cfopNfe: DEFAULT_CFOP_OPERATION,
+      cfopNfce: DEFAULT_CFOP_OPERATION,
       unit: 'un',
       origin: 0,
       csosn: '102',
@@ -9379,8 +9389,8 @@ const handleSubmit = async (e) => {
         code: '',
         description: '',
         ncm: '',
-        cfopNfe: '',
-        cfopNfce: '',
+        cfopNfe: DEFAULT_CFOP_OPERATION,
+        cfopNfce: DEFAULT_CFOP_OPERATION,
         unit: 'un',
         origin: 0,
         csosn: '102',
@@ -9394,7 +9404,8 @@ const handleSubmit = async (e) => {
       const fn = httpsCallable(functions, 'fiscalValidateOrder');
       const response = await fn(callablePayload({
         orderId: order.id,
-        modelOverride: modelOverride ? Number(modelOverride) : undefined
+        modelOverride: modelOverride ? Number(modelOverride) : undefined,
+        operationCfop
       }));
       const result = response.data || {};
       setValidationByOrder((prev) => ({ ...prev, [order.id]: result }));
@@ -9464,7 +9475,8 @@ const handleSubmit = async (e) => {
           orderId: orderToIssue.id,
           modelOverride: modelOverride ? Number(modelOverride) : undefined,
           justification: 'Emissão manual pelo painel Nota Fiscal',
-          additionalInfo: issueAdditionalInfo.trim()
+          additionalInfo: issueAdditionalInfo.trim(),
+          operationCfop
         }));
         setOrderToIssue(null);
         setIssueAdditionalInfo('');
@@ -9596,8 +9608,8 @@ const handleSubmit = async (e) => {
         code: row.code || '',
         description: row.description || '',
         ncm: row.ncm || '',
-        cfopNfe: row.cfopNfe || row.cfop || '',
-        cfopNfce: row.cfopNfce || row.cfop || '',
+        cfopNfe: row.cfopNfe || row.cfop || DEFAULT_CFOP_OPERATION,
+        cfopNfce: row.cfopNfce || row.cfop || DEFAULT_CFOP_OPERATION,
         unit: row.unit || 'un',
         origin: Number(row.origin ?? 0),
         csosn: row.csosn || '102',
@@ -9625,8 +9637,8 @@ const handleSubmit = async (e) => {
         code: issue.code || product?.codigo || issue.productId || '',
         description: issue.description || product?.nome || '',
         ncm: issue.ncm || '',
-        cfopNfe: modelOverride === '55' ? issue.cfop || '' : '',
-        cfopNfce: modelOverride === '65' ? issue.cfop || '' : ''
+        cfopNfe: DEFAULT_CFOP_OPERATION,
+        cfopNfce: DEFAULT_CFOP_OPERATION
       }));
       setShowProductModal(true);
     };
@@ -9641,10 +9653,8 @@ const handleSubmit = async (e) => {
         return;
       }
       const normalizedNcm = productForm.ncm.replace(/\D/g, '');
-      const normalizedCfopNfe = productForm.cfopNfe.replace(/\D/g, '');
-      const normalizedCfopNfce = productForm.cfopNfce.replace(/\D/g, '');
-      if (normalizedNcm.length !== 8 || normalizedCfopNfe.length !== 4 || normalizedCfopNfce.length !== 4) {
-        setMessage({ type: 'error', text: 'Informe NCM com 8 dígitos e CFOP NF-e/NFC-e com 4 dígitos.' });
+      if (normalizedNcm.length !== 8) {
+        setMessage({ type: 'error', text: 'Informe NCM com 8 dígitos. O CFOP é selecionado por operação na tela de emissão.' });
         return;
       }
 
@@ -9652,8 +9662,6 @@ const handleSubmit = async (e) => {
         code: productForm.code || productId,
         description: productForm.description,
         ncm: normalizedNcm,
-        cfopNfe: normalizedCfopNfe,
-        cfopNfce: normalizedCfopNfce,
         unit: productForm.unit || 'un',
         origin: Number(productForm.origin || 0),
         csosn: productForm.csosn || '102',
@@ -9721,7 +9729,6 @@ const handleSubmit = async (e) => {
     const fiscalProductColumns = [
       { header: 'Produto', render: (row) => <div><p className="font-medium text-gray-800">{row.description || row.nome || row.id}</p><p className="text-xs text-gray-500">{row.code || row.id}</p></div> },
       { header: 'NCM', key: 'ncm' },
-      { header: 'CFOP', render: (row) => `${row.cfopNfe || row.cfop || '-'} / ${row.cfopNfce || row.cfop || '-'}` },
       { header: 'CSOSN/CST', render: (row) => row.csosn || row.cst || '-' },
       { header: 'Un.', render: (row) => row.unit || 'un' }
     ];
@@ -9798,6 +9805,12 @@ const handleSubmit = async (e) => {
                 <option value="55">Forçar NF-e 55</option>
                 <option value="65">Forçar NFC-e 65</option>
               </Select>
+              <Select label="CFOP da operação" value={operationCfop} onChange={(e) => setOperationCfop(e.target.value)} className="md:w-80">
+                {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
+              <a href="https://www.confaz.fazenda.gov.br/legislacao/ajustes/sinief/cfop_cvsn_70_vigente" target="_blank" rel="noreferrer" className="self-end pb-3 text-sm text-pink-700 underline hover:text-pink-800">
+                Tabela CFOP
+              </a>
             </div>
             <Table columns={orderColumns} data={eligibleOrders} actions={orderActions} />
             {Object.entries(validationByOrder).map(([orderId, result]) => (
@@ -9936,10 +9949,9 @@ const handleSubmit = async (e) => {
 
         <Modal isOpen={showProductModal} onClose={() => { setShowProductModal(false); setProductCorrectionOrderId(''); resetProductForm(); }} title={editingFiscalProduct ? 'Editar produto fiscal' : 'Novo produto fiscal'} size="lg">
           <form onSubmit={handleSaveFiscalProduct} className="space-y-4">
-            <p className="text-sm text-gray-600">Informe a tributação validada pelo contador. O NCM deve ter 8 dígitos e cada CFOP deve ter 4 dígitos.</p>
+            <p className="text-sm text-gray-600">Informe a tributação validada pelo contador. O NCM deve ter 8 dígitos; o CFOP é selecionado por operação na tela de emissão.</p>
             <div className="flex flex-wrap gap-3 text-sm">
               <a href="https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior/classificacao-fiscal-de-mercadorias/ncm" target="_blank" rel="noreferrer" className="text-pink-700 underline hover:text-pink-800">Consultar NCM na Receita Federal</a>
-              <a href="https://www.confaz.fazenda.gov.br/legislacao/ajustes/sinief/cfop_cvsn_70_vigente" target="_blank" rel="noreferrer" className="text-pink-700 underline hover:text-pink-800">Consultar CFOP no CONFAZ</a>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Select label="Produto vinculado" value={productForm.productId} onChange={(e) => {
@@ -9952,8 +9964,6 @@ const handleSubmit = async (e) => {
               <Input label="Código" value={productForm.code} onChange={(e) => setProductForm({ ...productForm, code: e.target.value })} />
               <Input label="Descrição fiscal" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} required />
               <Input label="NCM (8 dígitos)" inputMode="numeric" maxLength={8} value={productForm.ncm} onChange={(e) => setProductForm({ ...productForm, ncm: e.target.value.replace(/\D/g, '').slice(0, 8) })} required />
-              <Input label="CFOP NF-e (4 dígitos)" inputMode="numeric" maxLength={4} value={productForm.cfopNfe} onChange={(e) => setProductForm({ ...productForm, cfopNfe: e.target.value.replace(/\D/g, '').slice(0, 4) })} required />
-              <Input label="CFOP NFC-e (4 dígitos)" inputMode="numeric" maxLength={4} value={productForm.cfopNfce} onChange={(e) => setProductForm({ ...productForm, cfopNfce: e.target.value.replace(/\D/g, '').slice(0, 4) })} required />
               <Input label="Unidade" value={productForm.unit} onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })} />
               <Input label="Origem" type="number" value={productForm.origin} onChange={(e) => setProductForm({ ...productForm, origin: e.target.value })} />
               <Input label="CSOSN" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
