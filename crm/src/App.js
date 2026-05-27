@@ -9515,7 +9515,13 @@ const handleSubmit = async (e) => {
       try {
         const validation = await requestOrderValidation(order);
         if (Array.isArray(validation.errors) && validation.errors.length > 0) {
-          setMessage({ type: 'error', text: 'Corrija a classificação fiscal indicada abaixo antes de emitir a nota.' });
+          const hasItemIssues = Array.isArray(validation.itemIssues) && validation.itemIssues.length > 0;
+          setMessage({
+            type: 'error',
+            text: hasItemIssues
+              ? 'Corrija a classificação fiscal indicada abaixo antes de emitir a nota.'
+              : validation.errors.join(' ')
+          });
           return;
         }
         setOrderToIssue(order);
