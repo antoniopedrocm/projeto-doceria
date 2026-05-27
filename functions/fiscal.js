@@ -18,6 +18,7 @@ const INVOICE_STATUS = {
 const onlyDigits = (value) => String(value || '').replace(/\D/g, '');
 const money = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 const nowIso = () => new Date().toISOString();
+const trimText = (value) => String(value || '').trim();
 
 const inferDocumentType = (document) => (onlyDigits(document).length > 11 ? 'CNPJ' : 'CPF');
 const environmentCode = (environment) => (environment === 'production' ? 1 : 2);
@@ -41,17 +42,27 @@ const getNested = (obj, paths) => {
   return undefined;
 };
 
+const parseAddressText = (value) => {
+  const text = trimText(value);
+  const parts = text.split(',').map((part) => trimText(part)).filter(Boolean);
+  const stateMatch = text.match(/(?:^|[\s,/-])([A-Z]{2})\s*(?:,|$)/);
+  const zipMatch = text.match(/\b\d{5}[-.\s]?\d{3}\b/);
+  const cityPart = parts[3] || '';
+
+  return {
+    street: parts[0] || text,
+    number: parts[1] || 'S/N',
+    district: parts[2] || '',
+    city: trimText(cityPart.replace(/\s*-\s*[A-Z]{2}.*/i, '')) || 'Goiania',
+    cityCode: '5208707',
+    state: stateMatch?.[1] || 'GO',
+    zip: onlyDigits(zipMatch?.[0] || ''),
+  };
+};
+
 const normalizeAddress = (source = {}) => {
   if (typeof source === 'string') {
-    return {
-      street: source,
-      number: 'S/N',
-      district: '',
-      city: 'Goiania',
-      cityCode: '5208707',
-      state: 'GO',
-      zip: '',
-    };
+    return parseAddressText(source);
   }
 
   const address = source || {};
@@ -103,8 +114,17 @@ const validatePreparedPayload = (payload) => {
   if (!payload.issuer?.cnpj) errors.push('Emitente sem CNPJ.');
   if (!payload.issuer?.stateRegistration) errors.push('Emitente sem inscrição estadual.');
   if (!payload.issuer?.address?.street) errors.push('Emitente sem endereço fiscal.');
+  if (!payload.issuer?.address?.district) errors.push('Emitente sem bairro fiscal.');
+  if (!payload.issuer?.address?.city) errors.push('Emitente sem município fiscal.');
+  if (!payload.issuer?.address?.cityCode) errors.push('Emitente sem código IBGE fiscal.');
+  if (!payload.issuer?.address?.state) errors.push('Emitente sem UF fiscal.');
+  if (!payload.issuer?.address?.zip) errors.push('Emitente sem CEP fiscal.');
   if (!payload.customer?.document) errors.push('Cliente sem CPF/CNPJ.');
   if (!payload.customer?.address?.street) errors.push('Cliente sem endereço fiscal.');
+  if (!payload.customer?.address?.district) errors.push('Cliente sem bairro fiscal.');
+  if (!payload.customer?.address?.city) errors.push('Cliente sem município fiscal.');
+  if (!payload.customer?.address?.cityCode) errors.push('Cliente sem código IBGE fiscal.');
+  if (!payload.customer?.address?.state) errors.push('Cliente sem UF fiscal.');
   if (!payload.customer?.address?.zip) errors.push('Cliente sem CEP fiscal.');
   if (!payload.invoice?.number || payload.invoice.number < 1) errors.push('Número fiscal inválido.');
 
@@ -433,19 +453,50 @@ const createFiscalFunctions = ({
       getNested(order, ['clienteDocumento', 'customer.document', 'fiscal.customerDocument'])
       || getNested(clientData, ['documento', 'cpfCnpj', 'cpf_cnpj', 'cnpjCpf', 'cnpj_cpf', 'cpf', 'cnpj'])
     );
+    const firstClientAddress = Array.isArray(clientData.enderecos) ? clientData.enderecos[0] : null;
     const selectedAddress = order.clienteEnderecoFiscal
-      || order.clienteEndereco
+      || order.fiscal?.customerAddress
+      || order.customer?.address
       || order.enderecoEntrega
-      || (Array.isArray(clientData.enderecos) ? clientData.enderecos[0] : null)
+      || order.clienteEndereco
+      || clientData.address
+      || firstClientAddress
       || clientData.endereco
       || {};
+    const addressSources = [
+      order.clienteEnderecoFiscal,
+      order.fiscal?.customerAddress,
+      order.customer?.address,
+      order.enderecoEntrega,
+      order.clienteEndereco,
+      clientData.address,
+      firstClientAddress,
+      clientData.endereco,
+      clientData,
+      order,
+    ].filter(Boolean);
+    const getAddressValue = (paths) => {
+      for (const source of addressSources) {
+        if (typeof source === 'string') continue;
+        const value = getNested(source, paths);
+        if (value !== undefined && value !== null && value !== '') return value;
+      }
+      return undefined;
+    };
     const customerZip = onlyDigits(
       order.clienteCep
-      || getNested(order, ['clienteCEP', 'customer.address.zip', 'fiscal.customerZip'])
+      || getNested(order, ['clienteCEP', 'customer.address.zip', 'customer.address.cep', 'fiscal.customerZip', 'enderecoEntrega.cep', 'clienteEndereco.cep'])
       || clientData.cep
-      || getNested(clientData, ['address.zip', 'endereco.cep'])
+      || getNested(clientData, ['address.zip', 'address.cep', 'endereco.cep', 'enderecos.0.cep'])
     );
     const customerAddress = normalizeAddress(selectedAddress);
+    customerAddress.street = customerAddress.street || getAddressValue(['street', 'logradouro', 'rua', 'endereco', 'enderecoCompleto']) || '';
+    customerAddress.number = customerAddress.number || getAddressValue(['number', 'numero']) || 'S/N';
+    customerAddress.complement = customerAddress.complement || getAddressValue(['complement', 'complemento']) || '';
+    customerAddress.district = customerAddress.district || getAddressValue(['district', 'bairro', 'bairroFiscal', 'neighborhood']) || '';
+    customerAddress.city = customerAddress.city || getAddressValue(['city', 'cidade', 'municipio']) || 'Goiania';
+    customerAddress.cityCode = onlyDigits(customerAddress.cityCode || getAddressValue(['cityCode', 'codigoMunicipio', 'codigoIbge', 'ibge']) || '5208707');
+    customerAddress.state = String(customerAddress.state || getAddressValue(['state', 'uf']) || 'GO').toUpperCase();
     if (customerZip && !customerAddress.zip) {
       customerAddress.zip = customerZip;
     }

@@ -5259,7 +5259,8 @@ function App() {
     const [searchTerm, setSearchTerm] = usePersistentState("clientes_searchTerm", "");
     const [showModal, setShowModal] = useState(false);
     const [editingClient, setEditingClient] = useState(null);
-    const [formData, setFormData] = useState({ nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", aniversario: "", status: "Ativo" });
+    const defaultClientFormData = { nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", bairro: "", cidade: "Goiania", uf: "GO", codigoIbge: "5208707", aniversario: "", status: "Ativo" };
+    const [formData, setFormData] = useState(defaultClientFormData);
 
     const filteredClients = useMemo(() => {
       const term = searchTerm.toLowerCase();
@@ -5269,7 +5270,7 @@ function App() {
     
     const resetForm = () => {
       setEditingClient(null);
-      setFormData({ nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", aniversario: "", status: "Ativo" });
+      setFormData(defaultClientFormData);
     };
 
     const handleNewClient = () => {
@@ -5280,11 +5281,28 @@ function App() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         const fiscalDocument = String(formData.cpf || formData.documento || '').replace(/\D/g, '');
+        const fiscalZip = String(formData.cep || '').replace(/\D/g, '');
+        const fiscalCity = String(formData.cidade || 'Goiania').trim();
+        const fiscalState = String(formData.uf || 'GO').trim().toUpperCase().slice(0, 2);
+        const fiscalCityCode = String(formData.codigoIbge || '5208707').replace(/\D/g, '');
+        const fiscalAddress = {
+            street: String(formData.endereco || '').trim(),
+            zip: fiscalZip,
+            district: String(formData.bairro || '').trim(),
+            city: fiscalCity,
+            state: fiscalState,
+            cityCode: fiscalCityCode,
+        };
         const updateData = {
             ...formData,
             cpf: fiscalDocument,
             documento: fiscalDocument,
-            cep: String(formData.cep || '').replace(/\D/g, '')
+            cep: fiscalZip,
+            bairro: fiscalAddress.district,
+            cidade: fiscalCity,
+            uf: fiscalState,
+            codigoIbge: fiscalCityCode,
+            address: fiscalAddress,
         };
         if (editingClient) {
             const { id, ...clientData } = updateData;
@@ -5295,7 +5313,24 @@ function App() {
         setShowModal(false);
         resetForm();
     };
-    const handleEdit = (client) => { setEditingClient(client); setFormData({ ...client, cpf: client.cpf || client.documento || '', documento: client.documento || client.cpf || '', cep: client.cep || '' }); setShowModal(true); };
+    const handleEdit = (client) => {
+      const firstAddress = Array.isArray(client.enderecos) ? client.enderecos[0] : null;
+      const address = client.address || firstAddress || {};
+      setEditingClient(client);
+      setFormData({
+        ...defaultClientFormData,
+        ...client,
+        cpf: client.cpf || client.documento || '',
+        documento: client.documento || client.cpf || '',
+        endereco: client.endereco || address.street || address.logradouro || address.enderecoCompleto || '',
+        cep: client.cep || address.zip || address.cep || '',
+        bairro: client.bairro || address.district || address.bairro || '',
+        cidade: client.cidade || address.city || address.cidade || 'Goiania',
+        uf: client.uf || address.state || address.uf || 'GO',
+        codigoIbge: client.codigoIbge || address.cityCode || address.codigoIbge || address.codigoMunicipio || '5208707',
+      });
+      setShowModal(true);
+    };
     const columns = [
         { header: "Cliente", render: (row) => (<div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white font-bold shadow-md">{row.nome.charAt(0).toUpperCase()}</div><div><p className="font-semibold text-gray-800">{row.nome}</p><p className="text-sm text-gray-500">{row.email}</p></div></div>) },
         { header: "Telefone", key: 'telefone' },
@@ -5319,7 +5354,27 @@ function App() {
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Clientes</h1><p className="text-gray-600 mt-1">Gerencie seus clientes</p></div><Button onClick={handleNewClient} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Novo Cliente</Button></div>
         <div className="relative max-w-md"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" /><input type="text" placeholder="Buscar clientes..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" /></div>
         <Table columns={columns} data={filteredClients} actions={actions} />
-        <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingClient ? "Editar Cliente" : "Novo Cliente"} size="lg"><form onSubmit={handleSubmit} className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><Input label="Nome Completo" type="text" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required /><Input label="Email" type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} /><Input label="Telefone" type="tel" value={formData.telefone} onChange={(e) => setFormData({...formData, telefone: e.target.value})} /><Input label="CPF" type="text" value={formData.cpf || formData.documento || ''} onChange={(e) => setFormData({...formData, cpf: e.target.value, documento: e.target.value})} /><Input label="Data de Aniversário" type="date" value={formData.aniversario} onChange={(e) => setFormData({...formData, aniversario: e.target.value})} /><Input label="CEP" type="text" value={formData.cep || ''} onChange={(e) => setFormData({...formData, cep: e.target.value})} /></div><Input label="Endereço" type="text" value={formData.endereco} onChange={(e) => setFormData({...formData, endereco: e.target.value})} /><div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4" />{editingClient ? "Salvar Alterações" : "Criar Cliente"}</Button></div></form></Modal>
+        <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingClient ? "Editar Cliente" : "Novo Cliente"} size="lg">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input label="Nome Completo" type="text" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required />
+              <Input label="Email" type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+              <Input label="Telefone" type="tel" value={formData.telefone} onChange={(e) => setFormData({...formData, telefone: e.target.value})} />
+              <Input label="CPF" type="text" value={formData.cpf || formData.documento || ''} onChange={(e) => setFormData({...formData, cpf: e.target.value, documento: e.target.value})} />
+              <Input label="Data de Aniversário" type="date" value={formData.aniversario} onChange={(e) => setFormData({...formData, aniversario: e.target.value})} />
+              <Input label="CEP" type="text" value={formData.cep || ''} onChange={(e) => setFormData({...formData, cep: e.target.value})} />
+              <Input label="Endereço" type="text" value={formData.endereco} onChange={(e) => setFormData({...formData, endereco: e.target.value})} />
+              <Input label="Bairro" type="text" value={formData.bairro || ''} onChange={(e) => setFormData({...formData, bairro: e.target.value})} />
+              <Input label="Cidade" type="text" value={formData.cidade || ''} onChange={(e) => setFormData({...formData, cidade: e.target.value})} />
+              <Input label="UF" type="text" value={formData.uf || ''} onChange={(e) => setFormData({...formData, uf: e.target.value.toUpperCase().slice(0, 2)})} />
+              <Input label="Código IBGE" type="text" value={formData.codigoIbge || ''} onChange={(e) => setFormData({...formData, codigoIbge: e.target.value})} />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button>
+              <Button type="submit"><Save className="w-4 h-4" />{editingClient ? "Salvar Alterações" : "Criar Cliente"}</Button>
+            </div>
+          </form>
+        </Modal>
       </div>
     );
   };
