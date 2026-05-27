@@ -56,6 +56,12 @@ const ROLE_ACCOUNTANT = 'contador';
 const ROLE_CLIENT = 'cliente';
 const ROLE_DEFAULT = ROLE_ATTENDANT;
 const STORE_ALL_KEY = '__all__';
+const DEFAULT_NCM_PRODUCT = '19059090';
+const NCM_PRODUCT_OPTIONS = [
+  { value: '19059090', label: '1905.90.90 - bolo, bolo de pote, torta, brownie, cupcake etc.' },
+  { value: '17049090', label: '1704.90.90 - doces e confeitos sem cacau' },
+  { value: '18069000', label: '1806.90.00 - produtos predominantemente de chocolate/cacau' },
+];
 const DEFAULT_CFOP_OPERATION = '5101';
 const CFOP_OPERATION_OPTIONS = [
   { value: '5101', label: '5101 - Produção própria dentro de GO' },
@@ -73,6 +79,12 @@ const MAX_ALARM_PAUSE_MINUTES = 120;
 const GOOGLE_AUTH_FLOW_KEY = 'google-auth-flow-in-progress';
 const GOOGLE_AUTH_FLOW_REDIRECT = 'redirect';
 const GOOGLE_AUTH_FLOW_POPUP = 'popup';
+
+const normalizeFiscalCode = (value) => String(value || '').replace(/\D/g, '');
+const formatNcmCode = (value) => {
+  const digits = normalizeFiscalCode(value);
+  return digits.length === 8 ? `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}` : String(value || '');
+};
 
 const isSafariBrowser = () => {
   if (typeof navigator === 'undefined') return false;
@@ -9226,7 +9238,7 @@ const handleSubmit = async (e) => {
       productId: '',
       code: '',
       description: '',
-      ncm: '',
+      ncm: DEFAULT_NCM_PRODUCT,
       cfopNfe: DEFAULT_CFOP_OPERATION,
       cfopNfce: DEFAULT_CFOP_OPERATION,
       unit: 'un',
@@ -9388,7 +9400,7 @@ const handleSubmit = async (e) => {
         productId: '',
         code: '',
         description: '',
-        ncm: '',
+        ncm: DEFAULT_NCM_PRODUCT,
         cfopNfe: DEFAULT_CFOP_OPERATION,
         cfopNfce: DEFAULT_CFOP_OPERATION,
         unit: 'un',
@@ -9607,7 +9619,7 @@ const handleSubmit = async (e) => {
         productId: row.id || '',
         code: row.code || '',
         description: row.description || '',
-        ncm: row.ncm || '',
+        ncm: normalizeFiscalCode(row.ncm || DEFAULT_NCM_PRODUCT),
         cfopNfe: row.cfopNfe || row.cfop || DEFAULT_CFOP_OPERATION,
         cfopNfce: row.cfopNfce || row.cfop || DEFAULT_CFOP_OPERATION,
         unit: row.unit || 'un',
@@ -9636,7 +9648,7 @@ const handleSubmit = async (e) => {
         productId: issue.productId || product?.id || '',
         code: issue.code || product?.codigo || issue.productId || '',
         description: issue.description || product?.nome || '',
-        ncm: issue.ncm || '',
+        ncm: normalizeFiscalCode(issue.ncm || DEFAULT_NCM_PRODUCT),
         cfopNfe: DEFAULT_CFOP_OPERATION,
         cfopNfce: DEFAULT_CFOP_OPERATION
       }));
@@ -9652,7 +9664,7 @@ const handleSubmit = async (e) => {
         setMessage({ type: 'error', text: 'Informe o produto ou código para salvar o cadastro fiscal.' });
         return;
       }
-      const normalizedNcm = productForm.ncm.replace(/\D/g, '');
+      const normalizedNcm = normalizeFiscalCode(productForm.ncm);
       if (normalizedNcm.length !== 8) {
         setMessage({ type: 'error', text: 'Informe NCM com 8 dígitos. O CFOP é selecionado por operação na tela de emissão.' });
         return;
@@ -9949,7 +9961,7 @@ const handleSubmit = async (e) => {
 
         <Modal isOpen={showProductModal} onClose={() => { setShowProductModal(false); setProductCorrectionOrderId(''); resetProductForm(); }} title={editingFiscalProduct ? 'Editar produto fiscal' : 'Novo produto fiscal'} size="lg">
           <form onSubmit={handleSaveFiscalProduct} className="space-y-4">
-            <p className="text-sm text-gray-600">Informe a tributação validada pelo contador. O NCM deve ter 8 dígitos; o CFOP é selecionado por operação na tela de emissão.</p>
+            <p className="text-sm text-gray-600">Selecione a classificação fiscal validada pelo contador. O padrão é 1905.90.90 para itens típicos de confeitaria/pastelaria; o CFOP é escolhido na emissão.</p>
             <div className="flex flex-wrap gap-3 text-sm">
               <a href="https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior/classificacao-fiscal-de-mercadorias/ncm" target="_blank" rel="noreferrer" className="text-pink-700 underline hover:text-pink-800">Consultar NCM na Receita Federal</a>
             </div>
@@ -9963,7 +9975,12 @@ const handleSubmit = async (e) => {
               </Select>
               <Input label="Código" value={productForm.code} onChange={(e) => setProductForm({ ...productForm, code: e.target.value })} />
               <Input label="Descrição fiscal" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} required />
-              <Input label="NCM (8 dígitos)" inputMode="numeric" maxLength={8} value={productForm.ncm} onChange={(e) => setProductForm({ ...productForm, ncm: e.target.value.replace(/\D/g, '').slice(0, 8) })} required />
+              <Select label="NCM do produto" value={normalizeFiscalCode(productForm.ncm)} onChange={(e) => setProductForm({ ...productForm, ncm: e.target.value })} required>
+                {productForm.ncm && !NCM_PRODUCT_OPTIONS.some((option) => option.value === normalizeFiscalCode(productForm.ncm)) && (
+                  <option value={normalizeFiscalCode(productForm.ncm)}>{formatNcmCode(productForm.ncm)} - NCM cadastrado</option>
+                )}
+                {NCM_PRODUCT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
               <Input label="Unidade" value={productForm.unit} onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })} />
               <Input label="Origem" type="number" value={productForm.origin} onChange={(e) => setProductForm({ ...productForm, origin: e.target.value })} />
               <Input label="CSOSN" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
