@@ -136,9 +136,14 @@ match /lojas/{lojaId} {
   }
 }
 
+// Credenciais centrais iFood sao manipuladas exclusivamente por Cloud Functions.
+match /integrations/{document=**} {
+  allow read, write: if false;
+}
+
 // --- REGRAS PARA OUTRAS COLEÇÕES (Acesso somente para usuários autenticados no CRM) ---
 match /{collection}/{document=**} {
-  allow read, write: if isSignedIn() && collection != 'lojas';
+  allow read, write: if isSignedIn() && collection != 'lojas' && collection != 'integrations';
 }
 
 }

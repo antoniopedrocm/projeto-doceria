@@ -5234,7 +5234,7 @@ function App() {
     const [filterActiveOnly, setFilterActiveOnly] = useState(false);
     const [showModal, setShowModal] = useState(false); 
     const [editingProduct, setEditingProduct] = useState(null); 
-    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" }); 
+    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", precoIfood: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
     const [imageFile, setImageFile] = useState(null); 
     const [imagePreview, setImagePreview] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -5470,7 +5470,7 @@ function App() {
     const resetForm = () => {
       setShowModal(false);
       setEditingProduct(null);
-      setFormData({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
+      setFormData({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", precoIfood: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
       setImageFile(null);
       setImagePreview(null);
       setIsAddingSubcategory(false);
@@ -5492,7 +5492,14 @@ function App() {
                 imageUrl = await getDownloadURL(imageRef);
             }
 
-            const productData = { ...formData, preco: parseFloat(formData.preco || 0), custo: parseFloat(formData.custo || 0), estoque: parseInt(formData.estoque || 0), imageUrl: imageUrl };
+            const productData = {
+                ...formData,
+                preco: parseFloat(formData.preco || 0),
+                precoIfood: formData.precoIfood === '' ? null : parseFloat(formData.precoIfood || 0),
+                custo: parseFloat(formData.custo || 0),
+                estoque: parseInt(formData.estoque || 0),
+                imageUrl: imageUrl,
+            };
             if (editingProduct) {
                 const { id, ...updateData } = productData;
                 await updateItem('produtos', editingProduct.id, updateData);
@@ -5522,7 +5529,13 @@ function App() {
     };
     const handleEdit = (product) => {
       setEditingProduct(product);
-      setFormData({ ...product, preco: String(product.preco), custo: String(product.custo), estoque: String(product.estoque) });
+      setFormData({
+        ...product,
+        preco: String(product.preco),
+        precoIfood: product.precoIfood == null ? '' : String(product.precoIfood),
+        custo: String(product.custo),
+        estoque: String(product.estoque),
+      });
       setImagePreview(product.imageUrl || null);
       setIsAddingSubcategory(false);
       setNewSubcategory("");
@@ -5548,6 +5561,7 @@ function App() {
         )
       },
       { header: "Preço", render: (row) => <span className="font-semibold text-green-600">R$ {(row.preco || 0).toFixed(2)}</span> },
+      { header: "Preço iFood", render: (row) => row.precoIfood == null ? <span className="text-gray-400">-</span> : <span className="font-semibold text-pink-600">R$ {(Number(row.precoIfood) || 0).toFixed(2)}</span> },
       { header: "Estoque", render: (row) => <span className={`font-medium ${row.estoque < 10 ? 'text-red-600' : 'text-gray-800'}`}>{row.estoque} un</span> },
       {
         header: 'Movimentação Rápida',
@@ -5756,8 +5770,9 @@ function App() {
 							</div>
 						  </div>
 						</div>
-					  )}
+                  )}
                   <Input label="Preço (R$)" type="number" step="0.01" value={formData.preco} onChange={(e) => setFormData({...formData, preco: e.target.value})} />
+                  <Input label="Preço iFood (R$)" type="number" min="0" step="0.01" value={formData.precoIfood} onChange={(e) => setFormData({...formData, precoIfood: e.target.value})} />
                   <Input label="Custo (R$)" type="number" step="0.01" value={formData.custo} onChange={(e) => setFormData({...formData, custo: e.target.value})} />
                   <Input label="Estoque" type="number" value={formData.estoque} onChange={(e) => setFormData({...formData, estoque: e.target.value})} />
                   <Input label="Tempo de Preparo" value={formData.tempoPreparo} onChange={(e) => setFormData({...formData, tempoPreparo: e.target.value})} />

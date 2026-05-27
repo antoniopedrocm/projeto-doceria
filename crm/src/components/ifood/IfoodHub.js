@@ -25,6 +25,8 @@ const initialConfig = {
   inventoryEndpointTemplate: '',
   inventoryMethod: 'POST',
   credentialsReady: false,
+  platformCredentialsReady: false,
+  credentialScope: '',
   webhookSecretReady: false,
 };
 
@@ -144,6 +146,7 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   const [merchants, setMerchants] = useState([]);
   const [mapping, setMapping] = useState({productId: '', iFoodProductId: '', externalCode: '', catalogItemId: ''});
   const [catalogProducts, setCatalogProducts] = useState([]);
+  const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [cancellation, setCancellation] = useState({order: null, reasons: [], reason: ''});
   const [validation, setValidation] = useState({order: null, action: '', code: ''});
   const [busy, setBusy] = useState('');
@@ -175,6 +178,7 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
     setSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
     setEditingSecrets({clientId: false, clientSecret: false, webhookSecret: false});
     setMerchants([]);
+    setSelectedProductIds([]);
     loadConfiguration();
   }, [loadConfiguration]);
 
@@ -222,8 +226,10 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
 
   const mappedProducts = useMemo(() => productMappings.map((item) => {
     const product = products.find((candidate) => candidate.id === item.productId);
-    return {...item, productName: product?.nome || item.productId, quantity: Number(product?.estoque) || 0};
+    return {...item, productName: product?.nome || item.productId, quantity: Number(product?.estoque) || 0, product};
   }), [productMappings, products]);
+  const mappingByProductId = useMemo(() => new Map(productMappings.map((item) => [item.productId, item])), [productMappings]);
+  const productsReadyForIfood = products.filter((product) => Number(product.precoIfood) > 0);
   const critical = mappedProducts.filter((item) => item.quantity <= 3).length;
   const bestSellers = useMemo(() => {
     const totals = new Map();
@@ -331,6 +337,38 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
       setConfig((current) => ({...current, merchantId: availableMerchants[0].id}));
     }
   }, 'Lojas autorizadas localizadas. Confirme o Merchant ID selecionado e salve a configuracao.');
+
+  const promoteStoredCredentials = () => perform('credential-promote', async () => {
+    const promoted = await invoke('ifoodPromoteStoredCredentials');
+    setConfig({...initialConfig, ...promoted});
+  }, 'Credencial central ativada. Novas lojas precisarao apenas selecionar seu Merchant ID.');
+
+  const toggleProductSelection = (productId) => {
+    setSelectedProductIds((current) => (
+      current.includes(productId)
+        ? current.filter((id) => id !== productId)
+        : [...current, productId]
+    ));
+  };
+
+  const publishProducts = async (productIds) => {
+    setBusy('catalog-publish');
+    setMessage(null);
+    try {
+      const result = await invoke('ifoodPublishProducts', {productIds});
+      if (result.failed) {
+        const firstError = result.results?.find((item) => !item.ok)?.error || 'Consulte a auditoria.';
+        setMessage({type: 'error', text: `${result.published} publicado(s), ${result.failed} com falha. ${firstError}`});
+      } else {
+        setMessage({type: 'success', text: `${result.published} produto(s) publicado(s) no iFood com estoque sincronizado.`});
+        setSelectedProductIds([]);
+      }
+    } catch (error) {
+      setMessage({type: 'error', text: error.message});
+    } finally {
+      setBusy('');
+    }
+  };
 
   const saveMapping = (event) => {
     event.preventDefault();
@@ -501,72 +539,128 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
       )}
 
       {tab === 'catalogo' && (
-        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <form onSubmit={saveMapping} className={`space-y-4 rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
-            <h2 className="font-semibold">Mapear produto</h2>
-            <Button dark={dark} disabled={busy === 'catalog-load'} onClick={loadCatalogProducts}>
-              <RefreshCw className={`h-4 w-4 ${busy === 'catalog-load' ? 'animate-spin' : ''}`} />Importar catalogo iFood
-            </Button>
-            <Field dark={dark} label="Produto interno">
-              <select className={inputClass(dark)} value={mapping.productId} onChange={(event) => setMapping({...mapping, productId: event.target.value})} required>
-                <option value="">Selecione</option>
-                {products.map((product) => <option key={product.id} value={product.id}>{product.nome} ({Number(product.estoque) || 0})</option>)}
-              </select>
-            </Field>
-            {catalogProducts.length > 0 ? (
-              <Field dark={dark} label="Produto no catalogo iFood">
-                <select className={inputClass(dark)} value={mapping.catalogItemId} onChange={(event) => {
-                  const selected = catalogProducts.find((product) => product.itemId === event.target.value);
-                  setMapping({
-                    ...mapping,
-                    catalogItemId: selected?.itemId || '',
-                    iFoodProductId: selected?.productId || '',
-                    externalCode: selected?.externalCode || '',
-                  });
-                }} required>
-                  <option value="">Selecione</option>
-                  {catalogProducts.map((product) => (
-                    <option key={product.itemId} value={product.itemId}>{product.name} - {product.categoryName}</option>
-                  ))}
-                </select>
-              </Field>
-            ) : (
-              <Field dark={dark} label="ID do produto no iFood"><input className={inputClass(dark)} value={mapping.iFoodProductId} onChange={(event) => setMapping({...mapping, iFoodProductId: event.target.value})} required /></Field>
-            )}
-            <Field dark={dark} label="Codigo externo (opcional)"><input className={inputClass(dark)} value={mapping.externalCode} onChange={(event) => setMapping({...mapping, externalCode: event.target.value})} /></Field>
-            <Button type="submit" primary disabled={busy === 'mapping-save'}><Save className="h-4 w-4" />Salvar mapeamento</Button>
-          </form>
+        <div className="space-y-4">
           <section className={`overflow-hidden rounded-lg border ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
-            <div className={`flex items-center justify-between border-b p-4 ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
-              <h2 className="font-semibold">Estoque publicado</h2>
-              <div className="flex items-center gap-3 text-sm"><span className={dark ? 'text-slate-400' : 'text-gray-500'}>{mappedProducts.length} vinculados</span><span className="text-rose-600">{critical} criticos</span></div>
-            </div>
-            {mappedProducts.map((item) => (
-              <div key={item.id} className={`grid grid-cols-[1fr_auto_auto] items-center gap-4 border-b px-4 py-3 text-sm ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
-                <div><p className="font-medium">{item.productName}</p><p className={dark ? 'text-slate-400' : 'text-gray-500'}>{item.iFoodProductId}</p></div>
-                <span className={`font-semibold ${item.quantity <= 3 ? 'text-rose-500' : 'text-emerald-600'}`}>{item.quantity} un.</span>
-                <span className={`rounded-full px-2 py-1 text-xs ${item.syncStatus === 'synced' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{item.syncStatus || 'pendente'}</span>
+            <div className={`flex flex-col justify-between gap-3 border-b p-4 lg:flex-row lg:items-center ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+              <div>
+                <h2 className="font-semibold">Produtos para o iFood</h2>
+                <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{productsReadyForIfood.length} com preco iFood definido, {mappedProducts.length} publicados</p>
               </div>
-            ))}
-            {!mappedProducts.length && <p className={`p-10 text-center text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Mapeie produtos para ativar estoque bidirecional.</p>}
-            <div className="p-4">
-              <Button dark={dark} disabled={busy === 'sync'} onClick={() => perform('sync', () => invoke('ifoodSyncStockNow'), 'Sincronizacao de estoque solicitada.')}>
-                <RefreshCw className={`h-4 w-4 ${busy === 'sync' ? 'animate-spin' : ''}`} />Reconciliar estoque
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button dark={dark} disabled={!selectedProductIds.length || busy === 'catalog-publish'} onClick={() => publishProducts(selectedProductIds)}>
+                  <Package className="h-4 w-4" />Publicar selecionados
+                </Button>
+                <Button primary disabled={!productsReadyForIfood.length || busy === 'catalog-publish'} onClick={() => publishProducts(productsReadyForIfood.map((product) => product.id))}>
+                  <RefreshCw className={`h-4 w-4 ${busy === 'catalog-publish' ? 'animate-spin' : ''}`} />Publicar todos prontos
+                </Button>
+                <Button dark={dark} disabled={!mappedProducts.length || busy === 'sync'} onClick={() => perform('sync', () => invoke('ifoodSyncStockNow'), 'Sincronizacao de estoque solicitada.')}>
+                  <RefreshCw className={`h-4 w-4 ${busy === 'sync' ? 'animate-spin' : ''}`} />Reconciliar estoque
+                </Button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className={dark ? 'bg-slate-950 text-slate-400' : 'bg-gray-50 text-gray-500'}>
+                  <tr>
+                    <th className="w-10 px-4 py-3 text-left"></th>
+                    <th className="px-4 py-3 text-left font-medium">Produto</th>
+                    <th className="px-4 py-3 text-left font-medium">Preco cardapio</th>
+                    <th className="px-4 py-3 text-left font-medium">Preco iFood</th>
+                    <th className="px-4 py-3 text-left font-medium">Estoque</th>
+                    <th className="px-4 py-3 text-left font-medium">Codigo PDV</th>
+                    <th className="px-4 py-3 text-left font-medium">Status</th>
+                    <th className="px-4 py-3 text-right font-medium">Acao</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product) => {
+                    const linked = mappingByProductId.get(product.id);
+                    const ready = Number(product.precoIfood) > 0;
+                    const published = linked?.catalogManaged;
+                    return (
+                      <tr key={product.id} className={`border-t ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+                        <td className="px-4 py-3">
+                          <input type="checkbox" disabled={!ready} checked={selectedProductIds.includes(product.id)} onChange={() => toggleProductSelection(product.id)} className="h-4 w-4 accent-pink-600" />
+                        </td>
+                        <td className="px-4 py-3"><p className="font-medium">{product.nome}</p><p className={dark ? 'text-slate-400' : 'text-gray-500'}>{product.subcategoria || product.categoria}</p></td>
+                        <td className="px-4 py-3">{money(product.preco)}</td>
+                        <td className={`px-4 py-3 font-medium ${ready ? 'text-pink-600' : 'text-amber-600'}`}>{ready ? money(product.precoIfood) : 'Pendente'}</td>
+                        <td className={`px-4 py-3 font-medium ${(Number(product.estoque) || 0) <= 3 ? 'text-rose-500' : 'text-emerald-600'}`}>{Number(product.estoque) || 0} un.</td>
+                        <td className={`px-4 py-3 ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{linked?.externalCode || 'Gerado ao publicar'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2 py-1 text-xs ${
+                            linked?.publishStatus === 'error'
+                              ? 'bg-rose-50 text-rose-700'
+                              : published ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                          }`}>{linked?.publishStatus === 'error' ? 'Erro' : published ? 'Publicado' : 'Nao publicado'}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button dark={dark} disabled={!ready || busy === 'catalog-publish'} onClick={() => publishProducts([product.id])}>
+                            <Package className="h-4 w-4" />{published ? 'Atualizar' : 'Publicar'}
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {!products.length && <p className={`p-10 text-center text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Nenhum produto cadastrado nesta loja.</p>}
             </div>
           </section>
+
+          <details className={`rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
+            <summary className="cursor-pointer text-sm font-medium">Vincular item ja cadastrado no iFood</summary>
+            <form onSubmit={saveMapping} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <div className="xl:col-span-5">
+                <Button dark={dark} disabled={busy === 'catalog-load'} onClick={loadCatalogProducts}>
+                  <RefreshCw className={`h-4 w-4 ${busy === 'catalog-load' ? 'animate-spin' : ''}`} />Importar catalogo iFood
+                </Button>
+              </div>
+              <Field dark={dark} label="Produto interno">
+                <select className={inputClass(dark)} value={mapping.productId} onChange={(event) => setMapping({...mapping, productId: event.target.value})} required>
+                  <option value="">Selecione</option>
+                  {products.map((product) => <option key={product.id} value={product.id}>{product.nome}</option>)}
+                </select>
+              </Field>
+              {catalogProducts.length > 0 ? (
+                <Field dark={dark} label="Produto no catalogo iFood">
+                  <select className={inputClass(dark)} value={mapping.catalogItemId} onChange={(event) => {
+                    const selected = catalogProducts.find((product) => product.itemId === event.target.value);
+                    setMapping({...mapping, catalogItemId: selected?.itemId || '', iFoodProductId: selected?.productId || '', externalCode: selected?.externalCode || ''});
+                  }} required>
+                    <option value="">Selecione</option>
+                    {catalogProducts.map((product) => <option key={product.itemId} value={product.itemId}>{product.name} - {product.categoryName}</option>)}
+                  </select>
+                </Field>
+              ) : (
+                <Field dark={dark} label="ID do produto no iFood"><input className={inputClass(dark)} value={mapping.iFoodProductId} onChange={(event) => setMapping({...mapping, iFoodProductId: event.target.value})} required /></Field>
+              )}
+              <Field dark={dark} label="Codigo PDV existente"><input className={inputClass(dark)} value={mapping.externalCode} onChange={(event) => setMapping({...mapping, externalCode: event.target.value})} /></Field>
+              <div className="flex items-end">
+                <Button type="submit" primary disabled={busy === 'mapping-save'}><Save className="h-4 w-4" />Vincular</Button>
+              </div>
+            </form>
+          </details>
         </div>
       )}
 
       {tab === 'configuracao' && (
         <form onSubmit={saveConfiguration} className={`space-y-6 rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="font-semibold">Conexao oficial iFood Developer</h2><p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Credenciais e webhook sao armazenados como segredos independentes para esta loja.</p></div>
-            <span className={`rounded-full px-3 py-1 text-xs font-medium ${config.credentialsReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{config.credentialsReady ? 'Credenciais protegidas' : 'Credenciais pendentes'}</span>
+            <div><h2 className="font-semibold">Conexao oficial iFood Developer</h2><p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>A credencial central fica protegida uma vez; cada loja utiliza apenas seu Merchant ID.</p></div>
+            <span className={`rounded-full px-3 py-1 text-xs font-medium ${config.credentialsReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{config.platformCredentialsReady ? 'Credencial central protegida' : config.credentialsReady ? 'Migracao pendente' : 'Credencial pendente'}</span>
           </div>
+          {config.credentialScope === 'legacy_store' && !config.platformCredentialsReady && (
+            <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 text-sm ${dark ? 'border-amber-700/50 bg-amber-400/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+              <span>As credenciais salvas nesta loja podem ser usadas como credencial central da integracao.</span>
+              <Button dark={dark} disabled={busy === 'credential-promote'} onClick={promoteStoredCredentials}>
+                <ArrowRight className="h-4 w-4" />Usar para todas as lojas
+              </Button>
+            </div>
+          )}
           {config.credentialsReady && !config.merchantId && (
             <div className={`rounded-lg border p-4 text-sm ${dark ? 'border-amber-700/50 bg-amber-400/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-              Suas credenciais ja foram armazenadas. Use <strong>Localizar lojas iFood</strong> para selecionar o Merchant ID autorizado e concluir a configuracao.
+              A integracao esta pronta. Use <strong>Localizar lojas iFood</strong> para selecionar o Merchant ID autorizado desta loja e salvar.
             </div>
           )}
           <div className="grid gap-4 md:grid-cols-3">
@@ -584,10 +678,8 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
                 </select>
               )}
             </Field>
-            <ProtectedSecretField dark={dark} label="Client ID" stored={config.credentialsReady} editing={editingSecrets.clientId} value={secrets.clientId} onChange={(value) => setSecrets({...secrets, clientId: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
-            <ProtectedSecretField dark={dark} label="Client Secret" stored={config.credentialsReady} editing={editingSecrets.clientSecret} value={secrets.clientSecret} onChange={(value) => setSecrets({...secrets, clientSecret: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
-            <Field dark={dark} label="API base URL"><input className={inputClass(dark)} value={config.apiBaseUrl} onChange={(event) => setConfig({...config, apiBaseUrl: event.target.value})} /></Field>
-            <Field dark={dark} label="URL de autenticacao"><input className={inputClass(dark)} value={config.authUrl} onChange={(event) => setConfig({...config, authUrl: event.target.value})} /></Field>
+            <ProtectedSecretField dark={dark} label="Client ID da plataforma" stored={config.credentialsReady} editing={editingSecrets.clientId} value={secrets.clientId} onChange={(value) => setSecrets({...secrets, clientId: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
+            <ProtectedSecretField dark={dark} label="Client Secret da plataforma" stored={config.credentialsReady} editing={editingSecrets.clientSecret} value={secrets.clientSecret} onChange={(value) => setSecrets({...secrets, clientSecret: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
             <ProtectedSecretField dark={dark} label="Segredo de webhook futuro" stored={config.webhookSecretReady} editing={editingSecrets.webhookSecret} value={secrets.webhookSecret} onChange={(value) => setSecrets({...secrets, webhookSecret: value})} onEdit={() => editSecret('webhookSecret')} onCancel={() => cancelSecretEdit('webhookSecret')} emptyHint="Deixe vazio enquanto utilizar polling." />
           </div>
           <div>
@@ -599,20 +691,6 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
               <Toggle dark={dark} label="Iniciar preparo" checked={config.autoStartPreparation} onChange={(value) => setConfig({...config, autoStartPreparation: value})} />
               <Toggle dark={dark} label="Webhook homologado" checked={config.webhookEnabled} onChange={(value) => setConfig({...config, webhookEnabled: value})} />
             </div>
-          </div>
-          <div className={`rounded-lg border p-4 ${dark ? 'border-slate-800 bg-slate-950' : 'border-gray-100 bg-gray-50'}`}>
-            <h3 className="mb-3 text-sm font-medium">Inventario oficial do Catalog v2.0</h3>
-            <div className="grid gap-4 lg:grid-cols-[120px_1fr]">
-              <Field dark={dark} label="Metodo">
-                <select className={inputClass(dark)} value={config.inventoryMethod} onChange={(event) => setConfig({...config, inventoryMethod: event.target.value})}>
-                  <option>POST</option><option>PATCH</option><option>PUT</option>
-                </select>
-              </Field>
-              <Field dark={dark} label="Endpoint alternativo (opcional)">
-                <input className={inputClass(dark)} placeholder="/catalog/v2.0/merchants/{merchantId}/inventory" value={config.inventoryEndpointTemplate} onChange={(event) => setConfig({...config, inventoryEndpointTemplate: event.target.value})} />
-              </Field>
-            </div>
-            <p className={`mt-3 text-xs ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Sem endpoint alternativo, o sistema publica automaticamente em /catalog/v2.0/merchants/{'{merchantId}'}/inventory com productId e quantity.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="submit" primary disabled={busy === 'config-save'}><Save className="h-4 w-4" />Salvar configuracao</Button>

@@ -229,11 +229,12 @@ const createIfoodFunctions = ({
   const requireCallableStore = async (request) => {
     const lojaId = cleanText(request.data?.lojaId);
     const uid = request.auth?.uid;
-    await requireStoreAccess(uid, lojaId);
-    return {uid, lojaId};
+    const requester = await requireStoreAccess(uid, lojaId);
+    return {uid, lojaId, requester};
   };
 
   const configRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('ifood').doc('config');
+  const platformConfigRef = () => db.collection('integrations').doc('ifood');
   const healthRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('ifoodHealth').doc('status');
   const auditCollection = (lojaId) => db.collection('lojas').doc(lojaId).collection('ifoodAudit');
   const alertCollection = (lojaId) => db.collection('lojas').doc(lojaId).collection('ifoodAlerts');
@@ -261,12 +262,30 @@ const createIfoodFunctions = ({
     }, {merge: true});
   };
 
-  const loadConfig = async (lojaId) => {
-    const snap = await configRef(lojaId).get();
-    if (!snap.exists) {
+  const mergePlatformCredentials = (storeConfig = {}, platformConfig = {}) => {
+    const platformReady = Boolean(platformConfig.clientIdSecretVersion && platformConfig.clientSecretSecretVersion);
+    const storeReady = Boolean(storeConfig.clientIdSecretVersion && storeConfig.clientSecretSecretVersion);
+    return {
+      ...storeConfig,
+      clientIdSecretVersion: platformReady ? platformConfig.clientIdSecretVersion : storeConfig.clientIdSecretVersion,
+      clientSecretSecretVersion: platformReady ? platformConfig.clientSecretSecretVersion : storeConfig.clientSecretSecretVersion,
+      credentialScope: platformReady ? 'platform' : (storeReady ? 'legacy_store' : ''),
+      platformCredentialsReady: platformReady,
+    };
+  };
+
+  const loadConfig = async (lojaId, requireStoreConfiguration = true) => {
+    const [snap, platformSnap] = await Promise.all([configRef(lojaId).get(), platformConfigRef().get()]);
+    if (!snap.exists && requireStoreConfiguration) {
       throw new HttpsError('failed-precondition', 'Configure a integracao iFood desta loja primeiro.');
     }
-    return {id: snap.id, ...snap.data()};
+    return {
+      ...mergePlatformCredentials(snap.exists ? {id: snap.id, ...snap.data()} : {}, platformSnap.exists ? platformSnap.data() : {}),
+      apiBaseUrl: DEFAULT_API_URL,
+      authUrl: DEFAULT_AUTH_URL,
+      inventoryEndpointTemplate: '',
+      inventoryMethod: 'POST',
+    };
   };
 
   const publicConfig = (config = {}) => ({
@@ -275,6 +294,8 @@ const createIfoodFunctions = ({
     pollingEnabled: Boolean(config.pollingEnabled),
     webhookEnabled: Boolean(config.webhookEnabled),
     credentialsReady: Boolean(config.clientIdSecretVersion && config.clientSecretSecretVersion),
+    platformCredentialsReady: Boolean(config.platformCredentialsReady),
+    credentialScope: config.credentialScope || '',
     webhookSecretReady: Boolean(config.webhookSecretVersion),
     merchantId: config.merchantId || '',
     apiBaseUrl: config.apiBaseUrl || DEFAULT_API_URL,
@@ -309,10 +330,10 @@ const createIfoodFunctions = ({
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(`Falha na autenticacao iFood (${response.status}): ${payload.error || payload.message || 'sem detalhe'}`);
+      throw new HttpsError('failed-precondition', `Falha na autenticacao iFood (${response.status}): ${payload.error || payload.message || 'sem detalhe'}`);
     }
     const token = payload.accessToken || payload.access_token;
-    if (!token) throw new Error('Autenticacao iFood nao retornou accessToken.');
+    if (!token) throw new HttpsError('failed-precondition', 'Autenticacao iFood nao retornou accessToken.');
     const expiresIn = Math.max(60, asNumber(payload.expiresIn ?? payload.expires_in, 3600));
     tokenCache.set(lojaId, {token, expiresAt: Date.now() + (expiresIn * 1000)});
     return token;
@@ -341,7 +362,7 @@ const createIfoodFunctions = ({
         }
         const payload = await response.json().catch(() => ({}));
         if (response.ok) return payload;
-        const error = new Error(`iFood ${method} ${path} falhou (${response.status}): ${payload.message || payload.error || 'sem detalhe'}`);
+        const error = new HttpsError('failed-precondition', `iFood ${method} ${path} falhou (${response.status}): ${payload.message || payload.error || 'sem detalhe'}`);
         error.httpStatus = response.status;
         if (!RETRYABLE_STATUS.has(response.status) || attempt === attempts - 1) throw error;
         await delay(retryAfterMillis(response, attempt));
@@ -350,7 +371,7 @@ const createIfoodFunctions = ({
         if (!RETRYABLE_STATUS.has(error.httpStatus) || attempt === attempts - 1) throw error;
       }
     }
-    throw lastError || new Error('Falha inesperada na API iFood.');
+    throw lastError || new HttpsError('internal', 'Falha inesperada na API iFood.');
   };
 
   const loadMappings = async (lojaId) => {
@@ -690,6 +711,97 @@ const createIfoodFunctions = ({
     }
   };
 
+  const externalCodeForProduct = (productId) => `AGD_${safeId(productId).toUpperCase().slice(0, 72)}`;
+
+  const loadCatalogCategories = async (lojaId, config) => {
+    const payload = await requestIfood(
+      lojaId,
+      config,
+      `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/categories`
+    );
+    return Array.isArray(payload) ? payload : (payload.categories || []);
+  };
+
+  const ensureCatalogCategory = async (lojaId, config, categories, product) => {
+    const categoryName = cleanText(product.subcategoria || product.categoria || 'Produtos') || 'Produtos';
+    const existing = categories.find((category) => cleanText(category.name).toLowerCase() === categoryName.toLowerCase());
+    if (existing?.id) return {id: existing.id, name: categoryName};
+    const created = await requestIfood(
+      lojaId,
+      config,
+      `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/categories`,
+      {method: 'POST', body: {name: categoryName, status: 'AVAILABLE', template: 'DEFAULT'}}
+    );
+    const category = {id: cleanText(created.id), name: categoryName};
+    if (!category.id) throw new Error(`iFood nao retornou ID para a categoria ${categoryName}.`);
+    categories.push(category);
+    return category;
+  };
+
+  const publishProductToIfood = async (lojaId, config, productId, product, categories, reason) => {
+    const price = money(product.precoIfood);
+    if (!(price > 0)) {
+      throw new Error(`Informe o Preco iFood de ${product.nome || productId} antes de publicar.`);
+    }
+    const mappingRef = db.collection('lojas').doc(lojaId).collection('ifoodProductMappings').doc(productId);
+    const mappingSnap = await mappingRef.get();
+    const mapping = mappingSnap.exists ? mappingSnap.data() || {} : {};
+    const category = await ensureCatalogCategory(lojaId, config, categories, product);
+    const catalogItemId = cleanText(mapping.catalogItemId) || crypto.randomUUID();
+    const iFoodProductId = cleanText(mapping.iFoodProductId) || crypto.randomUUID();
+    const externalCode = cleanText(mapping.externalCode) || externalCodeForProduct(productId);
+    const productExternalCode = cleanText(mapping.productExternalCode) || `${externalCode}_PROD`;
+    const status = product.status === 'Inativo' ? 'UNAVAILABLE' : 'AVAILABLE';
+
+    await requestIfood(
+      lojaId,
+      config,
+      `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/items`,
+      {
+        method: 'PUT',
+        body: {
+          item: {
+            id: catalogItemId,
+            type: 'DEFAULT',
+            categoryId: category.id,
+            status,
+            price: {value: price},
+            externalCode,
+          },
+          products: [{
+            id: iFoodProductId,
+            name: cleanText(product.nome) || 'Produto',
+            description: cleanText(product.descricao),
+            externalCode: productExternalCode,
+          }],
+          optionGroups: [],
+          options: [],
+        },
+      }
+    );
+
+    await mappingRef.set({
+      productId,
+      catalogItemId,
+      iFoodProductId,
+      externalCode,
+      productExternalCode,
+      categoryId: category.id,
+      categoryName: category.name,
+      ifoodPrice: price,
+      itemStatus: status,
+      stockSyncEnabled: true,
+      catalogManaged: true,
+      publishStatus: 'synced',
+      lastPublishReason: reason,
+      lastPublishAt: FieldValue.serverTimestamp(),
+      publishError: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    await syncProductAvailability(lojaId, productId, `${reason}_inventory`);
+    return {productId, externalCode, catalogItemId, iFoodProductId, price};
+  };
+
   const reconcileFailedAvailability = async (lojaId) => {
     const failed = await db.collection('lojas').doc(lojaId).collection('ifoodProductMappings')
       .where('syncStatus', '==', 'error').limit(10).get();
@@ -739,26 +851,31 @@ const createIfoodFunctions = ({
   return {
     ifoodGetConfiguration: onCall(async (request) => {
       const {lojaId} = await requireCallableStore(request);
-      const [configSnap, healthSnap] = await Promise.all([configRef(lojaId).get(), healthRef(lojaId).get()]);
+      const [config, healthSnap] = await Promise.all([loadConfig(lojaId, false), healthRef(lojaId).get()]);
       return {
-        config: publicConfig(configSnap.exists ? configSnap.data() : {}),
+        config: publicConfig(config),
         health: healthSnap.exists ? healthSnap.data() : {status: 'not_configured'},
       };
     }),
 
     ifoodSaveConfiguration: onCall({timeoutSeconds: 120}, async (request) => {
-      const {uid, lojaId} = await requireCallableStore(request);
+      const {uid, lojaId, requester} = await requireCallableStore(request);
       const incoming = request.data || {};
-      const existingSnap = await configRef(lojaId).get();
+      const [existingSnap, platformSnap] = await Promise.all([configRef(lojaId).get(), platformConfigRef().get()]);
       const existing = existingSnap.exists ? existingSnap.data() || {} : {};
+      const platformExisting = platformSnap.exists ? platformSnap.data() || {} : {};
       const clientId = cleanText(incoming.clientId);
       const clientSecret = String(incoming.clientSecret || '');
       const webhookSecret = String(incoming.webhookSecret || '');
       const projectId = getProjectId();
       let secretPatch = {};
+      let platformPatch = {};
 
       if ((clientId || clientSecret) && !(clientId && clientSecret)) {
         throw new HttpsError('invalid-argument', 'Informe Client ID e Client Secret juntos.');
+      }
+      if ((clientId || clientSecret) && requester.role !== 'dono') {
+        throw new HttpsError('permission-denied', 'Somente o dono pode alterar a credencial central do iFood.');
       }
       if ((clientId && clientSecret) || webhookSecret) {
         if (!projectId) throw new HttpsError('failed-precondition', 'Projeto Google Cloud nao identificado.');
@@ -766,14 +883,19 @@ const createIfoodFunctions = ({
         const labels = {app: 'doceria', provider: 'ifood', loja: storeKey.slice(0, 63)};
         if (clientId && clientSecret) {
           const [clientIdName, clientSecretName] = await Promise.all([
-            ensureSecret(projectId, `ifood_${storeKey}_client_id`, labels),
-            ensureSecret(projectId, `ifood_${storeKey}_client_secret`, labels),
+            ensureSecret(projectId, 'ifood_platform_client_id', {app: 'doceria', provider: 'ifood', scope: 'platform'}),
+            ensureSecret(projectId, 'ifood_platform_client_secret', {app: 'doceria', provider: 'ifood', scope: 'platform'}),
           ]);
           const [clientIdSecretVersion, clientSecretSecretVersion] = await Promise.all([
             addSecretVersion(clientIdName, clientId),
             addSecretVersion(clientSecretName, clientSecret),
           ]);
-          secretPatch = {...secretPatch, clientIdSecretVersion, clientSecretSecretVersion};
+          platformPatch = {
+            clientIdSecretVersion,
+            clientSecretSecretVersion,
+            updatedByUid: uid,
+            updatedAt: FieldValue.serverTimestamp(),
+          };
         }
         if (webhookSecret) {
           const resourceName = await ensureSecret(projectId, `ifood_${storeKey}_webhook_secret`, labels);
@@ -789,23 +911,53 @@ const createIfoodFunctions = ({
         webhookEnabled: Boolean(incoming.webhookEnabled),
         autoConfirm: incoming.autoConfirm !== false,
         autoStartPreparation: Boolean(incoming.autoStartPreparation),
-        apiBaseUrl: cleanText(incoming.apiBaseUrl || existing.apiBaseUrl || DEFAULT_API_URL),
-        authUrl: cleanText(incoming.authUrl || existing.authUrl || DEFAULT_AUTH_URL),
-        inventoryEndpointTemplate: cleanText(incoming.inventoryEndpointTemplate || existing.inventoryEndpointTemplate || existing.availabilityEndpointTemplate),
-        inventoryMethod: ['POST', 'PATCH', 'PUT'].includes(incoming.inventoryMethod) ? incoming.inventoryMethod : (existing.inventoryMethod || existing.availabilityMethod || 'POST'),
+        apiBaseUrl: DEFAULT_API_URL,
+        authUrl: DEFAULT_AUTH_URL,
+        inventoryEndpointTemplate: '',
+        inventoryMethod: 'POST',
         ...secretPatch,
         updatedByUid: uid,
         updatedAt: FieldValue.serverTimestamp(),
       };
+      if (Object.keys(platformPatch).length) {
+        await platformConfigRef().set(platformPatch, {merge: true});
+      }
       await configRef(lojaId).set(config, {merge: true});
-      tokenCache.delete(lojaId);
-      await audit(lojaId, 'configuration.saved', {uid, enabled: config.enabled, pollingEnabled: config.pollingEnabled});
-      return publicConfig({...existing, ...config, ...secretPatch});
+      tokenCache.clear();
+      await audit(lojaId, 'configuration.saved', {
+        uid,
+        enabled: config.enabled,
+        pollingEnabled: config.pollingEnabled,
+        platformCredentialsUpdated: Boolean(Object.keys(platformPatch).length),
+      });
+      return publicConfig(mergePlatformCredentials({...existing, ...config, ...secretPatch}, {...platformExisting, ...platformPatch}));
+    }),
+
+    ifoodPromoteStoredCredentials: onCall(async (request) => {
+      const {uid, lojaId, requester} = await requireCallableStore(request);
+      if (requester.role !== 'dono') {
+        throw new HttpsError('permission-denied', 'Somente o dono pode ativar a credencial central do iFood.');
+      }
+      const storeSnap = await configRef(lojaId).get();
+      const storeConfig = storeSnap.exists ? storeSnap.data() || {} : {};
+      if (!storeConfig.clientIdSecretVersion || !storeConfig.clientSecretSecretVersion) {
+        throw new HttpsError('failed-precondition', 'Esta loja nao possui credenciais salvas para reutilizar.');
+      }
+      await platformConfigRef().set({
+        clientIdSecretVersion: storeConfig.clientIdSecretVersion,
+        clientSecretSecretVersion: storeConfig.clientSecretSecretVersion,
+        migratedFromStoreId: lojaId,
+        updatedByUid: uid,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      tokenCache.clear();
+      await audit(lojaId, 'configuration.credentials_promoted', {uid});
+      return publicConfig(await loadConfig(lojaId, false));
     }),
 
     ifoodTestConnection: onCall(async (request) => {
       const {lojaId} = await requireCallableStore(request);
-      const config = await loadConfig(lojaId);
+      const config = await loadConfig(lojaId, false);
       const started = Date.now();
       await tokenForStore(lojaId, config);
       await healthRef(lojaId).set({
@@ -819,9 +971,9 @@ const createIfoodFunctions = ({
 
     ifoodLoadMerchants: onCall(async (request) => {
       const {lojaId} = await requireCallableStore(request);
-      const config = await loadConfig(lojaId);
+      const config = await loadConfig(lojaId, false);
       if (!config.clientIdSecretVersion || !config.clientSecretSecretVersion) {
-        throw new HttpsError('failed-precondition', 'Salve Client ID e Client Secret antes de localizar lojas.');
+        throw new HttpsError('failed-precondition', 'Cadastre a credencial central do iFood antes de localizar lojas.');
       }
       const payload = await requestIfood(lojaId, config, '/merchant/v1.0/merchants');
       const records = Array.isArray(payload)
@@ -886,6 +1038,43 @@ const createIfoodFunctions = ({
       return {products};
     }),
 
+    ifoodPublishProducts: onCall({timeoutSeconds: 300, memory: '512MiB'}, async (request) => {
+      const {lojaId} = await requireCallableStore(request);
+      const config = await loadConfig(lojaId);
+      if (!config.merchantId) throw new HttpsError('failed-precondition', 'Selecione a loja iFood antes de publicar produtos.');
+      const requestedIds = Array.isArray(request.data?.productIds)
+        ? request.data.productIds.map(cleanText).filter(Boolean)
+        : [];
+      const collection = db.collection('lojas').doc(lojaId).collection('produtos');
+      const productDocs = requestedIds.length
+        ? (await Promise.all(requestedIds.map((id) => collection.doc(id).get()))).filter((snap) => snap.exists)
+        : (await collection.get()).docs;
+      if (!productDocs.length) throw new HttpsError('not-found', 'Nenhum produto interno foi encontrado para publicar.');
+      const categories = await loadCatalogCategories(lojaId, config);
+      const results = [];
+      for (const productDoc of productDocs) {
+        try {
+          const result = await publishProductToIfood(lojaId, config, productDoc.id, productDoc.data() || {}, categories, 'manual_publish');
+          results.push({...result, ok: true});
+        } catch (error) {
+          const mappingRef = db.collection('lojas').doc(lojaId).collection('ifoodProductMappings').doc(productDoc.id);
+          await mappingRef.set({
+            productId: productDoc.id,
+            publishStatus: 'error',
+            publishError: error.message,
+            lastPublishAttemptAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, {merge: true});
+          await createAlert(lojaId, 'catalog_publish_failure', error.message, {productId: productDoc.id});
+          results.push({productId: productDoc.id, ok: false, error: error.message});
+        }
+      }
+      const published = results.filter((result) => result.ok).length;
+      const failed = results.length - published;
+      await audit(lojaId, 'catalog.published', {requested: productDocs.length, published, failed}, failed ? 'warning' : 'info');
+      return {requested: productDocs.length, published, failed, results};
+    }),
+
     ifoodSaveProductMapping: onCall({timeoutSeconds: 120}, async (request) => {
       const {lojaId} = await requireCallableStore(request);
       const productId = cleanText(request.data?.productId);
@@ -900,6 +1089,7 @@ const createIfoodFunctions = ({
         externalCode: cleanText(request.data?.externalCode),
         catalogItemId: cleanText(request.data?.catalogItemId),
         stockSyncEnabled: request.data?.stockSyncEnabled !== false,
+        catalogManaged: false,
         updatedAt: FieldValue.serverTimestamp(),
       }, {merge: true});
       try {
@@ -941,14 +1131,26 @@ const createIfoodFunctions = ({
     }),
 
     ifoodProductStockChanged: onDocumentWritten('lojas/{lojaId}/produtos/{productId}', async (event) => {
-      const before = asNumber(event.data?.before?.data()?.estoque);
-      const after = asNumber(event.data?.after?.data()?.estoque);
-      if (!event.data?.after?.exists || before === after) return;
+      if (!event.data?.after?.exists) return;
       const {lojaId, productId} = event.params;
+      const beforeData = event.data?.before?.data() || {};
+      const afterData = event.data.after.data() || {};
+      const stockChanged = asNumber(beforeData.estoque) !== asNumber(afterData.estoque);
+      const catalogChanged = [
+        'precoIfood', 'nome', 'descricao', 'categoria', 'subcategoria', 'status',
+      ].some((field) => String(beforeData[field] ?? '') !== String(afterData[field] ?? ''));
+      if (!stockChanged && !catalogChanged) return;
       try {
-        await syncProductAvailability(lojaId, productId, 'internal_stock_change');
+        const mappingSnap = await db.collection('lojas').doc(lojaId).collection('ifoodProductMappings').doc(productId).get();
+        if (catalogChanged && mappingSnap.exists && mappingSnap.get('catalogManaged')) {
+          const config = await loadConfig(lojaId);
+          const categories = await loadCatalogCategories(lojaId, config);
+          await publishProductToIfood(lojaId, config, productId, afterData, categories, 'internal_product_change');
+          return;
+        }
+        if (stockChanged) await syncProductAvailability(lojaId, productId, 'internal_stock_change');
       } catch (error) {
-        logger.warn('[iFood] async stock sync deferred', {lojaId, productId, error: error.message});
+        logger.warn('[iFood] async product sync deferred', {lojaId, productId, error: error.message});
       }
     }),
 
