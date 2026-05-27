@@ -127,6 +127,14 @@ const validatePreparedPayload = (payload) => {
 };
 
 const cleanText = (value) => String(value || '').trim();
+const titularCnpjFromAttributes = (attributes = []) => {
+  const icpCnpj = onlyDigits(attributes.find((attr) => attr.type === '2.16.76.1.3.3')?.value);
+  if (icpCnpj.length === 14) return icpCnpj;
+
+  const commonName = String(attributes.find((attr) => attr.name === 'CN')?.value || '');
+  const match = commonName.match(/(?:^|:)(\d{14})(?:$|\D)/);
+  return match?.[1] || '';
+};
 
 const getProjectId = () => {
   if (process.env.GCLOUD_PROJECT) return process.env.GCLOUD_PROJECT;
@@ -195,17 +203,13 @@ const parsePfxCertificate = (certificateBase64, password) => {
       value: String(attr.value || ''),
     }));
     const subjectText = attributes.map((attr) => `${attr.name}=${attr.value}`).join(', ');
-    const cnpjAttribute = attributes.find((attr) => attr.type === '2.16.76.1.3.3');
-    const documentCandidates = [
-      onlyDigits(cnpjAttribute?.value),
-      ...(subjectText.match(/\d{14}/g) || []),
-    ].filter(Boolean);
-    const cnpj = documentCandidates.find((value) => value.length === 14) || '';
+    const commonName = attributes.find((attr) => attr.name === 'CN')?.value || '';
+    const cnpj = titularCnpjFromAttributes(attributes);
 
     return {
       cnpj,
       subject: subjectText,
-      commonName: attributes.find((attr) => attr.name === 'CN')?.value || '',
+      commonName,
       validFrom: cert.validity.notBefore.toISOString(),
       validUntil: cert.validity.notAfter.toISOString(),
     };
@@ -712,6 +716,12 @@ const createFiscalFunctions = ({
 
         const issuer = await loadIssuer(lojaId);
         const metadata = parsePfxCertificate(certificateBase64, password);
+        if (!metadata.cnpj) {
+          throw new HttpsError(
+            'failed-precondition',
+            'Não foi possível identificar com segurança o CNPJ titular do certificado A1.'
+          );
+        }
         if (metadata.cnpj && issuer.cnpj && metadata.cnpj !== issuer.cnpj) {
           throw new HttpsError(
             'failed-precondition',
