@@ -9834,9 +9834,16 @@ const handleSubmit = async (e) => {
                     <p className="font-medium">Complete o cadastro fiscal do produto para liberar a emissão:</p>
                     {result.itemIssues.map((issue) => (
                       <div key={`${issue.productId || issue.code || issue.index}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-red-200 bg-white/70 p-3">
-                        <span><strong>{issue.description}</strong> - pendente: {issue.fields.join(', ')}</span>
+                        <span>
+                          <strong>{issue.description}</strong> - pendente: {issue.fields.join(', ')}
+                          {issue.fields.length === 1 && issue.fields.includes('NCM') && (
+                            <span className="block text-xs text-red-700 mt-1">
+                              Clique para conferir e salvar o NCM. O padrão 1905.90.90 já será sugerido para confeitaria/pastelaria.
+                            </span>
+                          )}
+                        </span>
                         <Button size="sm" variant="outline" onClick={() => handleCorrectFiscalProduct(orderId, issue)}>
-                          <Edit className="w-4 h-4" /> Configurar produto
+                          <Edit className="w-4 h-4" /> {issue.fields.length === 1 && issue.fields.includes('NCM') ? 'Configurar NCM' : 'Configurar produto'}
                         </Button>
                       </div>
                     ))}
