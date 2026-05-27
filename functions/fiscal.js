@@ -235,15 +235,15 @@ const publicCertificateInfo = (certificate = {}) => ({
   updatedAt: certificate.updatedAt || null,
 });
 
-const getServiceConfig = (settings = {}) => ({
-  serviceUrl: cleanText(process.env.FISCAL_SERVICE_URL || settings.serviceUrl || settings.fiscalServiceUrl),
-  sharedSecret: cleanText(process.env.FISCAL_SHARED_SECRET || settings.sharedSecret || settings.fiscalSharedSecret),
+const getServiceConfig = () => ({
+  serviceUrl: cleanText(process.env.FISCAL_SERVICE_URL),
+  sharedSecret: cleanText(process.env.FISCAL_SHARED_SECRET),
 });
 
-const callFiscalService = async (path, body, serviceConfig = {}) => {
-  const {serviceUrl, sharedSecret} = getServiceConfig(serviceConfig);
+const callFiscalService = async (path, body) => {
+  const {serviceUrl, sharedSecret} = getServiceConfig();
   if (!serviceUrl) {
-    const error = new Error('Configure a URL do serviço fiscal antes de emitir notas.');
+    const error = new Error('A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
     error.code = 'failed-precondition';
     throw error;
   }
@@ -289,6 +289,7 @@ const createFiscalFunctions = ({
   HttpsError,
   logger,
   verifyManagementAccess,
+  verifyStoreReadAccess,
   userHasAccessToStores,
   STORE_ALL_KEY,
 }) => {
@@ -315,6 +316,22 @@ const createFiscalFunctions = ({
     return requester;
   };
 
+  const requireStoreReadAccess = async (uid, lojaId) => {
+    if (!lojaId || lojaId === STORE_ALL_KEY) {
+      throw new HttpsError('failed-precondition', 'Selecione uma loja específica para consultar dados fiscais.');
+    }
+
+    const requester = await verifyStoreReadAccess(uid);
+    if (requester.role === 'contador' && !requester.permissions?.['nota-fiscal']) {
+      throw new HttpsError('permission-denied', 'O perfil Contador não possui acesso ao módulo Nota Fiscal.');
+    }
+    if (requester.role === 'dono' && requester.allStores) return requester;
+    if (!userHasAccessToStores(requester.stores, [lojaId])) {
+      throw new HttpsError('permission-denied', 'Você não tem acesso fiscal a esta loja.');
+    }
+    return requester;
+  };
+
   const requireCallableContext = async (request) => {
     const uid = request.auth?.uid;
     if (!uid) {
@@ -323,6 +340,16 @@ const createFiscalFunctions = ({
     const lojaId = String(request.data?.lojaId || '').trim();
     await requireStoreAccess(uid, lojaId);
     return {uid, lojaId};
+  };
+
+  const requireReadContext = async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
+    }
+    const lojaId = String(request.data?.lojaId || '').trim();
+    const requester = await requireStoreReadAccess(uid, lojaId);
+    return {uid, lojaId, requester};
   };
 
   const loadIssuer = async (lojaId) => {
@@ -352,8 +379,6 @@ const createFiscalFunctions = ({
       defaultPresence: Number(settings.defaultPresence || 2),
       defaultPaymentMethodCode: settings.defaultPaymentMethodCode || '99',
       processVersion: settings.processVersion || 'ana-guimaraes-fiscal-1.0.0',
-      serviceUrl: settings.serviceUrl || settings.fiscalServiceUrl || '',
-      sharedSecret: settings.sharedSecret || settings.fiscalSharedSecret || '',
     };
   };
 
@@ -658,6 +683,76 @@ const createFiscalFunctions = ({
   };
 
   return {
+    fiscalGetConfiguration: onCall(async (request) => {
+      try {
+        const {lojaId, requester} = await requireReadContext(request);
+        const [issuerSnap, settingsSnap, certificate] = await Promise.all([
+          db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('issuer').get(),
+          db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').get(),
+          loadCertificate(lojaId),
+        ]);
+        const rawSettings = settingsSnap.exists ? settingsSnap.data() || {} : {};
+
+        if (rawSettings.serviceUrl || rawSettings.fiscalServiceUrl || rawSettings.sharedSecret || rawSettings.fiscalSharedSecret) {
+          await db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').set({
+            serviceUrl: FieldValue.delete(),
+            fiscalServiceUrl: FieldValue.delete(),
+            sharedSecret: FieldValue.delete(),
+            fiscalSharedSecret: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, {merge: true});
+        }
+
+        return {
+          issuer: issuerSnap.exists ? issuerSnap.data() || {} : null,
+          settings: await loadSettings(lojaId),
+          certificate: publicCertificateInfo(certificate),
+          platformService: requester.role === 'dono' && requester.allStores ? {
+            serviceUrl: getServiceConfig().serviceUrl,
+            configured: Boolean(getServiceConfig().serviceUrl),
+            source: 'FISCAL_SERVICE_URL',
+          } : null,
+        };
+      } catch (error) {
+        logger.error('fiscalGetConfiguration failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
+    fiscalSaveConfiguration: onCall(async (request) => {
+      try {
+        const {uid, lojaId} = await requireCallableContext(request);
+        const issuer = request.data?.issuer || {};
+        const settings = request.data?.settings || {};
+        await Promise.all([
+          db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('issuer').set({
+            ...issuer,
+            taxRegime: Number(issuer.taxRegime || 1),
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedByUid: uid,
+          }, {merge: true}),
+          db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').set({
+            environment: cleanText(settings.environment || 'homologation'),
+            nfeSeries: Number(settings.nfeSeries || 1),
+            nfceSeries: Number(settings.nfceSeries || 1),
+            operationNature: cleanText(settings.operationNature),
+            defaultPaymentMethodCode: cleanText(settings.defaultPaymentMethodCode || '99'),
+            defaultPresence: Number(settings.defaultPresence || 2),
+            serviceUrl: FieldValue.delete(),
+            fiscalServiceUrl: FieldValue.delete(),
+            sharedSecret: FieldValue.delete(),
+            fiscalSharedSecret: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedByUid: uid,
+          }, {merge: true}),
+        ]);
+        return {ok: true};
+      } catch (error) {
+        logger.error('fiscalSaveConfiguration failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
     fiscalValidateOrder: onCall(async (request) => {
       try {
         const {uid, lojaId} = await requireCallableContext(request);
@@ -820,7 +915,7 @@ const createFiscalFunctions = ({
           throw new HttpsError('failed-precondition', prepared.errors.join(' '));
         }
         if (!getServiceConfig(prepared.settings).serviceUrl) {
-          throw new HttpsError('failed-precondition', 'Configure a URL do serviço fiscal na aba Configuração antes de emitir notas.');
+          throw new HttpsError('failed-precondition', 'A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
         }
         if (!prepared.certificate.ready) {
           throw new HttpsError('failed-precondition', 'Faça upload do certificado digital A1 da loja antes de emitir notas.');
@@ -896,7 +991,7 @@ const createFiscalFunctions = ({
           loadIssuer(lojaId),
         ]);
         if (!getServiceConfig(settings).serviceUrl) {
-          throw new HttpsError('failed-precondition', 'Configure a URL do serviço fiscal na aba Configuração antes de cancelar notas.');
+          throw new HttpsError('failed-precondition', 'A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
         }
         const certificate = await loadCertificate(lojaId);
         if (!certificate.ready) {
@@ -938,7 +1033,7 @@ const createFiscalFunctions = ({
 
     fiscalGetInvoice: onCall(async (request) => {
       try {
-        await requireCallableContext(request);
+        await requireReadContext(request);
         const lojaId = String(request.data?.lojaId || '').trim();
         const invoiceId = String(request.data?.invoiceId || '').trim();
         if (!invoiceId) throw new HttpsError('invalid-argument', 'invoiceId obrigatório.');

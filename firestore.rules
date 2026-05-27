@@ -9,6 +9,53 @@ function isSignedIn() {
   return request.auth != null;
 }
 
+function isReadOnlyAccountant() {
+  return isSignedIn()
+    && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'contador';
+}
+
+function canStaffWrite() {
+  return isSignedIn() && !isReadOnlyAccountant();
+}
+
+function accountantHasModule(moduleId) {
+  return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.get(moduleId, false);
+}
+
+function accountantHasStore(lojaId) {
+  return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lojaId == lojaId
+    || lojaId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lojaIds;
+}
+
+function canReadStoreCollection(lojaId, collection) {
+  return isSignedIn() && (
+    !isReadOnlyAccountant()
+    || (accountantHasStore(lojaId) && (
+      (collection == 'pedidos' && (
+        accountantHasModule('dashboard')
+        || accountantHasModule('pedidos')
+        || accountantHasModule('financeiro')
+        || accountantHasModule('relatorios')
+        || accountantHasModule('nota-fiscal')
+      ))
+      || (collection in ['subcategorias'] && accountantHasModule('produtos'))
+      || (collection in ['categoriasFornecedores', 'fornecedores', 'pedidosCompra', 'estoque', 'kardex', 'perdasDescarte', 'receitas'] && (
+        accountantHasModule('fornecedores') || accountantHasModule('relatorios')
+      ))
+      || (collection in ['contas_a_pagar', 'contas_a_receber'] && (
+        accountantHasModule('financeiro') || accountantHasModule('relatorios')
+      ))
+      || (collection in ['fiscalProducts', 'invoices'] && (
+        accountantHasModule('nota-fiscal')
+        || accountantHasModule('financeiro')
+        || accountantHasModule('relatorios')
+      ))
+      || (collection in ['meuEspaco', 'pontos'] && accountantHasModule('meu-espaco'))
+    ))
+  );
+}
+
 function isOwnerByUid() {
   return isSignedIn() && resource.data.uid == request.auth.uid;
 }
@@ -23,21 +70,21 @@ function isCreatingOwnClient() {
 // APENAS usuários autenticados (funcionários no CRM) podem criar, alterar ou deletar produtos.
 match /produtos/{produtoId} {
   allow read: if true;
-  allow write: if request.auth != null;
+  allow write: if canStaffWrite();
 }
 
 // PERMITE que qualquer visitante leia as configurações da loja (como valor de frete).
 // APENAS usuários autenticados podem alterar as configurações.
 match /configuracoes/{docId} {
   allow get, list: if isPublicRead();
-  allow create, update, delete: if isSignedIn();
+  allow create, update, delete: if canStaffWrite();
 }
 
 // PERMITE que qualquer visitante leia as informações de um cupom para validação.
 // APENAS usuários autenticados podem criar ou alterar cupons.
 match /cupons/{cupomId} {
   allow read: if true;
-  allow write: if request.auth != null;
+  allow write: if canStaffWrite();
 }
 
 // --- REGRAS PARA COLEÇÕES COM ACESSO RESTRITO ---
@@ -47,7 +94,7 @@ match /cupons/{cupomId} {
 // Apenas usuários autenticados (CRM) podem ler documentos de clientes.
 match /clientes/{clienteId} {
   allow create: if isCreatingOwnClient();
-  allow read: if isSignedIn();
+  allow read: if isSignedIn() && (!isReadOnlyAccountant() || accountantHasModule('clientes'));
   allow update: if isOwnerByUid() && request.resource.data.uid == resource.data.uid;
   allow delete: if isOwnerByUid();
 }
@@ -57,7 +104,8 @@ match /clientes/{clienteId} {
 // APENAS usuários autenticados podem ler, alterar ou deletar pedidos existentes.
 match /pedidos/{pedidoId} {
   allow create: if true;
-  allow read, update, delete: if request.auth != null;
+  allow read: if isSignedIn();
+  allow update, delete: if canStaffWrite();
 }
 
 // --- REGRAS PARA LOJAS (MULTILOJAS) ---
@@ -67,7 +115,7 @@ match /lojas/{lojaId} {
 
   match /produtos/{produtoId} {
     allow read: if true;
-    allow write: if request.auth != null;
+    allow write: if canStaffWrite();
   }
 
   match /configuracoes/{docId} {
@@ -75,17 +123,23 @@ match /lojas/{lojaId} {
     // - /lojas/{lojaId}/configuracoes/config
     // - /lojas/{lojaId}/configuracoes/frete
     allow get, list: if isPublicRead();
-    allow create, update, delete: if isSignedIn();
+    allow create, update, delete: if canStaffWrite();
 
     match /{subcollection}/{configDocId} {
-      allow get, list: if isPublicRead();
-      allow create, update, delete: if isSignedIn();
+      allow get, list: if subcollection == 'cupons'
+        || (isSignedIn() && (!isReadOnlyAccountant() || accountantHasModule('configuracoes')));
+      allow create, update, delete: if canStaffWrite();
     }
   }
 
   match /cupons/{cupomId} {
     allow read: if true;
-    allow write: if request.auth != null;
+    allow write: if canStaffWrite();
+  }
+
+  // Dados fiscais confidenciais sao lidos e alterados apenas por callables autorizadas.
+  match /fiscalConfig/{docId} {
+    allow read, write: if false;
   }
 
   // Dados iFood sao lidos pelo painel, mas toda mutacao passa pelas Functions.
@@ -95,37 +149,40 @@ match /lojas/{lojaId} {
   }
 
   match /ifoodOrders/{docId} {
-    allow read: if isSignedIn();
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
   }
 
   match /ifoodEvents/{docId} {
-    allow read: if isSignedIn();
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
   }
 
   match /ifoodAlerts/{docId} {
-    allow read: if isSignedIn();
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
   }
 
   match /ifoodAudit/{docId} {
-    allow read: if isSignedIn();
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
   }
 
   match /ifoodHealth/{docId} {
-    allow read: if isSignedIn();
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
   }
 
   match /ifoodProductMappings/{docId} {
-    allow read: if isSignedIn();
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
   }
 
   match /ifoodCommands/{docId} {
-    allow read: if isSignedIn();
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
   }
 
   match /{collection}/{document=**} {
-    allow read: if isSignedIn() && collection != 'ifood';
-    allow write: if isSignedIn()
+    allow read: if collection != 'ifood'
+      && collection != 'fiscalConfig'
+      && canReadStoreCollection(lojaId, collection);
+    allow write: if canStaffWrite()
       && collection != 'ifood'
+      && collection != 'fiscalConfig'
       && collection != 'ifoodOrders'
       && collection != 'ifoodEvents'
       && collection != 'ifoodAlerts'
@@ -141,9 +198,30 @@ match /integrations/{document=**} {
   allow read, write: if false;
 }
 
+match /users/{userId} {
+  allow read: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
+  allow write: if canStaffWrite();
+}
+
+match /customProfiles/{userId} {
+  allow read: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
+  allow write: if canStaffWrite();
+}
+
 // --- REGRAS PARA OUTRAS COLEÇÕES (Acesso somente para usuários autenticados no CRM) ---
 match /{collection}/{document=**} {
-  allow read, write: if isSignedIn() && collection != 'lojas' && collection != 'integrations';
+  allow read: if isSignedIn()
+    && collection != 'lojas'
+    && collection != 'integrations'
+    && collection != 'users'
+    && collection != 'customProfiles'
+    && (!isReadOnlyAccountant()
+      || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
+  allow write: if canStaffWrite()
+    && collection != 'lojas'
+    && collection != 'integrations'
+    && collection != 'users'
+    && collection != 'customProfiles';
 }
 
 }

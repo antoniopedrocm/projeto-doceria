@@ -52,6 +52,7 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://us-central1-
 const ROLE_OWNER = 'dono';
 const ROLE_MANAGER = 'gerente';
 const ROLE_ATTENDANT = 'atendente';
+const ROLE_ACCOUNTANT = 'contador';
 const ROLE_CLIENT = 'cliente';
 const ROLE_DEFAULT = ROLE_ATTENDANT;
 const STORE_ALL_KEY = '__all__';
@@ -93,6 +94,7 @@ const MENU_PERMISSION_KEYS = [
   'ifood',
   'configuracoes'
 ];
+const ACCOUNTANT_RESTRICTED_MODULES = new Set(['ifood', 'configuracoes']);
 
 const buildStoreCollectionPath = (storeId, collectionName, useLegacyPath = false) => {
   const shouldUseConfigPath = CONFIG_COLLECTIONS.has(collectionName) && !useLegacyPath;
@@ -242,6 +244,12 @@ const normalizeRole = (role) => {
     'cliente'
   ]);
 
+  const accountantAliases = new Set([
+    ROLE_ACCOUNTANT,
+    'accountant',
+    'contabilidade'
+  ]);
+
   if (ownerAliases.has(normalizedValue)) {
     return ROLE_OWNER;
   }
@@ -254,11 +262,15 @@ const normalizeRole = (role) => {
     return ROLE_ATTENDANT;
   }
 
+  if (accountantAliases.has(normalizedValue)) {
+    return ROLE_ACCOUNTANT;
+  }
+
   if (clientAliases.has(normalizedValue)) {
     return ROLE_CLIENT;
   }
 
-  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_CLIENT].includes(value)) {
+  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT, ROLE_CLIENT].includes(value)) {
     return value;
   }
 
@@ -301,6 +313,17 @@ const getDefaultPermissionsForRole = (role) => {
     };
   }
 
+  if (normalizedRole === ROLE_ACCOUNTANT) {
+    return {
+      ...base,
+      'pagina-inicial': true,
+      dashboard: true,
+      relatorios: true,
+      financeiro: true,
+      'nota-fiscal': true,
+    };
+  }
+
   return {
     ...base,
     'pagina-inicial': true,
@@ -317,6 +340,10 @@ const sanitizePermissions = (permissions, role) => {
   if (!permissions || typeof permissions !== 'object') return defaults;
 
   return MENU_PERMISSION_KEYS.reduce((acc, key) => {
+    if (normalizeRole(role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(key)) {
+      acc[key] = false;
+      return acc;
+    }
     if (Object.prototype.hasOwnProperty.call(permissions, key)) {
       acc[key] = Boolean(permissions[key]);
     } else {
@@ -324,6 +351,38 @@ const sanitizePermissions = (permissions, role) => {
     }
     return acc;
   }, {});
+};
+
+const ACCOUNTANT_COLLECTION_PERMISSIONS = {
+  produtos: ['produtos', 'relatorios'],
+  subcategorias: ['produtos'],
+  categoriasFornecedores: ['fornecedores'],
+  contas_a_pagar: ['financeiro', 'relatorios'],
+  contas_a_receber: ['financeiro', 'relatorios'],
+  fornecedores: ['fornecedores'],
+  pedidosCompra: ['fornecedores'],
+  estoque: ['fornecedores', 'relatorios'],
+  kardex: ['fornecedores', 'relatorios'],
+  perdasDescarte: ['fornecedores', 'relatorios'],
+  receitas: ['fornecedores'],
+  fiscalProducts: ['nota-fiscal'],
+  invoices: ['nota-fiscal', 'financeiro', 'relatorios'],
+  ifoodOrders: ['ifood'],
+  ifoodAlerts: ['ifood'],
+  ifoodProductMappings: ['ifood'],
+  ifoodAudit: ['ifood'],
+  ifoodHealth: ['ifood'],
+  logs: ['configuracoes'],
+  cupons: ['configuracoes'],
+  pedidos: ['dashboard', 'pedidos', 'financeiro', 'relatorios', 'nota-fiscal'],
+};
+
+const getCollectionsToSyncForUser = (userProfile) => {
+  if (userProfile?.role !== ROLE_ACCOUNTANT) return COLLECTIONS_TO_SYNC;
+  const permissions = sanitizePermissions(userProfile.customPermissions || userProfile.permissions, userProfile.role);
+  return COLLECTIONS_TO_SYNC.filter((collectionName) => (
+    ACCOUNTANT_COLLECTION_PERMISSIONS[collectionName] || []
+  ).some((permission) => permissions[permission]));
 };
 
 const extractStoreIdsFromProfile = (profile) => {
@@ -3135,8 +3194,11 @@ function App() {
                 return;
           }
 
+          const collectionsToSync = getCollectionsToSyncForUser(user);
+          const canSyncClientes = user.role !== ROLE_ACCOUNTANT
+            || sanitizePermissions(user.customPermissions || user.permissions, user.role).clientes;
           let isMounted = true;
-          let pendingInitial = (storeIds.length * COLLECTIONS_TO_SYNC.length) + 1;
+          let pendingInitial = (storeIds.length * collectionsToSync.length) + (canSyncClientes ? 1 : 0);
           const unsubscribes = [];
 
           const markInitialLoaded = () => {
@@ -3206,10 +3268,14 @@ function App() {
                 unsubscribes.push(() => unsubscribe());
           };
 
-          setupClientesListener();
+          if (canSyncClientes) {
+                setupClientesListener();
+          } else {
+                clientesDataRef.current = [];
+          }
 
           storeIds.forEach((storeId) => {
-                COLLECTIONS_TO_SYNC.forEach((collectionName) => {
+                collectionsToSync.forEach((collectionName) => {
                         const isConfigCollection = CONFIG_COLLECTIONS.has(collectionName);
                         const primaryQuery = query(getStoreCollectionRef(storeId, collectionName));
                         const legacyQuery = isConfigCollection ? query(getStoreCollectionRef(storeId, collectionName, true)) : null;
@@ -3462,8 +3528,15 @@ function App() {
     return error?.message || 'Não foi possível concluir a operação agora. Tente novamente.';
   }, []);
 
+  const assertWritableRole = () => {
+    if (user?.role === ROLE_ACCOUNTANT) {
+      throw new Error('O perfil Contador possui acesso somente leitura.');
+    }
+  };
+
   const addItem = async (section, item, targetStoreId = null) => {
     try {
+        assertWritableRole();
         const storeId = targetStoreId || resolveActiveStoreForWrite();
 
         if (section === 'clientes') {
@@ -3528,6 +3601,7 @@ function App() {
 
   const updateItem = async (section, id, updatedItem, targetStoreId = null) => {
     try {
+        assertWritableRole();
         const storeId = targetStoreId || resolveActiveStoreForWrite();
 
         if (section === 'clientes') {
@@ -3576,6 +3650,7 @@ function App() {
 
   const deleteItem = async (section, id, targetStoreId = null) => {
     try {
+        assertWritableRole();
         const storeId = targetStoreId || resolveActiveStoreForWrite();
         await runWithRetry(
             `deleteItem:${section}`,
@@ -3690,7 +3765,7 @@ function App() {
                                           : null;
                                         const permissions = customPermissions || permissionsDefaults;
 
-                                        if (!customProfileSnap.exists()) {
+                                        if (!customProfileSnap.exists() && role !== ROLE_ACCOUNTANT) {
                                           await setDoc(customProfileRef, {
                                             uid: authUser.uid,
                                             role,
@@ -6636,7 +6711,7 @@ const effectiveStoreName = useMemo(() => {
     const userColumns = [
         { header: "Nome", key: "nome" },
         { header: "Email", key: "email" },
-        { header: "Permissão", render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${normalizeRole(row.role) === ROLE_OWNER ? 'bg-purple-100 text-purple-800' : normalizeRole(row.role) === ROLE_MANAGER ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>{normalizeRole(row.role)}</span> },
+        { header: "Permissão", render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${normalizeRole(row.role) === ROLE_OWNER ? 'bg-purple-100 text-purple-800' : normalizeRole(row.role) === ROLE_MANAGER ? 'bg-blue-100 text-blue-800' : normalizeRole(row.role) === ROLE_ACCOUNTANT ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-800'}`}>{normalizeRole(row.role)}</span> },
         { header: "Loja", render: (row) => {
             const lojas = Array.isArray(row.lojaIds) ? row.lojaIds : (row.lojaId ? [row.lojaId] : []);
             if (normalizeRole(row.role) === ROLE_OWNER && lojas.length === 0) {
@@ -7091,6 +7166,7 @@ const effectiveStoreName = useMemo(() => {
                         <option value={ROLE_CLIENT}>Cliente</option>
                         <option value={ROLE_ATTENDANT}>Atendente</option>
                         <option value={ROLE_MANAGER}>Gerente</option>
+                        <option value={ROLE_ACCOUNTANT}>Contador</option>
                         <option value={ROLE_OWNER}>Dono</option>
                     </Select>
 
@@ -7144,7 +7220,11 @@ const effectiveStoreName = useMemo(() => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-semibold text-gray-800">Permissões personalizadas</p>
-                                <p className="text-xs text-gray-500">Selecione quais menus o usuário pode acessar.</p>
+                                <p className="text-xs text-gray-500">
+                                    {normalizeRole(userFormData.role) === ROLE_ACCOUNTANT
+                                        ? 'Selecione os módulos que o contador pode consultar. Este papel é sempre somente leitura.'
+                                        : 'Selecione quais menus o usuário pode acessar.'}
+                                </p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <label className="flex items-center gap-2 text-xs text-gray-600" title="Ative para personalizar o menu deste usuário">
@@ -7200,7 +7280,7 @@ const effectiveStoreName = useMemo(() => {
                                     <input
                                         type="checkbox"
                                         checked={Boolean(userFormData.permissions?.[item.id])}
-                                        disabled={!userFormData.applyCustomProfile}
+                                        disabled={!userFormData.applyCustomProfile || (normalizeRole(userFormData.role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id))}
                                         onChange={(e) => {
                                             setUserFormData({
                                                 ...userFormData,
@@ -7212,6 +7292,9 @@ const effectiveStoreName = useMemo(() => {
                                         }}
                                     />
                                     {item.label}
+                                    {normalizeRole(userFormData.role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id) && (
+                                        <span className="text-xs text-gray-400">(indisponível para leitura)</span>
+                                    )}
                                 </label>
                             ))}
                         </div>
@@ -9111,7 +9194,8 @@ const handleSubmit = async (e) => {
     setConfirmDelete,
     effectiveStoreId,
     selectedStoreId,
-    storeInfoMap
+    storeInfoMap,
+    currentUser
   }) => {
     const [activeTab, setActiveTab] = usePersistentState('nota_fiscal_activeTab', 'emitir');
     const [orderSearch, setOrderSearch] = usePersistentState('nota_fiscal_orderSearch', '');
@@ -9165,12 +9249,15 @@ const handleSubmit = async (e) => {
     const [configSaving, setConfigSaving] = useState(false);
     const [certificateInfo, setCertificateInfo] = useState(null);
     const [certificateUploading, setCertificateUploading] = useState(false);
+    const [platformService, setPlatformService] = useState(null);
     const [certificateForm, setCertificateForm] = useState({
       file: null,
       password: '',
       cscId: '',
       csc: ''
     });
+    const isReadOnly = currentUser?.role === ROLE_ACCOUNTANT;
+    const isPlatformAdmin = currentUser?.role === ROLE_OWNER && currentUser?.canAccessAllStores;
 
     const storeName = effectiveStoreId
       ? (storeInfoMap[effectiveStoreId]?.nome || effectiveStoreId)
@@ -9243,19 +9330,18 @@ const handleSubmit = async (e) => {
       setConfigLoading(true);
       let cancelled = false;
 
-      Promise.all([
-        getDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'issuer')),
-        getDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'settings')),
-        getDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'certificate'))
-      ]).then(([issuerSnap, settingsSnap, certificateSnap]) => {
+      const getConfiguration = httpsCallable(functions, 'fiscalGetConfiguration');
+      getConfiguration({ lojaId: effectiveStoreId }).then((response) => {
         if (cancelled) return;
-        if (issuerSnap.exists()) {
-          setIssuerForm((prev) => ({ ...prev, ...issuerSnap.data(), address: { ...prev.address, ...(issuerSnap.data().address || {}) } }));
+        const configuration = response.data || {};
+        if (configuration.issuer) {
+          setIssuerForm((prev) => ({ ...prev, ...configuration.issuer, address: { ...prev.address, ...(configuration.issuer.address || {}) } }));
         }
-        if (settingsSnap.exists()) {
-          setSettingsForm((prev) => ({ ...prev, ...settingsSnap.data() }));
+        if (configuration.settings) {
+          setSettingsForm((prev) => ({ ...prev, ...configuration.settings, serviceUrl: '' }));
         }
-        setCertificateInfo(certificateSnap.exists() ? certificateSnap.data() : null);
+        setCertificateInfo(configuration.certificate || null);
+        setPlatformService(configuration.platformService || null);
       }).catch((error) => {
         console.error('[NotaFiscal] Erro ao carregar configuração fiscal:', error);
         setMessage({ type: 'error', text: error?.message || 'Não foi possível carregar a configuração fiscal.' });
@@ -9298,6 +9384,7 @@ const handleSubmit = async (e) => {
     };
 
     const handleValidateOrder = async (order) => {
+      if (isReadOnly) return;
       if (!effectiveStoreId) {
         setMessage({ type: 'error', text: 'Selecione uma loja específica para validar notas.' });
         return;
@@ -9326,6 +9413,7 @@ const handleSubmit = async (e) => {
     };
 
     const handleIssueOrder = async (order) => {
+      if (isReadOnly) return;
       if (!effectiveStoreId) {
         setMessage({ type: 'error', text: 'Selecione uma loja específica para emitir notas.' });
         return;
@@ -9353,6 +9441,7 @@ const handleSubmit = async (e) => {
     };
 
     const handleCancelInvoice = async (invoice) => {
+      if (isReadOnly) return;
       const reason = window.prompt('Informe a justificativa de cancelamento (mínimo 15 caracteres):');
       if (!reason) return;
       setBusyOrderId(`cancel:${invoice.id}`);
@@ -9372,24 +9461,26 @@ const handleSubmit = async (e) => {
 
     const handleSaveFiscalConfig = async (event) => {
       event.preventDefault();
+      if (isReadOnly) return;
       if (!effectiveStoreId) return;
       setConfigSaving(true);
       setMessage(null);
       try {
-        await Promise.all([
-          setDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'issuer'), {
+        const saveConfiguration = httpsCallable(functions, 'fiscalSaveConfiguration');
+        await saveConfiguration(callablePayload({
+          issuer: {
             ...issuerForm,
-            taxRegime: Number(issuerForm.taxRegime || 1),
-            updatedAt: serverTimestamp()
-          }, { merge: true }),
-          setDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalConfig', 'settings'), {
-            ...settingsForm,
+            taxRegime: Number(issuerForm.taxRegime || 1)
+          },
+          settings: {
+            environment: settingsForm.environment,
             nfeSeries: Number(settingsForm.nfeSeries || 1),
             nfceSeries: Number(settingsForm.nfceSeries || 1),
-            defaultPresence: Number(settingsForm.defaultPresence || 2),
-            updatedAt: serverTimestamp()
-          }, { merge: true })
-        ]);
+            operationNature: settingsForm.operationNature,
+            defaultPaymentMethodCode: settingsForm.defaultPaymentMethodCode,
+            defaultPresence: Number(settingsForm.defaultPresence || 2)
+          }
+        }));
         setMessage({ type: 'success', text: 'Configuração fiscal salva.' });
       } catch (error) {
         console.error('[NotaFiscal] Erro ao salvar configuração:', error);
@@ -9408,6 +9499,7 @@ const handleSubmit = async (e) => {
 
     const handleUploadCertificate = async (event) => {
       event?.preventDefault?.();
+      if (isReadOnly) return;
       if (!effectiveStoreId) {
         setMessage({ type: 'error', text: 'Selecione uma loja específica para enviar o certificado.' });
         return;
@@ -9465,6 +9557,7 @@ const handleSubmit = async (e) => {
 
     const handleSaveFiscalProduct = async (event) => {
       event.preventDefault();
+      if (isReadOnly) return;
       if (!effectiveStoreId) return;
       const productId = (editingFiscalProduct?.id || productForm.productId || productForm.code || productForm.description).trim();
       if (!productId) {
@@ -9517,7 +9610,7 @@ const handleSubmit = async (e) => {
       } }
     ];
 
-    const orderActions = [
+    const orderActions = isReadOnly ? [] : [
       { icon: RefreshCw, label: 'Validar', onClick: handleValidateOrder },
       { icon: Printer, label: 'Emitir', onClick: handleIssueOrder }
     ];
@@ -9530,7 +9623,7 @@ const handleSubmit = async (e) => {
       { header: 'Emissão', render: (row) => formatDateTime(row.createdAt) }
     ];
 
-    const invoiceActions = [
+    const invoiceActions = isReadOnly ? [] : [
       { icon: X, label: 'Cancelar', onClick: handleCancelInvoice }
     ];
 
@@ -9542,7 +9635,7 @@ const handleSubmit = async (e) => {
       { header: 'Un.', render: (row) => row.unit || 'un' }
     ];
 
-    const productActions = [
+    const productActions = isReadOnly ? [] : [
       { icon: Edit, label: 'Editar', onClick: handleEditFiscalProduct },
       { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('fiscalProducts', row.id, effectiveStoreId) }) }
     ];
@@ -9572,7 +9665,7 @@ const handleSubmit = async (e) => {
           </div>
           <div className="flex items-center gap-2 px-4 py-2 bg-white border rounded-xl shadow-sm text-sm text-gray-700">
             <CheckCircle className="w-4 h-4 text-green-600" />
-            Ambiente: {settingsForm.environment === 'production' ? 'Produção' : 'Homologação'}
+            {isReadOnly ? 'Consulta contábil' : `Ambiente: ${settingsForm.environment === 'production' ? 'Produção' : 'Homologação'}`}
           </div>
         </div>
 
@@ -9591,7 +9684,7 @@ const handleSubmit = async (e) => {
 
         <div className="flex flex-wrap gap-2 bg-white rounded-2xl p-2 shadow-lg border border-gray-100">
           {[
-            ['emitir', 'Emitir'],
+            ['emitir', isReadOnly ? 'Pedidos' : 'Emitir'],
             ['notas', 'Notas emitidas'],
             ['produtos', 'Produtos fiscais'],
             ['configuracao', 'Configuração']
@@ -9633,38 +9726,43 @@ const handleSubmit = async (e) => {
 
         {activeTab === 'produtos' && (
           <div className="space-y-4">
-            <div className="flex justify-end">
+            {!isReadOnly && <div className="flex justify-end">
               <Button onClick={() => { resetProductForm(); setShowProductModal(true); }}><Plus className="w-4 h-4" /> Produto fiscal</Button>
-            </div>
+            </div>}
             <Table columns={fiscalProductColumns} data={fiscalProducts} actions={productActions} />
           </div>
         )}
 
         {activeTab === 'configuracao' && (
           <form onSubmit={handleSaveFiscalConfig} className="space-y-6">
+            {isReadOnly && (
+              <div className="p-4 rounded-xl border border-blue-200 bg-blue-50 text-sm text-blue-800">
+                Perfil Contador: consulta habilitada. Alterações fiscais, emissão e cancelamento não estão disponíveis.
+              </div>
+            )}
             <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
               <h3 className="text-lg font-bold text-gray-800">Emitente</h3>
               {configLoading && <p className="text-sm text-gray-500">Carregando configuração...</p>}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Input label="CNPJ" value={issuerForm.cnpj || ''} onChange={(e) => setIssuerField('cnpj', e.target.value)} />
-                <Input label="Razão social" value={issuerForm.legalName || ''} onChange={(e) => setIssuerField('legalName', e.target.value)} />
-                <Input label="Nome fantasia" value={issuerForm.tradeName || ''} onChange={(e) => setIssuerField('tradeName', e.target.value)} />
-                <Input label="Inscrição estadual" value={issuerForm.stateRegistration || ''} onChange={(e) => setIssuerField('stateRegistration', e.target.value)} />
-                <Select label="Regime tributário" value={issuerForm.taxRegime || 1} onChange={(e) => setIssuerField('taxRegime', Number(e.target.value))}>
+                <Input disabled={isReadOnly} label="CNPJ" value={issuerForm.cnpj || ''} onChange={(e) => setIssuerField('cnpj', e.target.value)} />
+                <Input disabled={isReadOnly} label="Razão social" value={issuerForm.legalName || ''} onChange={(e) => setIssuerField('legalName', e.target.value)} />
+                <Input disabled={isReadOnly} label="Nome fantasia" value={issuerForm.tradeName || ''} onChange={(e) => setIssuerField('tradeName', e.target.value)} />
+                <Input disabled={isReadOnly} label="Inscrição estadual" value={issuerForm.stateRegistration || ''} onChange={(e) => setIssuerField('stateRegistration', e.target.value)} />
+                <Select disabled={isReadOnly} label="Regime tributário" value={issuerForm.taxRegime || 1} onChange={(e) => setIssuerField('taxRegime', Number(e.target.value))}>
                   <option value={1}>Simples Nacional</option>
                   <option value={2}>Simples excesso sublimite</option>
                   <option value={3}>Regime normal</option>
                 </Select>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Input label="Logradouro" value={issuerForm.address?.street || ''} onChange={(e) => setIssuerAddressField('street', e.target.value)} />
-                <Input label="Número" value={issuerForm.address?.number || ''} onChange={(e) => setIssuerAddressField('number', e.target.value)} />
-                <Input label="Bairro" value={issuerForm.address?.district || ''} onChange={(e) => setIssuerAddressField('district', e.target.value)} />
-                <Input label="CEP" value={issuerForm.address?.zip || ''} onChange={(e) => setIssuerAddressField('zip', e.target.value)} />
-                <Input label="Município" value={issuerForm.address?.city || ''} onChange={(e) => setIssuerAddressField('city', e.target.value)} />
-                <Input label="Código IBGE" value={issuerForm.address?.cityCode || ''} onChange={(e) => setIssuerAddressField('cityCode', e.target.value)} />
-                <Input label="UF" value={issuerForm.address?.state || ''} onChange={(e) => setIssuerAddressField('state', e.target.value.toUpperCase())} />
-                <Input label="Telefone" value={issuerForm.address?.phone || ''} onChange={(e) => setIssuerAddressField('phone', e.target.value)} />
+                <Input disabled={isReadOnly} label="Logradouro" value={issuerForm.address?.street || ''} onChange={(e) => setIssuerAddressField('street', e.target.value)} />
+                <Input disabled={isReadOnly} label="Número" value={issuerForm.address?.number || ''} onChange={(e) => setIssuerAddressField('number', e.target.value)} />
+                <Input disabled={isReadOnly} label="Bairro" value={issuerForm.address?.district || ''} onChange={(e) => setIssuerAddressField('district', e.target.value)} />
+                <Input disabled={isReadOnly} label="CEP" value={issuerForm.address?.zip || ''} onChange={(e) => setIssuerAddressField('zip', e.target.value)} />
+                <Input disabled={isReadOnly} label="Município" value={issuerForm.address?.city || ''} onChange={(e) => setIssuerAddressField('city', e.target.value)} />
+                <Input disabled={isReadOnly} label="Código IBGE" value={issuerForm.address?.cityCode || ''} onChange={(e) => setIssuerAddressField('cityCode', e.target.value)} />
+                <Input disabled={isReadOnly} label="UF" value={issuerForm.address?.state || ''} onChange={(e) => setIssuerAddressField('state', e.target.value.toUpperCase())} />
+                <Input disabled={isReadOnly} label="Telefone" value={issuerForm.address?.phone || ''} onChange={(e) => setIssuerAddressField('phone', e.target.value)} />
               </div>
             </div>
 
@@ -9686,7 +9784,7 @@ const handleSubmit = async (e) => {
                   <p><strong>NFC-e CSC:</strong> {certificateInfo.nfceCscSecretVersion || certificateInfo.hasCsc ? 'Configurado' : 'Pendente'}</p>
                 </div>
               )}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {!isReadOnly && <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1 md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700">Certificado A1 (.pfx)</label>
                   <input type="file" accept=".pfx,.p12,application/x-pkcs12" onChange={(e) => setCertificateForm({ ...certificateForm, file: e.target.files?.[0] || null })} className="w-full px-4 py-3 border rounded-xl border-gray-300 bg-white" />
@@ -9699,26 +9797,35 @@ const handleSubmit = async (e) => {
                     <Save className="w-4 h-4" /> {certificateUploading ? 'Enviando...' : 'Salvar certificado'}
                   </Button>
                 </div>
-              </div>
+              </div>}
             </div>
 
             <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
               <h3 className="text-lg font-bold text-gray-800">Emissão</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Select label="Ambiente" value={settingsForm.environment} onChange={(e) => setSettingsForm({ ...settingsForm, environment: e.target.value })}>
+                <Select disabled={isReadOnly} label="Ambiente" value={settingsForm.environment} onChange={(e) => setSettingsForm({ ...settingsForm, environment: e.target.value })}>
                   <option value="homologation">Homologação</option>
                   <option value="production">Produção</option>
                 </Select>
-                <Input label="Série NF-e 55" type="number" value={settingsForm.nfeSeries || 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfeSeries: e.target.value })} />
-                <Input label="Série NFC-e 65" type="number" value={settingsForm.nfceSeries || 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfceSeries: e.target.value })} />
-                <Input label="Natureza da operação" value={settingsForm.operationNature || ''} onChange={(e) => setSettingsForm({ ...settingsForm, operationNature: e.target.value })} />
-                <Input label="Pagamento padrão" value={settingsForm.defaultPaymentMethodCode || '99'} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPaymentMethodCode: e.target.value })} />
-                <Input label="Indicador de presença" type="number" value={settingsForm.defaultPresence || 2} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPresence: e.target.value })} />
-                <div className="md:col-span-3"><Input label="URL única do serviço fiscal (Cloud Run)" value={settingsForm.serviceUrl || ''} onChange={(e) => setSettingsForm({ ...settingsForm, serviceUrl: e.target.value })} /></div>
+                <Input disabled={isReadOnly} label="Série NF-e 55" type="number" value={settingsForm.nfeSeries || 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfeSeries: e.target.value })} />
+                <Input disabled={isReadOnly} label="Série NFC-e 65" type="number" value={settingsForm.nfceSeries || 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfceSeries: e.target.value })} />
+                <Input disabled={isReadOnly} label="Natureza da operação" value={settingsForm.operationNature || ''} onChange={(e) => setSettingsForm({ ...settingsForm, operationNature: e.target.value })} />
+                <Input disabled={isReadOnly} label="Pagamento padrão" value={settingsForm.defaultPaymentMethodCode || '99'} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPaymentMethodCode: e.target.value })} />
+                <Input disabled={isReadOnly} label="Indicador de presença" type="number" value={settingsForm.defaultPresence || 2} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPresence: e.target.value })} />
+                {isPlatformAdmin && (
+                  <div className="md:col-span-3">
+                    <Input
+                      disabled
+                      label="URL única do serviço fiscal (Cloud Run) - plataforma"
+                      value={platformService?.serviceUrl || 'Não configurada no backend'}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Configuração global protegida; não pertence a uma loja.</p>
+                  </div>
+                )}
               </div>
-              <div className="flex justify-end">
+              {!isReadOnly && <div className="flex justify-end">
                 <Button type="submit" disabled={configSaving}><Save className="w-4 h-4" /> {configSaving ? 'Salvando...' : 'Salvar configuração fiscal'}</Button>
-              </div>
+              </div>}
             </div>
           </form>
         )}
@@ -9835,7 +9942,7 @@ const handleSubmit = async (e) => {
         />
       ) : <PaginaInicial />;
       case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
-      case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} /> : <PaginaInicial />;
+      case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial />;
       case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} /> : <PaginaInicial />;
       case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} /> : <PaginaInicial />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
