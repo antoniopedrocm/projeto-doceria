@@ -102,6 +102,37 @@ final class FiscalService
      * @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
+    public function receipt(array $payload): array
+    {
+        $receipt = trim((string)($payload['receipt'] ?? ''));
+        $signedXml = (string)($payload['signedXml'] ?? '');
+        $model = (int)($payload['invoice']['model'] ?? 0);
+
+        if ($receipt === '') {
+            throw new InvalidArgumentException('receipt obrigatorio para consultar retorno pendente.');
+        }
+        if ($signedXml === '') {
+            throw new InvalidArgumentException('signedXml obrigatorio para concluir retorno pendente.');
+        }
+        if (!in_array($model, [55, 65], true)) {
+            throw new InvalidArgumentException('invoice.model deve ser 55 ou 65.');
+        }
+
+        $result = $this->gateway()->consultReceipt($model, $receipt, $signedXml);
+
+        if (($result['status'] ?? '') === 'authorized' && isset($result['authorizedXml'])) {
+            $result['danfePdfBase64'] = base64_encode(
+                $this->danfeRenderer->render((string)$result['authorizedXml'], $model)
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
     public function cancel(array $payload): array
     {
         foreach (['key', 'protocol', 'reason', 'model'] as $field) {

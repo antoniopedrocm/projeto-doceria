@@ -301,6 +301,7 @@ const buildFiscalServiceError = (details, status) => {
   const error = new Error(fiscalServiceErrorMessage(details));
   error.code = fiscalServiceErrorCode(status);
   error.details = details || null;
+  error.fiscalServiceResponded = Number(status || 0) > 0;
   return error;
 };
 
@@ -416,6 +417,63 @@ const createFiscalFunctions = ({
     const lojaId = String(request.data?.lojaId || '').trim();
     const requester = await requireStoreReadAccess(uid, lojaId);
     return {uid, lojaId, requester};
+  };
+
+  const artifactPath = (lojaId, invoiceId, filename) => `fiscal/${lojaId}/invoices/${invoiceId}/${filename}`;
+
+  const saveInvoiceArtifact = async ({lojaId, invoiceId, filename, contentType, content, encoding = 'utf8'}) => {
+    if (!content) return null;
+    const buffer = Buffer.isBuffer(content) ? content : Buffer.from(String(content), encoding);
+    const path = artifactPath(lojaId, invoiceId, filename);
+    await admin.storage().bucket().file(path).save(buffer, {
+      metadata: {
+        contentType,
+        cacheControl: 'private, max-age=0, no-cache',
+      },
+      resumable: false,
+    });
+    return {path, contentType, size: buffer.length, updatedAt: admin.firestore.Timestamp.now()};
+  };
+
+  const storeInvoiceArtifacts = async ({lojaId, invoiceId, result}) => {
+    const artifacts = {};
+    const signedXml = await saveInvoiceArtifact({
+      lojaId,
+      invoiceId,
+      filename: 'signed.xml',
+      contentType: 'application/xml; charset=utf-8',
+      content: result.signedXml,
+    });
+    if (signedXml) artifacts.signedXml = signedXml;
+
+    const authorizedXml = await saveInvoiceArtifact({
+      lojaId,
+      invoiceId,
+      filename: 'authorized.xml',
+      contentType: 'application/xml; charset=utf-8',
+      content: result.authorizedXml,
+    });
+    if (authorizedXml) artifacts.authorizedXml = authorizedXml;
+
+    const danfePdf = await saveInvoiceArtifact({
+      lojaId,
+      invoiceId,
+      filename: 'danfe.pdf',
+      contentType: 'application/pdf',
+      content: result.danfePdfBase64,
+      encoding: 'base64',
+    });
+    if (danfePdf) artifacts.danfePdf = danfePdf;
+
+    return artifacts;
+  };
+
+  const loadInvoiceArtifact = async (artifact) => {
+    if (!artifact?.path) {
+      throw new HttpsError('failed-precondition', 'Arquivo fiscal ainda não está disponível para esta nota.');
+    }
+    const [buffer] = await admin.storage().bucket().file(artifact.path).download();
+    return buffer;
   };
 
   const loadIssuer = async (lojaId) => {
@@ -755,21 +813,33 @@ const createFiscalFunctions = ({
     const invoiceRef = db.collection('lojas').doc(lojaId).collection('invoices').doc(invoiceId);
     const orderRef = db.collection('lojas').doc(lojaId).collection('pedidos').doc(orderId);
     const status = result.status || INVOICE_STATUS.REJECTED;
+    let artifacts = {};
+    let artifactError = '';
+    try {
+      artifacts = await storeInvoiceArtifacts({lojaId, invoiceId, result});
+    } catch (error) {
+      artifactError = error?.message || String(error);
+      logger.error('storeInvoiceArtifacts failed', error);
+    }
 
     await db.runTransaction(async (transaction) => {
       transaction.set(invoiceRef, {
         status,
         key: result.key || null,
         protocol: result.protocol || null,
+        receipt: result.receipt || null,
         cStat: result.cStat || null,
         xMotivo: result.xMotivo || null,
         errors: result.errors || null,
+        artifacts: Object.keys(artifacts).length ? artifacts : FieldValue.delete(),
+        artifactError: artifactError || FieldValue.delete(),
+        danfePdfReady: Boolean(artifacts.danfePdf),
         updatedAt: FieldValue.serverTimestamp(),
         serviceResult: {
           ...result,
-          authorizedXml: result.authorizedXml ? '[stored-by-fiscal-service-or-inline]' : null,
-          signedXml: result.signedXml ? '[stored-by-fiscal-service-or-inline]' : null,
-          danfePdfBase64: result.danfePdfBase64 ? '[stored-by-fiscal-service-or-inline]' : null,
+          authorizedXml: result.authorizedXml ? `[storage:${artifacts.authorizedXml?.path || 'unavailable'}]` : null,
+          signedXml: result.signedXml ? `[storage:${artifacts.signedXml?.path || 'unavailable'}]` : null,
+          danfePdfBase64: result.danfePdfBase64 ? `[storage:${artifacts.danfePdf?.path || 'unavailable'}]` : null,
         },
         history: FieldValue.arrayUnion({
           status,
@@ -793,7 +863,7 @@ const createFiscalFunctions = ({
       }
     });
 
-    return result;
+    return {...result, invoiceId, artifacts, danfePdfReady: Boolean(artifacts.danfePdf)};
   };
 
   const previewNextNumber = async (lojaId, environment, model, series) => {
@@ -1076,17 +1146,29 @@ const createFiscalFunctions = ({
             result,
           });
         } catch (error) {
-          await db.collection('lojas').doc(lojaId).collection('invoices').doc(reservation.invoiceId).set({
-            status: INVOICE_STATUS.PENDING_RETURN,
-            error: error?.message || String(error),
-            updatedAt: FieldValue.serverTimestamp(),
-            history: FieldValue.arrayUnion({
-              status: INVOICE_STATUS.PENDING_RETURN,
-              at: admin.firestore.Timestamp.now(),
-              by: uid,
-              message: 'Falha sem retorno conclusivo; consulte a SEFAZ antes de reemitir.',
-            }),
-          }, {merge: true});
+          const statusAfterError = error?.fiscalServiceResponded ? INVOICE_STATUS.REJECTED : INVOICE_STATUS.PENDING_RETURN;
+          const messageAfterError = statusAfterError === INVOICE_STATUS.PENDING_RETURN
+            ? 'Falha sem retorno conclusivo; consulte a SEFAZ antes de reemitir.'
+            : (error?.message || 'Falha antes do envio para a SEFAZ.');
+          await db.runTransaction(async (transaction) => {
+            transaction.set(db.collection('lojas').doc(lojaId).collection('invoices').doc(reservation.invoiceId), {
+              status: statusAfterError,
+              error: error?.message || String(error),
+              updatedAt: FieldValue.serverTimestamp(),
+              history: FieldValue.arrayUnion({
+                status: statusAfterError,
+                at: admin.firestore.Timestamp.now(),
+                by: uid,
+                message: messageAfterError,
+              }),
+            }, {merge: true});
+            if (statusAfterError !== INVOICE_STATUS.PENDING_RETURN) {
+              transaction.update(db.collection('lojas').doc(lojaId).collection('pedidos').doc(orderId), {
+                'fiscal.invoiceInProgressId': FieldValue.delete(),
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+            }
+          });
           throw error;
         }
       } catch (error) {
@@ -1163,10 +1245,58 @@ const createFiscalFunctions = ({
       }
     }),
 
+    fiscalRefreshInvoice: onCall({timeoutSeconds: 240, memory: '1GiB'}, async (request) => {
+      try {
+        const {uid, lojaId} = await requireCallableContext(request);
+        const invoiceId = String(request.data?.invoiceId || '').trim();
+        if (!invoiceId) throw new HttpsError('invalid-argument', 'invoiceId obrigatório.');
+
+        const invoiceRef = db.collection('lojas').doc(lojaId).collection('invoices').doc(invoiceId);
+        const invoiceSnap = await invoiceRef.get();
+        if (!invoiceSnap.exists) throw new HttpsError('not-found', 'Nota não encontrada.');
+        const invoice = invoiceSnap.data() || {};
+        if (invoice.status !== INVOICE_STATUS.PENDING_RETURN) {
+          return {id: invoiceSnap.id, ...invoice};
+        }
+        if (!invoice.receipt) {
+          throw new HttpsError(
+            'failed-precondition',
+            'Esta emissão pendente não tem recibo da SEFAZ. Como a falha aconteceu antes do envio, emita novamente.'
+          );
+        }
+
+        const signedXml = (await loadInvoiceArtifact(invoice.artifacts?.signedXml)).toString('utf8');
+        const prepared = await buildPreparedPayload({
+          lojaId,
+          orderId: invoice.orderId,
+          modelOverride: invoice.model,
+          number: invoice.number,
+          invoiceId,
+          uid,
+          additionalInfo: invoice.additionalInfo,
+          operationCfop: invoice.operationCfop,
+        });
+        const result = await callFiscalService('/receipt', {
+          ...prepared.payload,
+          receipt: invoice.receipt,
+          signedXml,
+        }, prepared.settings);
+        return await updateInvoiceAfterIssue({
+          lojaId,
+          invoiceId,
+          orderId: invoice.orderId,
+          uid,
+          result,
+        });
+      } catch (error) {
+        logger.error('fiscalRefreshInvoice failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
     fiscalGetInvoice: onCall(async (request) => {
       try {
-        await requireReadContext(request);
-        const lojaId = String(request.data?.lojaId || '').trim();
+        const {lojaId} = await requireReadContext(request);
         const invoiceId = String(request.data?.invoiceId || '').trim();
         if (!invoiceId) throw new HttpsError('invalid-argument', 'invoiceId obrigatório.');
         const snap = await db.collection('lojas').doc(lojaId).collection('invoices').doc(invoiceId).get();
@@ -1174,6 +1304,38 @@ const createFiscalFunctions = ({
         return {id: snap.id, ...snap.data()};
       } catch (error) {
         logger.error('fiscalGetInvoice failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
+    fiscalGetInvoiceArtifact: onCall({timeoutSeconds: 120, memory: '512MiB'}, async (request) => {
+      try {
+        const {lojaId} = await requireReadContext(request);
+        const invoiceId = String(request.data?.invoiceId || '').trim();
+        const type = String(request.data?.type || 'danfePdf').trim();
+        const artifactKey = {
+          danfePdf: 'danfePdf',
+          authorizedXml: 'authorizedXml',
+          signedXml: 'signedXml',
+        }[type];
+        if (!invoiceId) throw new HttpsError('invalid-argument', 'invoiceId obrigatório.');
+        if (!artifactKey) throw new HttpsError('invalid-argument', 'Tipo de arquivo fiscal inválido.');
+
+        const snap = await db.collection('lojas').doc(lojaId).collection('invoices').doc(invoiceId).get();
+        if (!snap.exists) throw new HttpsError('not-found', 'Nota não encontrada.');
+        const invoice = snap.data() || {};
+        const artifact = invoice.artifacts?.[artifactKey];
+        const buffer = await loadInvoiceArtifact(artifact);
+        const extension = artifactKey === 'danfePdf' ? 'pdf' : 'xml';
+        const filename = `nota-fiscal-${invoice.model || 'nfe'}-${invoice.series || 's'}-${invoice.number || snap.id}.${extension}`;
+
+        return {
+          filename,
+          contentType: artifact.contentType || (artifactKey === 'danfePdf' ? 'application/pdf' : 'application/xml'),
+          base64: buffer.toString('base64'),
+        };
+      } catch (error) {
+        logger.error('fiscalGetInvoiceArtifact failed', error);
         throw normalizeHttpsError(error);
       }
     }),

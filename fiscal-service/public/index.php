@@ -30,6 +30,7 @@ try {
     $result = match ($path) {
         '/validate' => $service->validate($payload),
         '/issue' => $service->issue($payload),
+        '/receipt' => $service->receipt($payload),
         '/cancel' => $service->cancel($payload),
         default => ['error' => 'Not found'],
     };

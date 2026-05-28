@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
   Clock, Edit, Trash2, Eye, X, Save, MessageCircle, Cake, Gift, ChevronLeft, ChevronRight, Printer, Home, Store, BookOpen, Instagram, MapPin, Image as ImageIcon, MessageSquare, VolumeX, ArrowUpCircle, ArrowDownCircle, Banknote, PackagePlus, Ticket,
-  Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle // Ícone adicionado
+  Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle, Download // Ícone adicionado
 } from 'lucide-react';
 
 // --- CORREÇÃO ---
@@ -84,6 +84,24 @@ const normalizeFiscalCode = (value) => String(value || '').replace(/\D/g, '');
 const formatNcmCode = (value) => {
   const digits = normalizeFiscalCode(value);
   return digits.length === 8 ? `${digits.slice(0, 4)}.${digits.slice(4, 6)}.${digits.slice(6)}` : String(value || '');
+};
+const downloadBase64File = (base64, filename, contentType = 'application/octet-stream') => {
+  const binary = atob(base64 || '');
+  const chunks = [];
+  for (let offset = 0; offset < binary.length; offset += 1024) {
+    const slice = binary.slice(offset, offset + 1024);
+    const bytes = new Uint8Array(slice.length);
+    for (let i = 0; i < slice.length; i += 1) bytes[i] = slice.charCodeAt(i);
+    chunks.push(bytes);
+  }
+  const url = URL.createObjectURL(new Blob(chunks, { type: contentType }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename || 'arquivo';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 };
 
 const isSafariBrowser = () => {
@@ -9441,6 +9459,14 @@ const handleSubmit = async (e) => {
       ...extra
     });
 
+    const downloadInvoiceArtifact = async (invoiceId, type = 'danfePdf') => {
+      const fn = httpsCallable(functions, 'fiscalGetInvoiceArtifact');
+      const response = await fn(callablePayload({ invoiceId, type }));
+      const artifact = response.data || {};
+      downloadBase64File(artifact.base64, artifact.filename, artifact.contentType);
+      return artifact;
+    };
+
     const setIssuerField = (field, value) => {
       setIssuerForm((prev) => ({ ...prev, [field]: value }));
     };
@@ -9553,11 +9579,75 @@ const handleSubmit = async (e) => {
         }));
         setOrderToIssue(null);
         setIssueAdditionalInfo('');
-        setMessage({ type: response.data?.status === 'authorized' ? 'success' : 'error', text: response.data?.xMotivo || 'Retorno fiscal recebido.' });
+        const result = response.data || {};
+        if (result.status === 'authorized') {
+          setActiveTab('notas');
+          setMessage({ type: 'success', text: result.xMotivo || 'Nota autorizada. Baixando DANFE em PDF.' });
+          if (result.invoiceId && result.danfePdfReady) {
+            await downloadInvoiceArtifact(result.invoiceId, 'danfePdf');
+          }
+        } else {
+          setActiveTab('notas');
+          setMessage({ type: 'error', text: result.xMotivo || 'Retorno fiscal recebido. Consulte a nota em Notas emitidas.' });
+        }
       } catch (error) {
         console.error('[NotaFiscal] Emissão fiscal falhou:', error);
         setIssueError(error?.message || 'Não foi possível emitir a nota.');
         setMessage({ type: 'error', text: error?.message || 'Não foi possível emitir a nota.' });
+      } finally {
+        setBusyOrderId('');
+      }
+    };
+
+    const handleRefreshInvoice = async (invoice) => {
+      if (isReadOnly || !invoice?.id) return;
+      setBusyOrderId(`refresh:${invoice.id}`);
+      setMessage(null);
+      try {
+        const fn = httpsCallable(functions, 'fiscalRefreshInvoice');
+        const response = await fn(callablePayload({ invoiceId: invoice.id }));
+        const result = response.data || {};
+        if (result.status === 'authorized') {
+          setMessage({ type: 'success', text: result.xMotivo || 'Nota autorizada. Baixando DANFE em PDF.' });
+          if (result.invoiceId && result.danfePdfReady) {
+            await downloadInvoiceArtifact(result.invoiceId, 'danfePdf');
+          }
+        } else {
+          setMessage({ type: result.status === 'pending_return' ? 'error' : 'success', text: result.xMotivo || 'Consulta fiscal concluída.' });
+        }
+      } catch (error) {
+        console.error('[NotaFiscal] Consulta de retorno fiscal falhou:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível consultar o retorno da nota.' });
+      } finally {
+        setBusyOrderId('');
+      }
+    };
+
+    const handleDownloadInvoicePdf = async (invoice) => {
+      if (!invoice?.id) return;
+      setBusyOrderId(`pdf:${invoice.id}`);
+      setMessage(null);
+      try {
+        await downloadInvoiceArtifact(invoice.id, 'danfePdf');
+        setMessage({ type: 'success', text: 'DANFE em PDF baixado.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Download do DANFE falhou:', error);
+        setMessage({ type: 'error', text: error?.message || 'PDF da nota ainda não está disponível.' });
+      } finally {
+        setBusyOrderId('');
+      }
+    };
+
+    const handleDownloadInvoiceXml = async (invoice) => {
+      if (!invoice?.id) return;
+      setBusyOrderId(`xml:${invoice.id}`);
+      setMessage(null);
+      try {
+        await downloadInvoiceArtifact(invoice.id, 'authorizedXml');
+        setMessage({ type: 'success', text: 'XML autorizado baixado.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Download do XML falhou:', error);
+        setMessage({ type: 'error', text: error?.message || 'XML autorizado ainda não está disponível.' });
       } finally {
         setBusyOrderId('');
       }
@@ -9795,8 +9885,11 @@ const handleSubmit = async (e) => {
       { header: 'Emissão', render: (row) => formatDateTime(row.createdAt) }
     ];
 
-    const invoiceActions = isReadOnly ? [] : [
-      { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => row.status === 'authorized' }
+    const invoiceActions = [
+      { icon: FileText, label: 'Baixar PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => row.status === 'authorized' },
+      { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => row.status === 'authorized' },
+      { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' },
+      { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => !isReadOnly && row.status === 'authorized' }
     ];
 
     const fiscalProductColumns = [

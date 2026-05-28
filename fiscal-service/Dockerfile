@@ -12,6 +12,22 @@ RUN apt-get update \
   && docker-php-ext-configure gd --with-freetype --with-jpeg \
   && docker-php-ext-install soap zip gd \
   && a2enmod rewrite headers \
+  && printf '%s\n' \
+    'openssl_conf = openssl_init' \
+    '' \
+    '[openssl_init]' \
+    'providers = provider_sect' \
+    '' \
+    '[provider_sect]' \
+    'default = default_sect' \
+    'legacy = legacy_sect' \
+    '' \
+    '[default_sect]' \
+    'activate = 1' \
+    '' \
+    '[legacy_sect]' \
+    'activate = 1' \
+    > /etc/ssl/openssl-legacy.cnf \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=vendor /app/vendor /var/www/html/vendor
@@ -20,6 +36,7 @@ COPY src /var/www/html/src
 COPY config /var/www/html/config
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
+ENV OPENSSL_CONF=/etc/ssl/openssl-legacy.cnf
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf \
   && printf '%s\n' \
     '<Directory /var/www/html/public>' \

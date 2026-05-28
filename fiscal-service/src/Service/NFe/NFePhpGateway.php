@@ -123,27 +123,7 @@ final class NFePhpGateway
         }
 
         if (isset($response->cStat) && (int)$response->cStat === 103 && isset($response->infRec->nRec)) {
-            $receiptResponse = $this->tools->sefazConsultaRecibo((string)$response->infRec->nRec);
-            $receiptStd = (new Standardize($receiptResponse))->toStd();
-            $authorized = $this->extractAuthorizedProtocol($receiptStd);
-            if ($authorized !== null) {
-                return [
-                    'status' => 'authorized',
-                    'key' => $authorized['key'],
-                    'protocol' => $authorized['protocol'],
-                    'cStat' => $authorized['cStat'],
-                    'xMotivo' => $authorized['xMotivo'],
-                    'signedXml' => $signedXml,
-                    'authorizedXml' => Complements::toAuthorize($signedXml, $receiptResponse)
-                ];
-            }
-
-            return [
-                'status' => $this->statusFromCode((int)($receiptStd->cStat ?? 0)),
-                'cStat' => isset($receiptStd->cStat) ? (int)$receiptStd->cStat : null,
-                'xMotivo' => $receiptStd->xMotivo ?? 'Retorno de recibo sem autorizacao.',
-                'signedXml' => $signedXml
-            ];
+            return $this->waitForReceipt((string)$response->infRec->nRec, $signedXml);
         }
 
         return [
@@ -152,6 +132,15 @@ final class NFePhpGateway
             'xMotivo' => $response->xMotivo ?? 'Retorno SEFAZ sem protocolo.',
             'signedXml' => $signedXml
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function consultReceipt(int $model, string $receipt, string $signedXml): array
+    {
+        $this->tools->model((string)$model);
+        return $this->receiptResult($receipt, $signedXml);
     }
 
     /**
@@ -196,6 +185,62 @@ final class NFePhpGateway
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function waitForReceipt(string $receipt, string $signedXml): array
+    {
+        $lastResult = null;
+        for ($attempt = 1; $attempt <= 6; $attempt++) {
+            if ($attempt > 1) {
+                usleep(1500000);
+            }
+
+            $lastResult = $this->receiptResult($receipt, $signedXml);
+            if (($lastResult['status'] ?? '') !== 'pending_return') {
+                return $lastResult;
+            }
+        }
+
+        return $lastResult ?? [
+            'status' => 'pending_return',
+            'receipt' => $receipt,
+            'xMotivo' => 'Lote recebido pela SEFAZ, aguardando processamento.',
+            'signedXml' => $signedXml
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function receiptResult(string $receipt, string $signedXml): array
+    {
+        $receiptResponse = $this->tools->sefazConsultaRecibo($receipt);
+        $receiptStd = (new Standardize($receiptResponse))->toStd();
+        $authorized = $this->extractAuthorizedProtocol($receiptStd);
+        if ($authorized !== null) {
+            return [
+                'status' => 'authorized',
+                'key' => $authorized['key'],
+                'protocol' => $authorized['protocol'],
+                'cStat' => $authorized['cStat'],
+                'xMotivo' => $authorized['xMotivo'],
+                'receipt' => $receipt,
+                'signedXml' => $signedXml,
+                'authorizedXml' => Complements::toAuthorize($signedXml, $receiptResponse)
+            ];
+        }
+
+        $cStat = isset($receiptStd->cStat) ? (int)$receiptStd->cStat : null;
+        return [
+            'status' => $this->statusFromCode((int)($cStat ?? 0)),
+            'receipt' => $receipt,
+            'cStat' => $cStat,
+            'xMotivo' => $receiptStd->xMotivo ?? 'Retorno de recibo sem autorizacao.',
+            'signedXml' => $signedXml
+        ];
     }
 
     private function statusFromCode(int $code): string
