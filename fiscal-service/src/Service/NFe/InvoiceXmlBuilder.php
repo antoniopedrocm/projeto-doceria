@@ -95,7 +95,6 @@ final class InvoiceXmlBuilder
         $std = new stdClass();
         $std->xLgr = $address['street'];
         $std->nro = $address['number'];
-        $std->xCpl = $address['complement'] ?? null;
         $std->xBairro = $address['district'];
         $std->cMun = (int)$address['cityCode'];
         $std->xMun = $address['city'];
@@ -103,7 +102,8 @@ final class InvoiceXmlBuilder
         $std->CEP = $address['zip'];
         $std->cPais = 1058;
         $std->xPais = 'BRASIL';
-        $std->fone = $address['phone'] ?? null;
+        $std->fone = (string)($address['phone'] ?? '');
+        $this->setOptional($std, 'xCpl', $address['complement'] ?? '');
         $nfe->tagenderEmit($std);
     }
 
@@ -122,15 +122,14 @@ final class InvoiceXmlBuilder
             $std->CPF = $document;
         }
         $std->indIEDest = empty($customer['stateRegistration']) ? 9 : 1;
-        $std->IE = $customer['stateRegistration'] ?? null;
-        $std->email = $customer['email'] ?? null;
+        $this->setOptional($std, 'IE', $customer['stateRegistration'] ?? '');
+        $this->setOptional($std, 'email', $customer['email'] ?? '');
         $nfe->tagdest($std);
 
         $address = $customer['address'];
         $std = new stdClass();
         $std->xLgr = $address['street'];
         $std->nro = $address['number'];
-        $std->xCpl = $address['complement'] ?? null;
         $std->xBairro = $address['district'];
         $std->cMun = (int)$address['cityCode'];
         $std->xMun = $address['city'];
@@ -138,7 +137,8 @@ final class InvoiceXmlBuilder
         $std->CEP = $address['zip'];
         $std->cPais = 1058;
         $std->xPais = 'BRASIL';
-        $std->fone = $address['phone'] ?? $customer['phone'] ?? null;
+        $std->fone = (string)($address['phone'] ?? $customer['phone'] ?? '');
+        $this->setOptional($std, 'xCpl', $address['complement'] ?? '');
         $nfe->tagenderDest($std);
     }
 
@@ -165,10 +165,9 @@ final class InvoiceXmlBuilder
             $std->uTrib = $item['unit'];
             $std->qTrib = $this->decimal($item['quantity'], 4);
             $std->vUnTrib = $this->decimal($item['unitPrice'], 10);
-            $std->vFrete = null;
-            $std->vSeg = null;
-            $std->vDesc = (float)$item['discount'] > 0 ? $this->decimal($item['discount'], 2) : null;
-            $std->vOutro = null;
+            if ((float)$item['discount'] > 0) {
+                $std->vDesc = $this->decimal($item['discount'], 2);
+            }
             $std->indTot = 1;
             $nfe->tagprod($std);
 
@@ -259,7 +258,6 @@ final class InvoiceXmlBuilder
         $payment = $payload['invoice']['payment'];
 
         $std = new stdClass();
-        $std->vTroco = null;
         $nfe->tagpag($std);
 
         $std = new stdClass();
@@ -288,6 +286,22 @@ final class InvoiceXmlBuilder
     private function decimal(mixed $value, int $scale): string
     {
         return number_format((float)$value, $scale, '.', '');
+    }
+
+    private function setOptional(stdClass $std, string $field, mixed $value): void
+    {
+        if ($value === null) {
+            return;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+            if ($value === '') {
+                return;
+            }
+        }
+
+        $std->{$field} = $value;
     }
 
     private function nfeDate(string $value): string
