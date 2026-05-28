@@ -98,7 +98,7 @@ final class NFePhpGateway
     public function authorize(array $payload, string $xml): array
     {
         $model = (int)$payload['invoice']['model'];
-        $this->tools->model((string)$model);
+        $this->tools->model($model);
 
         $signedXml = $this->tools->signNFe($xml);
         if ($model === 65 && method_exists($this->tools, 'sefazAddQRCode')) {
@@ -139,7 +139,7 @@ final class NFePhpGateway
      */
     public function consultReceipt(int $model, string $receipt, string $signedXml): array
     {
-        $this->tools->model((string)$model);
+        $this->tools->model($model);
         return $this->receiptResult($receipt, $signedXml);
     }
 
@@ -148,7 +148,7 @@ final class NFePhpGateway
      */
     public function cancel(int $model, string $key, string $protocol, string $reason): array
     {
-        $this->tools->model((string)$model);
+        $this->tools->model($model);
         $rawResponse = $this->tools->sefazCancela($key, $reason, $protocol);
         $response = (new Standardize($rawResponse))->toStd();
         $event = $response->retEvento->infEvento ?? $response->infEvento ?? null;
