@@ -502,7 +502,7 @@ const createFiscalFunctions = ({
       operationNature: settings.operationNature || 'Venda de producao do estabelecimento',
       defaultPresence: Number(settings.defaultPresence || 2),
       defaultPaymentMethodCode: settings.defaultPaymentMethodCode || '99',
-      processVersion: settings.processVersion || 'ana-guimaraes-fiscal-1.0.0',
+      processVersion: settings.processVersion || 'ana-doceria-1.0',
     };
   };
 

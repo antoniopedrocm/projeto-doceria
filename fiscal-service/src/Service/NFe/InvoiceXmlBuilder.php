@@ -74,7 +74,7 @@ final class InvoiceXmlBuilder
         $std->indFinal = !empty($invoice['finalConsumer']) ? 1 : 0;
         $std->indPres = (int)($invoice['presence'] ?? 2);
         $std->procEmi = 0;
-        $std->verProc = $invoice['processVersion'] ?? 'ana-guimaraes-fiscal-1.0.0';
+        $std->verProc = $this->processVersion($invoice['processVersion'] ?? '');
         $nfe->tagide($std);
     }
 
@@ -302,6 +302,16 @@ final class InvoiceXmlBuilder
         }
 
         $std->{$field} = $value;
+    }
+
+    private function processVersion(mixed $value): string
+    {
+        $text = trim((string)$value);
+        if ($text === '') {
+            $text = 'ana-doceria-1.0';
+        }
+
+        return substr($text, 0, 20);
     }
 
     private function nfeDate(string $value): string
