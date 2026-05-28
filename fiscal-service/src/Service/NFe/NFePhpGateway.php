@@ -109,17 +109,9 @@ final class NFePhpGateway
         $standardize = new Standardize($rawResponse);
         $response = $standardize->toStd();
 
-        $authorized = $this->extractAuthorizedProtocol($response);
-        if ($authorized !== null) {
-            return [
-                'status' => 'authorized',
-                'key' => $authorized['key'],
-                'protocol' => $authorized['protocol'],
-                'cStat' => $authorized['cStat'],
-                'xMotivo' => $authorized['xMotivo'],
-                'signedXml' => $signedXml,
-                'authorizedXml' => Complements::toAuthorize($signedXml, $rawResponse)
-            ];
+        $protocol = $this->extractProtocol($response);
+        if ($protocol !== null) {
+            return $this->resultFromProtocol($protocol, $signedXml, $rawResponse);
         }
 
         if (isset($response->cStat) && (int)$response->cStat === 103 && isset($response->infRec->nRec)) {
@@ -168,23 +160,89 @@ final class NFePhpGateway
     /**
      * @return array<string, mixed>|null
      */
-    private function extractAuthorizedProtocol(object $response): ?array
+    private function extractProtocol(object $response): ?array
     {
-        $infProt = $response->protNFe->infProt ?? $response->protocolo->infProt ?? null;
-        if ($infProt === null && isset($response->retConsReciNFe->protNFe->infProt)) {
-            $infProt = $response->retConsReciNFe->protNFe->infProt;
-        }
+        $candidates = [
+            $response->protNFe ?? null,
+            $response->protocolo ?? null,
+            $response->retEnviNFe->protNFe ?? null,
+            $response->retConsReciNFe->protNFe ?? null,
+        ];
 
-        if ($infProt !== null && (int)$infProt->cStat === 100) {
+        foreach ($candidates as $candidate) {
+            $infProt = $this->firstProtocolInfo($candidate);
+            if ($infProt === null) {
+                continue;
+            }
+
             return [
-                'key' => (string)$infProt->chNFe,
-                'protocol' => (string)$infProt->nProt,
-                'cStat' => (int)$infProt->cStat,
-                'xMotivo' => (string)$infProt->xMotivo
+                'key' => (string)($infProt->chNFe ?? ''),
+                'protocol' => (string)($infProt->nProt ?? ''),
+                'cStat' => (int)($infProt->cStat ?? 0),
+                'xMotivo' => (string)($infProt->xMotivo ?? 'Retorno SEFAZ sem motivo detalhado.')
             ];
         }
 
         return null;
+    }
+
+    private function firstProtocolInfo(mixed $candidate): ?object
+    {
+        if ($candidate === null) {
+            return null;
+        }
+
+        if (is_array($candidate)) {
+            foreach ($candidate as $item) {
+                $infProt = $this->firstProtocolInfo($item);
+                if ($infProt !== null) {
+                    return $infProt;
+                }
+            }
+
+            return null;
+        }
+
+        if (!is_object($candidate)) {
+            return null;
+        }
+
+        if (isset($candidate->infProt) && is_object($candidate->infProt)) {
+            return $candidate->infProt;
+        }
+
+        if (isset($candidate->cStat)) {
+            return $candidate;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $protocol
+     * @return array<string, mixed>
+     */
+    private function resultFromProtocol(array $protocol, string $signedXml, string $responseXml, ?string $receipt = null): array
+    {
+        $status = $this->statusFromCode((int)($protocol['cStat'] ?? 0));
+        $result = [
+            'status' => $status,
+            'key' => $protocol['key'] ?: null,
+            'protocol' => $protocol['protocol'] ?: null,
+            'cStat' => (int)($protocol['cStat'] ?? 0),
+            'xMotivo' => $protocol['xMotivo'] ?: 'Retorno SEFAZ sem motivo detalhado.',
+            'signedXml' => $signedXml
+        ];
+
+        if ($receipt !== null) {
+            $result['receipt'] = $receipt;
+        }
+
+        if ($status === 'authorized') {
+            $result['authorizedXml'] = Complements::toAuthorize($signedXml, $responseXml);
+        }
+
+        return $result;
     }
 
     /**
@@ -219,18 +277,9 @@ final class NFePhpGateway
     {
         $receiptResponse = $this->tools->sefazConsultaRecibo($receipt);
         $receiptStd = (new Standardize($receiptResponse))->toStd();
-        $authorized = $this->extractAuthorizedProtocol($receiptStd);
-        if ($authorized !== null) {
-            return [
-                'status' => 'authorized',
-                'key' => $authorized['key'],
-                'protocol' => $authorized['protocol'],
-                'cStat' => $authorized['cStat'],
-                'xMotivo' => $authorized['xMotivo'],
-                'receipt' => $receipt,
-                'signedXml' => $signedXml,
-                'authorizedXml' => Complements::toAuthorize($signedXml, $receiptResponse)
-            ];
+        $protocol = $this->extractProtocol($receiptStd);
+        if ($protocol !== null) {
+            return $this->resultFromProtocol($protocol, $signedXml, $receiptResponse, $receipt);
         }
 
         $cStat = isset($receiptStd->cStat) ? (int)$receiptStd->cStat : null;
@@ -246,6 +295,7 @@ final class NFePhpGateway
     private function statusFromCode(int $code): string
     {
         return match ($code) {
+            100 => 'authorized',
             110, 301, 302, 303 => 'denied',
             103, 105 => 'pending_return',
             default => 'rejected',

@@ -9404,6 +9404,22 @@ const handleSubmit = async (e) => {
       return date ? date.toLocaleString('pt-BR') : '-';
     };
 
+    const fiscalReturnReason = (invoice) => {
+      if (!invoice) return '';
+      const directReason = [
+        invoice.xMotivo,
+        invoice.serviceResult?.xMotivo,
+        invoice.error,
+        invoice.artifactError
+      ].find((value) => String(value || '').trim());
+      if (directReason) return String(directReason).trim();
+      if (Array.isArray(invoice.errors) && invoice.errors.length > 0) return invoice.errors.join(' ');
+      if (Array.isArray(invoice.serviceResult?.errors) && invoice.serviceResult.errors.length > 0) return invoice.serviceResult.errors.join(' ');
+      return '';
+    };
+
+    const shouldShowFiscalReason = (invoice) => ['rejected', 'denied', 'pending_return'].includes(invoice?.status);
+
     const fiscalStats = useMemo(() => ({
       authorized: invoices.filter((item) => item.status === 'authorized').length,
       rejected: invoices.filter((item) => item.status === 'rejected' || item.status === 'denied').length,
@@ -9866,7 +9882,13 @@ const handleSubmit = async (e) => {
       { header: 'Nota', render: (row) => {
         const invoice = invoicesByOrderId.get(row.id);
         if (!invoice) return <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Pendente</span>;
-        return <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[invoice.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[invoice.status] || invoice.status}</span>;
+        const reason = fiscalReturnReason(invoice);
+        return (
+          <div className="min-w-[150px]" title={reason || ''}>
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[invoice.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[invoice.status] || invoice.status}</span>
+            {reason && shouldShowFiscalReason(invoice) && <p className="mt-1 max-w-[260px] truncate text-xs text-red-700">{reason}</p>}
+          </div>
+        );
       } }
     ];
 
@@ -9879,6 +9901,10 @@ const handleSubmit = async (e) => {
       { header: 'Número', render: (row) => `${row.model || '-'} / ${row.series || '-'} / ${row.number || '-'}` },
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs">{row.orderId?.slice(0, 8) || '-'}</span> },
       { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[row.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[row.status] || row.status}</span> },
+      { header: 'Motivo', render: (row) => {
+        const reason = fiscalReturnReason(row);
+        return <span className="block max-w-md truncate text-gray-700" title={reason || ''}>{reason || '-'}</span>;
+      } },
       { header: 'Chave', render: (row) => <span className="font-mono text-xs text-gray-500">{row.key || '-'}</span> },
       { header: 'Observação', render: (row) => <span className="block max-w-xs truncate" title={row.additionalInfo || ''}>{row.additionalInfo || '-'}</span> },
       { header: 'Justificativa de cancelamento', render: (row) => <span className="block max-w-xs truncate" title={row.cancelReason || ''}>{row.cancelReason || '-'}</span> },
