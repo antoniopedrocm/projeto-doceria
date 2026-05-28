@@ -204,7 +204,7 @@ final class InvoiceXmlBuilder
         $std->vBC = '0.00';
         $std->pPIS = '0.00';
         $std->vPIS = '0.00';
-        $nfe->tagPISOutr($std);
+        $nfe->tagPIS($std);
 
         $std = new stdClass();
         $std->item = $nItem;
@@ -212,7 +212,7 @@ final class InvoiceXmlBuilder
         $std->vBC = '0.00';
         $std->pCOFINS = '0.00';
         $std->vCOFINS = '0.00';
-        $nfe->tagCOFINSOutr($std);
+        $nfe->tagCOFINS($std);
     }
 
     /**

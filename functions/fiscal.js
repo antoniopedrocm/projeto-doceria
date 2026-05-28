@@ -281,6 +281,29 @@ const getServiceConfig = () => ({
   sharedSecret: cleanText(process.env.FISCAL_SHARED_SECRET),
 });
 
+const fiscalServiceErrorCode = (status) => {
+  const code = Number(status || 0);
+  if ([400, 422].includes(code)) return 'invalid-argument';
+  if ([401, 403].includes(code)) return 'permission-denied';
+  if (code === 404) return 'not-found';
+  if ([409, 412].includes(code)) return 'failed-precondition';
+  return 'internal';
+};
+
+const fiscalServiceErrorMessage = (details) => (
+  cleanText(details?.detail)
+  || cleanText(details?.message)
+  || cleanText(details?.error)
+  || 'Serviço fiscal recusou a requisição.'
+);
+
+const buildFiscalServiceError = (details, status) => {
+  const error = new Error(fiscalServiceErrorMessage(details));
+  error.code = fiscalServiceErrorCode(status);
+  error.details = details || null;
+  return error;
+};
+
 const callFiscalService = async (path, body) => {
   const {serviceUrl, sharedSecret} = getServiceConfig();
   if (!serviceUrl) {
@@ -302,25 +325,27 @@ const callFiscalService = async (path, body) => {
     });
     const parsed = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const error = new Error(parsed.error || 'Serviço fiscal recusou a requisição.');
-      error.details = parsed;
-      throw error;
+      throw buildFiscalServiceError(parsed, response.status);
     }
     return parsed;
   }
 
   const auth = new GoogleAuth();
   const client = await auth.getIdTokenClient(serviceUrl);
-  const response = await client.request({
-    url,
-    method: 'POST',
-    data: body,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(sharedSecret ? {'X-Fiscal-Service-Token': sharedSecret} : {}),
-    },
-  });
-  return response.data;
+  try {
+    const response = await client.request({
+      url,
+      method: 'POST',
+      data: body,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sharedSecret ? {'X-Fiscal-Service-Token': sharedSecret} : {}),
+      },
+    });
+    return response.data;
+  } catch (error) {
+    throw buildFiscalServiceError(error?.response?.data || {error: error?.message}, error?.response?.status);
+  }
 };
 
 const createFiscalFunctions = ({
