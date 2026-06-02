@@ -549,7 +549,7 @@ const Modal = ({ isOpen, onClose, title, children, size = "md" }) => {
   const sizeClasses = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
   return ( <div className="fixed inset-0 z-50 flex items-center justify-center p-4"> <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} /> <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col`}> <div className="flex items-center justify-between p-6 border-b border-gray-100"> <h2 className="text-xl font-semibold text-gray-800">{title}</h2> <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"> <X className="w-5 h-5" /> </button> </div> <div className="p-6 overflow-y-auto"> {children} </div> </div> </div> );
 };
-const Button = ({ children, variant = "primary", size = "md", onClick, className = "", disabled = false, type = "button" }) => {
+const Button = ({ children, variant = "primary", size = "md", onClick, className = "", disabled = false, type = "button", title = "" }) => {
   const baseClasses = "font-medium rounded-xl transition-all flex items-center gap-2 justify-center";
   const variants = {
     primary: "bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5",
@@ -558,7 +558,7 @@ const Button = ({ children, variant = "primary", size = "md", onClick, className
     danger: "bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl"
   };
   const sizes = { sm: "px-4 py-2 text-sm", md: "px-6 py-3", lg: "px-8 py-4 text-lg" };
-  return (<button type={type} onClick={onClick} disabled={disabled} className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>{children}</button>);
+  return (<button type={type} title={title} onClick={onClick} disabled={disabled} className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>{children}</button>);
 };
 const Input = ({ label, error, className = "", ...props }) => (<div className="space-y-1 w-full">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<input {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${error ? 'border-red-300' : 'border-gray-300'} ${className}`} />{error && <p className="text-sm text-red-600">{error}</p>}</div>);
 const Textarea = ({ label, error, className = "", ...props }) => (<div className="space-y-1">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<textarea {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${error ? 'border-red-300' : 'border-gray-300'} ${className}`} />{error && <p className="text-sm text-red-600">{error}</p>}</div>);
@@ -1033,6 +1033,34 @@ const isDateInRange = (value, startValue, endValue) => {
   if (startDate && date < startDate) return false;
   if (endDate && date > endDate) return false;
   return true;
+};
+
+const onlyDigitsText = (value) => String(value || '').replace(/\D/g, '');
+
+const normalizeSearchText = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .trim();
+
+const formatFiscalNumber = (value, size = 9) => {
+  const digits = onlyDigitsText(value);
+  return digits ? digits.padStart(size, '0') : '-';
+};
+
+const formatFiscalSeries = (value) => {
+  const digits = onlyDigitsText(value);
+  return digits ? digits.padStart(3, '0') : '-';
+};
+
+const formatCurrencyBR = (value) =>
+  (Number(value) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const maskCpfCnpj = (value) => {
+  const digits = onlyDigitsText(value);
+  if (digits.length === 11) return `${digits.slice(0, 3)}.***.***-${digits.slice(9)}`;
+  if (digits.length === 14) return `${digits.slice(0, 2)}.***.***/****-${digits.slice(12)}`;
+  return digits || '-';
 };
 
 // --- NOVOS COMPONENTES ---
@@ -9330,8 +9358,21 @@ const handleSubmit = async (e) => {
     const [invoiceFilters, setInvoiceFilters] = useState(() => ({
       search: '',
       status: 'all',
+      issuerDocument: '',
+      minValue: '',
+      maxValue: '',
+      key: '',
+      number: '',
+      series: '',
+      orderId: '',
+      customerDocument: '',
+      customerName: '',
+      protocol: '',
+      paymentMethod: '',
+      reason: '',
       ...getCurrentMonthDateRange()
     }));
+    const [showAdvancedInvoiceFilters, setShowAdvancedInvoiceFilters] = useState(false);
     const [modelOverride, setModelOverride] = usePersistentState('nota_fiscal_modelOverride', '');
     const [operationCfop, setOperationCfop] = usePersistentState('nota_fiscal_operationCfop', DEFAULT_CFOP_OPERATION);
     const [busyOrderId, setBusyOrderId] = useState('');
@@ -9344,6 +9385,7 @@ const handleSubmit = async (e) => {
     const [issueAdditionalInfo, setIssueAdditionalInfo] = useState('');
     const [issueError, setIssueError] = useState('');
     const [invoiceToCancel, setInvoiceToCancel] = useState(null);
+    const [invoiceToView, setInvoiceToView] = useState(null);
     const [cancelReason, setCancelReason] = useState('');
     const [cancelError, setCancelError] = useState('');
     const [productForm, setProductForm] = useState({
@@ -9399,6 +9441,7 @@ const handleSubmit = async (e) => {
     });
     const isReadOnly = currentUser?.role === ROLE_ACCOUNTANT;
     const isPlatformAdmin = currentUser?.role === ROLE_OWNER && currentUser?.canAccessAllStores;
+    const canViewFullFiscalDocument = [ROLE_OWNER, ROLE_MANAGER, ROLE_ACCOUNTANT].includes(currentUser?.role);
 
     const storeName = effectiveStoreId
       ? (storeInfoMap[effectiveStoreId]?.nome || effectiveStoreId)
@@ -9433,7 +9476,8 @@ const handleSubmit = async (e) => {
       { value: 'authorized', label: 'Autorizada' },
       { value: 'rejected', label: 'Rejeitada' },
       { value: 'pending', label: 'Pendente' },
-      { value: 'cancelled', label: 'Cancelada' }
+      { value: 'cancelled', label: 'Cancelada' },
+      { value: 'inutilized', label: 'Inutilizada' }
     ];
 
     const statusLabel = {
@@ -9442,6 +9486,8 @@ const handleSubmit = async (e) => {
       rejected: 'Rejeitada',
       cancelled: 'Cancelada',
       denied: 'Denegada',
+      pending: 'Pendente',
+      inutilized: 'Inutilizada',
       pending_return: 'Retorno pendente'
     };
 
@@ -9449,8 +9495,10 @@ const handleSubmit = async (e) => {
       validating: 'bg-blue-100 text-blue-800',
       authorized: 'bg-green-100 text-green-800',
       rejected: 'bg-red-100 text-red-800',
-      cancelled: 'bg-gray-100 text-gray-700',
+      cancelled: 'bg-red-50 text-red-700',
       denied: 'bg-orange-100 text-orange-800',
+      pending: 'bg-yellow-100 text-yellow-800',
+      inutilized: 'bg-gray-100 text-gray-700',
       pending_return: 'bg-yellow-100 text-yellow-800'
     };
 
@@ -9467,6 +9515,18 @@ const handleSubmit = async (e) => {
       setInvoiceFilters({
         search: '',
         status: 'all',
+        issuerDocument: '',
+        minValue: '',
+        maxValue: '',
+        key: '',
+        number: '',
+        series: '',
+        orderId: '',
+        customerDocument: '',
+        customerName: '',
+        protocol: '',
+        paymentMethod: '',
+        reason: '',
         ...getCurrentMonthDateRange()
       });
     };
@@ -9485,41 +9545,100 @@ const handleSubmit = async (e) => {
         || '-';
     }, [getInvoiceOrder]);
 
-    const matchesInvoiceStatusFilter = useCallback((invoice) => {
-      const status = invoice?.status || '';
-      if (invoiceFilters.status === 'all') return true;
-      if (invoiceFilters.status === 'rejected') return ['rejected', 'denied'].includes(status);
-      if (invoiceFilters.status === 'pending') return ['validating', 'pending', 'pending_return'].includes(status);
-      return status === invoiceFilters.status;
-    }, [invoiceFilters.status]);
+    const getInvoiceCustomerDocument = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      return invoice?.customerDocument
+        || invoice?.customer?.document
+        || invoice?.customer?.cpf
+        || invoice?.customer?.cnpj
+        || order?.clienteDocumento
+        || order?.cpf
+        || order?.documento
+        || order?.customer?.document
+        || order?.customer?.cpf
+        || order?.fiscal?.customerDocument
+        || '';
+    }, [getInvoiceOrder]);
 
-    const filteredInvoices = useMemo(() => {
-      const term = invoiceFilters.search.trim().toLowerCase();
-      return invoices
-        .filter((invoice) => isDateInRange(invoice.issuedAt || invoice.createdAt, invoiceFilters.start, invoiceFilters.end))
-        .filter(matchesInvoiceStatusFilter)
-        .filter((invoice) => {
-          if (!term) return true;
-          const order = getInvoiceOrder(invoice);
-          return [
-            invoice.id,
-            invoice.orderId,
-            invoice.key,
-            invoice.number,
-            invoice.series,
-            invoice.model,
-            getInvoiceCustomerName(invoice),
-            order?.id,
-            order?.clienteNome,
-            order?.codigo,
-            order?.codigoPedido,
-            order?.numeroPedido
-          ].some((value) => String(value || '').toLowerCase().includes(term));
-        })
-        .sort((a, b) => (getJSDate(b.issuedAt || b.createdAt)?.getTime() || 0) - (getJSDate(a.issuedAt || a.createdAt)?.getTime() || 0));
-    }, [invoices, invoiceFilters, getInvoiceCustomerName, getInvoiceOrder, matchesInvoiceStatusFilter]);
+    const getInvoiceIssuerDocument = useCallback((invoice) => (
+      invoice?.issuerDocument
+      || invoice?.issuer?.cnpj
+      || invoice?.serviceResult?.issuer?.cnpj
+      || issuerForm.cnpj
+      || ''
+    ), [issuerForm.cnpj]);
 
-    const fiscalReturnReason = (invoice) => {
+    const getInvoiceValue = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      return Number(
+        invoice?.total
+        ?? invoice?.valor
+        ?? invoice?.totals?.invoice
+        ?? invoice?.serviceResult?.totals?.invoice
+        ?? order?.total
+        ?? order?.valorTotal
+        ?? 0
+      ) || 0;
+    }, [getInvoiceOrder]);
+
+    const getInvoicePaymentMethod = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      return invoice?.paymentMethod
+        || invoice?.payment?.method
+        || invoice?.serviceResult?.payment?.method
+        || order?.formaPagamento
+        || order?.paymentMethod
+        || '-';
+    }, [getInvoiceOrder]);
+
+    const getInvoiceItems = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      const rawItems = invoice?.items || invoice?.serviceResult?.items || order?.itens || order?.items || [];
+      return Array.isArray(rawItems) ? rawItems : [];
+    }, [getInvoiceOrder]);
+
+    const getInvoiceDiscount = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      return Number(invoice?.discount ?? invoice?.desconto ?? order?.desconto ?? order?.cupom?.valorDesconto ?? 0) || 0;
+    }, [getInvoiceOrder]);
+
+    const getInvoiceFreight = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      return Number(invoice?.freight ?? invoice?.frete ?? order?.frete ?? order?.taxaEntrega ?? 0) || 0;
+    }, [getInvoiceOrder]);
+
+    const getInvoiceChange = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      return Number(invoice?.change ?? invoice?.troco ?? order?.troco ?? 0) || 0;
+    }, [getInvoiceOrder]);
+
+    const getInvoicePaidAmount = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      return Number(invoice?.paidAmount ?? invoice?.payment?.amount ?? order?.valorPago ?? getInvoiceValue(invoice)) || 0;
+    }, [getInvoiceOrder, getInvoiceValue]);
+
+    const fiscalAddressText = (address = {}) => {
+      if (!address || typeof address !== 'object') return '-';
+      return [
+        [address.street || address.logradouro, address.number || address.numero].filter(Boolean).join(', '),
+        address.district || address.bairro,
+        address.zip || address.cep
+      ].filter(Boolean).join(' - ') || '-';
+    };
+
+    const fiscalCityText = (address = {}) => [address.city || address.cidade, address.state || address.uf].filter(Boolean).join('/') || '-';
+
+    const getOrderCustomerAddress = (invoice) => {
+      const order = getInvoiceOrder(invoice);
+      return invoice?.customer?.address
+        || order?.customer?.address
+        || order?.fiscal?.customerAddress
+        || order?.clienteEndereco
+        || order?.enderecoEntrega
+        || {};
+    };
+
+    const fiscalReturnReason = useCallback((invoice) => {
       if (!invoice) return '';
       const directReason = [
         invoice.xMotivo,
@@ -9531,7 +9650,84 @@ const handleSubmit = async (e) => {
       if (Array.isArray(invoice.errors) && invoice.errors.length > 0) return invoice.errors.join(' ');
       if (Array.isArray(invoice.serviceResult?.errors) && invoice.serviceResult.errors.length > 0) return invoice.serviceResult.errors.join(' ');
       return '';
+    }, []);
+
+    const matchesInvoiceStatusFilter = useCallback((invoice) => {
+      const status = invoice?.status || '';
+      if (invoiceFilters.status === 'all') return true;
+      if (invoiceFilters.status === 'rejected') return ['rejected', 'denied'].includes(status);
+      if (invoiceFilters.status === 'pending') return ['validating', 'pending', 'pending_return'].includes(status);
+      if (invoiceFilters.status === 'inutilized') return ['inutilized', 'unused', 'voided'].includes(status);
+      return status === invoiceFilters.status;
+    }, [invoiceFilters.status]);
+
+    const matchesInvoiceFilterValue = (value, filterValue) => {
+      const filterText = normalizeSearchText(filterValue);
+      if (!filterText) return true;
+      const candidateText = normalizeSearchText(value);
+      const filterDigits = onlyDigitsText(filterValue);
+      const candidateDigits = onlyDigitsText(value);
+      return candidateText.includes(filterText) || (filterDigits && candidateDigits.includes(filterDigits));
     };
+
+    const filteredInvoices = useMemo(() => {
+      const term = normalizeSearchText(invoiceFilters.search);
+      const termDigits = onlyDigitsText(invoiceFilters.search);
+      const minValue = invoiceFilters.minValue === '' ? null : Number(invoiceFilters.minValue);
+      const maxValue = invoiceFilters.maxValue === '' ? null : Number(invoiceFilters.maxValue);
+      return invoices
+        .filter((invoice) => isDateInRange(invoice.issuedAt || invoice.createdAt, invoiceFilters.start, invoiceFilters.end))
+        .filter(matchesInvoiceStatusFilter)
+        .filter((invoice) => {
+          const value = getInvoiceValue(invoice);
+          if (minValue !== null && Number.isFinite(minValue) && value < minValue) return false;
+          if (maxValue !== null && Number.isFinite(maxValue) && value > maxValue) return false;
+          return true;
+        })
+        .filter((invoice) => {
+          const reason = fiscalReturnReason(invoice);
+          if (!matchesInvoiceFilterValue(getInvoiceIssuerDocument(invoice), invoiceFilters.issuerDocument)) return false;
+          if (!matchesInvoiceFilterValue(invoice.key, invoiceFilters.key)) return false;
+          if (!matchesInvoiceFilterValue(formatFiscalNumber(invoice.number), invoiceFilters.number) && !matchesInvoiceFilterValue(invoice.number, invoiceFilters.number)) return false;
+          if (!matchesInvoiceFilterValue(formatFiscalSeries(invoice.series), invoiceFilters.series) && !matchesInvoiceFilterValue(invoice.series, invoiceFilters.series)) return false;
+          if (!matchesInvoiceFilterValue(invoice.orderId, invoiceFilters.orderId)) return false;
+          if (!matchesInvoiceFilterValue(getInvoiceCustomerDocument(invoice), invoiceFilters.customerDocument)) return false;
+          if (!matchesInvoiceFilterValue(getInvoiceCustomerName(invoice), invoiceFilters.customerName)) return false;
+          if (!matchesInvoiceFilterValue(invoice.protocol, invoiceFilters.protocol)) return false;
+          if (!matchesInvoiceFilterValue(getInvoicePaymentMethod(invoice), invoiceFilters.paymentMethod)) return false;
+          if (!matchesInvoiceFilterValue(reason, invoiceFilters.reason)) return false;
+          if (!term && !termDigits) return true;
+          const order = getInvoiceOrder(invoice);
+          const candidates = [
+            invoice.id,
+            invoice.orderId,
+            invoice.key,
+            invoice.number,
+            formatFiscalNumber(invoice.number),
+            invoice.series,
+            formatFiscalSeries(invoice.series),
+            invoice.model,
+            invoice.protocol,
+            getInvoiceIssuerDocument(invoice),
+            getInvoiceCustomerDocument(invoice),
+            getInvoiceCustomerName(invoice),
+            getInvoicePaymentMethod(invoice),
+            reason,
+            getInvoiceValue(invoice),
+            order?.id,
+            order?.clienteNome,
+            order?.codigo,
+            order?.codigoPedido,
+            order?.numeroPedido
+          ];
+          return candidates.some((value) => {
+            const text = normalizeSearchText(value);
+            const digits = onlyDigitsText(value);
+            return (term && text.includes(term)) || (termDigits && digits.includes(termDigits));
+          });
+        })
+        .sort((a, b) => (getJSDate(b.issuedAt || b.createdAt)?.getTime() || 0) - (getJSDate(a.issuedAt || a.createdAt)?.getTime() || 0));
+    }, [invoices, invoiceFilters, fiscalReturnReason, getInvoiceCustomerDocument, getInvoiceCustomerName, getInvoiceIssuerDocument, getInvoiceOrder, getInvoicePaymentMethod, getInvoiceValue, matchesInvoiceStatusFilter]);
 
     const shouldShowFiscalReason = (invoice) => ['rejected', 'denied', 'pending_return'].includes(invoice?.status);
 
@@ -9787,6 +9983,26 @@ const handleSubmit = async (e) => {
       }
     };
 
+    const handleCopyInvoiceKey = async (invoice) => {
+      const key = String(invoice?.key || '').trim();
+      if (!key) {
+        setMessage({ type: 'error', text: 'Esta nota ainda não possui chave de acesso.' });
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(key);
+        setMessage({ type: 'success', text: 'Chave de acesso copiada.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Cópia da chave falhou:', error);
+        setMessage({ type: 'error', text: 'Não foi possível copiar a chave automaticamente.' });
+      }
+    };
+
+    const sefazConsultaUrl = (invoice) => {
+      const key = onlyDigitsText(invoice?.key);
+      return key ? `https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=resumo&tipoConteudo=d09fwabTnLk=&nfe=${key}` : '';
+    };
+
     const handleOpenCancelInvoice = (invoice) => {
       if (isReadOnly) return;
       setInvoiceToCancel(invoice);
@@ -10016,22 +10232,23 @@ const handleSubmit = async (e) => {
     ];
 
     const invoiceColumns = [
-      { header: 'Número', render: (row) => `${row.model || '-'} / ${row.series || '-'} / ${row.number || '-'}` },
+      { header: 'NFC-e', render: (row) => <span className="font-mono text-xs font-semibold text-gray-800">{formatFiscalNumber(row.number)}</span> },
+      { header: 'Série', render: (row) => <span className="font-mono text-xs text-gray-600">{formatFiscalSeries(row.series)}</span> },
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs">{row.orderId?.slice(0, 8) || '-'}</span> },
       { header: 'Cliente', render: (row) => getInvoiceCustomerName(row) },
+      { header: 'CPF/CNPJ', render: (row) => <span className="font-mono text-xs text-gray-600">{maskCpfCnpj(getInvoiceCustomerDocument(row))}</span> },
       { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[row.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[row.status] || row.status}</span> },
+      { header: 'Valor', render: (row) => <span className="font-semibold text-green-700">{formatCurrencyBR(getInvoiceValue(row))}</span> },
+      { header: 'Emissão', render: (row) => formatDateTime(row.issuedAt || row.createdAt) },
       { header: 'Motivo', render: (row) => {
         const reason = fiscalReturnReason(row);
-        return <span className="block max-w-md truncate text-gray-700" title={reason || ''}>{reason || '-'}</span>;
-      } },
-      { header: 'Chave', render: (row) => <span className="font-mono text-xs text-gray-500">{row.key || '-'}</span> },
-      { header: 'Observação', render: (row) => <span className="block max-w-xs truncate" title={row.additionalInfo || ''}>{row.additionalInfo || '-'}</span> },
-      { header: 'Justificativa de cancelamento', render: (row) => <span className="block max-w-xs truncate" title={row.cancelReason || ''}>{row.cancelReason || '-'}</span> },
-      { header: 'Emissão', render: (row) => formatDateTime(row.createdAt) }
+        return <span className="block max-w-[280px] truncate text-gray-700" title={reason || ''}>{reason || '-'}</span>;
+      } }
     ];
 
     const invoiceActions = [
-      { icon: FileText, label: 'Baixar PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => row.status === 'authorized' },
+      { icon: Eye, label: 'Ver detalhes', onClick: (row) => setInvoiceToView(row) },
+      { icon: FileText, label: 'Baixar/visualizar DANFE PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => row.status === 'authorized' },
       { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => row.status === 'authorized' },
       { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' },
       { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => !isReadOnly && row.status === 'authorized' }
@@ -10048,6 +10265,20 @@ const handleSubmit = async (e) => {
       { icon: Edit, label: 'Editar', onClick: handleEditFiscalProduct },
       { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('fiscalProducts', row.id, effectiveStoreId) }) }
     ];
+
+    const DetailSection = ({ title, children }) => (
+      <section className="space-y-3 rounded-xl border border-gray-100 bg-white p-4">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-gray-700">{title}</h3>
+        {children}
+      </section>
+    );
+
+    const DetailField = ({ label, value, mono = false, full = false }) => (
+      <div className={full ? 'md:col-span-2 xl:col-span-3' : ''}>
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</p>
+        <p className={`mt-1 break-words text-sm text-gray-800 ${mono ? 'font-mono' : ''}`}>{value || '-'}</p>
+      </div>
+    );
 
     if (!effectiveStoreId) {
       return (
@@ -10158,15 +10389,15 @@ const handleSubmit = async (e) => {
         {activeTab === 'notas' && (
           <div className="space-y-4">
             <div className="bg-white rounded-2xl p-4 shadow-lg border border-gray-100 space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,1fr)_180px_180px_220px] gap-3 items-end">
+              <div className="grid grid-cols-1 xl:grid-cols-[minmax(320px,1fr)_170px_170px_190px] gap-3 items-end">
                 <div className="space-y-1">
-                  <label className="block text-sm font-medium text-gray-700">Buscar nota</label>
+                  <label className="block text-sm font-medium text-gray-700">Busca rápida</label>
                   <div className="relative">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       value={invoiceFilters.search}
                       onChange={(e) => setInvoiceFilter('search', e.target.value)}
-                      placeholder="Cliente ou código do pedido"
+                      placeholder="Buscar por número da NFC-e, pedido, cliente, CPF/CNPJ ou chave de acesso"
                       className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                     />
                   </div>
@@ -10187,11 +10418,55 @@ const handleSubmit = async (e) => {
                   {invoiceStatusFilters.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </Select>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Input
+                  label="Emitente / CNPJ"
+                  value={invoiceFilters.issuerDocument}
+                  onChange={(e) => setInvoiceFilter('issuerDocument', e.target.value)}
+                  placeholder={issuerForm.cnpj ? maskCpfCnpj(issuerForm.cnpj) : 'CNPJ da loja'}
+                />
+                <Input
+                  label="Valor mínimo"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={invoiceFilters.minValue}
+                  onChange={(e) => setInvoiceFilter('minValue', e.target.value)}
+                  placeholder="R$ 0,00"
+                />
+                <Input
+                  label="Valor máximo"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={invoiceFilters.maxValue}
+                  onChange={(e) => setInvoiceFilter('maxValue', e.target.value)}
+                  placeholder="R$ 999,99"
+                />
+              </div>
+              {showAdvancedInvoiceFilters && (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <Input label="Chave de acesso" value={invoiceFilters.key} onChange={(e) => setInvoiceFilter('key', e.target.value)} placeholder="522606..." />
+                    <Input label="Número da NFC-e" value={invoiceFilters.number} onChange={(e) => setInvoiceFilter('number', e.target.value)} placeholder="000000008" />
+                    <Input label="Série" value={invoiceFilters.series} onChange={(e) => setInvoiceFilter('series', e.target.value)} placeholder="001" />
+                    <Input label="Pedido interno" value={invoiceFilters.orderId} onChange={(e) => setInvoiceFilter('orderId', e.target.value)} placeholder="RQMWj9ap" />
+                    <Input label="CPF/CNPJ do consumidor" value={invoiceFilters.customerDocument} onChange={(e) => setInvoiceFilter('customerDocument', e.target.value)} placeholder="058.559.683-24" />
+                    <Input label="Nome do consumidor" value={invoiceFilters.customerName} onChange={(e) => setInvoiceFilter('customerName', e.target.value)} placeholder="Antonio Pedro" />
+                    <Input label="Protocolo de autorização" value={invoiceFilters.protocol} onChange={(e) => setInvoiceFilter('protocol', e.target.value)} />
+                    <Input label="Forma de pagamento" value={invoiceFilters.paymentMethod} onChange={(e) => setInvoiceFilter('paymentMethod', e.target.value)} placeholder="Cartão, Pix..." />
+                    <Input label="Motivo / rejeição" value={invoiceFilters.reason} onChange={(e) => setInvoiceFilter('reason', e.target.value)} />
+                  </div>
+                </div>
+              )}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <p className="text-sm text-gray-500">
                   Mostrando <strong className="text-gray-800">{filteredInvoices.length}</strong> de <strong className="text-gray-800">{invoices.length}</strong> notas.
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setShowAdvancedInvoiceFilters((prev) => !prev)}>
+                    <Search className="w-4 h-4" /> {showAdvancedInvoiceFilters ? 'Ocultar avançados' : 'Filtros avançados'}
+                  </Button>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -10376,6 +10651,152 @@ const handleSubmit = async (e) => {
               <Button type="submit" disabled={Boolean(busyOrderId)}><Printer className="w-4 h-4" /> {busyOrderId ? 'Emitindo...' : 'Confirmar emissão'}</Button>
             </div>
           </form>
+        </Modal>
+
+        <Modal isOpen={Boolean(invoiceToView)} onClose={() => setInvoiceToView(null)} title="Detalhes da NFC-e" size="xl">
+          {invoiceToView && (() => {
+            const invoice = invoiceToView;
+            const order = getInvoiceOrder(invoice);
+            const items = getInvoiceItems(invoice);
+            const customerDocument = getInvoiceCustomerDocument(invoice);
+            const displayedCustomerDocument = canViewFullFiscalDocument ? (customerDocument || '-') : maskCpfCnpj(customerDocument);
+            const customerAddress = getOrderCustomerAddress(invoice);
+            const issuerAddress = issuerForm.address || {};
+            const reason = fiscalReturnReason(invoice);
+            const value = getInvoiceValue(invoice);
+            const discount = getInvoiceDiscount(invoice);
+            const freight = getInvoiceFreight(invoice);
+            const paidAmount = getInvoicePaidAmount(invoice);
+            const change = getInvoiceChange(invoice);
+            const sefazUrl = sefazConsultaUrl(invoice);
+            const statusBadge = <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${statusClass[invoice.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[invoice.status] || invoice.status || '-'}</span>;
+
+            return (
+              <div className="space-y-4 bg-gray-50/60">
+                <DetailSection title="Identificação da nota">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <DetailField label="Chave de acesso" value={invoice.key || '-'} mono full />
+                    <DetailField label="Número da NFC-e" value={formatFiscalNumber(invoice.number)} mono />
+                    <DetailField label="Série" value={formatFiscalSeries(invoice.series)} mono />
+                    <DetailField label="Modelo" value={invoice.model || '-'} />
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Status</p>
+                      <div className="mt-1">{statusBadge}</div>
+                    </div>
+                    <DetailField label="Emissão" value={formatDateTime(invoice.issuedAt || invoice.createdAt)} />
+                    <DetailField label="Protocolo de autorização" value={invoice.protocol || '-'} mono />
+                    <DetailField label="Autorização" value={formatDateTime(invoice.authorizedAt || invoice.serviceResult?.authorizedAt || (invoice.status === 'authorized' ? invoice.updatedAt : null))} />
+                    <DetailField label="Motivo/status SEFAZ" value={reason || '-'} full />
+                    <DetailField label="Observação" value={invoice.additionalInfo || '-'} full />
+                    <DetailField label="Justificativa de cancelamento" value={invoice.cancelReason || '-'} full />
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Button size="sm" variant="secondary" onClick={() => handleCopyInvoiceKey(invoice)}><Key className="w-4 h-4" /> Copiar chave</Button>
+                    {sefazUrl && (
+                      <a href={sefazUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-md transition-all hover:bg-gray-50" title="Consultar esta NFC-e na SEFAZ pela chave de acesso">
+                        <Search className="w-4 h-4" /> Consultar na SEFAZ
+                      </a>
+                    )}
+                  </div>
+                </DetailSection>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <DetailSection title="Emitente">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <DetailField label="Razão social" value={issuerForm.legalName || '-'} />
+                      <DetailField label="CNPJ" value={getInvoiceIssuerDocument(invoice) || '-'} mono />
+                      <DetailField label="Inscrição Estadual" value={issuerForm.stateRegistration || '-'} mono />
+                      <DetailField label="Telefone" value={issuerAddress.phone || '-'} />
+                      <DetailField label="Endereço" value={fiscalAddressText(issuerAddress)} full />
+                      <DetailField label="Cidade/UF" value={fiscalCityText(issuerAddress)} />
+                    </div>
+                  </DetailSection>
+
+                  <DetailSection title="Consumidor">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <DetailField label="Nome" value={getInvoiceCustomerName(invoice)} />
+                      <DetailField label="CPF/CNPJ" value={displayedCustomerDocument} mono />
+                      <DetailField label="Endereço" value={fiscalAddressText(customerAddress)} full />
+                      <DetailField label="Cidade/UF" value={fiscalCityText(customerAddress)} />
+                    </div>
+                  </DetailSection>
+                </div>
+
+                <DetailSection title="Itens da nota">
+                  <div className="overflow-x-auto rounded-xl border border-gray-100">
+                    <table className="w-full bg-white text-sm">
+                      <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                        <tr>
+                          <th className="px-3 py-2">Código</th>
+                          <th className="px-3 py-2">Descrição</th>
+                          <th className="px-3 py-2">Quantidade</th>
+                          <th className="px-3 py-2">Unidade</th>
+                          <th className="px-3 py-2">Valor unitário</th>
+                          <th className="px-3 py-2">Valor total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {items.length ? items.map((item, index) => {
+                          const quantity = Number(item.quantity ?? item.quantidade ?? item.qCom ?? 1) || 1;
+                          const unitValue = Number(item.unitValue ?? item.valorUnitario ?? item.preco ?? item.valor ?? 0) || 0;
+                          const totalValue = Number(item.total ?? item.valorTotal ?? item.vProd ?? unitValue * quantity) || 0;
+                          return (
+                            <tr key={`${item.id || item.productId || item.code || index}`}>
+                              <td className="px-3 py-2 font-mono text-xs text-gray-600">{item.code || item.codigo || item.productId || item.id || index + 1}</td>
+                              <td className="px-3 py-2">{item.description || item.nome || item.produto || 'Produto'}</td>
+                              <td className="px-3 py-2">{quantity}</td>
+                              <td className="px-3 py-2">{item.unit || item.unidade || 'un'}</td>
+                              <td className="px-3 py-2">{formatCurrencyBR(unitValue)}</td>
+                              <td className="px-3 py-2 font-semibold text-gray-800">{formatCurrencyBR(totalValue)}</td>
+                            </tr>
+                          );
+                        }) : (
+                          <tr>
+                            <td colSpan={6} className="px-3 py-6 text-center text-gray-500">Nenhum item detalhado encontrado para esta nota.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </DetailSection>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <DetailSection title="Totais">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <DetailField label="Quantidade total de itens" value={items.length || '-'} />
+                      <DetailField label="Valor total" value={formatCurrencyBR(value)} />
+                      <DetailField label="Desconto" value={formatCurrencyBR(discount)} />
+                      <DetailField label="Frete" value={formatCurrencyBR(freight)} />
+                      <DetailField label="Valor a pagar" value={formatCurrencyBR(value)} />
+                      <DetailField label="Troco" value={formatCurrencyBR(change)} />
+                    </div>
+                  </DetailSection>
+
+                  <DetailSection title="Pagamento">
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-800">
+                      <p><strong>{getInvoicePaymentMethod(invoice)}</strong> — {formatCurrencyBR(paidAmount)}</p>
+                    </div>
+                  </DetailSection>
+                </div>
+
+                <DetailSection title="Arquivos e ações fiscais">
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoicePdf(invoice)} disabled={invoice.status !== 'authorized'} title="Visualizar ou baixar DANFE/PDF"><FileText className="w-4 h-4" /> DANFE/PDF</Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoiceXml(invoice)} disabled={invoice.status !== 'authorized'} title="Baixar XML autorizado"><Download className="w-4 h-4" /> XML</Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleCopyInvoiceKey(invoice)} title="Copiar chave de acesso"><Key className="w-4 h-4" /> Copiar chave</Button>
+                    {sefazUrl && (
+                      <a href={sefazUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-md transition-all hover:bg-gray-50" title="Consultar na SEFAZ pela chave de acesso">
+                        <Search className="w-4 h-4" /> SEFAZ
+                      </a>
+                    )}
+                    {!isReadOnly && invoice.status === 'authorized' && (
+                      <Button size="sm" variant="danger" onClick={() => { setInvoiceToView(null); handleOpenCancelInvoice(invoice); }} title="Cancelar NFC-e autorizada"><X className="w-4 h-4" /> Cancelar NFC-e</Button>
+                    )}
+                  </div>
+                </DetailSection>
+              </div>
+            );
+          })()}
         </Modal>
 
         <Modal isOpen={Boolean(invoiceToCancel)} onClose={() => { if (!busyOrderId) { setInvoiceToCancel(null); setCancelReason(''); setCancelError(''); } }} title="Cancelar nota fiscal" size="md">
