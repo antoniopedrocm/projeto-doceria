@@ -9617,6 +9617,29 @@ const handleSubmit = async (e) => {
       return Number(invoice?.paidAmount ?? invoice?.payment?.amount ?? order?.valorPago ?? getInvoiceValue(invoice)) || 0;
     }, [getInvoiceOrder, getInvoiceValue]);
 
+    const getOrderCustomerDocument = useCallback((order) => (
+      order?.clienteDocumento
+      || order?.cpf
+      || order?.documento
+      || order?.customer?.document
+      || order?.customer?.cpf
+      || order?.customer?.cnpj
+      || order?.fiscal?.customerDocument
+      || ''
+    ), []);
+
+    const getOrderValue = useCallback((order) => Number(order?.total ?? order?.valorTotal ?? order?.subtotal ?? 0) || 0, []);
+
+    const dateSearchValues = useCallback((value) => {
+      const date = getJSDate(value);
+      if (!date) return [];
+      return [
+        date.toLocaleDateString('pt-BR'),
+        date.toLocaleString('pt-BR'),
+        toDateInputValue(date)
+      ];
+    }, []);
+
     const fiscalAddressText = (address = {}) => {
       if (!address || typeof address !== 'object') return '-';
       return [
@@ -9739,23 +9762,48 @@ const handleSubmit = async (e) => {
     }), [invoices, fiscalProducts]);
 
     const eligibleOrders = useMemo(() => {
-      const term = orderSearch.trim().toLowerCase();
+      const term = normalizeSearchText(orderSearch);
+      const termDigits = onlyDigitsText(orderSearch);
       return orders
         .filter((order) => ['Finalizado', 'Aprovado', 'ready_for_invoice', 'approved'].includes(order.status) || order.approvedForInvoice)
         .filter((order) => {
-          if (!term) return true;
-          return [
+          if (!term && !termDigits) return true;
+          const invoice = invoicesByOrderId.get(order.id);
+          const orderValue = getOrderValue(order);
+          const invoiceValue = invoice ? getInvoiceValue(invoice) : 0;
+          const candidates = [
             order.id,
             order.codigo,
             order.codigoPedido,
             order.numeroPedido,
             order.clienteNome,
+            order.customer?.name,
+            order.cliente?.nome,
+            getOrderCustomerDocument(order),
+            getInvoiceCustomerDocument(invoice),
+            getInvoiceCustomerName(invoice),
+            getInvoiceIssuerDocument(invoice),
+            issuerForm.cnpj,
+            orderValue,
+            orderValue.toFixed(2),
+            formatCurrencyBR(orderValue),
+            invoiceValue,
+            invoiceValue ? invoiceValue.toFixed(2) : '',
+            invoiceValue ? formatCurrencyBR(invoiceValue) : '',
+            ...dateSearchValues(order.createdAt),
+            ...dateSearchValues(invoice?.createdAt),
+            ...dateSearchValues(invoice?.issuedAt),
             order.formaPagamento,
             order.status
-          ].some((value) => String(value || '').toLowerCase().includes(term));
+          ];
+          return candidates.some((value) => {
+            const text = normalizeSearchText(value);
+            const digits = onlyDigitsText(value);
+            return (term && text.includes(term)) || (termDigits && digits.includes(termDigits));
+          });
         })
         .sort((a, b) => (getJSDate(b.createdAt)?.getTime() || 0) - (getJSDate(a.createdAt)?.getTime() || 0));
-    }, [orders, orderSearch]);
+    }, [orders, orderSearch, dateSearchValues, invoicesByOrderId, getInvoiceCustomerDocument, getInvoiceCustomerName, getInvoiceIssuerDocument, getInvoiceValue, getOrderCustomerDocument, getOrderValue, issuerForm.cnpj]);
 
     useEffect(() => {
       if (!effectiveStoreId) return undefined;
@@ -10337,17 +10385,25 @@ const handleSubmit = async (e) => {
 
         {activeTab === 'emitir' && (
           <div className="space-y-4">
-            <div className="flex flex-col md:flex-row gap-3 bg-white rounded-2xl p-4 shadow-lg border border-gray-100">
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input value={orderSearch} onChange={(e) => setOrderSearch(e.target.value)} placeholder="Buscar pedido por cliente ou código do pedido" className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" />
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(360px,1fr)_220px_minmax(280px,360px)_auto] gap-3 bg-white rounded-2xl p-4 shadow-lg border border-gray-100 items-end">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Buscar pedidos para emissão</label>
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    value={orderSearch}
+                    onChange={(e) => setOrderSearch(e.target.value)}
+                    placeholder="Buscar por pedido, cliente, valor, data, CPF/CNPJ"
+                    className="w-full min-w-0 pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                  />
+                </div>
               </div>
               <Select value={modelOverride} onChange={(e) => setModelOverride(e.target.value)} className="md:w-56">
                 <option value="">Modelo automático</option>
                 <option value="55">Forçar NF-e 55</option>
                 <option value="65">Forçar NFC-e 65</option>
               </Select>
-              <Select label="CFOP da operação" value={operationCfop} onChange={(e) => setOperationCfop(e.target.value)} className="md:w-80">
+              <Select label="CFOP da operação" value={operationCfop} onChange={(e) => setOperationCfop(e.target.value)}>
                 {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </Select>
               <a href="https://www.confaz.fazenda.gov.br/legislacao/ajustes/sinief/cfop_cvsn_70_vigente" target="_blank" rel="noreferrer" className="self-end pb-3 text-sm text-pink-700 underline hover:text-pink-800">
