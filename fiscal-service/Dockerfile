@@ -39,6 +39,12 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 ENV OPENSSL_CONF=/etc/ssl/openssl-legacy.cnf
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf \
   && printf '%s\n' \
+    'display_errors=Off' \
+    'html_errors=Off' \
+    'log_errors=On' \
+    'error_reporting=8191' \
+    > /usr/local/etc/php/conf.d/zz-ana-fiscal-errors.ini \
+  && printf '%s\n' \
     '<Directory /var/www/html/public>' \
     '    Options FollowSymLinks' \
     '    AllowOverride All' \

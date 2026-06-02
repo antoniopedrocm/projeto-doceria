@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+ini_set('display_errors', '0');
+ini_set('html_errors', '0');
+ini_set('log_errors', '1');
+ob_start();
+
 use AnaGuimaraes\Fiscal\Http\JsonResponse;
 use AnaGuimaraes\Fiscal\Security\RequestGuard;
 use AnaGuimaraes\Fiscal\Service\FiscalService;
