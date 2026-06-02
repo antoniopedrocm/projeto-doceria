@@ -305,6 +305,24 @@ const buildFiscalServiceError = (details, status) => {
   return error;
 };
 
+const parseFiscalServicePayload = (data) => {
+  if (typeof data === 'string') {
+    const text = data.trim();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      return {
+        error: 'Serviço fiscal retornou resposta não JSON.',
+        detail: text.slice(0, 1000),
+      };
+    }
+  }
+
+  if (data && typeof data === 'object') return data;
+  return {};
+};
+
 const callFiscalService = async (path, body) => {
   const {serviceUrl, sharedSecret} = getServiceConfig();
   if (!serviceUrl) {
@@ -324,8 +342,11 @@ const callFiscalService = async (path, body) => {
       },
       body: JSON.stringify(body),
     });
-    const parsed = await response.json().catch(() => ({}));
+    const parsed = parseFiscalServicePayload(await response.text().catch(() => ''));
     if (!response.ok) {
+      throw buildFiscalServiceError(parsed, response.status);
+    }
+    if (parsed?.error) {
       throw buildFiscalServiceError(parsed, response.status);
     }
     return parsed;
@@ -343,8 +364,13 @@ const callFiscalService = async (path, body) => {
         ...(sharedSecret ? {'X-Fiscal-Service-Token': sharedSecret} : {}),
       },
     });
-    return response.data;
+    const parsed = parseFiscalServicePayload(response.data);
+    if (parsed?.error) {
+      throw buildFiscalServiceError(parsed, response.status);
+    }
+    return parsed;
   } catch (error) {
+    if (error?.fiscalServiceResponded) throw error;
     throw buildFiscalServiceError(error?.response?.data || {error: error?.message}, error?.response?.status);
   }
 };
@@ -481,6 +507,9 @@ const createFiscalFunctions = ({
     receipt: result.receipt || null,
     cStat: result.cStat ?? null,
     xMotivo: cleanText(result.xMotivo).slice(0, 1000) || null,
+    message: cleanText(result.message).slice(0, 1000) || null,
+    error: cleanText(result.error).slice(0, 1000) || null,
+    detail: cleanText(result.detail).slice(0, 1000) || null,
     errors: compactFiscalErrors(result.errors),
     hasSignedXml: Boolean(result.signedXml),
     hasAuthorizedXml: Boolean(result.authorizedXml),
@@ -490,6 +519,15 @@ const createFiscalFunctions = ({
     danfePdfPath: artifacts.danfePdf?.path || null,
   });
 
+  const fiscalResultReason = (result = {}, status = '') => (
+    cleanText(result.xMotivo)
+    || cleanText(result.message)
+    || cleanText(result.error)
+    || cleanText(result.detail)
+    || (Array.isArray(result.errors) ? cleanText(result.errors.join(' ')) : '')
+    || (status === INVOICE_STATUS.REJECTED ? 'Serviço fiscal retornou rejeição sem motivo detalhado. Tente emitir novamente; se repetir, consulte o suporte técnico.' : '')
+  );
+
   const callableFiscalResult = ({result = {}, invoiceId, artifacts = {}, artifactError = ''}) => ({
     invoiceId,
     status: result.status || INVOICE_STATUS.REJECTED,
@@ -497,7 +535,7 @@ const createFiscalFunctions = ({
     protocol: result.protocol || null,
     receipt: result.receipt || null,
     cStat: result.cStat ?? null,
-    xMotivo: result.xMotivo || null,
+    xMotivo: fiscalResultReason(result, result.status || INVOICE_STATUS.REJECTED) || null,
     errors: compactFiscalErrors(result.errors),
     danfePdfReady: Boolean(artifacts.danfePdf),
     artifactError: artifactError || null,
@@ -848,6 +886,7 @@ const createFiscalFunctions = ({
     const invoiceRef = db.collection('lojas').doc(lojaId).collection('invoices').doc(invoiceId);
     const orderRef = db.collection('lojas').doc(lojaId).collection('pedidos').doc(orderId);
     const status = result.status || INVOICE_STATUS.REJECTED;
+    const resultReason = fiscalResultReason(result, status);
     let artifacts = {};
     let artifactError = '';
     try {
@@ -864,7 +903,7 @@ const createFiscalFunctions = ({
         protocol: result.protocol || null,
         receipt: result.receipt || null,
         cStat: result.cStat || null,
-        xMotivo: result.xMotivo || null,
+        xMotivo: resultReason || null,
         errors: compactFiscalErrors(result.errors),
         artifacts: Object.keys(artifacts).length ? artifacts : FieldValue.delete(),
         artifactError: artifactError || FieldValue.delete(),
@@ -875,7 +914,7 @@ const createFiscalFunctions = ({
           status,
           at: admin.firestore.Timestamp.now(),
           by: uid,
-          message: result.xMotivo || 'Retorno recebido do serviço fiscal.',
+          message: resultReason || 'Retorno recebido do serviço fiscal.',
         }),
       }, {merge: true});
 
