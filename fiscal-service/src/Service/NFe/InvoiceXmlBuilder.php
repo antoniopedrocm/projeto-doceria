@@ -56,7 +56,9 @@ final class InvoiceXmlBuilder
 
         $std = new stdClass();
         $std->cUF = 52;
-        $std->cNF = str_pad((string)random_int(1, 99999999), 8, '0', STR_PAD_LEFT);
+        $hash = crc32('nfe-' . (string)$invoice['number']);
+        $cNF = (abs($hash) % 99999998) + 1;
+        $std->cNF = str_pad((string)$cNF, 8, '0', STR_PAD_LEFT);
         $std->natOp = $invoice['operationNature'];
         $std->mod = (int)$invoice['model'];
         $std->serie = (int)$invoice['series'];
@@ -72,9 +74,12 @@ final class InvoiceXmlBuilder
         $std->tpAmb = (int)$payload['environment'];
         $std->finNFe = 1;
         $std->indFinal = !empty($invoice['finalConsumer']) ? 1 : 0;
-        $std->indPres = (int)($invoice['presence'] ?? 2);
+        $std->indPres = (int)$invoice['model'] === 65
+            ? 1
+            : (int)($invoice['presence'] ?? 1);
         $std->procEmi = 0;
         $std->verProc = $this->processVersion($invoice['processVersion'] ?? '');
+        $std->indIntermed = (int)($invoice['intermediary'] ?? 0);
         $nfe->tagide($std);
     }
 
@@ -264,9 +269,14 @@ final class InvoiceXmlBuilder
         $std->indPag = isset($payment['dueDate']) ? 1 : 0;
         $std->tPag = $payment['methodCode'];
         $std->vPag = $this->decimal($payment['amount'], 2);
-        if (isset($payment['integrationType'])) {
-            $std->tpIntegra = (int)$payment['integrationType'];
+
+        // Cartão de crédito (03) e débito (04) exigem dados do cartão.
+        if (in_array((string)$payment['methodCode'], ['03', '04'], true)) {
+            $std->tpIntegra = (int)($payment['integrationType'] ?? 2);
+            $std->tBand = $payment['cardBrand'] ?? '99';
+            $std->cAut = $payment['cardAuth'] ?? '0';
         }
+
         $nfe->tagdetPag($std);
     }
 
@@ -316,10 +326,21 @@ final class InvoiceXmlBuilder
 
     private function nfeDate(string $value): string
     {
-        $timestamp = strtotime($value);
-        if ($timestamp === false) {
-            $timestamp = time();
+        $tz = new \DateTimeZone('America/Fortaleza');
+        $now = new \DateTimeImmutable('now', $tz);
+
+        try {
+            $dt = new \DateTimeImmutable($value);
+        } catch (\Exception $e) {
+            $dt = $now;
         }
-        return date('Y-m-d\TH:i:sP', $timestamp);
+
+        $dt = $dt->setTimezone($tz);
+        $latestSafeEmission = $now->sub(new \DateInterval('PT2M'));
+        if ($dt > $latestSafeEmission) {
+            $dt = $latestSafeEmission;
+        }
+
+        return $dt->format('Y-m-d\TH:i:sP');
     }
 }

@@ -7,7 +7,7 @@ namespace AnaGuimaraes\Fiscal\Service\NFe;
 use AnaGuimaraes\Fiscal\Service\Google\SecretManagerClient;
 use NFePHP\Common\Certificate;
 use NFePHP\NFe\Common\Standardize;
-use NFePHP\NFe\Common\Complements;
+use NFePHP\NFe\Complements;
 use NFePHP\NFe\Tools;
 use RuntimeException;
 
