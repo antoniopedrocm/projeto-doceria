@@ -1001,6 +1001,40 @@ const getJSDate = (firestoreTimestamp) => {
   return isNaN(date.getTime()) ? null : date;
 };
 
+const toDateInputValue = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getCurrentMonthDateRange = () => {
+  const today = new Date();
+  return {
+    start: toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)),
+    end: toDateInputValue(new Date(today.getFullYear(), today.getMonth() + 1, 0))
+  };
+};
+
+const parseDateInput = (value, endOfDay = false) => {
+  if (!value) return null;
+  const [year, month, day] = String(value).split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
+};
+
+const isDateInRange = (value, startValue, endValue) => {
+  const date = getJSDate(value);
+  if (!date) return false;
+
+  const startDate = parseDateInput(startValue);
+  const endDate = parseDateInput(endValue, true);
+
+  if (startDate && date < startDate) return false;
+  if (endDate && date > endDate) return false;
+  return true;
+};
+
 // --- NOVOS COMPONENTES ---
 
 const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser }) => {
@@ -9293,6 +9327,11 @@ const handleSubmit = async (e) => {
   }) => {
     const [activeTab, setActiveTab] = usePersistentState('nota_fiscal_activeTab', 'emitir');
     const [orderSearch, setOrderSearch] = usePersistentState('nota_fiscal_orderSearch', '');
+    const [invoiceFilters, setInvoiceFilters] = useState(() => ({
+      search: '',
+      status: 'all',
+      ...getCurrentMonthDateRange()
+    }));
     const [modelOverride, setModelOverride] = usePersistentState('nota_fiscal_modelOverride', '');
     const [operationCfop, setOperationCfop] = usePersistentState('nota_fiscal_operationCfop', DEFAULT_CFOP_OPERATION);
     const [busyOrderId, setBusyOrderId] = useState('');
@@ -9369,6 +9408,14 @@ const handleSubmit = async (e) => {
     const fiscalProducts = data.fiscalProducts || [];
     const orders = data.pedidos || [];
 
+    const ordersById = useMemo(() => {
+      const map = new Map();
+      orders.forEach((order) => {
+        if (order.id) map.set(order.id, order);
+      });
+      return map;
+    }, [orders]);
+
     const invoicesByOrderId = useMemo(() => {
       const map = new Map();
       invoices.forEach((invoice) => {
@@ -9380,6 +9427,14 @@ const handleSubmit = async (e) => {
       });
       return map;
     }, [invoices]);
+
+    const invoiceStatusFilters = [
+      { value: 'all', label: 'Todos os status' },
+      { value: 'authorized', label: 'Autorizada' },
+      { value: 'rejected', label: 'Rejeitada' },
+      { value: 'pending', label: 'Pendente' },
+      { value: 'cancelled', label: 'Cancelada' }
+    ];
 
     const statusLabel = {
       validating: 'Validando',
@@ -9403,6 +9458,66 @@ const handleSubmit = async (e) => {
       const date = getJSDate(value);
       return date ? date.toLocaleString('pt-BR') : '-';
     };
+
+    const setInvoiceFilter = (field, value) => {
+      setInvoiceFilters((prev) => ({ ...prev, [field]: value }));
+    };
+
+    const resetInvoiceFiltersToCurrentMonth = () => {
+      setInvoiceFilters({
+        search: '',
+        status: 'all',
+        ...getCurrentMonthDateRange()
+      });
+    };
+
+    const getInvoiceOrder = useCallback((invoice) => ordersById.get(invoice?.orderId) || null, [ordersById]);
+
+    const getInvoiceCustomerName = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      return invoice?.customerName
+        || invoice?.clienteNome
+        || invoice?.customer?.name
+        || invoice?.customer?.nome
+        || order?.clienteNome
+        || order?.customer?.name
+        || order?.cliente?.nome
+        || '-';
+    }, [getInvoiceOrder]);
+
+    const matchesInvoiceStatusFilter = useCallback((invoice) => {
+      const status = invoice?.status || '';
+      if (invoiceFilters.status === 'all') return true;
+      if (invoiceFilters.status === 'rejected') return ['rejected', 'denied'].includes(status);
+      if (invoiceFilters.status === 'pending') return ['validating', 'pending', 'pending_return'].includes(status);
+      return status === invoiceFilters.status;
+    }, [invoiceFilters.status]);
+
+    const filteredInvoices = useMemo(() => {
+      const term = invoiceFilters.search.trim().toLowerCase();
+      return invoices
+        .filter((invoice) => isDateInRange(invoice.issuedAt || invoice.createdAt, invoiceFilters.start, invoiceFilters.end))
+        .filter(matchesInvoiceStatusFilter)
+        .filter((invoice) => {
+          if (!term) return true;
+          const order = getInvoiceOrder(invoice);
+          return [
+            invoice.id,
+            invoice.orderId,
+            invoice.key,
+            invoice.number,
+            invoice.series,
+            invoice.model,
+            getInvoiceCustomerName(invoice),
+            order?.id,
+            order?.clienteNome,
+            order?.codigo,
+            order?.codigoPedido,
+            order?.numeroPedido
+          ].some((value) => String(value || '').toLowerCase().includes(term));
+        })
+        .sort((a, b) => (getJSDate(b.issuedAt || b.createdAt)?.getTime() || 0) - (getJSDate(a.issuedAt || a.createdAt)?.getTime() || 0));
+    }, [invoices, invoiceFilters, getInvoiceCustomerName, getInvoiceOrder, matchesInvoiceStatusFilter]);
 
     const fiscalReturnReason = (invoice) => {
       if (!invoice) return '';
@@ -9435,6 +9550,9 @@ const handleSubmit = async (e) => {
           if (!term) return true;
           return [
             order.id,
+            order.codigo,
+            order.codigoPedido,
+            order.numeroPedido,
             order.clienteNome,
             order.formaPagamento,
             order.status
@@ -9900,6 +10018,7 @@ const handleSubmit = async (e) => {
     const invoiceColumns = [
       { header: 'Número', render: (row) => `${row.model || '-'} / ${row.series || '-'} / ${row.number || '-'}` },
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs">{row.orderId?.slice(0, 8) || '-'}</span> },
+      { header: 'Cliente', render: (row) => getInvoiceCustomerName(row) },
       { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[row.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[row.status] || row.status}</span> },
       { header: 'Motivo', render: (row) => {
         const reason = fiscalReturnReason(row);
@@ -9990,7 +10109,7 @@ const handleSubmit = async (e) => {
             <div className="flex flex-col md:flex-row gap-3 bg-white rounded-2xl p-4 shadow-lg border border-gray-100">
               <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input value={orderSearch} onChange={(e) => setOrderSearch(e.target.value)} placeholder="Buscar pedido por cliente ou ID" className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" />
+                <input value={orderSearch} onChange={(e) => setOrderSearch(e.target.value)} placeholder="Buscar pedido por cliente ou código do pedido" className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" />
               </div>
               <Select value={modelOverride} onChange={(e) => setModelOverride(e.target.value)} className="md:w-56">
                 <option value="">Modelo automático</option>
@@ -10037,7 +10156,62 @@ const handleSubmit = async (e) => {
         )}
 
         {activeTab === 'notas' && (
-          <Table columns={invoiceColumns} data={invoices.slice().sort((a, b) => (getJSDate(b.createdAt)?.getTime() || 0) - (getJSDate(a.createdAt)?.getTime() || 0))} actions={invoiceActions} />
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl p-4 shadow-lg border border-gray-100 space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,1fr)_180px_180px_220px] gap-3 items-end">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">Buscar nota</label>
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      value={invoiceFilters.search}
+                      onChange={(e) => setInvoiceFilter('search', e.target.value)}
+                      placeholder="Cliente ou código do pedido"
+                      className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+                <Input
+                  label="Data inicial"
+                  type="date"
+                  value={invoiceFilters.start}
+                  onChange={(e) => setInvoiceFilter('start', e.target.value)}
+                />
+                <Input
+                  label="Data final"
+                  type="date"
+                  value={invoiceFilters.end}
+                  onChange={(e) => setInvoiceFilter('end', e.target.value)}
+                />
+                <Select label="Status da nota" value={invoiceFilters.status} onChange={(e) => setInvoiceFilter('status', e.target.value)}>
+                  {invoiceStatusFilters.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <p className="text-sm text-gray-500">
+                  Mostrando <strong className="text-gray-800">{filteredInvoices.length}</strong> de <strong className="text-gray-800">{invoices.length}</strong> notas.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setInvoiceFilters((prev) => ({ ...prev, ...getCurrentMonthDateRange() }))}
+                  >
+                    <Calendar className="w-4 h-4" /> Mês atual
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={resetInvoiceFiltersToCurrentMonth}>
+                    <RefreshCw className="w-4 h-4" /> Limpar filtros
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <Table columns={invoiceColumns} data={filteredInvoices} actions={invoiceActions} />
+            {filteredInvoices.length === 0 && (
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 text-center text-sm text-gray-500">
+                Nenhuma nota encontrada para os filtros selecionados.
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === 'produtos' && (
