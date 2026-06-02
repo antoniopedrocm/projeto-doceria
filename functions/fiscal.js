@@ -468,6 +468,41 @@ const createFiscalFunctions = ({
     return artifacts;
   };
 
+  const compactFiscalErrors = (errors) => (
+    Array.isArray(errors)
+      ? errors.map((error) => cleanText(error)).filter(Boolean).slice(0, 20)
+      : null
+  );
+
+  const compactFiscalServiceResult = (result = {}, artifacts = {}) => ({
+    status: result.status || null,
+    key: result.key || null,
+    protocol: result.protocol || null,
+    receipt: result.receipt || null,
+    cStat: result.cStat ?? null,
+    xMotivo: cleanText(result.xMotivo).slice(0, 1000) || null,
+    errors: compactFiscalErrors(result.errors),
+    hasSignedXml: Boolean(result.signedXml),
+    hasAuthorizedXml: Boolean(result.authorizedXml),
+    hasDanfePdf: Boolean(result.danfePdfBase64),
+    signedXmlPath: artifacts.signedXml?.path || null,
+    authorizedXmlPath: artifacts.authorizedXml?.path || null,
+    danfePdfPath: artifacts.danfePdf?.path || null,
+  });
+
+  const callableFiscalResult = ({result = {}, invoiceId, artifacts = {}, artifactError = ''}) => ({
+    invoiceId,
+    status: result.status || INVOICE_STATUS.REJECTED,
+    key: result.key || null,
+    protocol: result.protocol || null,
+    receipt: result.receipt || null,
+    cStat: result.cStat ?? null,
+    xMotivo: result.xMotivo || null,
+    errors: compactFiscalErrors(result.errors),
+    danfePdfReady: Boolean(artifacts.danfePdf),
+    artifactError: artifactError || null,
+  });
+
   const loadInvoiceArtifact = async (artifact) => {
     if (!artifact?.path) {
       throw new HttpsError('failed-precondition', 'Arquivo fiscal ainda não está disponível para esta nota.');
@@ -830,17 +865,12 @@ const createFiscalFunctions = ({
         receipt: result.receipt || null,
         cStat: result.cStat || null,
         xMotivo: result.xMotivo || null,
-        errors: result.errors || null,
+        errors: compactFiscalErrors(result.errors),
         artifacts: Object.keys(artifacts).length ? artifacts : FieldValue.delete(),
         artifactError: artifactError || FieldValue.delete(),
         danfePdfReady: Boolean(artifacts.danfePdf),
         updatedAt: FieldValue.serverTimestamp(),
-        serviceResult: {
-          ...result,
-          authorizedXml: result.authorizedXml ? `[storage:${artifacts.authorizedXml?.path || 'unavailable'}]` : null,
-          signedXml: result.signedXml ? `[storage:${artifacts.signedXml?.path || 'unavailable'}]` : null,
-          danfePdfBase64: result.danfePdfBase64 ? `[storage:${artifacts.danfePdf?.path || 'unavailable'}]` : null,
-        },
+        serviceResult: compactFiscalServiceResult(result, artifacts),
         history: FieldValue.arrayUnion({
           status,
           at: admin.firestore.Timestamp.now(),
@@ -863,7 +893,7 @@ const createFiscalFunctions = ({
       }
     });
 
-    return {...result, invoiceId, artifacts, danfePdfReady: Boolean(artifacts.danfePdf)};
+    return callableFiscalResult({result, invoiceId, artifacts, artifactError});
   };
 
   const previewNextNumber = async (lojaId, environment, model, series) => {

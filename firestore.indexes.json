@@ -1,5 +1,25 @@
 {
   "indexes": [],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "invoices",
+      "fieldPath": "artifacts",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "invoices",
+      "fieldPath": "errors",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "invoices",
+      "fieldPath": "history",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "invoices",
+      "fieldPath": "serviceResult",
+      "indexes": []
+    }
+  ]
 }
-
