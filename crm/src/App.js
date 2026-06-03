@@ -509,6 +509,30 @@ const getOrderAddressDetails = (order, clientes = []) => {
   return { cliente, enderecoTexto, locationLink };
 };
 
+const roundCurrency = (value) => Number((Number(value || 0)).toFixed(2));
+
+const getOrderItemProductId = (item) => item?.produtoId || item?.productId || item?.id || null;
+
+const getClientPrimaryAddressText = (cliente = {}) => {
+  if (typeof cliente.endereco === 'string' && cliente.endereco.trim()) {
+    return cliente.endereco.trim();
+  }
+
+  const firstAddress = Array.isArray(cliente.enderecos) ? cliente.enderecos[0] : null;
+  if (!firstAddress) return '';
+  if (typeof firstAddress === 'string') return firstAddress;
+  if (firstAddress.enderecoCompleto) return firstAddress.enderecoCompleto;
+
+  return [
+    firstAddress.rua,
+    firstAddress.numero,
+    firstAddress.complemento,
+    firstAddress.bairro,
+    firstAddress.cidade,
+    firstAddress.cep,
+  ].filter(Boolean).join(', ');
+};
+
 // Hook customizado para estado persistente na sessão
 const usePersistentState = (key, defaultValue) => {
   // Inicializa o estado apenas uma vez com o valor do sessionStorage
@@ -9388,6 +9412,23 @@ const handleSubmit = async (e) => {
     const [invoiceToView, setInvoiceToView] = useState(null);
     const [cancelReason, setCancelReason] = useState('');
     const [cancelError, setCancelError] = useState('');
+    const [orderToEditBeforeInvoice, setOrderToEditBeforeInvoice] = useState(null);
+    const [orderEditProductSearch, setOrderEditProductSearch] = useState('');
+    const [orderEditSaving, setOrderEditSaving] = useState(false);
+    const [orderEditError, setOrderEditError] = useState('');
+    const [orderEditForm, setOrderEditForm] = useState({
+      clienteId: '',
+      clienteNome: '',
+      telefone: '',
+      clienteEndereco: '',
+      formaPagamento: 'Pix',
+      observacao: '',
+      itens: [],
+      desconto: 0,
+      valorFrete: 0,
+      subtotal: 0,
+      total: 0
+    });
     const [productForm, setProductForm] = useState({
       productId: '',
       code: '',
@@ -9400,8 +9441,13 @@ const handleSubmit = async (e) => {
       csosn: '102',
       pisCst: '49',
       cofinsCst: '49',
+      cest: '',
       cBenef: ''
     });
+    const [selectedFiscalProductIds, setSelectedFiscalProductIds] = useState([]);
+    const [fiscalProductSearchTerm, setFiscalProductSearchTerm] = useState('');
+    const [fiscalProductConflictMode, setFiscalProductConflictMode] = useState('fill-empty');
+    const [savingFiscalProducts, setSavingFiscalProducts] = useState(false);
     const [issuerForm, setIssuerForm] = useState({
       cnpj: '37185245000140',
       legalName: 'ANA GUIMARAES DOCERIA LTDA',
@@ -9449,7 +9495,54 @@ const handleSubmit = async (e) => {
 
     const invoices = data.invoices || [];
     const fiscalProducts = data.fiscalProducts || [];
+    const storeProducts = data.produtos || [];
     const orders = data.pedidos || [];
+    const fiscalProductsById = useMemo(() => {
+      const map = new Map();
+      fiscalProducts.forEach((item) => {
+        if (item.id) map.set(String(item.id), item);
+        if (item.productId) map.set(String(item.productId), item);
+      });
+      return map;
+    }, [fiscalProducts]);
+    const selectedFiscalProductIdSet = useMemo(() => new Set(selectedFiscalProductIds), [selectedFiscalProductIds]);
+    const filteredFiscalProductOptions = useMemo(() => {
+      const term = normalizeSearchText(fiscalProductSearchTerm);
+      return storeProducts
+        .filter((produto) => {
+          if (!produto?.id) return false;
+          if (!term) return true;
+          return [
+            produto.nome,
+            produto.codigo,
+            produto.categoria,
+            produto.categoriaPrincipal,
+            produto.id
+          ].some((value) => normalizeSearchText(value).includes(term));
+        })
+        .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'));
+    }, [storeProducts, fiscalProductSearchTerm]);
+    const selectedExistingFiscalProductCount = useMemo(() => (
+      selectedFiscalProductIds.filter((id) => fiscalProductsById.has(String(id))).length
+    ), [selectedFiscalProductIds, fiscalProductsById]);
+    const hasMultipleFiscalProductsSelected = selectedFiscalProductIds.length > 1 && !editingFiscalProduct;
+    const orderEditFilteredProducts = useMemo(() => {
+      const term = normalizeSearchText(orderEditProductSearch);
+      return storeProducts
+        .filter((produto) => {
+          if (!produto?.id) return false;
+          if (!term) return true;
+          return [
+            produto.nome,
+            produto.codigo,
+            produto.descricao,
+            produto.categoria,
+            produto.subcategoria,
+            produto.id
+          ].some((value) => normalizeSearchText(value).includes(term));
+        })
+        .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'));
+    }, [storeProducts, orderEditProductSearch]);
 
     const ordersById = useMemo(() => {
       const map = new Map();
@@ -9805,6 +9898,250 @@ const handleSubmit = async (e) => {
         .sort((a, b) => (getJSDate(b.createdAt)?.getTime() || 0) - (getJSDate(a.createdAt)?.getTime() || 0));
     }, [orders, orderSearch, dateSearchValues, invoicesByOrderId, getInvoiceCustomerDocument, getInvoiceCustomerName, getInvoiceIssuerDocument, getInvoiceValue, getOrderCustomerDocument, getOrderValue, issuerForm.cnpj]);
 
+    const getPreInvoiceLockedReason = useCallback((order) => {
+      const invoice = invoicesByOrderId.get(order?.id);
+      if (!invoice) return '';
+      if (invoice.status === 'authorized') return 'Este pedido já possui nota autorizada.';
+      if (invoice.status === 'cancelled') return 'Este pedido já possui nota cancelada.';
+      if (invoice.status === 'validating' || invoice.status === 'pending_return') return 'Este pedido possui nota em processamento.';
+      return '';
+    }, [invoicesByOrderId]);
+
+    const buildOrderEditItemFromProduct = useCallback((product, previous = {}) => {
+      const productId = String(product?.id || previous.produtoId || previous.productId || previous.id || '').trim();
+      const quantity = Number(previous.quantity ?? previous.quantidade ?? 1);
+      const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+      const unitPrice = roundCurrency(product?.preco ?? previous.preco ?? previous.unitPrice ?? 0);
+      return {
+        ...previous,
+        id: productId,
+        produtoId: productId,
+        productId,
+        codigo: product?.codigo || previous.codigo || productId,
+        sku: product?.sku || previous.sku || '',
+        nome: product?.nome || previous.nome || previous.description || 'Produto',
+        description: product?.nome || previous.description || previous.nome || 'Produto',
+        preco: unitPrice,
+        unitPrice,
+        quantity: safeQuantity,
+        quantidade: safeQuantity,
+        categoria: product?.categoria || previous.categoria || '',
+        subcategoria: product?.subcategoria || previous.subcategoria || '',
+        imageUrl: product?.imageUrl || previous.imageUrl || '',
+        estoque: product?.estoque ?? previous.estoque ?? null
+      };
+    }, []);
+
+    const buildOrderEditFormWithTotals = useCallback((draft) => {
+      const items = (draft.itens || []).map((item) => {
+        const quantity = Number(item.quantity ?? item.quantidade ?? 1);
+        const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+        const unitPrice = roundCurrency(item.preco ?? item.unitPrice ?? 0);
+        return {
+          ...item,
+          quantity: safeQuantity,
+          quantidade: safeQuantity,
+          preco: unitPrice,
+          unitPrice
+        };
+      });
+      const subtotal = roundCurrency(items.reduce((sum, item) => sum + (Number(item.preco || 0) * Number(item.quantity || 1)), 0));
+      const desconto = roundCurrency(Math.min(Math.max(Number(draft.desconto || 0), 0), subtotal));
+      const valorFrete = roundCurrency(Math.max(Number(draft.valorFrete ?? draft.frete ?? 0), 0));
+      return {
+        ...draft,
+        itens: items,
+        subtotal,
+        desconto,
+        valorFrete,
+        frete: valorFrete,
+        total: roundCurrency(subtotal - desconto + valorFrete)
+      };
+    }, []);
+
+    const normalizeOrderForPreInvoiceEdit = useCallback((order) => {
+      const items = (order?.itens || []).map((item) => {
+        const productId = getOrderItemProductId(item);
+        const product = storeProducts.find((produto) => String(produto.id) === String(productId));
+        return buildOrderEditItemFromProduct(product || { id: productId, nome: item.nome, codigo: item.codigo, preco: item.preco }, item);
+      });
+
+      return buildOrderEditFormWithTotals({
+        clienteId: order?.clienteId || '',
+        clienteNome: order?.clienteNome || '',
+        telefone: order?.telefone || '',
+        clienteEndereco: order?.clienteEndereco || '',
+        formaPagamento: order?.formaPagamento || order?.paymentMethod || 'Pix',
+        observacao: order?.observacao || order?.additionalInfo || '',
+        itens: items,
+        desconto: Number(order?.desconto || order?.cupom?.valorDesconto || 0) || 0,
+        valorFrete: Number(order?.valorFrete ?? order?.frete ?? 0) || 0,
+        subtotal: Number(order?.subtotal || 0) || 0,
+        total: Number(order?.total || 0) || 0,
+        cupom: order?.cupom || null,
+        categoria: order?.categoria || 'Delivery',
+        status: order?.status || 'Finalizado',
+        origem: order?.origem || 'Manual',
+        dataEntrega: order?.dataEntrega || ''
+      });
+    }, [buildOrderEditFormWithTotals, buildOrderEditItemFromProduct, storeProducts]);
+
+    const handleOpenPreInvoiceOrderEdit = useCallback((order) => {
+      const lockReason = getPreInvoiceLockedReason(order);
+      if (lockReason) {
+        setMessage({ type: 'error', text: `${lockReason} Não é seguro alterar o pedido nesta etapa.` });
+        return;
+      }
+      setOrderToEditBeforeInvoice(order);
+      setOrderEditForm(normalizeOrderForPreInvoiceEdit(order));
+      setOrderEditProductSearch('');
+      setOrderEditError('');
+    }, [getPreInvoiceLockedReason, normalizeOrderForPreInvoiceEdit]);
+
+    const setOrderEditDraft = (updater) => {
+      setOrderEditForm((prev) => buildOrderEditFormWithTotals(typeof updater === 'function' ? updater(prev) : updater));
+    };
+
+    const handleOrderEditClientChange = (clienteId) => {
+      const cliente = (data.clientes || []).find((item) => item.id === clienteId);
+      setOrderEditDraft((prev) => ({
+        ...prev,
+        clienteId,
+        clienteNome: cliente?.nome || prev.clienteNome,
+        telefone: cliente?.telefone || prev.telefone || '',
+        clienteEndereco: getClientPrimaryAddressText(cliente) || prev.clienteEndereco || ''
+      }));
+    };
+
+    const handleAddProductToPreInvoiceOrder = (product) => {
+      setOrderEditDraft((prev) => {
+        const productId = String(product?.id || '');
+        if (!productId) return prev;
+        const existingIndex = (prev.itens || []).findIndex((item) => String(getOrderItemProductId(item)) === productId);
+        if (existingIndex >= 0) {
+          return {
+            ...prev,
+            itens: prev.itens.map((item, index) => (
+              index === existingIndex
+                ? { ...item, quantity: Number(item.quantity || 1) + 1, quantidade: Number(item.quantity || 1) + 1 }
+                : item
+            ))
+          };
+        }
+        return {
+          ...prev,
+          itens: [...(prev.itens || []), buildOrderEditItemFromProduct(product)]
+        };
+      });
+    };
+
+    const handleReplacePreInvoiceOrderItem = (index, productId) => {
+      const product = storeProducts.find((item) => String(item.id) === String(productId));
+      if (!product) return;
+      setOrderEditDraft((prev) => ({
+        ...prev,
+        itens: (prev.itens || []).map((item, itemIndex) => (
+          itemIndex === index ? buildOrderEditItemFromProduct(product, { quantity: item.quantity || 1 }) : item
+        ))
+      }));
+    };
+
+    const handleUpdatePreInvoiceOrderItem = (index, field, value) => {
+      setOrderEditDraft((prev) => ({
+        ...prev,
+        itens: (prev.itens || []).map((item, itemIndex) => {
+          if (itemIndex !== index) return item;
+          if (field === 'quantity') {
+            const quantity = Number(value);
+            return {
+              ...item,
+              quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : '',
+              quantidade: Number.isFinite(quantity) && quantity > 0 ? quantity : ''
+            };
+          }
+          if (field === 'preco') {
+            const unitPrice = value === '' ? '' : Math.max(Number(value), 0);
+            return {
+              ...item,
+              preco: unitPrice,
+              unitPrice
+            };
+          }
+          return { ...item, [field]: value };
+        })
+      }));
+    };
+
+    const handleRemovePreInvoiceOrderItem = (index) => {
+      setOrderEditDraft((prev) => ({
+        ...prev,
+        itens: (prev.itens || []).filter((_, itemIndex) => itemIndex !== index)
+      }));
+    };
+
+    const handleSavePreInvoiceOrderEdit = async (event) => {
+      event.preventDefault();
+      if (isReadOnly || !orderToEditBeforeInvoice?.id || !effectiveStoreId) return;
+      setOrderEditError('');
+      const currentLockReason = getPreInvoiceLockedReason(orderToEditBeforeInvoice);
+      if (currentLockReason) {
+        setOrderEditError(currentLockReason);
+        return;
+      }
+
+      const normalizedForm = buildOrderEditFormWithTotals(orderEditForm);
+      if (!String(normalizedForm.clienteNome || '').trim()) {
+        setOrderEditError('Informe o nome do cliente antes de salvar.');
+        return;
+      }
+      if (!Array.isArray(normalizedForm.itens) || normalizedForm.itens.length === 0) {
+        setOrderEditError('Adicione ao menos um produto ao pedido.');
+        return;
+      }
+      const invalidItem = normalizedForm.itens.find((item) => (
+        !getOrderItemProductId(item)
+        || !String(item.nome || item.description || '').trim()
+        || Number(item.quantity || 0) <= 0
+        || Number(item.preco ?? item.unitPrice ?? -1) < 0
+      ));
+      if (invalidItem) {
+        setOrderEditError('Revise os produtos: todos precisam ter produto, quantidade válida e valor igual ou maior que zero.');
+        return;
+      }
+
+      setOrderEditSaving(true);
+      setMessage(null);
+      try {
+        const payload = {
+          clienteId: normalizedForm.clienteId || '',
+          clienteNome: String(normalizedForm.clienteNome || '').trim(),
+          telefone: normalizedForm.telefone || '',
+          clienteEndereco: normalizedForm.clienteEndereco || '',
+          formaPagamento: normalizedForm.formaPagamento || 'Pix',
+          observacao: normalizedForm.observacao || '',
+          additionalInfo: normalizedForm.observacao || '',
+          itens: normalizedForm.itens,
+          subtotal: normalizedForm.subtotal,
+          desconto: normalizedForm.desconto,
+          valorFrete: normalizedForm.valorFrete,
+          frete: normalizedForm.valorFrete,
+          total: normalizedForm.total,
+          cupom: null,
+          updatedAt: new Date()
+        };
+        await updateItem('pedidos', orderToEditBeforeInvoice.id, payload, effectiveStoreId);
+        setOrderToEditBeforeInvoice(null);
+        setOrderEditProductSearch('');
+        setOrderEditError('');
+        setMessage({ type: 'success', text: 'Pedido atualizado. Agora valide novamente antes de emitir a nota.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Erro ao editar pedido antes da nota:', error);
+        setOrderEditError(error?.message || 'Não foi possível salvar o pedido antes da emissão.');
+      } finally {
+        setOrderEditSaving(false);
+      }
+    };
+
     useEffect(() => {
       if (!effectiveStoreId) return undefined;
       setConfigLoading(true);
@@ -9818,7 +10155,11 @@ const handleSubmit = async (e) => {
           setIssuerForm((prev) => ({ ...prev, ...configuration.issuer, address: { ...prev.address, ...(configuration.issuer.address || {}) } }));
         }
         if (configuration.settings) {
-          setSettingsForm((prev) => ({ ...prev, ...configuration.settings, serviceUrl: '' }));
+          setSettingsForm((prev) => ({
+            ...prev,
+            ...configuration.settings,
+            serviceUrl: configuration.platformService?.serviceUrl || configuration.settings.serviceUrl || ''
+          }));
         }
         setCertificateInfo(configuration.certificate || null);
         setPlatformService(configuration.platformService || null);
@@ -9855,6 +10196,9 @@ const handleSubmit = async (e) => {
 
     const resetProductForm = () => {
       setEditingFiscalProduct(null);
+      setSelectedFiscalProductIds([]);
+      setFiscalProductSearchTerm('');
+      setFiscalProductConflictMode('fill-empty');
       setProductForm({
         productId: '',
         code: '',
@@ -9867,8 +10211,55 @@ const handleSubmit = async (e) => {
         csosn: '102',
         pisCst: '49',
         cofinsCst: '49',
+        cest: '',
         cBenef: ''
       });
+    };
+
+    const applyFiscalProductSelection = (nextIds) => {
+      const normalizedIds = [...new Set(nextIds.filter(Boolean).map(String))];
+      setSelectedFiscalProductIds(normalizedIds);
+      setProductForm((prev) => {
+        if (normalizedIds.length === 1) {
+          const product = storeProducts.find((item) => String(item.id) === normalizedIds[0]);
+          return {
+            ...prev,
+            productId: normalizedIds[0],
+            code: product?.codigo || normalizedIds[0],
+            description: product?.nome || prev.description
+          };
+        }
+        if (normalizedIds.length > 1) {
+          return {
+            ...prev,
+            productId: '',
+            code: '',
+            description: ''
+          };
+        }
+        return { ...prev, productId: '' };
+      });
+    };
+
+    const toggleFiscalProductSelection = (productId) => {
+      if (editingFiscalProduct) return;
+      const normalizedId = String(productId || '');
+      if (!normalizedId) return;
+      const nextIds = selectedFiscalProductIdSet.has(normalizedId)
+        ? selectedFiscalProductIds.filter((id) => id !== normalizedId)
+        : [...selectedFiscalProductIds, normalizedId];
+      applyFiscalProductSelection(nextIds);
+    };
+
+    const toggleAllVisibleFiscalProducts = (checked) => {
+      if (editingFiscalProduct) return;
+      const visibleIds = filteredFiscalProductOptions.map((produto) => String(produto.id)).filter(Boolean);
+      if (checked) {
+        applyFiscalProductSelection([...selectedFiscalProductIds, ...visibleIds]);
+      } else {
+        const visibleIdSet = new Set(visibleIds);
+        applyFiscalProductSelection(selectedFiscalProductIds.filter((id) => !visibleIdSet.has(id)));
+      }
     };
 
     const requestOrderValidation = async (order) => {
@@ -10104,9 +10495,19 @@ const handleSubmit = async (e) => {
             nfceSeries: Number(settingsForm.nfceSeries || 1),
             operationNature: settingsForm.operationNature,
             defaultPaymentMethodCode: settingsForm.defaultPaymentMethodCode,
-            defaultPresence: Number(settingsForm.defaultPresence || 2)
+            defaultPresence: Number(settingsForm.defaultPresence || 2),
+            ...(isPlatformAdmin ? { serviceUrl: settingsForm.serviceUrl || '' } : {})
           }
         }));
+        if (isPlatformAdmin) {
+          const normalizedServiceUrl = String(settingsForm.serviceUrl || '').trim();
+          setPlatformService((prev) => ({
+            ...(prev || {}),
+            serviceUrl: normalizedServiceUrl,
+            configured: Boolean(normalizedServiceUrl),
+            source: normalizedServiceUrl ? 'integrations/fiscal' : ''
+          }));
+        }
         setMessage({ type: 'success', text: 'Configuração fiscal salva.' });
       } catch (error) {
         console.error('[NotaFiscal] Erro ao salvar configuração:', error);
@@ -10164,6 +10565,9 @@ const handleSubmit = async (e) => {
 
     const handleEditFiscalProduct = (row) => {
       setEditingFiscalProduct(row);
+      setSelectedFiscalProductIds(row.id ? [String(row.id)] : []);
+      setFiscalProductSearchTerm('');
+      setFiscalProductConflictMode('overwrite');
       setProductForm({
         productId: row.id || '',
         code: row.code || '',
@@ -10176,6 +10580,7 @@ const handleSubmit = async (e) => {
         csosn: row.csosn || '102',
         pisCst: row.pisCst || '49',
         cofinsCst: row.cofinsCst || '49',
+        cest: row.cest || '',
         cBenef: row.cBenef || ''
       });
       setShowProductModal(true);
@@ -10192,6 +10597,7 @@ const handleSubmit = async (e) => {
       const product = (data.produtos || []).find((item) => item.id === issue.productId);
       resetProductForm();
       setProductCorrectionOrderId(orderId);
+      applyFiscalProductSelection(issue.productId || product?.id ? [issue.productId || product?.id] : []);
       setProductForm((prev) => ({
         ...prev,
         productId: issue.productId || product?.id || '',
@@ -10208,51 +10614,182 @@ const handleSubmit = async (e) => {
       event.preventDefault();
       if (isReadOnly) return;
       if (!effectiveStoreId) return;
-      const productId = (editingFiscalProduct?.id || productForm.productId || productForm.code || productForm.description).trim();
-      if (!productId) {
-        setMessage({ type: 'error', text: 'Informe o produto ou código para salvar o cadastro fiscal.' });
-        return;
-      }
       const normalizedNcm = normalizeFiscalCode(productForm.ncm);
       if (normalizedNcm.length !== 8) {
         setMessage({ type: 'error', text: 'Informe NCM com 8 dígitos. O CFOP é selecionado por operação na tela de emissão.' });
         return;
       }
 
-      const payload = {
-        code: productForm.code || productId,
-        description: productForm.description,
+      const selectedIds = editingFiscalProduct?.id
+        ? [String(editingFiscalProduct.id)]
+        : selectedFiscalProductIds;
+      const selectedProducts = selectedIds
+        .map((productId) => storeProducts.find((item) => String(item.id) === String(productId)))
+        .filter(Boolean);
+      const manualProductId = String(editingFiscalProduct?.id || productForm.productId || productForm.code || productForm.description || '').trim();
+      const isManualSave = selectedProducts.length === 0;
+
+      if (isManualSave && !manualProductId) {
+        setMessage({ type: 'error', text: 'Selecione ao menos um produto ou informe código/descrição para salvar o cadastro fiscal.' });
+        return;
+      }
+
+      const commonFiscalPayload = {
         ncm: normalizedNcm,
         unit: productForm.unit || 'un',
         origin: Number(productForm.origin || 0),
         csosn: productForm.csosn || '102',
         pisCst: productForm.pisCst || '49',
         cofinsCst: productForm.cofinsCst || '49',
+        cest: productForm.cest || '',
         cBenef: productForm.cBenef || '',
-        updatedAt: new Date()
+        updatedAt: serverTimestamp()
       };
 
-      try {
-        if (editingFiscalProduct) {
-          await updateItem('fiscalProducts', productId, payload, effectiveStoreId);
-        } else {
-          await setDoc(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', productId), {
-            ...payload,
-            createdAt: serverTimestamp()
-          }, { merge: true });
+      const isEmptyFiscalValue = (value) => value === undefined || value === null || value === '';
+      const buildProductPayload = (product, existing = null) => {
+        const productId = String(product?.id || manualProductId || '').trim();
+        const isMulti = selectedProducts.length > 1;
+        const basePayload = {
+          code: isMulti ? (product?.codigo || productId) : (productForm.code || product?.codigo || productId),
+          description: isMulti ? (product?.nome || productForm.description || productId) : (productForm.description || product?.nome || productId),
+          ...commonFiscalPayload
+        };
+
+        if (!existing) {
+          return {
+            payload: {
+              ...basePayload,
+              productId,
+              createdAt: serverTimestamp()
+            },
+            action: 'created'
+          };
         }
+
+        if (fiscalProductConflictMode === 'ignore' && !editingFiscalProduct) {
+          return { payload: null, action: 'skipped' };
+        }
+
+        if (fiscalProductConflictMode === 'fill-empty' && !editingFiscalProduct) {
+          const patch = {};
+          Object.entries({ productId, ...basePayload }).forEach(([field, value]) => {
+            if (field === 'updatedAt') return;
+            if (!isEmptyFiscalValue(value) && isEmptyFiscalValue(existing[field])) {
+              patch[field] = value;
+            }
+          });
+          if (Object.keys(patch).length === 0) {
+            return { payload: null, action: 'skipped' };
+          }
+          return {
+            payload: {
+              ...patch,
+              updatedAt: serverTimestamp()
+            },
+            action: 'updated'
+          };
+        }
+
+        return {
+          payload: {
+            ...basePayload,
+            productId
+          },
+          action: 'updated'
+        };
+      };
+
+      const targets = isManualSave
+        ? [{
+            id: manualProductId,
+            product: { id: manualProductId, nome: productForm.description, codigo: productForm.code || manualProductId },
+            existing: editingFiscalProduct || fiscalProductsById.get(manualProductId)
+          }]
+        : selectedProducts.map((product) => ({
+            id: String(product.id),
+            product,
+            existing: fiscalProductsById.get(String(product.id))
+          }));
+
+      const affectedCount = targets.length;
+      const existingCount = targets.filter((target) => target.existing).length;
+      const conflictLabel = {
+        overwrite: 'sobrescrever os dados existentes',
+        ignore: 'ignorar produtos que já possuem cadastro',
+        'fill-empty': 'atualizar apenas campos vazios'
+      }[fiscalProductConflictMode] || 'atualizar apenas campos vazios';
+      const confirmText = [
+        `Você está prestes a salvar cadastro fiscal para ${affectedCount} produto(s).`,
+        existingCount > 0 ? `${existingCount} produto(s) já possuem cadastro fiscal; a regra escolhida é: ${conflictLabel}.` : 'Nenhum produto selecionado possui cadastro fiscal anterior.',
+        'Deseja continuar?'
+      ].join('\n\n');
+
+      if (!window.confirm(confirmText)) return;
+
+      setSavingFiscalProducts(true);
+      setMessage(null);
+      try {
+        const writes = [];
+        let skipped = 0;
+        targets.forEach((target) => {
+          const { payload, action } = buildProductPayload(target.product, target.existing);
+          if (!payload) {
+            skipped += 1;
+            return;
+          }
+          writes.push({
+            id: target.id,
+            payload,
+            action
+          });
+        });
+
+        if (writes.length === 0) {
+          setShowProductModal(false);
+          resetProductForm();
+          setMessage({ type: 'success', text: `Nenhum produto alterado. ${skipped} produto(s) foram ignorados pela regra escolhida.` });
+          return;
+        }
+
+        const chunks = [];
+        for (let index = 0; index < writes.length; index += 450) {
+          chunks.push(writes.slice(index, index + 450));
+        }
+
+        const summary = { created: 0, updated: 0, errors: 0 };
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach((item) => {
+            batch.set(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', item.id), item.payload, { merge: true });
+          });
+          try {
+            await batch.commit();
+            chunk.forEach((item) => {
+              if (item.action === 'created') summary.created += 1;
+              if (item.action === 'updated') summary.updated += 1;
+            });
+          } catch (error) {
+            summary.errors += chunk.length;
+            console.error('[NotaFiscal] Erro ao salvar lote de produtos fiscais:', error);
+          }
+        }
+
         setShowProductModal(false);
         resetProductForm();
+        const summaryText = `Produtos fiscais: ${summary.created} cadastrado(s), ${summary.updated} atualizado(s), ${summary.errors} com erro${skipped ? `, ${skipped} ignorado(s)` : ''}.`;
         if (productCorrectionOrderId) {
           setActiveTab('emitir');
-          setMessage({ type: 'success', text: 'Cadastro fiscal salvo. Valide novamente o pedido para confirmar a emissão.' });
+          setMessage({ type: summary.errors ? 'error' : 'success', text: `${summaryText} Valide novamente o pedido para confirmar a emissão.` });
           setProductCorrectionOrderId('');
         } else {
-          setMessage({ type: 'success', text: 'Cadastro fiscal do produto salvo.' });
+          setMessage({ type: summary.errors ? 'error' : 'success', text: summaryText });
         }
       } catch (error) {
         console.error('[NotaFiscal] Erro ao salvar produto fiscal:', error);
         setMessage({ type: 'error', text: error?.message || 'Não foi possível salvar o cadastro fiscal.' });
+      } finally {
+        setSavingFiscalProducts(false);
       }
     };
 
@@ -10275,6 +10812,12 @@ const handleSubmit = async (e) => {
     ];
 
     const orderActions = isReadOnly ? [] : [
+      {
+        icon: Edit,
+        label: 'Editar pedido antes da nota',
+        onClick: handleOpenPreInvoiceOrderEdit,
+        isVisible: (row) => !getPreInvoiceLockedReason(row)
+      },
       { icon: RefreshCw, label: 'Validar', onClick: handleValidateOrder },
       { icon: Printer, label: 'Emitir', onClick: handleIssueOrder }
     ];
@@ -10305,7 +10848,8 @@ const handleSubmit = async (e) => {
     const fiscalProductColumns = [
       { header: 'Produto', render: (row) => <div><p className="font-medium text-gray-800">{row.description || row.nome || row.id}</p><p className="text-xs text-gray-500">{row.code || row.id}</p></div> },
       { header: 'NCM', key: 'ncm' },
-      { header: 'CSOSN/CST', render: (row) => row.csosn || row.cst || '-' },
+      { header: 'ICMS/CST', render: (row) => row.csosn || row.cst || '-' },
+      { header: 'CEST', render: (row) => row.cest || '-' },
       { header: 'Un.', render: (row) => row.unit || 'un' }
     ];
 
@@ -10636,11 +11180,16 @@ const handleSubmit = async (e) => {
                 {isPlatformAdmin && (
                   <div className="md:col-span-3">
                     <Input
-                      disabled
+                      disabled={isReadOnly}
                       label="URL única do serviço fiscal (Cloud Run) - plataforma"
-                      value={platformService?.serviceUrl || 'Não configurada no backend'}
+                      value={settingsForm.serviceUrl || ''}
+                      placeholder="https://fiscal-service-xxxxx-rj.a.run.app"
+                      onChange={(e) => setSettingsForm({ ...settingsForm, serviceUrl: e.target.value })}
                     />
-                    <p className="mt-1 text-xs text-gray-500">Configuração global protegida; não pertence a uma loja.</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Configuração global protegida; não pertence a uma loja.
+                      {platformService?.configured ? ` Origem atual: ${platformService.source || 'backend'}.` : ' Ainda não configurada.'}
+                    </p>
                   </div>
                 )}
               </div>
@@ -10658,15 +11207,103 @@ const handleSubmit = async (e) => {
               <a href="https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior/classificacao-fiscal-de-mercadorias/ncm" target="_blank" rel="noreferrer" className="text-pink-700 underline hover:text-pink-800">Consultar NCM na Receita Federal</a>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Select label="Produto vinculado" value={productForm.productId} onChange={(e) => {
-                const product = (data.produtos || []).find((item) => item.id === e.target.value);
-                setProductForm({ ...productForm, productId: e.target.value, description: product?.nome || productForm.description, code: product?.codigo || e.target.value });
-              }} disabled={Boolean(editingFiscalProduct)}>
-                <option value="">Selecione ou preencha manualmente</option>
-                {(data.produtos || []).map((produto) => <option key={produto.id} value={produto.id}>{produto.nome}</option>)}
-              </Select>
-              <Input label="Código" value={productForm.code} onChange={(e) => setProductForm({ ...productForm, code: e.target.value })} />
-              <Input label="Descrição fiscal" value={productForm.description} onChange={(e) => setProductForm({ ...productForm, description: e.target.value })} required />
+              <div className="md:col-span-2 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="block text-sm font-medium text-gray-700">Produto vinculado</label>
+                  <span className="text-xs font-medium text-gray-500">{selectedFiscalProductIds.length} selecionado(s)</span>
+                </div>
+                <div className="rounded-xl border border-gray-300 bg-white">
+                  <div className="relative border-b border-gray-100 p-3">
+                    <Search className="absolute left-6 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      disabled={Boolean(editingFiscalProduct)}
+                      value={fiscalProductSearchTerm}
+                      onChange={(event) => setFiscalProductSearchTerm(event.target.value)}
+                      placeholder="Pesquisar produto pelo nome"
+                      className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-3 text-sm focus:border-transparent focus:ring-2 focus:ring-pink-500 disabled:bg-gray-50"
+                    />
+                  </div>
+                  {!editingFiscalProduct && (
+                    <label className="flex cursor-pointer items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-pink-50">
+                      <span className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={filteredFiscalProductOptions.length > 0 && filteredFiscalProductOptions.every((produto) => selectedFiscalProductIdSet.has(String(produto.id)))}
+                          onChange={(event) => toggleAllVisibleFiscalProducts(event.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                        />
+                        Selecionar todos
+                      </span>
+                      <span className="text-xs text-gray-500">{filteredFiscalProductOptions.length} produto(s)</span>
+                    </label>
+                  )}
+                  <div className="max-h-64 overflow-y-auto">
+                    {filteredFiscalProductOptions.length ? filteredFiscalProductOptions.map((produto) => {
+                      const isSelected = selectedFiscalProductIdSet.has(String(produto.id));
+                      const alreadyRegistered = fiscalProductsById.has(String(produto.id));
+                      return (
+                        <label key={produto.id} className={`flex cursor-pointer items-start justify-between gap-3 px-4 py-3 text-sm transition-colors hover:bg-pink-50 ${isSelected ? 'bg-pink-50' : ''}`}>
+                          <span className="flex min-w-0 items-start gap-3">
+                            <input
+                              type="checkbox"
+                              disabled={Boolean(editingFiscalProduct)}
+                              checked={isSelected}
+                              onChange={() => toggleFiscalProductSelection(produto.id)}
+                              className="mt-1 h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500 disabled:opacity-60"
+                            />
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium text-gray-800">{produto.nome || produto.id}</span>
+                              <span className="block truncate text-xs text-gray-500">{produto.categoriaPrincipal || produto.categoria || 'Produto da loja'}</span>
+                            </span>
+                          </span>
+                          {alreadyRegistered && <span className="shrink-0 rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">Cadastrado</span>}
+                        </label>
+                      );
+                    }) : (
+                      <div className="px-4 py-6 text-center text-sm text-gray-500">Nenhum produto encontrado.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {selectedExistingFiscalProductCount > 0 && !editingFiscalProduct && (
+                <div className="md:col-span-2 rounded-xl border border-yellow-200 bg-yellow-50 p-4">
+                  <p className="text-sm font-medium text-yellow-900">{selectedExistingFiscalProductCount} produto(s) selecionado(s) já possuem cadastro fiscal.</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-yellow-950 md:grid-cols-3">
+                    {[
+                      ['fill-empty', 'Atualizar campos vazios'],
+                      ['ignore', 'Ignorar existentes'],
+                      ['overwrite', 'Sobrescrever existentes']
+                    ].map(([value, label]) => (
+                      <label key={value} className="flex cursor-pointer items-center gap-2 rounded-lg bg-white/70 px-3 py-2">
+                        <input
+                          type="radio"
+                          name="fiscalProductConflictMode"
+                          value={value}
+                          checked={fiscalProductConflictMode === value}
+                          onChange={(event) => setFiscalProductConflictMode(event.target.value)}
+                          className="text-pink-600 focus:ring-pink-500"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <Input
+                label="Código"
+                value={productForm.code}
+                disabled={hasMultipleFiscalProductsSelected}
+                placeholder={hasMultipleFiscalProductsSelected ? 'Automático por produto' : ''}
+                onChange={(e) => setProductForm({ ...productForm, code: e.target.value })}
+              />
+              <Input
+                label="Descrição fiscal"
+                value={productForm.description}
+                disabled={hasMultipleFiscalProductsSelected}
+                placeholder={hasMultipleFiscalProductsSelected ? 'Usa o nome de cada produto' : ''}
+                onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
+                required={!hasMultipleFiscalProductsSelected}
+              />
               <Select label="NCM do produto" value={normalizeFiscalCode(productForm.ncm)} onChange={(e) => setProductForm({ ...productForm, ncm: e.target.value })} required>
                 {productForm.ncm && !NCM_PRODUCT_OPTIONS.some((option) => option.value === normalizeFiscalCode(productForm.ncm)) && (
                   <option value={normalizeFiscalCode(productForm.ncm)}>{formatNcmCode(productForm.ncm)} - NCM cadastrado</option>
@@ -10675,14 +11312,170 @@ const handleSubmit = async (e) => {
               </Select>
               <Input label="Unidade" value={productForm.unit} onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })} />
               <Input label="Origem" type="number" value={productForm.origin} onChange={(e) => setProductForm({ ...productForm, origin: e.target.value })} />
-              <Input label="CSOSN" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
+              <Input label="ICMS/CST" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
+              <Input label="CEST" value={productForm.cest} onChange={(e) => setProductForm({ ...productForm, cest: e.target.value })} />
               <Input label="PIS CST" value={productForm.pisCst} onChange={(e) => setProductForm({ ...productForm, pisCst: e.target.value })} />
               <Input label="COFINS CST" value={productForm.cofinsCst} onChange={(e) => setProductForm({ ...productForm, cofinsCst: e.target.value })} />
-              <Input label="cBenef" value={productForm.cBenef} onChange={(e) => setProductForm({ ...productForm, cBenef: e.target.value })} />
+              <Input label="Código de benefício" value={productForm.cBenef} onChange={(e) => setProductForm({ ...productForm, cBenef: e.target.value })} />
             </div>
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="secondary" type="button" onClick={() => { setShowProductModal(false); resetProductForm(); }}>Cancelar</Button>
-              <Button type="submit"><Save className="w-4 h-4" /> Salvar</Button>
+              <Button variant="secondary" type="button" disabled={savingFiscalProducts} onClick={() => { setShowProductModal(false); resetProductForm(); }}>Cancelar</Button>
+              <Button type="submit" disabled={savingFiscalProducts}><Save className="w-4 h-4" /> {savingFiscalProducts ? 'Salvando...' : 'Salvar'}</Button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={Boolean(orderToEditBeforeInvoice)}
+          onClose={() => {
+            if (orderEditSaving) return;
+            setOrderToEditBeforeInvoice(null);
+            setOrderEditProductSearch('');
+            setOrderEditError('');
+          }}
+          title="Editar pedido antes da nota"
+          size="xl"
+        >
+          <form onSubmit={handleSavePreInvoiceOrderEdit} data-unsaved-changes={Boolean(orderToEditBeforeInvoice)} className="space-y-5">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Ajuste aqui os dados que serão usados na emissão fiscal. Depois de salvar, valide o pedido novamente antes de emitir a nota.
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select label="Cliente cadastrado" value={orderEditForm.clienteId || ''} onChange={(event) => handleOrderEditClientChange(event.target.value)}>
+                <option value="">Cliente manual / não vinculado</option>
+                {(data.clientes || []).map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.nome}</option>)}
+              </Select>
+              <Input label="Nome do cliente na nota" value={orderEditForm.clienteNome || ''} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, clienteNome: event.target.value }))} required />
+              <Input label="Telefone" value={orderEditForm.telefone || ''} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, telefone: event.target.value }))} />
+              <Select label="Forma de pagamento" value={orderEditForm.formaPagamento || 'Pix'} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, formaPagamento: event.target.value }))}>
+                <option>Pix</option>
+                <option>Cartão de Crédito</option>
+                <option>Cartão de Débito</option>
+                <option>Dinheiro</option>
+                <option>Link de Pagamento</option>
+              </Select>
+              <div className="md:col-span-2">
+                <Input label="Endereço do cliente" value={orderEditForm.clienteEndereco || ''} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, clienteEndereco: event.target.value }))} />
+              </div>
+              <div className="md:col-span-2">
+                <Textarea
+                  label="Observação da nota/pedido"
+                  rows={3}
+                  value={orderEditForm.observacao || ''}
+                  onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, observacao: event.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,0.9fr)_minmax(360px,1.1fr)] gap-5">
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-800">Adicionar ou trocar produtos</h3>
+                <Input
+                  label="Buscar produto"
+                  placeholder="Buscar por nome, código ou categoria"
+                  value={orderEditProductSearch}
+                  onChange={(event) => setOrderEditProductSearch(event.target.value)}
+                />
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2">
+                  {orderEditFilteredProducts.length ? orderEditFilteredProducts.map((product) => (
+                    <div key={product.id} className="flex items-center justify-between gap-3 rounded-lg p-2 hover:bg-pink-50">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-800">{product.nome}</p>
+                        <p className="text-xs text-gray-500">{product.categoria || 'Produto'} - {formatCurrencyBR(product.preco || 0)}</p>
+                      </div>
+                      <Button size="sm" variant="secondary" onClick={() => handleAddProductToPreInvoiceOrder(product)}>+</Button>
+                    </div>
+                  )) : (
+                    <p className="p-4 text-center text-sm text-gray-500">Nenhum produto encontrado.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="font-semibold text-gray-800">Itens do pedido</h3>
+                  <span className="text-sm text-gray-500">{(orderEditForm.itens || []).length} item(ns)</span>
+                </div>
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white">
+                  {(orderEditForm.itens || []).length ? (orderEditForm.itens || []).map((item, index) => {
+                    const productId = String(getOrderItemProductId(item) || '');
+                    const selectedProductExists = storeProducts.some((product) => String(product.id) === productId);
+                    return (
+                      <div key={`${productId || item.nome || index}-${index}`} className="grid grid-cols-1 gap-3 border-b border-gray-100 p-3 last:border-b-0">
+                        <Select label="Produto" value={productId} onChange={(event) => handleReplacePreInvoiceOrderItem(index, event.target.value)}>
+                          {!selectedProductExists && productId && <option value={productId}>{item.nome || productId}</option>}
+                          {storeProducts.map((product) => <option key={product.id} value={product.id}>{product.nome}</option>)}
+                        </Select>
+                        <div className="grid grid-cols-[120px_1fr_auto] gap-3 items-end">
+                          <Input
+                            label="Qtd."
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={item.quantity ?? item.quantidade ?? 1}
+                            onChange={(event) => handleUpdatePreInvoiceOrderItem(index, 'quantity', event.target.value)}
+                          />
+                          <Input
+                            label="Valor unitário"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.preco ?? item.unitPrice ?? 0}
+                            onChange={(event) => handleUpdatePreInvoiceOrderItem(index, 'preco', event.target.value)}
+                          />
+                          <button type="button" onClick={() => handleRemovePreInvoiceOrderItem(index)} className="mb-1 rounded-lg p-3 text-red-500 hover:bg-red-50" title="Remover item">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <p className="text-right text-sm font-semibold text-gray-700">
+                          Total do item: {formatCurrencyBR((Number(item.preco || item.unitPrice || 0) || 0) * (Number(item.quantity || item.quantidade || 1) || 1))}
+                        </p>
+                      </div>
+                    );
+                  }) : (
+                    <p className="p-6 text-center text-sm text-gray-500">Nenhum produto no pedido.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <Input label="Desconto (R$)" type="number" min="0" step="0.01" value={orderEditForm.desconto || 0} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, desconto: event.target.value, cupom: null }))} />
+                <Input label="Frete (R$)" type="number" min="0" step="0.01" value={orderEditForm.valorFrete || 0} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, valorFrete: event.target.value, frete: event.target.value }))} />
+                <div className="rounded-xl bg-white p-3 text-sm text-gray-700">
+                  <p>Subtotal</p>
+                  <p className="text-lg font-bold text-gray-900">{formatCurrencyBR(orderEditForm.subtotal || 0)}</p>
+                </div>
+                <div className="rounded-xl bg-pink-50 p-3 text-sm text-pink-700">
+                  <p>Total</p>
+                  <p className="text-lg font-bold">{formatCurrencyBR(orderEditForm.total || 0)}</p>
+                </div>
+              </div>
+            </div>
+
+            {orderEditError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {orderEditError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="secondary"
+                type="button"
+                disabled={orderEditSaving}
+                onClick={() => {
+                  setOrderToEditBeforeInvoice(null);
+                  setOrderEditProductSearch('');
+                  setOrderEditError('');
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={orderEditSaving}>
+                <Save className="w-4 h-4" /> {orderEditSaving ? 'Salvando...' : 'Salvar pedido'}
+              </Button>
             </div>
           </form>
         </Modal>
