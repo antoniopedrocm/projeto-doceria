@@ -533,6 +533,19 @@ const getClientPrimaryAddressText = (cliente = {}) => {
   ].filter(Boolean).join(', ');
 };
 
+const ORDER_PAYMENT_OPTIONS = [
+  'Pix dinâmico / link gerado',
+  'Pix fixo / QR Code fixo',
+  'Link de cartão de crédito',
+  'Link de cartão de débito',
+  'Cartão de Crédito',
+  'Cartão de Débito',
+  'Dinheiro',
+  'Link de Pagamento',
+  'Pix',
+];
+const DEFAULT_ORDER_PAYMENT_METHOD = ORDER_PAYMENT_OPTIONS[0];
+
 // Hook customizado para estado persistente na sessão
 const usePersistentState = (key, defaultValue) => {
   // Inicializa o estado apenas uma vez com o valor do sessionStorage
@@ -7552,7 +7565,7 @@ const effectiveStoreName = useMemo(() => {
     const [editingOrder, setEditingOrder] = useState(null);
     const [isSavingOrder, setIsSavingOrder] = useState(false);
     const [saveOrderError, setSaveOrderError] = useState('');
-    const [formData, setFormData] = useState({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: 'Pix', cupom: null });
+    const [formData, setFormData] = useState({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
     const [viewingOrder, setViewingOrder] = useState(null);
             const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
     const [descontoValor, setDescontoValor] = useState('');
@@ -7631,7 +7644,7 @@ const effectiveStoreName = useMemo(() => {
     const resetForm = () => {
         setEditingOrder(null);
         setSaveOrderError('');
-        setFormData({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: 'Pix', cupom: null });
+        setFormData({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
         setDescontoValor('');
         setDescontoPercentual('');
         setProductSearchTerm('');
@@ -7879,7 +7892,7 @@ const handleSubmit = async (e) => {
             categoria: 'Delivery',
             dataEntrega: '',
             observacao: '',
-            formaPagamento: 'Pix',
+            formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD,
             cupom: null
         };
 
@@ -7945,11 +7958,7 @@ const handleSubmit = async (e) => {
                             <option value="Festa">Festa</option>
                         </Select>
                         <Select label="Forma de Pagamento" value={formData.formaPagamento} onChange={(e) => setFormData({...formData, formaPagamento: e.target.value})} required>
-                            <option>Pix</option>
-                            <option>Cartão de Crédito</option>
-                            <option>Cartão de Débito</option>
-                            <option>Dinheiro</option>
-                            <option>Link de Pagamento</option>
+                            {ORDER_PAYMENT_OPTIONS.map((option) => <option key={option}>{option}</option>)}
                         </Select>
                         {formData.categoria === 'Festa' && (
                             <Input 
@@ -9421,7 +9430,7 @@ const handleSubmit = async (e) => {
       clienteNome: '',
       telefone: '',
       clienteEndereco: '',
-      formaPagamento: 'Pix',
+      formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD,
       observacao: '',
       itens: [],
       desconto: 0,
@@ -9676,13 +9685,22 @@ const handleSubmit = async (e) => {
 
     const getInvoicePaymentMethod = useCallback((invoice) => {
       const order = getInvoiceOrder(invoice);
-      return invoice?.paymentMethod
+      const method = invoice?.paymentMethod
         || invoice?.payment?.method
         || invoice?.serviceResult?.payment?.method
         || order?.formaPagamento
         || order?.paymentMethod
         || '-';
+      const code = invoice?.paymentMethodCode || invoice?.payment?.methodCode || invoice?.serviceResult?.payment?.methodCode || '';
+      return code ? `${method} (${code})` : method;
     }, [getInvoiceOrder]);
+
+    const getInvoicePaymentCode = useCallback((invoice) => (
+      invoice?.paymentMethodCode
+      || invoice?.payment?.methodCode
+      || invoice?.serviceResult?.payment?.methodCode
+      || ''
+    ), []);
 
     const getInvoiceItems = useCallback((invoice) => {
       const order = getInvoiceOrder(invoice);
@@ -9971,7 +9989,7 @@ const handleSubmit = async (e) => {
         clienteNome: order?.clienteNome || '',
         telefone: order?.telefone || '',
         clienteEndereco: order?.clienteEndereco || '',
-        formaPagamento: order?.formaPagamento || order?.paymentMethod || 'Pix',
+        formaPagamento: order?.formaPagamento || order?.paymentMethod || DEFAULT_ORDER_PAYMENT_METHOD,
         observacao: order?.observacao || order?.additionalInfo || '',
         itens: items,
         desconto: Number(order?.desconto || order?.cupom?.valorDesconto || 0) || 0,
@@ -10117,7 +10135,7 @@ const handleSubmit = async (e) => {
           clienteNome: String(normalizedForm.clienteNome || '').trim(),
           telefone: normalizedForm.telefone || '',
           clienteEndereco: normalizedForm.clienteEndereco || '',
-          formaPagamento: normalizedForm.formaPagamento || 'Pix',
+          formaPagamento: normalizedForm.formaPagamento || DEFAULT_ORDER_PAYMENT_METHOD,
           observacao: normalizedForm.observacao || '',
           additionalInfo: normalizedForm.observacao || '',
           itens: normalizedForm.itens,
@@ -11347,12 +11365,8 @@ const handleSubmit = async (e) => {
               </Select>
               <Input label="Nome do cliente na nota" value={orderEditForm.clienteNome || ''} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, clienteNome: event.target.value }))} required />
               <Input label="Telefone" value={orderEditForm.telefone || ''} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, telefone: event.target.value }))} />
-              <Select label="Forma de pagamento" value={orderEditForm.formaPagamento || 'Pix'} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, formaPagamento: event.target.value }))}>
-                <option>Pix</option>
-                <option>Cartão de Crédito</option>
-                <option>Cartão de Débito</option>
-                <option>Dinheiro</option>
-                <option>Link de Pagamento</option>
+              <Select label="Forma de pagamento" value={orderEditForm.formaPagamento || DEFAULT_ORDER_PAYMENT_METHOD} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, formaPagamento: event.target.value }))}>
+                {ORDER_PAYMENT_OPTIONS.map((option) => <option key={option}>{option}</option>)}
               </Select>
               <div className="md:col-span-2">
                 <Input label="Endereço do cliente" value={orderEditForm.clienteEndereco || ''} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, clienteEndereco: event.target.value }))} />
@@ -11517,6 +11531,7 @@ const handleSubmit = async (e) => {
             const freight = getInvoiceFreight(invoice);
             const paidAmount = getInvoicePaidAmount(invoice);
             const change = getInvoiceChange(invoice);
+            const paymentCode = getInvoicePaymentCode(invoice);
             const sefazUrl = sefazConsultaUrl(invoice);
             const statusBadge = <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${statusClass[invoice.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[invoice.status] || invoice.status || '-'}</span>;
 
@@ -11624,6 +11639,12 @@ const handleSubmit = async (e) => {
                   <DetailSection title="Pagamento">
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-800">
                       <p><strong>{getInvoicePaymentMethod(invoice)}</strong> — {formatCurrencyBR(paidAmount)}</p>
+                      {paymentCode && (
+                        <p className="mt-2 text-xs text-gray-500">
+                          Código fiscal usado: <span className="font-mono font-semibold text-gray-700">{paymentCode}</span>
+                          {invoice.payment?.fallbackUsed ? ' (fallback da configuração)' : ''}
+                        </p>
+                      )}
                     </div>
                   </DetailSection>
                 </div>

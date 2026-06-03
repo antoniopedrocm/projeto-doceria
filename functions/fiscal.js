@@ -19,19 +19,161 @@ const onlyDigits = (value) => String(value || '').replace(/\D/g, '');
 const money = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 const nowIso = () => new Date().toISOString();
 const trimText = (value) => String(value || '').trim();
+const normalizeLookupText = (value) => trimText(value)
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '');
 
 const inferDocumentType = (document) => (onlyDigits(document).length > 11 ? 'CNPJ' : 'CPF');
 const environmentCode = (environment) => (environment === 'production' ? 1 : 2);
 const counterId = (environment, model, series) => `${environment}_${model}_${series}`;
 
-const paymentMethodToNFeCode = (method) => {
-  const value = String(method || '').toLowerCase();
-  if (value.includes('pix')) return '17';
-  if (value.includes('crédito') || value.includes('credito')) return '03';
-  if (value.includes('débito') || value.includes('debito')) return '04';
-  if (value.includes('dinheiro')) return '01';
-  if (value.includes('boleto')) return '15';
-  return '99';
+const normalizePaymentCode = (value) => {
+  const digits = onlyDigits(value);
+  if (!digits) return '';
+  return digits.padStart(2, '0').slice(-2);
+};
+
+const fiscalPaymentCodeFromText = (method) => {
+  const value = normalizeLookupText(method);
+  if (!value) return '';
+
+  const isPix = value.includes('pix');
+  const isFixedPix = (
+    value.includes('pix fixo')
+    || value.includes('qr code fixo')
+    || value.includes('qrcode fixo')
+    || value.includes('qr-code fixo')
+    || value.includes('estatico')
+    || value.includes('chave pix')
+    || value.includes('chave fixa')
+  );
+  if (isFixedPix) return '20';
+
+  const isDynamicPix = isPix && (
+    value.includes('link')
+    || value.includes('dinamico')
+    || value.includes('gerado')
+    || value.includes('venda')
+    || value.includes('copia e cola')
+    || value === 'pix'
+  );
+  if (isDynamicPix) return '17';
+
+  if (value.includes('dinheiro') || value.includes('cash') || value.includes('especie')) return '01';
+  if (value.includes('debito') || value.includes('debit')) return '04';
+  if (value.includes('credito') || value.includes('credit')) return '03';
+  if (value.includes('link de pagamento') || value.includes('cartao')) return '03';
+
+  return '';
+};
+
+const getPaymentCandidates = (order = {}) => {
+  const candidates = [];
+  const addCandidate = (candidate, source) => {
+    if (candidate === undefined || candidate === null || candidate === '') return;
+    if (typeof candidate === 'string') {
+      candidates.push({method: candidate, source});
+      return;
+    }
+    if (typeof candidate !== 'object') return;
+    candidates.push({
+      method: candidate.method || candidate.metodo || candidate.formaPagamento || candidate.type || candidate.tipo || candidate.name || candidate.label || candidate.description || candidate.descricao || '',
+      methodCode: candidate.methodCode || candidate.codigoFiscal || candidate.fiscalCode || candidate.tPag || candidate.code || '',
+      amount: candidate.amount ?? candidate.valor ?? candidate.value ?? candidate.total ?? null,
+      source,
+    });
+  };
+
+  addCandidate(order.payment, 'order.payment');
+  addCandidate(order.formaPagamento, 'order.formaPagamento');
+  addCandidate(order.paymentMethod, 'order.paymentMethod');
+  addCandidate(order.metodoPagamento, 'order.metodoPagamento');
+  addCandidate(order.pagamento, 'order.pagamento');
+
+  [
+    ['order.payments', order.payments],
+    ['order.pagamentos', order.pagamentos],
+    ['order.paymentMethods', order.paymentMethods],
+    ['order.formasPagamento', order.formasPagamento],
+  ].forEach(([source, list]) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((item, index) => addCandidate(item, `${source}[${index}]`));
+  });
+
+  return candidates;
+};
+
+const resolveFiscalPayment = (order = {}, settings = {}, invoiceTotal = 0) => {
+  const fallbackCode = normalizePaymentCode(settings.defaultPaymentMethodCode || '99') || '99';
+  const candidates = getPaymentCandidates(order);
+  const enriched = candidates.map((candidate) => ({
+    ...candidate,
+    methodCodeFromText: fiscalPaymentCodeFromText(candidate.method),
+    normalizedMethodCode: normalizePaymentCode(candidate.methodCode),
+    normalizedMethod: trimText(candidate.method),
+    numericAmount: Number(candidate.amount ?? 0),
+  }));
+
+  const recognizedByText = enriched.filter((candidate) => candidate.methodCodeFromText);
+  const selectedByText = recognizedByText.length > 1
+    ? recognizedByText.reduce((selected, candidate) => (
+      Number(candidate.numericAmount || 0) > Number(selected.numericAmount || 0) ? candidate : selected
+    ), recognizedByText[0])
+    : recognizedByText[0];
+
+  if (selectedByText) {
+    return {
+      methodCode: selectedByText.methodCodeFromText,
+      method: selectedByText.normalizedMethod,
+      source: selectedByText.source,
+      fallbackUsed: false,
+      amount: invoiceTotal,
+      multiplePaymentsDetected: enriched.length > 1,
+      selectionRule: enriched.length > 1 ? 'recognized_payment_with_highest_amount' : 'recognized_order_payment',
+      candidates: enriched.map((candidate) => ({
+        method: candidate.normalizedMethod || null,
+        methodCode: candidate.normalizedMethodCode || null,
+        amount: Number.isFinite(candidate.numericAmount) ? candidate.numericAmount : null,
+        source: candidate.source,
+      })).slice(0, 10),
+    };
+  }
+
+  const selectedByCode = enriched.find((candidate) => candidate.normalizedMethodCode);
+  if (selectedByCode) {
+    return {
+      methodCode: selectedByCode.normalizedMethodCode,
+      method: selectedByCode.normalizedMethod || null,
+      source: selectedByCode.source,
+      fallbackUsed: false,
+      amount: invoiceTotal,
+      multiplePaymentsDetected: enriched.length > 1,
+      selectionRule: 'explicit_order_payment_code',
+      candidates: enriched.map((candidate) => ({
+        method: candidate.normalizedMethod || null,
+        methodCode: candidate.normalizedMethodCode || null,
+        amount: Number.isFinite(candidate.numericAmount) ? candidate.numericAmount : null,
+        source: candidate.source,
+      })).slice(0, 10),
+    };
+  }
+
+  return {
+    methodCode: fallbackCode,
+    method: null,
+    source: 'fiscalConfig.settings.defaultPaymentMethodCode',
+    fallbackUsed: true,
+    amount: invoiceTotal,
+    multiplePaymentsDetected: enriched.length > 1,
+    selectionRule: 'fallback_default_payment_method',
+    candidates: enriched.map((candidate) => ({
+      method: candidate.normalizedMethod || null,
+      methodCode: candidate.normalizedMethodCode || null,
+      amount: Number.isFinite(candidate.numericAmount) ? candidate.numericAmount : null,
+      source: candidate.source,
+    })).slice(0, 10),
+  };
 };
 
 const getNested = (obj, paths) => {
@@ -736,7 +878,7 @@ const createFiscalFunctions = ({
     const discounts = allocateDiscounts(itemsForDiscount, orderDiscount);
     const freight = money(order.valorFrete || order.frete || 0);
     const invoiceTotal = money(productTotal - orderDiscount + freight);
-    const paymentCode = order.payment?.methodCode || paymentMethodToNFeCode(order.formaPagamento);
+    const paymentResolution = resolveFiscalPayment(order, settings, invoiceTotal);
     const selectedOperationCfop = onlyDigits(operationCfop || '5101');
     if (selectedOperationCfop.length !== 4) {
       throw new HttpsError('invalid-argument', 'Selecione um CFOP válido para a operação fiscal.');
@@ -766,9 +908,13 @@ const createFiscalFunctions = ({
         operationCfop: selectedOperationCfop,
         processVersion: settings.processVersion,
         payment: {
-          methodCode: paymentCode || settings.defaultPaymentMethodCode,
+          methodCode: paymentResolution.methodCode,
           amount: invoiceTotal,
           dueDate: order.payment?.dueDate || null,
+          source: paymentResolution.source,
+          fallbackUsed: paymentResolution.fallbackUsed,
+          originalMethod: paymentResolution.method,
+          selectionRule: paymentResolution.selectionRule,
         },
       },
       issuer,
@@ -821,11 +967,12 @@ const createFiscalFunctions = ({
       certificate,
       model,
       series,
+      paymentResolution,
       errors: validatePreparedPayload(payload),
     };
   };
 
-  const reserveInvoice = async ({lojaId, orderId, environment, model, series, uid, justification, additionalInfo, operationCfop}) => {
+  const reserveInvoice = async ({lojaId, orderId, environment, model, series, uid, justification, additionalInfo, operationCfop, paymentResolution}) => {
     const storeRef = db.collection('lojas').doc(lojaId);
     const orderRef = storeRef.collection('pedidos').doc(orderId);
     const counterRef = storeRef.collection('fiscalCounters').doc(counterId(environment, model, series));
@@ -863,6 +1010,19 @@ const createFiscalFunctions = ({
         justification: justification || null,
         additionalInfo: additionalInfo || '',
         operationCfop: operationCfop || null,
+        payment: paymentResolution ? {
+          methodCode: paymentResolution.methodCode,
+          amount: paymentResolution.amount,
+          method: paymentResolution.method || null,
+          source: paymentResolution.source,
+          fallbackUsed: paymentResolution.fallbackUsed,
+          multiplePaymentsDetected: paymentResolution.multiplePaymentsDetected,
+          selectionRule: paymentResolution.selectionRule,
+          candidates: paymentResolution.candidates || [],
+        } : null,
+        paymentMethodCode: paymentResolution?.methodCode || null,
+        paymentMethodSource: paymentResolution?.source || null,
+        paymentFallbackUsed: Boolean(paymentResolution?.fallbackUsed),
         requestedByUid: uid,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -1043,6 +1203,13 @@ const createFiscalFunctions = ({
           series: prepared.series,
           number: nextNumber,
           operationCfop: payload.invoice.operationCfop,
+          payment: {
+            methodCode: payload.invoice.payment.methodCode,
+            source: payload.invoice.payment.source,
+            fallbackUsed: payload.invoice.payment.fallbackUsed,
+            originalMethod: payload.invoice.payment.originalMethod || null,
+            selectionRule: payload.invoice.payment.selectionRule,
+          },
           totals: payload.totals,
         };
 
@@ -1198,6 +1365,7 @@ const createFiscalFunctions = ({
           justification: request.data?.justification,
           additionalInfo: prepared.payload.additionalInfo,
           operationCfop: prepared.payload.invoice.operationCfop,
+          paymentResolution: prepared.paymentResolution,
         });
         const payload = {
           ...prepared.payload,
