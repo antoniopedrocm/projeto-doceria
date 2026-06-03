@@ -9388,6 +9388,10 @@ const handleSubmit = async (e) => {
   }) => {
     const [activeTab, setActiveTab] = usePersistentState('nota_fiscal_activeTab', 'emitir');
     const [orderSearch, setOrderSearch] = usePersistentState('nota_fiscal_orderSearch', '');
+    const [orderFilters, setOrderFilters] = useState(() => ({
+      status: 'all',
+      ...getCurrentMonthDateRange()
+    }));
     const [invoiceFilters, setInvoiceFilters] = useState(() => ({
       search: '',
       status: 'all',
@@ -9613,6 +9617,18 @@ const handleSubmit = async (e) => {
       setInvoiceFilters((prev) => ({ ...prev, [field]: value }));
     };
 
+    const setOrderFilter = (field, value) => {
+      setOrderFilters((prev) => ({ ...prev, [field]: value }));
+    };
+
+    const resetOrderFiltersToCurrentMonth = () => {
+      setOrderSearch('');
+      setOrderFilters({
+        status: 'all',
+        ...getCurrentMonthDateRange()
+      });
+    };
+
     const resetInvoiceFiltersToCurrentMonth = () => {
       setInvoiceFilters({
         search: '',
@@ -9795,6 +9811,16 @@ const handleSubmit = async (e) => {
       return status === invoiceFilters.status;
     }, [invoiceFilters.status]);
 
+    const matchesOrderInvoiceStatusFilter = useCallback((order) => {
+      if (orderFilters.status === 'all') return true;
+      const invoice = invoicesByOrderId.get(order?.id);
+      const status = invoice?.status || '';
+      if (orderFilters.status === 'pending') return !invoice || ['validating', 'pending', 'pending_return'].includes(status);
+      if (orderFilters.status === 'rejected') return ['rejected', 'denied'].includes(status);
+      if (orderFilters.status === 'inutilized') return ['inutilized', 'unused', 'voided'].includes(status);
+      return status === orderFilters.status;
+    }, [invoicesByOrderId, orderFilters.status]);
+
     const matchesInvoiceFilterValue = (value, filterValue) => {
       const filterText = normalizeSearchText(filterValue);
       if (!filterText) return true;
@@ -9872,11 +9898,16 @@ const handleSubmit = async (e) => {
       products: fiscalProducts.length
     }), [invoices, fiscalProducts]);
 
+    const invoiceableOrders = useMemo(() => (
+      orders.filter((order) => ['Finalizado', 'Aprovado', 'ready_for_invoice', 'approved'].includes(order.status) || order.approvedForInvoice)
+    ), [orders]);
+
     const eligibleOrders = useMemo(() => {
       const term = normalizeSearchText(orderSearch);
       const termDigits = onlyDigitsText(orderSearch);
-      return orders
-        .filter((order) => ['Finalizado', 'Aprovado', 'ready_for_invoice', 'approved'].includes(order.status) || order.approvedForInvoice)
+      return invoiceableOrders
+        .filter((order) => isDateInRange(order.createdAt, orderFilters.start, orderFilters.end))
+        .filter(matchesOrderInvoiceStatusFilter)
         .filter((order) => {
           if (!term && !termDigits) return true;
           const invoice = invoicesByOrderId.get(order.id);
@@ -9914,7 +9945,7 @@ const handleSubmit = async (e) => {
           });
         })
         .sort((a, b) => (getJSDate(b.createdAt)?.getTime() || 0) - (getJSDate(a.createdAt)?.getTime() || 0));
-    }, [orders, orderSearch, dateSearchValues, invoicesByOrderId, getInvoiceCustomerDocument, getInvoiceCustomerName, getInvoiceIssuerDocument, getInvoiceValue, getOrderCustomerDocument, getOrderValue, issuerForm.cnpj]);
+    }, [invoiceableOrders, orderSearch, orderFilters.start, orderFilters.end, matchesOrderInvoiceStatusFilter, dateSearchValues, invoicesByOrderId, getInvoiceCustomerDocument, getInvoiceCustomerName, getInvoiceIssuerDocument, getInvoiceValue, getOrderCustomerDocument, getOrderValue, issuerForm.cnpj]);
 
     const getPreInvoiceLockedReason = useCallback((order) => {
       const invoice = invoicesByOrderId.get(order?.id);
@@ -10947,32 +10978,71 @@ const handleSubmit = async (e) => {
 
         {activeTab === 'emitir' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(360px,1fr)_220px_minmax(280px,360px)_auto] gap-3 bg-white rounded-2xl p-4 shadow-lg border border-gray-100 items-end">
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Buscar pedidos para emissão</label>
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    value={orderSearch}
-                    onChange={(e) => setOrderSearch(e.target.value)}
-                    placeholder="Buscar por pedido, cliente, valor, data, CPF/CNPJ"
-                    className="w-full min-w-0 pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent"
-                  />
+            <div className="bg-white rounded-2xl p-4 shadow-lg border border-gray-100 space-y-4">
+              <div className="grid grid-cols-1 xl:grid-cols-[minmax(360px,1fr)_170px_170px_190px] gap-3 items-end">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">Busca rápida</label>
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      value={orderSearch}
+                      onChange={(e) => setOrderSearch(e.target.value)}
+                      placeholder="Buscar por pedido, cliente, valor, data, CPF/CNPJ"
+                      className="w-full min-w-0 pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+                <Input
+                  label="Data inicial"
+                  type="date"
+                  value={orderFilters.start}
+                  onChange={(e) => setOrderFilter('start', e.target.value)}
+                />
+                <Input
+                  label="Data final"
+                  type="date"
+                  value={orderFilters.end}
+                  onChange={(e) => setOrderFilter('end', e.target.value)}
+                />
+                <Select label="Status da nota" value={orderFilters.status} onChange={(e) => setOrderFilter('status', e.target.value)}>
+                  {invoiceStatusFilters.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(280px,360px)_auto_minmax(240px,1fr)] gap-3 items-end">
+                <Select value={modelOverride} onChange={(e) => setModelOverride(e.target.value)} className="md:w-56">
+                  <option value="">Modelo automático</option>
+                  <option value="55">Forçar NF-e 55</option>
+                  <option value="65">Forçar NFC-e 65</option>
+                </Select>
+                <Select label="CFOP da operação" value={operationCfop} onChange={(e) => setOperationCfop(e.target.value)}>
+                  {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+                <a href="https://www.confaz.fazenda.gov.br/legislacao/ajustes/sinief/cfop_cvsn_70_vigente" target="_blank" rel="noreferrer" className="self-end pb-3 text-sm text-pink-700 underline hover:text-pink-800">
+                  Tabela CFOP
+                </a>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+                  <p className="text-sm text-gray-500 sm:mr-auto">
+                    Mostrando <strong className="text-gray-800">{eligibleOrders.length}</strong> de <strong className="text-gray-800">{invoiceableOrders.length}</strong> pedidos.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setOrderFilters((prev) => ({ ...prev, ...getCurrentMonthDateRange() }))}
+                  >
+                    <Calendar className="w-4 h-4" /> Mês atual
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={resetOrderFiltersToCurrentMonth}>
+                    <RefreshCw className="w-4 h-4" /> Limpar filtros
+                  </Button>
                 </div>
               </div>
-              <Select value={modelOverride} onChange={(e) => setModelOverride(e.target.value)} className="md:w-56">
-                <option value="">Modelo automático</option>
-                <option value="55">Forçar NF-e 55</option>
-                <option value="65">Forçar NFC-e 65</option>
-              </Select>
-              <Select label="CFOP da operação" value={operationCfop} onChange={(e) => setOperationCfop(e.target.value)}>
-                {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </Select>
-              <a href="https://www.confaz.fazenda.gov.br/legislacao/ajustes/sinief/cfop_cvsn_70_vigente" target="_blank" rel="noreferrer" className="self-end pb-3 text-sm text-pink-700 underline hover:text-pink-800">
-                Tabela CFOP
-              </a>
             </div>
             <Table columns={orderColumns} data={eligibleOrders} actions={orderActions} />
+            {eligibleOrders.length === 0 && (
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 text-center text-sm text-gray-500">
+                Nenhum pedido encontrado para os filtros selecionados.
+              </div>
+            )}
             {Object.entries(validationByOrder).map(([orderId, result]) => (
               <div key={orderId} className={`p-4 rounded-xl border text-sm ${result.ok === false ? 'bg-red-50 border-red-200 text-red-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
                 <p className="font-semibold">Validação do pedido {orderId.slice(0, 8)}</p>
