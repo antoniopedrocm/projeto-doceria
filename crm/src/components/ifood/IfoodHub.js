@@ -15,19 +15,35 @@ const tabs = [
 
 const initialConfig = {
   merchantId: '',
+  merchantName: '',
   enabled: false,
   pollingEnabled: true,
-  webhookEnabled: false,
+  ordersSyncEnabled: true,
+  stockSyncEnabled: true,
+  catalogSyncEnabled: true,
   autoConfirm: true,
   autoStartPreparation: false,
-  apiBaseUrl: 'https://merchant-api.ifood.com.br',
-  authUrl: 'https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token',
-  inventoryEndpointTemplate: '',
-  inventoryMethod: 'POST',
   credentialsReady: false,
   platformCredentialsReady: false,
   credentialScope: '',
+  platformWebhookSecretReady: false,
+};
+
+const initialPlatformConfig = {
+  environment: 'production',
+  apiBaseUrl: 'https://merchant-api.ifood.com.br',
+  authUrl: 'https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token',
+  webhookUrl: '',
+  webhookEnabled: false,
+  inventoryEndpointTemplate: '',
+  inventoryMethod: 'POST',
+  credentialsReady: false,
+  clientIdReady: false,
+  clientSecretReady: false,
   webhookSecretReady: false,
+  clientIdMasked: '',
+  clientSecretMasked: '',
+  webhookSecretMasked: '',
 };
 
 const money = (value) => (Number(value) || 0).toLocaleString('pt-BR', {
@@ -136,12 +152,13 @@ const Toggle = ({label, checked, onChange, dark}) => (
   </label>
 );
 
-export default function IfoodHub({data, effectiveStoreId, selectedStoreId, availableStores = [], storeInfoMap, onSelectStore}) {
+export default function IfoodHub({data, effectiveStoreId, selectedStoreId, availableStores = [], storeInfoMap, onSelectStore, currentUser}) {
   const [tab, setTab] = useState('operacao');
   const [dark, setDark] = useState(() => window.localStorage.getItem('ifood-hub-theme') === 'dark');
   const [config, setConfig] = useState(initialConfig);
-  const [secrets, setSecrets] = useState({clientId: '', clientSecret: '', webhookSecret: ''});
-  const [editingSecrets, setEditingSecrets] = useState({clientId: false, clientSecret: false, webhookSecret: false});
+  const [platformConfig, setPlatformConfig] = useState(initialPlatformConfig);
+  const [platformSecrets, setPlatformSecrets] = useState({clientId: '', clientSecret: '', webhookSecret: ''});
+  const [editingPlatformSecrets, setEditingPlatformSecrets] = useState({clientId: false, clientSecret: false, webhookSecret: false});
   const [remoteHealth, setRemoteHealth] = useState({status: 'not_configured'});
   const [merchants, setMerchants] = useState([]);
   const [mapping, setMapping] = useState({productId: '', iFoodProductId: '', externalCode: '', catalogItemId: ''});
@@ -151,6 +168,7 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   const [validation, setValidation] = useState({order: null, action: '', code: ''});
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState(null);
+  const isPlatformAdmin = currentUser?.role === 'dono' && currentUser?.canAccessAllStores;
 
   const invoke = useCallback(async (name, payload = {}) => {
     if (!effectiveStoreId) throw new Error('Selecione uma loja especifica para operar o iFood.');
@@ -158,12 +176,18 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
     return response.data;
   }, [effectiveStoreId]);
 
+  const invokePlatform = useCallback(async (name, payload = {}) => {
+    const response = await httpsCallable(functions, name)(payload);
+    return response.data;
+  }, []);
+
   const loadConfiguration = useCallback(async () => {
     if (!effectiveStoreId) return;
     setBusy('configuration-load');
     try {
       const result = await invoke('ifoodGetConfiguration');
       setConfig({...initialConfig, ...(result.config || {})});
+      setPlatformConfig({...initialPlatformConfig, ...(result.platform || {})});
       setRemoteHealth(result.health || {status: 'not_configured'});
     } catch (error) {
       setMessage({type: 'error', text: error.message});
@@ -175,8 +199,9 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   useEffect(() => {
     setMessage(null);
     setConfig(initialConfig);
-    setSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
-    setEditingSecrets({clientId: false, clientSecret: false, webhookSecret: false});
+    setPlatformConfig(initialPlatformConfig);
+    setPlatformSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
+    setEditingPlatformSecrets({clientId: false, clientSecret: false, webhookSecret: false});
     setMerchants([]);
     setSelectedProductIds([]);
     loadConfiguration();
@@ -302,31 +327,59 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   const saveConfiguration = (event) => {
     event.preventDefault();
     perform('config-save', async () => {
-      const saved = await invoke('ifoodSaveConfiguration', {...config, ...secrets});
+      const saved = await invoke('ifoodSaveConfiguration', {
+        merchantId: config.merchantId,
+        merchantName: config.merchantName,
+        enabled: config.enabled,
+        pollingEnabled: config.pollingEnabled,
+        ordersSyncEnabled: config.ordersSyncEnabled,
+        stockSyncEnabled: config.stockSyncEnabled,
+        catalogSyncEnabled: config.catalogSyncEnabled,
+        autoConfirm: config.autoConfirm,
+        autoStartPreparation: config.autoStartPreparation,
+      });
       setConfig({...initialConfig, ...saved});
-      setSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
-      setEditingSecrets({clientId: false, clientSecret: false, webhookSecret: false});
-    }, 'Configuracao salva. Os valores protegidos ficam ocultos na tela e permanecem no Google Secret Manager.');
+    }, 'Configuracao da loja salva. O Merchant ID e as sincronizacoes desta unidade foram atualizados.');
+  };
+
+  const savePlatformConfiguration = (event) => {
+    event.preventDefault();
+    perform('platform-save', async () => {
+      const saved = await invokePlatform('ifoodSavePlatformConfiguration', {
+        environment: platformConfig.environment,
+        apiBaseUrl: platformConfig.apiBaseUrl,
+        authUrl: platformConfig.authUrl,
+        webhookUrl: platformConfig.webhookUrl,
+        webhookEnabled: platformConfig.webhookEnabled,
+        inventoryEndpointTemplate: platformConfig.inventoryEndpointTemplate,
+        inventoryMethod: platformConfig.inventoryMethod,
+        ...platformSecrets,
+      });
+      setPlatformConfig({...initialPlatformConfig, ...(saved.platform || {})});
+      setPlatformSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
+      setEditingPlatformSecrets({clientId: false, clientSecret: false, webhookSecret: false});
+      await loadConfiguration();
+    }, 'Configuracao global iFood salva. Segredos seguem protegidos no Google Secret Manager.');
   };
 
   const editSecret = (field) => {
-    setSecrets((current) => ({...current, [field]: ''}));
-    setEditingSecrets((current) => ({...current, [field]: true}));
+    setPlatformSecrets((current) => ({...current, [field]: ''}));
+    setEditingPlatformSecrets((current) => ({...current, [field]: true}));
   };
 
   const cancelSecretEdit = (field) => {
-    setSecrets((current) => ({...current, [field]: ''}));
-    setEditingSecrets((current) => ({...current, [field]: false}));
+    setPlatformSecrets((current) => ({...current, [field]: ''}));
+    setEditingPlatformSecrets((current) => ({...current, [field]: false}));
   };
 
   const editCredentials = () => {
-    setSecrets((current) => ({...current, clientId: '', clientSecret: ''}));
-    setEditingSecrets((current) => ({...current, clientId: true, clientSecret: true}));
+    setPlatformSecrets((current) => ({...current, clientId: '', clientSecret: ''}));
+    setEditingPlatformSecrets((current) => ({...current, clientId: true, clientSecret: true}));
   };
 
   const cancelCredentialsEdit = () => {
-    setSecrets((current) => ({...current, clientId: '', clientSecret: ''}));
-    setEditingSecrets((current) => ({...current, clientId: false, clientSecret: false}));
+    setPlatformSecrets((current) => ({...current, clientId: '', clientSecret: ''}));
+    setEditingPlatformSecrets((current) => ({...current, clientId: false, clientSecret: false}));
   };
 
   const loadMerchants = () => perform('merchant-load', async () => {
@@ -334,7 +387,7 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
     const availableMerchants = result.merchants || [];
     setMerchants(availableMerchants);
     if (availableMerchants.length === 1) {
-      setConfig((current) => ({...current, merchantId: availableMerchants[0].id}));
+      setConfig((current) => ({...current, merchantId: availableMerchants[0].id, merchantName: availableMerchants[0].name || availableMerchants[0].corporateName || ''}));
     }
   }, 'Lojas autorizadas localizadas. Confirme o Merchant ID selecionado e salve a configuracao.');
 
@@ -342,6 +395,15 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
     const promoted = await invoke('ifoodPromoteStoredCredentials');
     setConfig({...initialConfig, ...promoted});
   }, 'Credencial central ativada. Novas lojas precisarao apenas selecionar seu Merchant ID.');
+
+  const handleMerchantSelect = (merchantId) => {
+    const selected = merchants.find((merchant) => merchant.id === merchantId);
+    setConfig({
+      ...config,
+      merchantId,
+      merchantName: selected?.name || selected?.corporateName || config.merchantName || '',
+    });
+  };
 
   const toggleProductSelection = (productId) => {
     setSelectedProductIds((current) => (
@@ -645,60 +707,141 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
       )}
 
       {tab === 'configuracao' && (
-        <form onSubmit={saveConfiguration} className={`space-y-6 rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="font-semibold">Conexao oficial iFood Developer</h2><p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>A credencial central fica protegida uma vez; cada loja utiliza apenas seu Merchant ID.</p></div>
-            <span className={`rounded-full px-3 py-1 text-xs font-medium ${config.credentialsReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{config.platformCredentialsReady ? 'Credencial central protegida' : config.credentialsReady ? 'Migracao pendente' : 'Credencial pendente'}</span>
-          </div>
-          {config.credentialScope === 'legacy_store' && !config.platformCredentialsReady && (
-            <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 text-sm ${dark ? 'border-amber-700/50 bg-amber-400/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-              <span>As credenciais salvas nesta loja podem ser usadas como credencial central da integracao.</span>
-              <Button dark={dark} disabled={busy === 'credential-promote'} onClick={promoteStoredCredentials}>
-                <ArrowRight className="h-4 w-4" />Usar para todas as lojas
-              </Button>
-            </div>
-          )}
-          {config.credentialsReady && !config.merchantId && (
-            <div className={`rounded-lg border p-4 text-sm ${dark ? 'border-amber-700/50 bg-amber-400/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-              A integracao esta pronta. Use <strong>Localizar lojas iFood</strong> para selecionar o Merchant ID autorizado desta loja e salvar.
-            </div>
-          )}
-          <div className="grid gap-4 md:grid-cols-3">
-            <Field dark={dark} label="Merchant ID" hint="Identificador da loja no iFood; nao e o CNPJ nem o Client ID.">
-              <input className={inputClass(dark)} placeholder="Selecione ou informe o Merchant ID" value={config.merchantId} onChange={(event) => setConfig({...config, merchantId: event.target.value})} />
-              <Button dark={dark} disabled={!config.credentialsReady || busy === 'merchant-load'} onClick={loadMerchants}>
-                <Search className={`h-4 w-4 ${busy === 'merchant-load' ? 'animate-pulse' : ''}`} />Localizar lojas iFood
-              </Button>
-              {merchants.length > 0 && (
-                <select className={inputClass(dark)} value={config.merchantId} onChange={(event) => setConfig({...config, merchantId: event.target.value})}>
-                  <option value="">Selecione a loja autorizada</option>
-                  {merchants.map((merchant) => (
-                    <option key={merchant.id} value={merchant.id}>{merchant.name || merchant.corporateName || merchant.id}</option>
-                  ))}
-                </select>
+        <div className="space-y-5">
+          {isPlatformAdmin ? (
+            <form onSubmit={savePlatformConfiguration} className={`space-y-6 rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold">Configuracoes globais > Integracoes > iFood Developer</h2>
+                  <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Client ID, Client Secret, OAuth, API e webhook sao unicos para toda a plataforma.</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${platformConfig.credentialsReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  {platformConfig.credentialsReady ? 'Credenciais globais protegidas' : 'Credenciais globais pendentes'}
+                </span>
+              </div>
+
+              {config.credentialScope === 'legacy_store' && !config.platformCredentialsReady && (
+                <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 text-sm ${dark ? 'border-amber-700/50 bg-amber-400/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                  <span>As credenciais antigas desta loja podem ser promovidas para a configuracao central da plataforma.</span>
+                  <Button dark={dark} disabled={busy === 'credential-promote'} onClick={promoteStoredCredentials}>
+                    <ArrowRight className="h-4 w-4" />Usar para todas as lojas
+                  </Button>
+                </div>
               )}
-            </Field>
-            <ProtectedSecretField dark={dark} label="Client ID da plataforma" stored={config.credentialsReady} editing={editingSecrets.clientId} value={secrets.clientId} onChange={(value) => setSecrets({...secrets, clientId: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
-            <ProtectedSecretField dark={dark} label="Client Secret da plataforma" stored={config.credentialsReady} editing={editingSecrets.clientSecret} value={secrets.clientSecret} onChange={(value) => setSecrets({...secrets, clientSecret: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
-            <ProtectedSecretField dark={dark} label="Segredo de webhook futuro" stored={config.webhookSecretReady} editing={editingSecrets.webhookSecret} value={secrets.webhookSecret} onChange={(value) => setSecrets({...secrets, webhookSecret: value})} onEdit={() => editSecret('webhookSecret')} onCancel={() => cancelSecretEdit('webhookSecret')} emptyHint="Deixe vazio enquanto utilizar polling." />
-          </div>
-          <div>
-            <h3 className="mb-3 text-sm font-medium">Automacao operacional</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <Toggle dark={dark} label="Integracao ativa" checked={config.enabled} onChange={(value) => setConfig({...config, enabled: value})} />
-              <Toggle dark={dark} label="Polling automatico" checked={config.pollingEnabled} onChange={(value) => setConfig({...config, pollingEnabled: value})} />
-              <Toggle dark={dark} label="Confirmar pedidos" checked={config.autoConfirm} onChange={(value) => setConfig({...config, autoConfirm: value})} />
-              <Toggle dark={dark} label="Iniciar preparo" checked={config.autoStartPreparation} onChange={(value) => setConfig({...config, autoStartPreparation: value})} />
-              <Toggle dark={dark} label="Webhook homologado" checked={config.webhookEnabled} onChange={(value) => setConfig({...config, webhookEnabled: value})} />
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field dark={dark} label="Ambiente">
+                  <select className={inputClass(dark)} value={platformConfig.environment} onChange={(event) => setPlatformConfig({...platformConfig, environment: event.target.value})}>
+                    <option value="production">Producao</option>
+                    <option value="sandbox">Sandbox</option>
+                  </select>
+                </Field>
+                <Field dark={dark} label="API base URL">
+                  <input className={inputClass(dark)} value={platformConfig.apiBaseUrl} onChange={(event) => setPlatformConfig({...platformConfig, apiBaseUrl: event.target.value})} />
+                </Field>
+                <Field dark={dark} label="URL de autenticacao OAuth">
+                  <input className={inputClass(dark)} value={platformConfig.authUrl} onChange={(event) => setPlatformConfig({...platformConfig, authUrl: event.target.value})} />
+                </Field>
+                <ProtectedSecretField dark={dark} label="Client ID da plataforma" stored={platformConfig.clientIdReady} editing={editingPlatformSecrets.clientId} value={platformSecrets.clientId} onChange={(value) => setPlatformSecrets({...platformSecrets, clientId: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
+                <ProtectedSecretField dark={dark} label="Client Secret da plataforma" stored={platformConfig.clientSecretReady} editing={editingPlatformSecrets.clientSecret} value={platformSecrets.clientSecret} onChange={(value) => setPlatformSecrets({...platformSecrets, clientSecret: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
+                <ProtectedSecretField dark={dark} label="Segredo global de webhook" stored={platformConfig.webhookSecretReady} editing={editingPlatformSecrets.webhookSecret} value={platformSecrets.webhookSecret} onChange={(value) => setPlatformSecrets({...platformSecrets, webhookSecret: value})} onEdit={() => editSecret('webhookSecret')} onCancel={() => cancelSecretEdit('webhookSecret')} emptyHint="Deixe vazio enquanto a operacao usar somente polling." />
+                <Field dark={dark} label="URL publica do webhook">
+                  <input className={inputClass(dark)} placeholder="https://.../ifoodWebhook" value={platformConfig.webhookUrl} onChange={(event) => setPlatformConfig({...platformConfig, webhookUrl: event.target.value})} />
+                </Field>
+                <Field dark={dark} label="Inventario oficial do Catalog v2.0">
+                  <select className={inputClass(dark)} value={platformConfig.inventoryMethod} onChange={(event) => setPlatformConfig({...platformConfig, inventoryMethod: event.target.value})}>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="PATCH">PATCH</option>
+                  </select>
+                </Field>
+                <Field dark={dark} label="Endpoint alternativo de inventario" hint="Opcional. Sem valor, usa /catalog/v2.0/merchants/{merchantId}/inventory.">
+                  <input className={inputClass(dark)} value={platformConfig.inventoryEndpointTemplate} onChange={(event) => setPlatformConfig({...platformConfig, inventoryEndpointTemplate: event.target.value})} />
+                </Field>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Toggle dark={dark} label="Webhooks globais habilitados" checked={platformConfig.webhookEnabled} onChange={(value) => setPlatformConfig({...platformConfig, webhookEnabled: value})} />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" primary disabled={busy === 'platform-save'}><Save className="h-4 w-4" />Salvar configuracao global</Button>
+              </div>
+            </form>
+          ) : (
+            <section className={`rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold">Credencial central protegida</h2>
+                  <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Client ID, Client Secret, OAuth, API e webhook sao administrados somente por Dono ou Administrador Master.</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${platformConfig.credentialsReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                  {platformConfig.credentialsReady ? 'Plataforma conectada' : 'Aguardando configuracao global'}
+                </span>
+              </div>
+            </section>
+          )}
+
+          <form onSubmit={saveConfiguration} className={`space-y-6 rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">Configuracoes da loja > Integracoes > iFood</h2>
+                <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Cada loja usa seu proprio Merchant ID e suas regras operacionais de sincronizacao.</p>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-medium ${config.merchantId ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                {config.merchantId ? 'Merchant ID configurado' : 'Merchant ID pendente'}
+              </span>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" primary disabled={busy === 'config-save'}><Save className="h-4 w-4" />Salvar configuracao</Button>
-            <Button dark={dark} disabled={!config.credentialsReady || busy === 'test'} onClick={() => perform('test', () => invoke('ifoodTestConnection'), 'Autenticacao iFood validada com sucesso.')}>
-              <ArrowRight className="h-4 w-4" />Testar conexao
-            </Button>
-          </div>
-        </form>
+
+            {config.credentialsReady && !config.merchantId && (
+              <div className={`rounded-lg border p-4 text-sm ${dark ? 'border-amber-700/50 bg-amber-400/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                Informe o Merchant ID autorizado para esta loja. Gerentes visualizam e editam somente os dados da propria unidade.
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <Field dark={dark} label="Merchant ID" hint="Identificador da loja no iFood; nao e o CNPJ nem o Client ID.">
+                <input className={inputClass(dark)} placeholder="Informe o Merchant ID desta loja" value={config.merchantId} onChange={(event) => setConfig({...config, merchantId: event.target.value})} />
+                {isPlatformAdmin && (
+                  <Button dark={dark} disabled={!config.credentialsReady || busy === 'merchant-load'} onClick={loadMerchants}>
+                    <Search className={`h-4 w-4 ${busy === 'merchant-load' ? 'animate-pulse' : ''}`} />Localizar lojas iFood
+                  </Button>
+                )}
+                {isPlatformAdmin && merchants.length > 0 && (
+                  <select className={inputClass(dark)} value={config.merchantId} onChange={(event) => handleMerchantSelect(event.target.value)}>
+                    <option value="">Selecione a loja autorizada</option>
+                    {merchants.map((merchant) => (
+                      <option key={merchant.id} value={merchant.id}>{merchant.name || merchant.corporateName || merchant.id}</option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field dark={dark} label="Nome da loja no iFood">
+                <input className={inputClass(dark)} placeholder="Nome exibido/retornado pelo iFood" value={config.merchantName} onChange={(event) => setConfig({...config, merchantName: event.target.value})} />
+              </Field>
+            </div>
+
+            <div>
+              <h3 className="mb-3 text-sm font-medium">Automacao operacional da loja</h3>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <Toggle dark={dark} label="Integracao ativa" checked={config.enabled} onChange={(value) => setConfig({...config, enabled: value})} />
+                <Toggle dark={dark} label="Sincronizar pedidos" checked={config.ordersSyncEnabled} onChange={(value) => setConfig({...config, ordersSyncEnabled: value})} />
+                <Toggle dark={dark} label="Polling automatico" checked={config.pollingEnabled} onChange={(value) => setConfig({...config, pollingEnabled: value})} />
+                <Toggle dark={dark} label="Sincronizar estoque" checked={config.stockSyncEnabled} onChange={(value) => setConfig({...config, stockSyncEnabled: value})} />
+                <Toggle dark={dark} label="Sincronizar catalogo" checked={config.catalogSyncEnabled} onChange={(value) => setConfig({...config, catalogSyncEnabled: value})} />
+                <Toggle dark={dark} label="Confirmar pedidos" checked={config.autoConfirm} onChange={(value) => setConfig({...config, autoConfirm: value})} />
+                <Toggle dark={dark} label="Iniciar preparo" checked={config.autoStartPreparation} onChange={(value) => setConfig({...config, autoStartPreparation: value})} />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" primary disabled={busy === 'config-save'}><Save className="h-4 w-4" />Salvar configuracao da loja</Button>
+              <Button dark={dark} disabled={!config.credentialsReady || busy === 'test'} onClick={() => perform('test', () => invoke('ifoodTestConnection'), 'Autenticacao iFood validada com sucesso.')}>
+                <ArrowRight className="h-4 w-4" />Testar conexao
+              </Button>
+            </div>
+          </form>
+        </div>
       )}
 
       {tab === 'auditoria' && (

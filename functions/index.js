@@ -50,13 +50,15 @@ const ACCOUNTANT_RESTRICTED_MODULES = new Set(['ifood', 'configuracoes']);
 
 const normalizeRole = (role) => {
   if (!role || typeof role !== 'string') return ROLE_ATTENDANT;
-  const value = role.toLowerCase();
+  const value = role.toLowerCase().trim();
   if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT, ROLE_CLIENT].includes(value)) {
     return value;
   }
   if (value === 'client') return ROLE_CLIENT;
   if (value === 'accountant') return ROLE_ACCOUNTANT;
-  if (value === 'admin') return ROLE_OWNER;
+  if (['admin', 'adm', 'administrador', 'administradora', 'administrador master', 'administradora master', 'admin master', 'admin_master', 'master', 'superadmin'].includes(value)) {
+    return ROLE_OWNER;
+  }
   return ROLE_ATTENDANT;
 };
 

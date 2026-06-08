@@ -7,6 +7,7 @@ const tokenCache = new Map();
 const PROVIDER = 'ifood';
 const DEFAULT_API_URL = 'https://merchant-api.ifood.com.br';
 const DEFAULT_AUTH_URL = 'https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token';
+const DEFAULT_IFOOD_ENVIRONMENT = 'production';
 const ORDER_BASE_PATH = '/order/v1.0/orders';
 const ACTIVE_EXTERNAL_STATUSES = new Set([
   'PLACED',
@@ -28,6 +29,46 @@ const asNumber = (value, fallback = 0) => {
 const money = (value) => Math.round((asNumber(value) + Number.EPSILON) * 100) / 100;
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const timestampNow = () => new Date().toISOString();
+const isNonEmptyString = (value) => typeof value === 'string' && value.trim().length > 0;
+
+const maskSecret = (value) => {
+  const text = cleanText(value);
+  if (!text) return '';
+  if (text.length <= 4) return '*'.repeat(text.length);
+  return `****${text.slice(-4)}`;
+};
+
+const fingerprintSecret = (value) => {
+  const text = String(value || '');
+  return text ? crypto.createHash('sha256').update(text).digest('hex').slice(0, 16) : '';
+};
+
+const normalizeEnvironment = (value) => {
+  const normalized = cleanText(value).toLowerCase();
+  if (['sandbox', 'homologacao', 'homologação', 'test', 'teste'].includes(normalized)) return 'sandbox';
+  if (['production', 'producao', 'produção', 'prod'].includes(normalized)) return 'production';
+  return DEFAULT_IFOOD_ENVIRONMENT;
+};
+
+const getRequestIp = (request) => {
+  const raw = request.rawRequest || {};
+  const headers = raw.headers || {};
+  const forwarded = cleanText(headers['x-forwarded-for'] || headers['x-appengine-user-ip']);
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return cleanText(raw.ip || raw.connection?.remoteAddress || '');
+};
+
+const hasGlobalConfigPayload = (payload = {}) => [
+  'clientId',
+  'clientSecret',
+  'webhookSecret',
+  'apiBaseUrl',
+  'authUrl',
+  'webhookUrl',
+  'environment',
+  'inventoryEndpointTemplate',
+  'inventoryMethod',
+].some((field) => isNonEmptyString(payload[field]));
 
 const getProjectId = () => {
   if (process.env.GCLOUD_PROJECT) return process.env.GCLOUD_PROJECT;
@@ -235,9 +276,22 @@ const createIfoodFunctions = ({
 
   const configRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('ifood').doc('config');
   const platformConfigRef = () => db.collection('integrations').doc('ifood');
+  const platformAuditCollection = () => platformConfigRef().collection('audit');
   const healthRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('ifoodHealth').doc('status');
   const auditCollection = (lojaId) => db.collection('lojas').doc(lojaId).collection('ifoodAudit');
   const alertCollection = (lojaId) => db.collection('lojas').doc(lojaId).collection('ifoodAlerts');
+
+  const isPlatformAdmin = (requester = {}) => requester.role === 'dono' && requester.allStores === true;
+
+  const requirePlatformAdmin = async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
+    const requester = await verifyManagementAccess(uid);
+    if (!isPlatformAdmin(requester)) {
+      throw new HttpsError('permission-denied', 'Somente Dono ou Administrador Master pode alterar a configuracao global do iFood.');
+    }
+    return {uid, requester, ip: getRequestIp(request)};
+  };
 
   const audit = async (lojaId, action, details = {}, severity = 'info') => {
     await auditCollection(lojaId).add({
@@ -248,6 +302,25 @@ const createIfoodFunctions = ({
       createdAt: FieldValue.serverTimestamp(),
     });
   };
+
+  const auditPlatform = async (action, details = {}, severity = 'info') => {
+    await platformAuditCollection().add({
+      provider: PROVIDER,
+      action,
+      severity,
+      ...details,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  };
+
+  const trackedChanges = (before = {}, after = {}, fields = []) => fields.reduce((acc, field) => {
+    const previous = before[field] ?? null;
+    const next = after[field] ?? null;
+    if (JSON.stringify(previous) !== JSON.stringify(next)) {
+      acc[field] = {before: previous, after: next};
+    }
+    return acc;
+  }, {});
 
   const createAlert = async (lojaId, type, message, context = {}) => {
     const key = safeId(`${type}_${context.orderId || context.productId || Date.now()}`);
@@ -262,15 +335,36 @@ const createIfoodFunctions = ({
     }, {merge: true});
   };
 
-  const mergePlatformCredentials = (storeConfig = {}, platformConfig = {}) => {
+  const normalizePlatformConfig = (platformConfig = {}) => ({
+    ...platformConfig,
+    environment: normalizeEnvironment(platformConfig.environment),
+    apiBaseUrl: cleanText(platformConfig.apiBaseUrl) || DEFAULT_API_URL,
+    authUrl: cleanText(platformConfig.authUrl) || DEFAULT_AUTH_URL,
+    webhookUrl: cleanText(platformConfig.webhookUrl),
+    webhookEnabled: Boolean(platformConfig.webhookEnabled),
+    inventoryEndpointTemplate: cleanText(platformConfig.inventoryEndpointTemplate),
+    inventoryMethod: cleanText(platformConfig.inventoryMethod || 'POST').toUpperCase(),
+  });
+
+  const mergePlatformCredentials = (storeConfig = {}, platformConfigInput = {}) => {
+    const platformConfig = normalizePlatformConfig(platformConfigInput);
     const platformReady = Boolean(platformConfig.clientIdSecretVersion && platformConfig.clientSecretSecretVersion);
     const storeReady = Boolean(storeConfig.clientIdSecretVersion && storeConfig.clientSecretSecretVersion);
     return {
       ...storeConfig,
       clientIdSecretVersion: platformReady ? platformConfig.clientIdSecretVersion : storeConfig.clientIdSecretVersion,
       clientSecretSecretVersion: platformReady ? platformConfig.clientSecretSecretVersion : storeConfig.clientSecretSecretVersion,
+      webhookSecretVersion: platformConfig.webhookSecretVersion || storeConfig.webhookSecretVersion,
+      apiBaseUrl: platformConfig.apiBaseUrl,
+      authUrl: platformConfig.authUrl,
+      environment: platformConfig.environment,
+      webhookEnabled: platformConfig.webhookEnabled,
+      webhookUrl: platformConfig.webhookUrl,
+      inventoryEndpointTemplate: platformConfig.inventoryEndpointTemplate,
+      inventoryMethod: platformConfig.inventoryMethod,
       credentialScope: platformReady ? 'platform' : (storeReady ? 'legacy_store' : ''),
       platformCredentialsReady: platformReady,
+      platformWebhookSecretReady: Boolean(platformConfig.webhookSecretVersion),
     };
   };
 
@@ -281,29 +375,59 @@ const createIfoodFunctions = ({
     }
     return {
       ...mergePlatformCredentials(snap.exists ? {id: snap.id, ...snap.data()} : {}, platformSnap.exists ? platformSnap.data() : {}),
-      apiBaseUrl: DEFAULT_API_URL,
-      authUrl: DEFAULT_AUTH_URL,
-      inventoryEndpointTemplate: '',
-      inventoryMethod: 'POST',
     };
   };
 
-  const publicConfig = (config = {}) => ({
+  const publicPlatformConfig = (platformConfigInput = {}, canManagePlatform = false) => {
+    const platformConfig = normalizePlatformConfig(platformConfigInput);
+    const credentialsReady = Boolean(platformConfig.clientIdSecretVersion && platformConfig.clientSecretSecretVersion);
+    const base = {
+      provider: PROVIDER,
+      environment: platformConfig.environment,
+      credentialsReady,
+      clientIdReady: Boolean(platformConfig.clientIdSecretVersion),
+      clientSecretReady: Boolean(platformConfig.clientSecretSecretVersion),
+      webhookEnabled: Boolean(platformConfig.webhookEnabled),
+      webhookSecretReady: Boolean(platformConfig.webhookSecretVersion),
+      updatedAt: platformConfig.updatedAt || null,
+      updatedByUid: platformConfig.updatedByUid || '',
+    };
+    if (!canManagePlatform) return base;
+    return {
+      ...base,
+      apiBaseUrl: platformConfig.apiBaseUrl,
+      authUrl: platformConfig.authUrl,
+      webhookUrl: platformConfig.webhookUrl,
+      inventoryEndpointTemplate: platformConfig.inventoryEndpointTemplate,
+      inventoryMethod: platformConfig.inventoryMethod,
+      clientIdMasked: platformConfig.clientIdMasked || (platformConfig.clientIdSecretVersion ? '********' : ''),
+      clientSecretMasked: platformConfig.clientSecretMasked || (platformConfig.clientSecretSecretVersion ? '********' : ''),
+      webhookSecretMasked: platformConfig.webhookSecretMasked || (platformConfig.webhookSecretVersion ? '********' : ''),
+    };
+  };
+
+  const publicConfig = (config = {}, canManagePlatform = false) => ({
     provider: PROVIDER,
     enabled: Boolean(config.enabled),
+    merchantId: config.merchantId || '',
+    merchantName: config.merchantName || '',
+    status: config.status || (config.enabled ? 'active' : 'inactive'),
     pollingEnabled: Boolean(config.pollingEnabled),
-    webhookEnabled: Boolean(config.webhookEnabled),
+    ordersSyncEnabled: config.ordersSyncEnabled !== false,
+    stockSyncEnabled: config.stockSyncEnabled !== false,
+    catalogSyncEnabled: config.catalogSyncEnabled !== false,
     credentialsReady: Boolean(config.clientIdSecretVersion && config.clientSecretSecretVersion),
     platformCredentialsReady: Boolean(config.platformCredentialsReady),
     credentialScope: config.credentialScope || '',
-    webhookSecretReady: Boolean(config.webhookSecretVersion),
-    merchantId: config.merchantId || '',
-    apiBaseUrl: config.apiBaseUrl || DEFAULT_API_URL,
-    authUrl: config.authUrl || DEFAULT_AUTH_URL,
+    platformWebhookSecretReady: Boolean(config.platformWebhookSecretReady),
+    ...(canManagePlatform ? {
+      apiBaseUrl: config.apiBaseUrl || DEFAULT_API_URL,
+      authUrl: config.authUrl || DEFAULT_AUTH_URL,
+      environment: config.environment || DEFAULT_IFOOD_ENVIRONMENT,
+      webhookEnabled: Boolean(config.webhookEnabled),
+    } : {}),
     autoConfirm: Boolean(config.autoConfirm),
     autoStartPreparation: Boolean(config.autoStartPreparation),
-    inventoryEndpointTemplate: config.inventoryEndpointTemplate || config.availabilityEndpointTemplate || '',
-    inventoryMethod: config.inventoryMethod || config.availabilityMethod || 'POST',
     updatedAt: config.updatedAt || null,
   });
 
@@ -670,6 +794,7 @@ const createIfoodFunctions = ({
       loadConfig(lojaId),
       db.collection('lojas').doc(lojaId).collection('produtos').doc(productId).get(),
     ]);
+    if (config.stockSyncEnabled === false) return {skipped: 'store_stock_sync_disabled'};
     const mapping = mappingSnap.data() || {};
     const quantity = Math.max(0, asNumber(productSnap.data()?.estoque));
     if (!config.merchantId) {
@@ -739,6 +864,9 @@ const createIfoodFunctions = ({
   };
 
   const publishProductToIfood = async (lojaId, config, productId, product, categories, reason) => {
+    if (config.catalogSyncEnabled === false) {
+      throw new Error('Sincronizacao de catalogo desabilitada para esta loja.');
+    }
     const price = money(product.precoIfood);
     if (!(price > 0)) {
       throw new Error(`Informe o Preco iFood de ${product.nome || productId} antes de publicar.`);
@@ -818,7 +946,7 @@ const createIfoodFunctions = ({
 
   const runPoll = async (lojaId, origin) => {
     const config = await loadConfig(lojaId);
-    if (!config.enabled || !config.pollingEnabled) return {skipped: true};
+    if (!config.enabled || !config.pollingEnabled || config.ordersSyncEnabled === false) return {skipped: true};
     const started = Date.now();
     try {
       const payload = await requestIfood(lojaId, config, `${ORDER_BASE_PATH}:polling`);
@@ -850,93 +978,203 @@ const createIfoodFunctions = ({
 
   return {
     ifoodGetConfiguration: onCall(async (request) => {
-      const {lojaId} = await requireCallableStore(request);
-      const [config, healthSnap] = await Promise.all([loadConfig(lojaId, false), healthRef(lojaId).get()]);
+      const {lojaId, requester} = await requireCallableStore(request);
+      const canManagePlatform = isPlatformAdmin(requester);
+      const [config, platformSnap, healthSnap] = await Promise.all([
+        loadConfig(lojaId, false),
+        platformConfigRef().get(),
+        healthRef(lojaId).get(),
+      ]);
       return {
-        config: publicConfig(config),
+        config: publicConfig(config, canManagePlatform),
+        platform: publicPlatformConfig(platformSnap.exists ? platformSnap.data() || {} : {}, canManagePlatform),
+        permissions: {
+          canManagePlatform,
+          canConfigureStore: true,
+        },
         health: healthSnap.exists ? healthSnap.data() : {status: 'not_configured'},
+      };
+    }),
+
+    ifoodGetPlatformConfiguration: onCall(async (request) => {
+      const {requester} = await requirePlatformAdmin(request);
+      const snap = await platformConfigRef().get();
+      return {
+        platform: publicPlatformConfig(snap.exists ? snap.data() || {} : {}, isPlatformAdmin(requester)),
+      };
+    }),
+
+    ifoodSavePlatformConfiguration: onCall({timeoutSeconds: 120}, async (request) => {
+      const {uid, ip} = await requirePlatformAdmin(request);
+      const incoming = request.data || {};
+      const existingSnap = await platformConfigRef().get();
+      const existing = existingSnap.exists ? existingSnap.data() || {} : {};
+      const projectId = getProjectId();
+      const clientId = cleanText(incoming.clientId);
+      const clientSecret = String(incoming.clientSecret || '');
+      const webhookSecret = String(incoming.webhookSecret || '');
+      const updateCredentials = Boolean(clientId || clientSecret);
+      const updateWebhookSecret = Boolean(webhookSecret);
+
+      if (updateCredentials && !(clientId && clientSecret)) {
+        throw new HttpsError('invalid-argument', 'Informe Client ID e Client Secret juntos para substituir a credencial central.');
+      }
+      if ((updateCredentials || updateWebhookSecret) && !projectId) {
+        throw new HttpsError('failed-precondition', 'Projeto Google Cloud nao identificado.');
+      }
+
+      const beforeAudit = {
+        environment: normalizeEnvironment(existing.environment),
+        apiBaseUrl: cleanText(existing.apiBaseUrl) || DEFAULT_API_URL,
+        authUrl: cleanText(existing.authUrl) || DEFAULT_AUTH_URL,
+        webhookUrl: cleanText(existing.webhookUrl),
+        webhookEnabled: Boolean(existing.webhookEnabled),
+        inventoryEndpointTemplate: cleanText(existing.inventoryEndpointTemplate),
+        inventoryMethod: cleanText(existing.inventoryMethod || 'POST').toUpperCase(),
+        clientId: existing.clientIdMasked || (existing.clientIdSecretVersion ? '********' : ''),
+        clientSecret: existing.clientSecretMasked || (existing.clientSecretSecretVersion ? '********' : ''),
+        webhookSecret: existing.webhookSecretMasked || (existing.webhookSecretVersion ? '********' : ''),
+      };
+
+      const platformPatch = {
+        provider: PROVIDER,
+        environment: normalizeEnvironment(incoming.environment || existing.environment),
+        apiBaseUrl: cleanText(incoming.apiBaseUrl || existing.apiBaseUrl) || DEFAULT_API_URL,
+        authUrl: cleanText(incoming.authUrl || existing.authUrl) || DEFAULT_AUTH_URL,
+        webhookUrl: cleanText(incoming.webhookUrl ?? existing.webhookUrl),
+        webhookEnabled: Object.prototype.hasOwnProperty.call(incoming, 'webhookEnabled')
+          ? Boolean(incoming.webhookEnabled)
+          : Boolean(existing.webhookEnabled),
+        inventoryEndpointTemplate: cleanText(incoming.inventoryEndpointTemplate ?? existing.inventoryEndpointTemplate),
+        inventoryMethod: cleanText(incoming.inventoryMethod || existing.inventoryMethod || 'POST').toUpperCase(),
+        updatedByUid: uid,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      if (updateCredentials) {
+        const [clientIdName, clientSecretName] = await Promise.all([
+          ensureSecret(projectId, 'ifood_platform_client_id', {app: 'doceria', provider: 'ifood', scope: 'platform'}),
+          ensureSecret(projectId, 'ifood_platform_client_secret', {app: 'doceria', provider: 'ifood', scope: 'platform'}),
+        ]);
+        const [clientIdSecretVersion, clientSecretSecretVersion] = await Promise.all([
+          addSecretVersion(clientIdName, clientId),
+          addSecretVersion(clientSecretName, clientSecret),
+        ]);
+        Object.assign(platformPatch, {
+          clientIdSecretVersion,
+          clientSecretSecretVersion,
+          clientIdMasked: maskSecret(clientId),
+          clientSecretMasked: maskSecret(clientSecret),
+          clientIdFingerprint: fingerprintSecret(clientId),
+          clientSecretFingerprint: fingerprintSecret(clientSecret),
+        });
+      }
+
+      if (updateWebhookSecret) {
+        const webhookSecretName = await ensureSecret(projectId, 'ifood_platform_webhook_secret', {
+          app: 'doceria',
+          provider: 'ifood',
+          scope: 'platform',
+        });
+        Object.assign(platformPatch, {
+          webhookSecretVersion: await addSecretVersion(webhookSecretName, webhookSecret),
+          webhookSecretMasked: maskSecret(webhookSecret),
+          webhookSecretFingerprint: fingerprintSecret(webhookSecret),
+        });
+      }
+
+      await platformConfigRef().set(platformPatch, {merge: true});
+      tokenCache.clear();
+
+      const afterAudit = {
+        environment: platformPatch.environment,
+        apiBaseUrl: platformPatch.apiBaseUrl,
+        authUrl: platformPatch.authUrl,
+        webhookUrl: platformPatch.webhookUrl,
+        webhookEnabled: platformPatch.webhookEnabled,
+        inventoryEndpointTemplate: platformPatch.inventoryEndpointTemplate,
+        inventoryMethod: platformPatch.inventoryMethod,
+        clientId: platformPatch.clientIdMasked || beforeAudit.clientId,
+        clientSecret: platformPatch.clientSecretMasked || beforeAudit.clientSecret,
+        webhookSecret: platformPatch.webhookSecretMasked || beforeAudit.webhookSecret,
+      };
+      await auditPlatform('platform.configuration.saved', {
+        uid,
+        ip,
+        changes: trackedChanges(beforeAudit, afterAudit, Object.keys(afterAudit)),
+      });
+
+      const updatedSnap = await platformConfigRef().get();
+      return {
+        platform: publicPlatformConfig(updatedSnap.exists ? updatedSnap.data() || {} : {}, true),
       };
     }),
 
     ifoodSaveConfiguration: onCall({timeoutSeconds: 120}, async (request) => {
       const {uid, lojaId, requester} = await requireCallableStore(request);
       const incoming = request.data || {};
+      if (hasGlobalConfigPayload(incoming)) {
+        throw new HttpsError('permission-denied', 'Configuracoes globais do iFood devem ser alteradas somente em Configuracoes > Integracoes > iFood Developer.');
+      }
       const [existingSnap, platformSnap] = await Promise.all([configRef(lojaId).get(), platformConfigRef().get()]);
       const existing = existingSnap.exists ? existingSnap.data() || {} : {};
       const platformExisting = platformSnap.exists ? platformSnap.data() || {} : {};
-      const clientId = cleanText(incoming.clientId);
-      const clientSecret = String(incoming.clientSecret || '');
-      const webhookSecret = String(incoming.webhookSecret || '');
-      const projectId = getProjectId();
-      let secretPatch = {};
-      let platformPatch = {};
-
-      if ((clientId || clientSecret) && !(clientId && clientSecret)) {
-        throw new HttpsError('invalid-argument', 'Informe Client ID e Client Secret juntos.');
-      }
-      if ((clientId || clientSecret) && requester.role !== 'dono') {
-        throw new HttpsError('permission-denied', 'Somente o dono pode alterar a credencial central do iFood.');
-      }
-      if ((clientId && clientSecret) || webhookSecret) {
-        if (!projectId) throw new HttpsError('failed-precondition', 'Projeto Google Cloud nao identificado.');
-        const storeKey = safeId(lojaId);
-        const labels = {app: 'doceria', provider: 'ifood', loja: storeKey.slice(0, 63)};
-        if (clientId && clientSecret) {
-          const [clientIdName, clientSecretName] = await Promise.all([
-            ensureSecret(projectId, 'ifood_platform_client_id', {app: 'doceria', provider: 'ifood', scope: 'platform'}),
-            ensureSecret(projectId, 'ifood_platform_client_secret', {app: 'doceria', provider: 'ifood', scope: 'platform'}),
-          ]);
-          const [clientIdSecretVersion, clientSecretSecretVersion] = await Promise.all([
-            addSecretVersion(clientIdName, clientId),
-            addSecretVersion(clientSecretName, clientSecret),
-          ]);
-          platformPatch = {
-            clientIdSecretVersion,
-            clientSecretSecretVersion,
-            updatedByUid: uid,
-            updatedAt: FieldValue.serverTimestamp(),
-          };
-        }
-        if (webhookSecret) {
-          const resourceName = await ensureSecret(projectId, `ifood_${storeKey}_webhook_secret`, labels);
-          secretPatch.webhookSecretVersion = await addSecretVersion(resourceName, webhookSecret);
-        }
-      }
+      const canManagePlatform = isPlatformAdmin(requester);
 
       const config = {
         provider: PROVIDER,
         merchantId: cleanText(incoming.merchantId || existing.merchantId),
+        merchantName: cleanText(incoming.merchantName || existing.merchantName),
         enabled: Boolean(incoming.enabled),
+        status: incoming.enabled ? 'active' : 'inactive',
         pollingEnabled: incoming.pollingEnabled !== false,
-        webhookEnabled: Boolean(incoming.webhookEnabled),
+        ordersSyncEnabled: incoming.ordersSyncEnabled !== false,
+        stockSyncEnabled: incoming.stockSyncEnabled !== false,
+        catalogSyncEnabled: incoming.catalogSyncEnabled !== false,
         autoConfirm: incoming.autoConfirm !== false,
         autoStartPreparation: Boolean(incoming.autoStartPreparation),
-        apiBaseUrl: DEFAULT_API_URL,
-        authUrl: DEFAULT_AUTH_URL,
-        inventoryEndpointTemplate: '',
-        inventoryMethod: 'POST',
-        ...secretPatch,
         updatedByUid: uid,
         updatedAt: FieldValue.serverTimestamp(),
       };
-      if (Object.keys(platformPatch).length) {
-        await platformConfigRef().set(platformPatch, {merge: true});
-      }
       await configRef(lojaId).set(config, {merge: true});
       tokenCache.clear();
-      await audit(lojaId, 'configuration.saved', {
-        uid,
+
+      const beforeAudit = {
+        merchantId: existing.merchantId || '',
+        merchantName: existing.merchantName || '',
+        enabled: Boolean(existing.enabled),
+        pollingEnabled: existing.pollingEnabled !== false,
+        ordersSyncEnabled: existing.ordersSyncEnabled !== false,
+        stockSyncEnabled: existing.stockSyncEnabled !== false,
+        catalogSyncEnabled: existing.catalogSyncEnabled !== false,
+        autoConfirm: existing.autoConfirm !== false,
+        autoStartPreparation: Boolean(existing.autoStartPreparation),
+      };
+      const afterAudit = {
+        merchantId: config.merchantId,
+        merchantName: config.merchantName,
         enabled: config.enabled,
         pollingEnabled: config.pollingEnabled,
-        platformCredentialsUpdated: Boolean(Object.keys(platformPatch).length),
+        ordersSyncEnabled: config.ordersSyncEnabled,
+        stockSyncEnabled: config.stockSyncEnabled,
+        catalogSyncEnabled: config.catalogSyncEnabled,
+        autoConfirm: config.autoConfirm,
+        autoStartPreparation: config.autoStartPreparation,
+      };
+      await audit(lojaId, 'configuration.saved', {
+        uid,
+        ip: getRequestIp(request),
+        changes: trackedChanges(beforeAudit, afterAudit, Object.keys(afterAudit)),
+        enabled: config.enabled,
+        pollingEnabled: config.pollingEnabled,
       });
-      return publicConfig(mergePlatformCredentials({...existing, ...config, ...secretPatch}, {...platformExisting, ...platformPatch}));
+      return publicConfig(mergePlatformCredentials({...existing, ...config}, platformExisting), canManagePlatform);
     }),
 
     ifoodPromoteStoredCredentials: onCall(async (request) => {
       const {uid, lojaId, requester} = await requireCallableStore(request);
-      if (requester.role !== 'dono') {
-        throw new HttpsError('permission-denied', 'Somente o dono pode ativar a credencial central do iFood.');
+      if (!isPlatformAdmin(requester)) {
+        throw new HttpsError('permission-denied', 'Somente Dono ou Administrador Master pode ativar a credencial central do iFood.');
       }
       const storeSnap = await configRef(lojaId).get();
       const storeConfig = storeSnap.exists ? storeSnap.data() || {} : {};
@@ -947,12 +1185,23 @@ const createIfoodFunctions = ({
         clientIdSecretVersion: storeConfig.clientIdSecretVersion,
         clientSecretSecretVersion: storeConfig.clientSecretSecretVersion,
         migratedFromStoreId: lojaId,
+        clientIdMasked: storeConfig.clientIdMasked || '********',
+        clientSecretMasked: storeConfig.clientSecretMasked || '********',
         updatedByUid: uid,
         updatedAt: FieldValue.serverTimestamp(),
       }, {merge: true});
       tokenCache.clear();
+      await auditPlatform('platform.credentials.promoted', {
+        uid,
+        ip: getRequestIp(request),
+        changes: {
+          migratedFromStoreId: {before: null, after: lojaId},
+          clientId: {before: null, after: storeConfig.clientIdMasked || '********'},
+          clientSecret: {before: null, after: storeConfig.clientSecretMasked || '********'},
+        },
+      });
       await audit(lojaId, 'configuration.credentials_promoted', {uid});
-      return publicConfig(await loadConfig(lojaId, false));
+      return publicConfig(await loadConfig(lojaId, false), true);
     }),
 
     ifoodTestConnection: onCall(async (request) => {
@@ -970,7 +1219,10 @@ const createIfoodFunctions = ({
     }),
 
     ifoodLoadMerchants: onCall(async (request) => {
-      const {lojaId} = await requireCallableStore(request);
+      const {lojaId, requester} = await requireCallableStore(request);
+      if (!isPlatformAdmin(requester)) {
+        throw new HttpsError('permission-denied', 'Somente Dono ou Administrador Master pode localizar todas as lojas autorizadas no iFood.');
+      }
       const config = await loadConfig(lojaId, false);
       if (!config.clientIdSecretVersion || !config.clientSecretSecretVersion) {
         throw new HttpsError('failed-precondition', 'Cadastre a credencial central do iFood antes de localizar lojas.');
@@ -984,6 +1236,7 @@ const createIfoodFunctions = ({
           id: cleanText(merchant.id),
           name: cleanText(merchant.name),
           corporateName: cleanText(merchant.corporateName),
+          document: onlyDigits(merchant.document || merchant.cnpj || merchant.companyDocument || ''),
         }))
         .filter((merchant) => merchant.id);
       if (!merchants.length) {

@@ -14,7 +14,7 @@ flowchart LR
   SCH["Scheduler: a cada 1 minuto"] --> FN
   WH["Webhook preparado"] --> FN
   FN -->|OAuth e REST Order| API["iFood Developer API"]
-  FN --> SEC["Secret Manager: credencial central + webhook por loja"]
+  FN --> SEC["Secret Manager: credenciais globais + webhook global"]
   FN --> FS["Firestore por loja"]
   FS --> UI
   FN --> INV["Estoque + Kardex + Pedidos"]
@@ -27,12 +27,12 @@ flowchart LR
 | Camada | Entrega |
 | --- | --- |
 | Frontend | Pagina `iFood Hub` com operacao, indicadores, alertas, catalogo/estoque, configuracao, auditoria e dark mode |
-| Credenciais | Client ID e Client Secret centrais no Secret Manager; segredo futuro de webhook isolado por loja |
+| Credenciais | Client ID, Client Secret, OAuth, API, ambiente e segredo de webhook globais no Secret Manager |
 | Pedidos | Polling manual e agendado, detalhe do pedido, acknowledgment apos processamento, idempotencia por evento |
 | Ciclo operacional | Comandos `confirm`, `startPreparation`, `readyToPickup`, `dispatch`, cancelamento e validacao de codigos |
 | Catalogo e estoque | Publicacao em lote, preco iFood independente, codigo PDV automatico, importacao de existentes, baixa/estorno e inventario oficial |
 | Resiliencia | Retry exponencial para REST/rate limit, token em cache, alertas, health status e nova tentativa de estoque |
-| Seguranca | Escritas iFood restritas a Functions pelas regras; segredos fora do Firestore; separacao por loja |
+| Seguranca | Escritas iFood restritas a Functions; segredos fora do Firestore; RBAC separando plataforma e loja |
 | Evolucao | Endpoint HTTP para webhook ja isolado, ativavel apos homologacao do contrato iFood |
 
 ## Fluxo de pedido
@@ -83,16 +83,17 @@ Content-Type: application/json
 }
 ```
 
-`quantity: 0` limita a venda a zero; uma reposicao publica novamente o saldo positivo. Por seguranca da credencial central, os endpoints de autenticacao, catalogo e inventario sao fixados no backend para as rotas oficiais do iFood.
+`quantity: 0` limita a venda a zero; uma reposicao publica novamente o saldo positivo. Por seguranca da credencial central, endpoints de autenticacao, API, ambiente, webhook e segredo de validacao ficam na configuracao global, editavel apenas por Dono ou Administrador Master.
 
 ## Modelagem Firestore
 
-Todas as colecoes abaixo ficam sob `lojas/{lojaId}`.
+As credenciais do aplicativo iFood Developer ficam em nivel global. Cada loja possui somente seu `Merchant ID` e as flags operacionais.
 
 | Colecao/documento | Conteudo | Escrita |
 | --- | --- | --- |
-| `integrations/ifood` | Referencias protegidas para Client ID/Client Secret centrais do aplicativo | Function |
-| `ifood/config` | Merchant ID, flags e webhook da loja; sem leitura direta do browser | Function |
+| `integrations/ifood` | Referencias protegidas para Client ID, Client Secret, OAuth, API, webhook, ambiente e mascaras seguras | Function, somente Dono/Admin Master |
+| `integrations/ifood/audit/{auditId}` | Auditoria de alteracoes globais com usuario, IP, data/hora e valores antes/depois mascarados | Function |
+| `lojas/{lojaId}/ifood/config` | Merchant ID, nome da loja iFood, status e flags de estoque, pedidos e catalogo | Function |
 | `ifoodHealth/status` | Status da API, latencia, ultimo polling/erro | Function |
 | `ifoodOrders/{orderId}` | Espelho operacional do pedido, itens, status, alvo de estoque | Function |
 | `ifoodEvents/{eventId}` | Idempotencia e payload auditavel do evento | Function |
@@ -107,10 +108,12 @@ Todas as colecoes abaixo ficam sob `lojas/{lojaId}`.
 
 | Function | Tipo | Uso |
 | --- | --- | --- |
-| `ifoodGetConfiguration` | Callable | Carregar configuracao publica e health |
-| `ifoodSaveConfiguration` | Callable | Salvar configuracao e segredos por loja |
+| `ifoodGetConfiguration` | Callable | Carregar configuracao da loja, resumo global permitido e health |
+| `ifoodGetPlatformConfiguration` | Callable | Carregar configuracao global completa para Dono/Admin Master |
+| `ifoodSavePlatformConfiguration` | Callable | Salvar credenciais, OAuth, API, webhook e ambiente globais |
+| `ifoodSaveConfiguration` | Callable | Salvar somente Merchant ID e flags operacionais da loja |
 | `ifoodTestConnection` | Callable | Validar OAuth iFood |
-| `ifoodLoadMerchants` | Callable | Listar lojas autorizadas pela credencial e preencher o Merchant ID |
+| `ifoodLoadMerchants` | Callable | Listar lojas autorizadas pela credencial central, restrito a Dono/Admin Master |
 | `ifoodPromoteStoredCredentials` | Callable | Migrar credencial antiga de uma loja para o uso central |
 | `ifoodPollNow` | Callable | Consulta imediata de eventos |
 | `ifoodOrderAction` | Callable | Confirmar, preparar, despachar, cancelar ou validar codigo |
