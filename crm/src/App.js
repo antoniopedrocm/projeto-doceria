@@ -71,6 +71,40 @@ const CFOP_OPERATION_OPTIONS = [
   { value: '6102', label: '6102 - Revenda interestadual' },
   { value: '6108', label: '6108 - Revenda interestadual para não contribuinte' },
 ];
+const createManualInvoiceItemDraft = () => ({
+  draftId: `manual-item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  source: 'manual',
+  productId: '',
+  code: '',
+  description: '',
+  ncm: DEFAULT_NCM_PRODUCT,
+  unit: 'un',
+  quantity: 1,
+  unitPrice: '',
+  discount: 0,
+  origin: 0,
+  csosn: '102',
+  pisCst: '49',
+  cofinsCst: '49',
+  cBenef: ''
+});
+const createManualInvoiceCustomerDraft = () => ({
+  id: '',
+  name: '',
+  document: '',
+  email: '',
+  phone: '',
+  stateRegistration: '',
+  address: {
+    street: '',
+    number: '',
+    district: '',
+    city: 'Goiania',
+    cityCode: '5208707',
+    state: 'GO',
+    zip: ''
+  }
+});
 const DEFAULT_FORNECEDOR_CATEGORIES = ['Insumos', 'Embalagens', 'Bebidas', 'Decoração', 'Serviços'];
 const CONFIG_DOC_ID = 'config';
 const DEFAULT_ALARM_PAUSE_MINUTES = 5;
@@ -9881,6 +9915,7 @@ const handleSubmit = async (e) => {
       protocol: '',
       paymentMethod: '',
       reason: '',
+      origin: 'all',
       ...getCurrentMonthDateRange()
     }));
     const [showAdvancedInvoiceFilters, setShowAdvancedInvoiceFilters] = useState(false);
@@ -9897,6 +9932,19 @@ const handleSubmit = async (e) => {
     const [issueError, setIssueError] = useState('');
     const [invoiceToCancel, setInvoiceToCancel] = useState(null);
     const [invoiceToView, setInvoiceToView] = useState(null);
+    const [showManualInvoiceModal, setShowManualInvoiceModal] = useState(false);
+    const [manualInvoiceSaving, setManualInvoiceSaving] = useState(false);
+    const [manualInvoiceError, setManualInvoiceError] = useState('');
+    const [manualInvoiceForm, setManualInvoiceForm] = useState(() => ({
+      customerMode: 'existing',
+      customer: createManualInvoiceCustomerDraft(),
+      modelOverride: '',
+      operationCfop: DEFAULT_CFOP_OPERATION,
+      paymentMethodCode: '',
+      additionalInfo: '',
+      stockMovementRequested: false,
+      items: [createManualInvoiceItemDraft()]
+    }));
     const [cancelReason, setCancelReason] = useState('');
     const [cancelError, setCancelError] = useState('');
     const [orderToEditBeforeInvoice, setOrderToEditBeforeInvoice] = useState(null);
@@ -10030,6 +10078,64 @@ const handleSubmit = async (e) => {
         })
         .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'));
     }, [storeProducts, orderEditProductSearch]);
+    const manualProductOptions = useMemo(() => {
+      const options = [];
+      const seen = new Set();
+      storeProducts.forEach((product) => {
+        if (!product?.id) return;
+        const productId = String(product.id);
+        const fiscal = fiscalProductsById.get(productId) || {};
+        seen.add(productId);
+        options.push({
+          id: productId,
+          label: product.nome || fiscal.description || productId,
+          code: fiscal.code || product.codigo || productId,
+          description: fiscal.description || product.nome || productId,
+          ncm: normalizeFiscalCode(fiscal.ncm || product.fiscal?.ncm || DEFAULT_NCM_PRODUCT),
+          unit: fiscal.unit || fiscal.unidade || product.unidade || 'un',
+          unitPrice: Number(product.precoIfood ?? product.preco ?? 0) || 0,
+          origin: Number(fiscal.origin ?? fiscal.origem ?? product.fiscal?.origin ?? 0),
+          csosn: fiscal.csosn || product.fiscal?.csosn || '102',
+          pisCst: fiscal.pisCst || product.fiscal?.pisCst || '49',
+          cofinsCst: fiscal.cofinsCst || product.fiscal?.cofinsCst || '49',
+          cBenef: fiscal.cBenef || product.fiscal?.cBenef || '',
+          source: 'catalog'
+        });
+      });
+      fiscalProducts.forEach((fiscal) => {
+        const id = String(fiscal.productId || fiscal.id || '');
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        options.push({
+          id,
+          label: fiscal.description || fiscal.nome || id,
+          code: fiscal.code || id,
+          description: fiscal.description || fiscal.nome || id,
+          ncm: normalizeFiscalCode(fiscal.ncm || DEFAULT_NCM_PRODUCT),
+          unit: fiscal.unit || fiscal.unidade || 'un',
+          unitPrice: 0,
+          origin: Number(fiscal.origin ?? fiscal.origem ?? 0),
+          csosn: fiscal.csosn || '102',
+          pisCst: fiscal.pisCst || '49',
+          cofinsCst: fiscal.cofinsCst || '49',
+          cBenef: fiscal.cBenef || '',
+          source: 'catalog'
+        });
+      });
+      return options.sort((a, b) => String(a.label || '').localeCompare(String(b.label || ''), 'pt-BR'));
+    }, [storeProducts, fiscalProducts, fiscalProductsById]);
+
+    const manualInvoiceTotals = useMemo(() => {
+      const products = (manualInvoiceForm.items || []).reduce((sum, item) => (
+        sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0))
+      ), 0);
+      const discount = (manualInvoiceForm.items || []).reduce((sum, item) => sum + Number(item.discount || 0), 0);
+      return {
+        products: roundCurrency(products),
+        discount: roundCurrency(discount),
+        invoice: roundCurrency(Math.max(products - discount, 0))
+      };
+    }, [manualInvoiceForm.items]);
 
     const ordersById = useMemo(() => {
       const map = new Map();
@@ -10119,11 +10225,20 @@ const handleSubmit = async (e) => {
         protocol: '',
         paymentMethod: '',
         reason: '',
+        origin: 'all',
         ...getCurrentMonthDateRange()
       });
     };
 
     const getInvoiceOrder = useCallback((invoice) => ordersById.get(invoice?.orderId) || null, [ordersById]);
+
+    const getInvoiceOrigin = useCallback((invoice) => (
+      invoice?.origin === 'manual' || invoice?.manualInvoice || !invoice?.orderId ? 'manual' : 'order'
+    ), []);
+
+    const getInvoiceOriginLabel = useCallback((invoice) => (
+      getInvoiceOrigin(invoice) === 'manual' ? 'Manual / Avulsa' : 'Pedido'
+    ), [getInvoiceOrigin]);
 
     const getInvoiceCustomerName = useCallback((invoice) => {
       const order = getInvoiceOrder(invoice);
@@ -10313,6 +10428,10 @@ const handleSubmit = async (e) => {
         .filter((invoice) => isDateInRange(invoice.issuedAt || invoice.createdAt, invoiceFilters.start, invoiceFilters.end))
         .filter(matchesInvoiceStatusFilter)
         .filter((invoice) => {
+          if (invoiceFilters.origin === 'all') return true;
+          return getInvoiceOrigin(invoice) === invoiceFilters.origin;
+        })
+        .filter((invoice) => {
           const value = getInvoiceValue(invoice);
           if (minValue !== null && Number.isFinite(minValue) && value < minValue) return false;
           if (maxValue !== null && Number.isFinite(maxValue) && value > maxValue) return false;
@@ -10346,8 +10465,16 @@ const handleSubmit = async (e) => {
             getInvoiceCustomerDocument(invoice),
             getInvoiceCustomerName(invoice),
             getInvoicePaymentMethod(invoice),
+            getInvoiceOriginLabel(invoice),
             reason,
             getInvoiceValue(invoice),
+            ...(getInvoiceItems(invoice) || []).flatMap((item) => [
+              item.description,
+              item.nome,
+              item.code,
+              item.codigo,
+              item.source
+            ]),
             order?.id,
             order?.clienteNome,
             order?.codigo,
@@ -10361,7 +10488,7 @@ const handleSubmit = async (e) => {
           });
         })
         .sort((a, b) => (getJSDate(b.issuedAt || b.createdAt)?.getTime() || 0) - (getJSDate(a.issuedAt || a.createdAt)?.getTime() || 0));
-    }, [invoices, invoiceFilters, fiscalReturnReason, getInvoiceCustomerDocument, getInvoiceCustomerName, getInvoiceIssuerDocument, getInvoiceOrder, getInvoicePaymentMethod, getInvoiceValue, matchesInvoiceStatusFilter]);
+    }, [invoices, invoiceFilters, fiscalReturnReason, getInvoiceCustomerDocument, getInvoiceCustomerName, getInvoiceIssuerDocument, getInvoiceItems, getInvoiceOrder, getInvoiceOrigin, getInvoiceOriginLabel, getInvoicePaymentMethod, getInvoiceValue, matchesInvoiceStatusFilter]);
 
     const shouldShowFiscalReason = (invoice) => ['rejected', 'denied', 'pending_return'].includes(invoice?.status);
 
@@ -10891,6 +11018,247 @@ const handleSubmit = async (e) => {
       }
     };
 
+    const buildManualCustomerFromClient = (cliente = {}) => {
+      const firstAddress = Array.isArray(cliente.enderecos) ? cliente.enderecos[0] : null;
+      const addressObject = typeof firstAddress === 'object' && firstAddress !== null ? firstAddress : {};
+      return {
+        id: cliente.id || '',
+        name: cliente.nome || cliente.razaoSocial || '',
+        document: cliente.cpfCnpj || cliente.cpf || cliente.cnpj || cliente.documento || '',
+        email: cliente.email || '',
+        phone: cliente.telefone || cliente.whatsapp || '',
+        stateRegistration: cliente.inscricaoEstadual || '',
+        address: {
+          street: addressObject.street || addressObject.logradouro || addressObject.rua || cliente.endereco || (typeof firstAddress === 'string' ? firstAddress : ''),
+          number: addressObject.number || addressObject.numero || '',
+          district: addressObject.district || addressObject.bairro || '',
+          city: addressObject.city || addressObject.cidade || 'Goiania',
+          cityCode: addressObject.cityCode || addressObject.codigoIbge || addressObject.codigoMunicipio || '5208707',
+          state: String(addressObject.state || addressObject.uf || 'GO').toUpperCase(),
+          zip: addressObject.zip || addressObject.cep || ''
+        }
+      };
+    };
+
+    const resetManualInvoiceForm = useCallback(() => {
+      setManualInvoiceForm({
+        customerMode: 'existing',
+        customer: createManualInvoiceCustomerDraft(),
+        modelOverride: modelOverride || '',
+        operationCfop: operationCfop || DEFAULT_CFOP_OPERATION,
+        paymentMethodCode: settingsForm.defaultPaymentMethodCode || '99',
+        additionalInfo: '',
+        stockMovementRequested: false,
+        items: [createManualInvoiceItemDraft()]
+      });
+      setManualInvoiceError('');
+    }, [modelOverride, operationCfop, settingsForm.defaultPaymentMethodCode]);
+
+    const handleOpenManualInvoice = () => {
+      resetManualInvoiceForm();
+      setShowManualInvoiceModal(true);
+    };
+
+    const setManualInvoiceCustomerField = (field, value) => {
+      setManualInvoiceForm((prev) => ({
+        ...prev,
+        customer: {
+          ...(prev.customer || {}),
+          [field]: value
+        }
+      }));
+    };
+
+    const setManualInvoiceCustomerAddressField = (field, value) => {
+      setManualInvoiceForm((prev) => ({
+        ...prev,
+        customer: {
+          ...(prev.customer || {}),
+          address: {
+            ...(prev.customer?.address || {}),
+            [field]: field === 'state' ? String(value || '').toUpperCase() : value
+          }
+        }
+      }));
+    };
+
+    const handleManualCustomerSelect = (clienteId) => {
+      const cliente = (data.clientes || []).find((item) => String(item.id) === String(clienteId));
+      setManualInvoiceForm((prev) => ({
+        ...prev,
+        customerMode: clienteId ? 'existing' : 'manual',
+        customer: cliente ? buildManualCustomerFromClient(cliente) : createManualInvoiceCustomerDraft()
+      }));
+    };
+
+    const updateManualInvoiceItem = (draftId, patch) => {
+      setManualInvoiceForm((prev) => ({
+        ...prev,
+        items: (prev.items || []).map((item) => (
+          item.draftId === draftId ? { ...item, ...patch } : item
+        ))
+      }));
+    };
+
+    const handleManualItemProductChange = (draftId, productId) => {
+      const product = manualProductOptions.find((option) => String(option.id) === String(productId));
+      if (!product) {
+        updateManualInvoiceItem(draftId, {
+          source: 'manual',
+          productId: '',
+          code: '',
+          description: '',
+          ncm: DEFAULT_NCM_PRODUCT,
+          unit: 'un',
+          unitPrice: '',
+          origin: 0,
+          csosn: '102',
+          pisCst: '49',
+          cofinsCst: '49',
+          cBenef: ''
+        });
+        return;
+      }
+
+      updateManualInvoiceItem(draftId, {
+        source: 'catalog',
+        productId: product.id,
+        code: product.code,
+        description: product.description,
+        ncm: product.ncm || DEFAULT_NCM_PRODUCT,
+        unit: product.unit || 'un',
+        unitPrice: product.unitPrice || '',
+        origin: product.origin ?? 0,
+        csosn: product.csosn || '102',
+        pisCst: product.pisCst || '49',
+        cofinsCst: product.cofinsCst || '49',
+        cBenef: product.cBenef || ''
+      });
+    };
+
+    const addManualInvoiceItem = () => {
+      setManualInvoiceForm((prev) => ({
+        ...prev,
+        items: [...(prev.items || []), createManualInvoiceItemDraft()]
+      }));
+    };
+
+    const removeManualInvoiceItem = (draftId) => {
+      setManualInvoiceForm((prev) => ({
+        ...prev,
+        items: (prev.items || []).length > 1
+          ? prev.items.filter((item) => item.draftId !== draftId)
+          : prev.items
+      }));
+    };
+
+    const handleIssueManualInvoice = async (event) => {
+      event.preventDefault();
+      if (isReadOnly || manualInvoiceSaving) return;
+      if (!effectiveStoreId) {
+        setManualInvoiceError('Selecione uma loja específica para emitir a nota manual.');
+        return;
+      }
+
+      const customer = manualInvoiceForm.customer || {};
+      const customerDocument = onlyDigitsText(customer.document);
+      if (!String(customer.name || '').trim()) {
+        setManualInvoiceError('Informe o nome ou razão social do cliente.');
+        return;
+      }
+      if (![11, 14].includes(customerDocument.length)) {
+        setManualInvoiceError('Informe CPF/CNPJ válido para o cliente da nota.');
+        return;
+      }
+      if (!customer.address?.street || !customer.address?.district || !customer.address?.zip) {
+        setManualInvoiceError('Informe endereço, bairro e CEP fiscal do cliente.');
+        return;
+      }
+
+      const items = (manualInvoiceForm.items || []).map((item) => {
+        const quantity = Number(item.quantity || 0);
+        const unitPrice = Number(item.unitPrice || 0);
+        const discount = Number(item.discount || 0);
+        return {
+          ...item,
+          quantity,
+          unitPrice,
+          discount,
+          ncm: normalizeFiscalCode(item.ncm || DEFAULT_NCM_PRODUCT),
+          cfop: manualInvoiceForm.operationCfop
+        };
+      });
+      const invalidItem = items.find((item) => (
+        !String(item.description || '').trim()
+        || normalizeFiscalCode(item.ncm).length !== 8
+        || Number(item.quantity || 0) <= 0
+        || Number(item.unitPrice || 0) < 0
+        || Number(item.discount || 0) < 0
+        || Number(item.discount || 0) > Number(item.quantity || 0) * Number(item.unitPrice || 0)
+      ));
+      if (invalidItem) {
+        setManualInvoiceError('Revise os itens: descrição, NCM, quantidade, valor e desconto precisam estar corretos.');
+        return;
+      }
+
+      setManualInvoiceSaving(true);
+      setManualInvoiceError('');
+      setMessage(null);
+      try {
+        const fn = httpsCallable(functions, 'fiscalIssueManualInvoice');
+        const response = await fn(callablePayload({
+          modelOverride: manualInvoiceForm.modelOverride ? Number(manualInvoiceForm.modelOverride) : undefined,
+          operationCfop: manualInvoiceForm.operationCfop,
+          additionalInfo: manualInvoiceForm.additionalInfo.trim(),
+          justification: 'Emissão de nota fiscal manual/avulsa pelo painel Nota Fiscal',
+          manualInvoice: {
+            customer: {
+              ...customer,
+              document: customerDocument
+            },
+            operationCfop: manualInvoiceForm.operationCfop,
+            paymentMethodCode: manualInvoiceForm.paymentMethodCode || settingsForm.defaultPaymentMethodCode || '99',
+            additionalInfo: manualInvoiceForm.additionalInfo.trim(),
+            stockMovementRequested: Boolean(manualInvoiceForm.stockMovementRequested),
+            items: items.map((item, index) => ({
+              productId: item.productId || '',
+              source: item.source === 'catalog' ? 'catalog' : 'manual',
+              code: item.code || item.productId || `MANUAL-${index + 1}`,
+              description: item.description,
+              ncm: item.ncm,
+              unit: item.unit || 'un',
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              discount: item.discount,
+              origin: Number(item.origin || 0),
+              csosn: item.csosn || '102',
+              pisCst: item.pisCst || '49',
+              cofinsCst: item.cofinsCst || '49',
+              cBenef: item.cBenef || ''
+            }))
+          }
+        }));
+        const result = response.data || {};
+        setShowManualInvoiceModal(false);
+        resetManualInvoiceForm();
+        setActiveTab('notas');
+        if (result.status === 'authorized') {
+          setMessage({ type: 'success', text: result.xMotivo || 'Nota manual autorizada. Baixando DANFE em PDF.' });
+          if (result.invoiceId && result.danfePdfReady) {
+            await downloadInvoiceArtifact(result.invoiceId, 'danfePdf');
+          }
+        } else {
+          setMessage({ type: 'error', text: result.xMotivo || 'Retorno fiscal recebido para a nota manual. Consulte a nota em Notas emitidas.' });
+        }
+      } catch (error) {
+        console.error('[NotaFiscal] Emissão manual falhou:', error);
+        setManualInvoiceError(error?.message || 'Não foi possível emitir a nota fiscal manual.');
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível emitir a nota fiscal manual.' });
+      } finally {
+        setManualInvoiceSaving(false);
+      }
+    };
+
     const handleRefreshInvoice = async (invoice) => {
       if (isReadOnly || !invoice?.id) return;
       setBusyOrderId(`refresh:${invoice.id}`);
@@ -11349,6 +11717,10 @@ const handleSubmit = async (e) => {
       { header: 'NFC-e', render: (row) => <span className="font-mono text-xs font-semibold text-gray-800">{formatFiscalNumber(row.number)}</span> },
       { header: 'Série', render: (row) => <span className="font-mono text-xs text-gray-600">{formatFiscalSeries(row.series)}</span> },
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs">{row.orderId?.slice(0, 8) || '-'}</span> },
+      { header: 'Origem', render: (row) => {
+        const isManual = getInvoiceOrigin(row) === 'manual';
+        return <span className={`px-3 py-1 rounded-full text-xs font-medium ${isManual ? 'bg-purple-100 text-purple-800' : 'bg-blue-50 text-blue-700'}`}>{getInvoiceOriginLabel(row)}</span>;
+      } },
       { header: 'Cliente', render: (row) => getInvoiceCustomerName(row) },
       { header: 'CPF/CNPJ', render: (row) => <span className="font-mono text-xs text-gray-600">{maskCpfCnpj(getInvoiceCustomerDocument(row))}</span> },
       { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[row.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[row.status] || row.status}</span> },
@@ -11364,7 +11736,7 @@ const handleSubmit = async (e) => {
       { icon: Eye, label: 'Ver detalhes', onClick: (row) => setInvoiceToView(row) },
       { icon: FileText, label: 'Baixar/visualizar DANFE PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => row.status === 'authorized' },
       { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => row.status === 'authorized' },
-      { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' },
+      { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' && Boolean(row.orderId) },
       { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => !isReadOnly && row.status === 'authorized' }
     ];
 
@@ -11498,6 +11870,11 @@ const handleSubmit = async (e) => {
                   <p className="text-sm text-gray-500 sm:mr-auto">
                     Mostrando <strong className="text-gray-800">{eligibleOrders.length}</strong> de <strong className="text-gray-800">{invoiceableOrders.length}</strong> pedidos.
                   </p>
+                  {!isReadOnly && (
+                    <Button size="sm" onClick={handleOpenManualInvoice}>
+                      <FileText className="w-4 h-4" /> Emitir Nota Fiscal Manual
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="secondary"
@@ -11580,7 +11957,7 @@ const handleSubmit = async (e) => {
                   {invoiceStatusFilters.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </Select>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <Input
                   label="Emitente / CNPJ"
                   value={invoiceFilters.issuerDocument}
@@ -11605,6 +11982,11 @@ const handleSubmit = async (e) => {
                   onChange={(e) => setInvoiceFilter('maxValue', e.target.value)}
                   placeholder="R$ 999,99"
                 />
+                <Select label="Origem da nota" value={invoiceFilters.origin} onChange={(e) => setInvoiceFilter('origin', e.target.value)}>
+                  <option value="all">Todas</option>
+                  <option value="order">Notas de pedidos</option>
+                  <option value="manual">Manuais / avulsas</option>
+                </Select>
               </div>
               {showAdvancedInvoiceFilters && (
                 <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
@@ -12060,6 +12442,230 @@ const handleSubmit = async (e) => {
           </form>
         </Modal>
 
+        <Modal
+          isOpen={showManualInvoiceModal}
+          onClose={() => {
+            if (manualInvoiceSaving) return;
+            setShowManualInvoiceModal(false);
+            resetManualInvoiceForm();
+          }}
+          title="Emitir Nota Fiscal Manual"
+          size="xl"
+        >
+          <form onSubmit={handleIssueManualInvoice} className="space-y-5">
+            <section className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Select
+                  label="Cliente cadastrado"
+                  value={manualInvoiceForm.customer?.id || ''}
+                  onChange={(event) => handleManualCustomerSelect(event.target.value)}
+                >
+                  <option value="">Cliente manual / não vinculado</option>
+                  {(data.clientes || []).map((cliente) => (
+                    <option key={cliente.id} value={cliente.id}>{cliente.nome || cliente.email || cliente.id}</option>
+                  ))}
+                </Select>
+                <Input
+                  label="Nome/Razão Social"
+                  value={manualInvoiceForm.customer?.name || ''}
+                  onChange={(event) => setManualInvoiceCustomerField('name', event.target.value)}
+                  required
+                />
+                <Input
+                  label="CPF/CNPJ"
+                  value={manualInvoiceForm.customer?.document || ''}
+                  onChange={(event) => setManualInvoiceCustomerField('document', event.target.value)}
+                  required
+                />
+                <Input
+                  label="E-mail"
+                  type="email"
+                  value={manualInvoiceForm.customer?.email || ''}
+                  onChange={(event) => setManualInvoiceCustomerField('email', event.target.value)}
+                />
+                <Input
+                  label="Telefone"
+                  value={manualInvoiceForm.customer?.phone || ''}
+                  onChange={(event) => setManualInvoiceCustomerField('phone', event.target.value)}
+                />
+                <Input
+                  label="Inscrição estadual"
+                  value={manualInvoiceForm.customer?.stateRegistration || ''}
+                  onChange={(event) => setManualInvoiceCustomerField('stateRegistration', event.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Input label="Logradouro" value={manualInvoiceForm.customer?.address?.street || ''} onChange={(event) => setManualInvoiceCustomerAddressField('street', event.target.value)} required />
+                <Input label="Número" value={manualInvoiceForm.customer?.address?.number || ''} onChange={(event) => setManualInvoiceCustomerAddressField('number', event.target.value)} />
+                <Input label="Bairro" value={manualInvoiceForm.customer?.address?.district || ''} onChange={(event) => setManualInvoiceCustomerAddressField('district', event.target.value)} required />
+                <Input label="CEP" value={manualInvoiceForm.customer?.address?.zip || ''} onChange={(event) => setManualInvoiceCustomerAddressField('zip', event.target.value)} required />
+                <Input label="Município" value={manualInvoiceForm.customer?.address?.city || ''} onChange={(event) => setManualInvoiceCustomerAddressField('city', event.target.value)} />
+                <Input label="Código IBGE" value={manualInvoiceForm.customer?.address?.cityCode || ''} onChange={(event) => setManualInvoiceCustomerAddressField('cityCode', event.target.value)} />
+                <Input label="UF" value={manualInvoiceForm.customer?.address?.state || ''} onChange={(event) => setManualInvoiceCustomerAddressField('state', event.target.value)} />
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-gray-100 bg-white p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <Select
+                  label="Modelo"
+                  value={manualInvoiceForm.modelOverride}
+                  onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, modelOverride: event.target.value }))}
+                >
+                  <option value="">Automático</option>
+                  <option value="55">NF-e 55</option>
+                  <option value="65">NFC-e 65</option>
+                </Select>
+                <Select
+                  label="CFOP da operação"
+                  value={manualInvoiceForm.operationCfop}
+                  onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, operationCfop: event.target.value }))}
+                >
+                  {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+                <Input
+                  label="Código de pagamento"
+                  value={manualInvoiceForm.paymentMethodCode}
+                  onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, paymentMethodCode: event.target.value }))}
+                  placeholder={settingsForm.defaultPaymentMethodCode || '99'}
+                />
+                <label className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={false}
+                    disabled
+                    className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                  />
+                  Baixar estoque ao emitir esta nota?
+                </label>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-gray-100 bg-white p-4 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h3 className="font-semibold text-gray-800">Itens da nota</h3>
+                <Button type="button" size="sm" variant="secondary" onClick={addManualInvoiceItem}>
+                  <Plus className="w-4 h-4" /> Adicionar item
+                </Button>
+              </div>
+              <div className="space-y-4">
+                {(manualInvoiceForm.items || []).map((item, index) => {
+                  const itemTotal = roundCurrency((Number(item.quantity || 0) * Number(item.unitPrice || 0)) - Number(item.discount || 0));
+                  return (
+                    <div key={item.draftId} className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1.2fr_120px_150px_150px_auto] gap-3 items-end">
+                        <Select
+                          label="Produto cadastrado"
+                          value={item.productId || ''}
+                          onChange={(event) => handleManualItemProductChange(item.draftId, event.target.value)}
+                        >
+                          <option value="">Produto manual / descrição livre</option>
+                          {manualProductOptions.map((option) => (
+                            <option key={option.id} value={option.id}>{option.label}</option>
+                          ))}
+                        </Select>
+                        <Input
+                          label="Descrição do produto/serviço"
+                          value={item.description || ''}
+                          onChange={(event) => updateManualInvoiceItem(item.draftId, { description: event.target.value, source: item.productId ? 'catalog' : 'manual' })}
+                          required
+                        />
+                        <Input
+                          label="Qtd."
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={item.quantity}
+                          onChange={(event) => updateManualInvoiceItem(item.draftId, { quantity: event.target.value })}
+                        />
+                        <Input
+                          label="Valor unitário"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.unitPrice}
+                          onChange={(event) => updateManualInvoiceItem(item.draftId, { unitPrice: event.target.value })}
+                        />
+                        <Input
+                          label="Desconto"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.discount}
+                          onChange={(event) => updateManualInvoiceItem(item.draftId, { discount: event.target.value })}
+                        />
+                        <button type="button" onClick={() => removeManualInvoiceItem(item.draftId)} className="mb-1 rounded-lg p-3 text-red-500 hover:bg-red-50" title="Remover item">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                        <Input label="Código" value={item.code || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { code: event.target.value })} />
+                        <Select label="NCM" value={normalizeFiscalCode(item.ncm || DEFAULT_NCM_PRODUCT)} onChange={(event) => updateManualInvoiceItem(item.draftId, { ncm: event.target.value })}>
+                          {NCM_PRODUCT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </Select>
+                        <Input label="Unidade" value={item.unit || 'un'} onChange={(event) => updateManualInvoiceItem(item.draftId, { unit: event.target.value })} />
+                        <Input label="CSOSN/CST" value={item.csosn || '102'} onChange={(event) => updateManualInvoiceItem(item.draftId, { csosn: event.target.value })} />
+                        <div className="rounded-xl bg-white p-3 text-right text-sm text-gray-700">
+                          <p>Total do item</p>
+                          <p className="text-lg font-bold text-gray-900">{formatCurrencyBR(Math.max(itemTotal, 0))}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Origem do item: {item.productId ? 'produto cadastrado' : 'descrição manual'}.
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div className="rounded-xl bg-white p-3 text-sm text-gray-700">
+                  <p>Subtotal</p>
+                  <p className="text-lg font-bold text-gray-900">{formatCurrencyBR(manualInvoiceTotals.products)}</p>
+                </div>
+                <div className="rounded-xl bg-white p-3 text-sm text-gray-700">
+                  <p>Desconto</p>
+                  <p className="text-lg font-bold text-gray-900">{formatCurrencyBR(manualInvoiceTotals.discount)}</p>
+                </div>
+                <div className="rounded-xl bg-pink-50 p-3 text-sm text-pink-700">
+                  <p>Total da nota</p>
+                  <p className="text-lg font-bold">{formatCurrencyBR(manualInvoiceTotals.invoice)}</p>
+                </div>
+                <Textarea
+                  label="Observações da nota"
+                  rows={3}
+                  maxLength={5000}
+                  value={manualInvoiceForm.additionalInfo}
+                  onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, additionalInfo: event.target.value }))}
+                />
+              </div>
+            </section>
+
+            {manualInvoiceError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{manualInvoiceError}</div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="secondary"
+                type="button"
+                disabled={manualInvoiceSaving}
+                onClick={() => {
+                  setShowManualInvoiceModal(false);
+                  resetManualInvoiceForm();
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={manualInvoiceSaving}>
+                <Printer className="w-4 h-4" /> {manualInvoiceSaving ? 'Emitindo...' : 'Emitir Nota Fiscal'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+
         <Modal isOpen={Boolean(invoiceToView)} onClose={() => setInvoiceToView(null)} title="Detalhes da NFC-e" size="xl">
           {invoiceToView && (() => {
             const invoice = invoiceToView;
@@ -12087,6 +12693,7 @@ const handleSubmit = async (e) => {
                     <DetailField label="Número da NFC-e" value={formatFiscalNumber(invoice.number)} mono />
                     <DetailField label="Série" value={formatFiscalSeries(invoice.series)} mono />
                     <DetailField label="Modelo" value={invoice.model || '-'} />
+                    <DetailField label="Origem" value={getInvoiceOriginLabel(invoice)} />
                     <div>
                       <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Status</p>
                       <div className="mt-1">{statusBadge}</div>
