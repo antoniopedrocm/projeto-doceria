@@ -116,6 +116,247 @@ const isSafariBrowser = () => {
 
   return hasSafariToken && isAppleVendor && !excludedBrowsersRegex.test(userAgent);
 };
+
+const GEOLOCATION_MESSAGES = {
+  permissionDenied: 'Não foi possível acessar sua localização. Verifique se a localização está ativada no celular e se este site tem permissão de localização no navegador. Caso esteja usando o app Google, WhatsApp ou outro navegador interno, abra o sistema diretamente pelo Chrome.',
+  timeout: 'Não conseguimos obter sua localização a tempo. Verifique se o GPS está ativado, saia de locais fechados ou tente novamente.',
+  unsupported: 'Este navegador não oferece suporte adequado à localização. Atualize o Chrome ou abra o sistema em outro navegador compatível.',
+  unavailable: 'Sua localização está indisponível no momento. Verifique se o GPS está ativado no celular, aguarde alguns segundos e tente novamente. Caso esteja usando um navegador interno, abra o sistema diretamente pelo Chrome.',
+  insecure: 'Por segurança, a localização só funciona em uma conexão segura. Acesse o sistema pelo endereço HTTPS ou abra diretamente pelo Chrome atualizado.',
+  unknown: 'Não foi possível obter sua localização. Verifique a permissão de localização do site no navegador e tente novamente.'
+};
+
+const GEOLOCATION_ATTEMPTS = [
+  {
+    label: 'baixa-precisao-cache-recente',
+    options: {
+      enableHighAccuracy: false,
+      timeout: 25000,
+      maximumAge: 60000
+    }
+  },
+  {
+    label: 'alta-precisao-fallback',
+    options: {
+      enableHighAccuracy: true,
+      timeout: 30000,
+      maximumAge: 0
+    }
+  }
+];
+
+const getBrowserEnvironment = () => {
+  if (typeof navigator === 'undefined') {
+    return {
+      userAgent: '',
+      isEmbeddedBrowser: false,
+      isLegacyAndroid: false,
+      isSecureContext: false,
+      browserHint: 'unknown'
+    };
+  }
+
+  const userAgent = navigator.userAgent || '';
+  const lowerUserAgent = userAgent.toLowerCase();
+  const isEmbeddedBrowser = /;\s*wv\)|\bwv\b|fban|fbav|instagram|whatsapp|gsa\/|googleapp|line\/|micromessenger|twitter/i.test(userAgent);
+  const androidVersionMatch = userAgent.match(/Android\s+(\d+)/i);
+  const isLegacyAndroid = Boolean(androidVersionMatch && Number(androidVersionMatch[1]) > 0 && Number(androidVersionMatch[1]) <= 7);
+  const browserHint = isEmbeddedBrowser
+    ? 'navegador-interno-ou-webview'
+    : lowerUserAgent.includes('chrome')
+      ? 'chrome'
+      : lowerUserAgent.includes('firefox')
+        ? 'firefox'
+        : lowerUserAgent.includes('safari')
+          ? 'safari'
+          : 'desconhecido';
+
+  return {
+    userAgent,
+    isEmbeddedBrowser,
+    isLegacyAndroid,
+    isSecureContext: typeof window !== 'undefined' ? window.isSecureContext : false,
+    browserHint
+  };
+};
+
+const isGeolocationSecureContext = () => {
+  if (typeof window === 'undefined') return false;
+  const hostname = window.location?.hostname || '';
+  const isLocalDevelopment = ['localhost', '127.0.0.1', '::1'].includes(hostname);
+  return Boolean(window.isSecureContext || window.location?.protocol === 'https:' || isLocalDevelopment);
+};
+
+const getGeolocationPermissionState = async () => {
+  if (typeof navigator === 'undefined' || !navigator.permissions?.query) {
+    return 'unsupported';
+  }
+
+  try {
+    const status = await navigator.permissions.query({ name: 'geolocation' });
+    return status?.state || 'unknown';
+  } catch (error) {
+    console.warn('[Geolocation] Não foi possível consultar a permissão do site.', {
+      message: error?.message
+    });
+    return 'unknown';
+  }
+};
+
+const buildGeolocationError = (message, details = {}) => {
+  const error = new Error(message);
+  error.code = details.code || 'GEOLOCATION_ERROR';
+  error.details = details;
+  return error;
+};
+
+const appendEmbeddedBrowserGuidance = (message, environment) => {
+  if (!environment?.isEmbeddedBrowser || /chrome/i.test(message)) {
+    return message;
+  }
+  return `${message} Caso esteja usando o app Google, WhatsApp ou outro navegador interno, abra o sistema diretamente pelo Chrome atualizado.`;
+};
+
+const getFriendlyGeolocationMessage = (error, environment = null) => {
+  const code = Number(error?.code);
+
+  if (code === 1 || error?.code === 'PERMISSION_DENIED') {
+    return appendEmbeddedBrowserGuidance(GEOLOCATION_MESSAGES.permissionDenied, environment);
+  }
+  if (code === 2 || error?.code === 'POSITION_UNAVAILABLE') {
+    return appendEmbeddedBrowserGuidance(GEOLOCATION_MESSAGES.unavailable, environment);
+  }
+  if (code === 3 || error?.code === 'TIMEOUT') {
+    return appendEmbeddedBrowserGuidance(GEOLOCATION_MESSAGES.timeout, environment);
+  }
+  if (error?.code === 'GEOLOCATION_UNSUPPORTED' || error?.code === 'EMBEDDED_BROWSER_UNSUPPORTED') {
+    return appendEmbeddedBrowserGuidance(GEOLOCATION_MESSAGES.unsupported, environment);
+  }
+  if (error?.code === 'INSECURE_CONTEXT') {
+    return appendEmbeddedBrowserGuidance(GEOLOCATION_MESSAGES.insecure, environment);
+  }
+
+  return appendEmbeddedBrowserGuidance(GEOLOCATION_MESSAGES.unknown, environment);
+};
+
+const getCurrentPositionWithLog = ({ source, attempt, environment, permissionState }) => {
+  const startedAt = Date.now();
+
+  console.info('[Geolocation] Solicitando localização', {
+    source,
+    attempt: attempt.label,
+    options: attempt.options,
+    permissionState,
+    userAgent: environment.userAgent,
+    browserHint: environment.browserHint,
+    isEmbeddedBrowser: environment.isEmbeddedBrowser,
+    isLegacyAndroid: environment.isLegacyAndroid,
+    isSecureContext: environment.isSecureContext,
+    timestamp: new Date().toISOString()
+  });
+
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        console.info('[Geolocation] Localização obtida', {
+          source,
+          attempt: attempt.label,
+          durationMs: Date.now() - startedAt,
+          accuracy: position?.coords?.accuracy,
+          timestamp: new Date().toISOString()
+        });
+        resolve(position);
+      },
+      (error) => {
+        console.warn('[Geolocation] Falha ao obter localização', {
+          source,
+          attempt: attempt.label,
+          durationMs: Date.now() - startedAt,
+          code: error?.code,
+          message: error?.message,
+          friendlyMessage: getFriendlyGeolocationMessage(error, environment),
+          options: attempt.options,
+          permissionState,
+          userAgent: environment.userAgent,
+          browserHint: environment.browserHint,
+          isEmbeddedBrowser: environment.isEmbeddedBrowser,
+          isLegacyAndroid: environment.isLegacyAndroid,
+          isSecureContext: environment.isSecureContext,
+          timestamp: new Date().toISOString()
+        });
+        reject(error);
+      },
+      attempt.options
+    );
+  });
+};
+
+const requestCompatibleGeolocation = async ({ source = 'app' } = {}) => {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    throw buildGeolocationError(GEOLOCATION_MESSAGES.unsupported, {
+      code: 'GEOLOCATION_UNSUPPORTED',
+      source
+    });
+  }
+
+  const environment = getBrowserEnvironment();
+
+  if (!isGeolocationSecureContext()) {
+    console.warn('[Geolocation] Contexto inseguro para geolocalização', {
+      source,
+      userAgent: environment.userAgent,
+      protocol: typeof window !== 'undefined' ? window.location?.protocol : '',
+      hostname: typeof window !== 'undefined' ? window.location?.hostname : ''
+    });
+    throw buildGeolocationError(GEOLOCATION_MESSAGES.insecure, {
+      code: 'INSECURE_CONTEXT',
+      source
+    });
+  }
+
+  const permissionState = await getGeolocationPermissionState();
+  if (permissionState === 'denied') {
+    console.warn('[Geolocation] Permissão de localização negada para este site', {
+      source,
+      permissionState,
+      userAgent: environment.userAgent,
+      browserHint: environment.browserHint,
+      isEmbeddedBrowser: environment.isEmbeddedBrowser
+    });
+    throw buildGeolocationError(GEOLOCATION_MESSAGES.permissionDenied, {
+      code: 'PERMISSION_DENIED',
+      source,
+      permissionState
+    });
+  }
+
+  let lastError = null;
+  for (let index = 0; index < GEOLOCATION_ATTEMPTS.length; index += 1) {
+    const attempt = GEOLOCATION_ATTEMPTS[index];
+    try {
+      return await getCurrentPositionWithLog({ source, attempt, environment, permissionState });
+    } catch (error) {
+      lastError = error;
+      const shouldRetry = [2, 3].includes(Number(error?.code));
+      if (!shouldRetry || index === GEOLOCATION_ATTEMPTS.length - 1) {
+        break;
+      }
+      console.info('[Geolocation] Tentando novamente com configuração alternativa', {
+        source,
+        previousAttempt: attempt.label,
+        nextAttempt: GEOLOCATION_ATTEMPTS[index + 1]?.label,
+        previousCode: error?.code,
+        previousMessage: error?.message
+      });
+    }
+  }
+
+  throw buildGeolocationError(getFriendlyGeolocationMessage(lastError, environment), {
+    code: lastError?.code || 'UNKNOWN',
+    source,
+    originalMessage: lastError?.message
+  });
+};
 const CONFIG_COLLECTIONS = new Set(['cupons', 'logs']);
 const MENU_PERMISSION_KEYS = [
   'pagina-inicial',
@@ -3108,40 +3349,21 @@ function App() {
         return;
       }
 
-      const requestGeolocation = async () => {
-        if (!navigator.geolocation) {
-          return;
-        }
-
-        return new Promise((resolve) => {
-          navigator.geolocation.getCurrentPosition(
-            (position) => resolve(position),
-            (error) => {
-              console.warn('[App.js] Permissão de geolocalização negada ou indisponível:', error);
-              resolve(null);
-            },
-            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-          );
-        });
-      };
-
       try {
-        if (navigator.permissions?.query) {
-          try {
-            const geoStatus = await navigator.permissions.query({ name: 'geolocation' });
-            if (geoStatus.state === 'granted') {
-              await requestGeolocation();
-            } else if (geoStatus.state === 'prompt') {
-              await requestGeolocation();
-            }
-          } catch (error) {
-            await requestGeolocation();
-          }
-        } else {
-          await requestGeolocation();
+        const geoStatus = await getGeolocationPermissionState();
+        console.info('[App.js] Estado da permissão de geolocalização do site:', {
+          state: geoStatus,
+          userAgent: navigator.userAgent || ''
+        });
+        if (geoStatus === 'granted') {
+          await requestCompatibleGeolocation({ source: 'app-capabilities' });
         }
       } catch (error) {
-        console.warn('[App.js] Erro ao solicitar geolocalização:', error);
+        console.warn('[App.js] Erro ao preparar geolocalização:', {
+          message: error?.message,
+          code: error?.code,
+          details: error?.details
+        });
       }
 	};
 
@@ -4618,13 +4840,7 @@ function App() {
 
     const todayRecord = todayRecordData;
 
-    const requestLocation = () => new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Seu navegador não suporta geolocalização.'));
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-    });
+    const requestLocation = () => requestCompatibleGeolocation({ source: 'meu-espaco-registro-ponto' });
 
     const getAddressFromCoordinates = async ({ latitude, longitude }) => {
       if (typeof latitude !== 'number' || typeof longitude !== 'number') return '';
