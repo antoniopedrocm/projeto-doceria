@@ -6074,6 +6074,7 @@ function App() {
 
     // States para Usuários
     const [usuarios, setUsuarios] = useState([]);
+    const [selectedUserIds, setSelectedUserIds] = useState([]);
     const [userSearchTerm, setUserSearchTerm] = useState('');
     const [userExcludeTerm, setUserExcludeTerm] = useState('');
     const [userEmailFilter, setUserEmailFilter] = useState('any');
@@ -6094,6 +6095,8 @@ function App() {
         uid: ''
     });
     const [newPassword, setNewPassword] = useState("");
+
+    const getUsuarioId = useCallback((usuario) => usuario?.uid || usuario?.id || '', []);
 	
 	const effectiveStoreId = useMemo(() => {
 	if (!user) return null;
@@ -6149,6 +6152,27 @@ const effectiveStoreName = useMemo(() => {
         });
     }, [usuarios, userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter]);
 
+    const visibleUserIds = useMemo(() => {
+        return (filteredUsuarios || []).map(getUsuarioId).filter(Boolean);
+    }, [filteredUsuarios, getUsuarioId]);
+
+    const selectedVisibleUsers = useMemo(() => {
+        const selectedSet = new Set(selectedUserIds);
+        return (filteredUsuarios || []).filter((usuario) => selectedSet.has(getUsuarioId(usuario)));
+    }, [filteredUsuarios, selectedUserIds, getUsuarioId]);
+
+    const allVisibleUsersSelected = useMemo(() => {
+        return visibleUserIds.length > 0 && visibleUserIds.every((userId) => selectedUserIds.includes(userId));
+    }, [visibleUserIds, selectedUserIds]);
+
+    useEffect(() => {
+        const visibleSet = new Set(visibleUserIds);
+        setSelectedUserIds((currentIds) => {
+            const nextIds = currentIds.filter((userId) => visibleSet.has(userId));
+            return nextIds.length === currentIds.length ? currentIds : nextIds;
+        });
+    }, [visibleUserIds]);
+
     const hasUserFilters = useMemo(() => {
         return Boolean(
             userSearchTerm.trim() ||
@@ -6164,6 +6188,28 @@ const effectiveStoreName = useMemo(() => {
         setUserEmailFilter('any');
         setUserRoleFilter('all');
     }, []);
+
+    const handleToggleUserSelection = useCallback((usuario, checked) => {
+        const userId = getUsuarioId(usuario);
+        if (!userId) return;
+
+        setSelectedUserIds((currentIds) => {
+            if (checked) {
+                return Array.from(new Set([...currentIds, userId]));
+            }
+            return currentIds.filter((id) => id !== userId);
+        });
+    }, [getUsuarioId]);
+
+    const handleToggleVisibleUsers = useCallback((checked) => {
+        setSelectedUserIds((currentIds) => {
+            if (!checked) {
+                const visibleSet = new Set(visibleUserIds);
+                return currentIds.filter((id) => !visibleSet.has(id));
+            }
+            return Array.from(new Set([...currentIds, ...visibleUserIds]));
+        });
+    }, [visibleUserIds]);
 
     // 🔄 Carregar dados da aba ativa
     useEffect(() => {
@@ -6604,17 +6650,77 @@ const effectiveStoreName = useMemo(() => {
           }
 	};
 
-    const handleDeleteUser = async (userToDelete) => {
+    const deleteUserAccount = useCallback(async (userToDelete) => {
+        const uid = userToDelete?.uid || userToDelete?.id;
+        if (!uid) {
+            throw new Error('UID do usuário não encontrado.');
+        }
+
         const deleteUserFn = httpsCallable(functions, "deleteUser");
+        await deleteUserFn({ uid });
+
         try {
-            await deleteUserFn({ uid: userToDelete.uid || userToDelete.id });
-            // A remoção do Firestore já pode ser feita pela cloud function ou aqui como fallback
-            await deleteDoc(doc(db, "users", userToDelete.id));
+            await deleteDoc(doc(db, "users", uid));
+        } catch (firestoreError) {
+            console.warn('Usuário removido no Authentication, mas o fallback local do Firestore falhou:', firestoreError);
+        }
+
+        return uid;
+    }, []);
+
+    const handleDeleteUser = async (userToDelete) => {
+        try {
+            const deletedUserId = await deleteUserAccount(userToDelete);
+            setUsuarios((currentUsers) => currentUsers.filter((usuario) => getUsuarioId(usuario) !== deletedUserId));
+            setSelectedUserIds((currentIds) => currentIds.filter((id) => id !== deletedUserId));
             setConfirmDelete({ isOpen: false, onConfirm: () => {} });
         } catch (err) {
             alert("Erro ao deletar usuário: " + err.message);
         }
     };
+
+    const handleDeleteSelectedUsers = useCallback(async () => {
+        const usersToDelete = [...selectedVisibleUsers];
+        if (!usersToDelete.length) return;
+
+        const deletedIds = [];
+        const failures = [];
+
+        for (const usuario of usersToDelete) {
+            try {
+                const deletedUserId = await deleteUserAccount(usuario);
+                deletedIds.push(deletedUserId);
+            } catch (error) {
+                failures.push(`${usuario.nome || usuario.email || 'Usuário'}: ${error.message}`);
+            }
+        }
+
+        if (deletedIds.length) {
+            const deletedSet = new Set(deletedIds);
+            setUsuarios((currentUsers) => currentUsers.filter((usuario) => !deletedSet.has(getUsuarioId(usuario))));
+            setSelectedUserIds((currentIds) => currentIds.filter((id) => !deletedSet.has(id)));
+        }
+
+        if (failures.length) {
+            alert(`Alguns usuários não puderam ser excluídos:\n${failures.join('\n')}`);
+            return;
+        }
+
+        alert(`${deletedIds.length} usuário${deletedIds.length === 1 ? '' : 's'} excluído${deletedIds.length === 1 ? '' : 's'} com sucesso!`);
+    }, [deleteUserAccount, getUsuarioId, selectedVisibleUsers]);
+
+    const handleConfirmBulkDeleteUsers = useCallback(() => {
+        const count = selectedVisibleUsers.length;
+        if (!count) return;
+
+        setConfirmDelete({
+            isOpen: true,
+            title: 'Excluir usuários selecionados',
+            message: `Tem certeza que deseja excluir ${count} usuário${count === 1 ? '' : 's'} selecionado${count === 1 ? '' : 's'}? Esta ação remove o acesso à plataforma e não pode ser desfeita.`,
+            confirmLabel: count === 1 ? 'Excluir usuário' : `Excluir ${count} usuários`,
+            onConfirm: handleDeleteSelectedUsers
+        });
+    }, [handleDeleteSelectedUsers, selectedVisibleUsers.length, setConfirmDelete]);
     
     const handlePasswordChange = async (e) => {
         e.preventDefault();
@@ -6901,21 +7007,30 @@ const effectiveStoreName = useMemo(() => {
 
     }, [data, storeInfoMap, effectiveStoreName]);
 
-    const userColumns = [
-        { header: "Nome", key: "nome" },
-        { header: "Email", key: "email" },
-        { header: "Permissão", render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${normalizeRole(row.role) === ROLE_OWNER ? 'bg-purple-100 text-purple-800' : normalizeRole(row.role) === ROLE_MANAGER ? 'bg-blue-100 text-blue-800' : normalizeRole(row.role) === ROLE_ACCOUNTANT ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-800'}`}>{normalizeRole(row.role)}</span> },
-        { header: "Loja", render: (row) => {
-            const lojas = Array.isArray(row.lojaIds) ? row.lojaIds : (row.lojaId ? [row.lojaId] : []);
-            if (normalizeRole(row.role) === ROLE_OWNER && lojas.length === 0) {
-                return 'Todas as lojas';
-            }
-            if (!lojas.length) {
-                return 'Não definida';
-            }
-            return lojas.map((id) => storeInfoMap[id]?.nome || id).join(', ');
-        } }
-    ];
+    const renderUserRoleBadge = (row) => {
+        const normalizedRole = normalizeRole(row.role);
+        const roleClass = normalizedRole === ROLE_OWNER
+            ? 'bg-purple-100 text-purple-800'
+            : normalizedRole === ROLE_MANAGER
+                ? 'bg-blue-100 text-blue-800'
+                : normalizedRole === ROLE_ACCOUNTANT
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-gray-100 text-gray-800';
+
+        return <span className={`px-3 py-1 rounded-full text-xs font-medium ${roleClass}`}>{normalizedRole}</span>;
+    };
+
+    const getUserStoreLabel = (row) => {
+        const lojas = Array.isArray(row.lojaIds) ? row.lojaIds : (row.lojaId ? [row.lojaId] : []);
+        if (normalizeRole(row.role) === ROLE_OWNER && lojas.length === 0) {
+            return 'Todas as lojas';
+        }
+        if (!lojas.length) {
+            return 'Não definida';
+        }
+        return lojas.map((id) => storeInfoMap[id]?.nome || id).join(', ');
+    };
+
     const userActions = [ 
         { icon: Edit, label: "Editar", onClick: handleEditUser }, 
         { icon: Key, label: "Alterar Senha", onClick: (u) => { setEditingUser(u); setShowPasswordModal(true); } },
@@ -7028,8 +7143,40 @@ const effectiveStoreName = useMemo(() => {
                     </div>
                 </div>
 
-                <div className="flex justify-end my-4">
-                    <Button onClick={handleNewUser}><Plus className="w-4 h-4" /> Novo Usuário</Button>
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 my-4">
+                    {usuarios && usuarios.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-3">
+                            <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm">
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                    checked={allVisibleUsersSelected}
+                                    onChange={(event) => handleToggleVisibleUsers(event.target.checked)}
+                                    disabled={!visibleUserIds.length}
+                                    aria-label="Selecionar todos os usuários visíveis"
+                                />
+                                Selecionar todos visíveis
+                            </label>
+                            <span className="text-sm text-gray-500">
+                                {selectedVisibleUsers.length > 0
+                                    ? `${selectedVisibleUsers.length} selecionado${selectedVisibleUsers.length === 1 ? '' : 's'}`
+                                    : `${filteredUsuarios.length} ${filteredUsuarios.length === 1 ? 'usuário visível' : 'usuários visíveis'}`}
+                            </span>
+                        </div>
+                    ) : (
+                        <div />
+                    )}
+                    <div className="flex flex-wrap justify-end gap-3">
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={handleConfirmBulkDeleteUsers}
+                            disabled={selectedVisibleUsers.length === 0}
+                        >
+                            <Trash2 className="w-4 h-4" /> Excluir selecionados
+                        </Button>
+                        <Button onClick={handleNewUser}><Plus className="w-4 h-4" /> Novo Usuário</Button>
+                    </div>
                 </div>
 				
                 {(!usuarios || usuarios.length === 0) ? (
@@ -7044,7 +7191,118 @@ const effectiveStoreName = useMemo(() => {
                         <p className="text-sm text-gray-400 mt-2">Ajuste os filtros ou limpe-os para visualizar todos os usuários.</p>
                     </div>								
                 ) : (
-					<Table columns={userColumns} data={filteredUsuarios} actions={userActions} />
+                    <>
+                        <div className="hidden md:block bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                                        <tr>
+                                            <th className="px-4 py-4 text-left w-12">
+                                                <input
+                                                    type="checkbox"
+                                                    className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                                    checked={allVisibleUsersSelected}
+                                                    onChange={(event) => handleToggleVisibleUsers(event.target.checked)}
+                                                    aria-label="Selecionar todos os usuários visíveis"
+                                                />
+                                            </th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Nome</th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Email</th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Permissão</th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Loja</th>
+                                            <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {filteredUsuarios.map((usuario, rowIndex) => {
+                                            const usuarioId = getUsuarioId(usuario);
+                                            const isSelected = selectedUserIds.includes(usuarioId);
+
+                                            return (
+                                                <tr key={usuarioId || rowIndex} className="hover:bg-gradient-to-r hover:from-pink-50/50 hover:to-rose-50/50 transition-all">
+                                                    <td className="px-4 py-4">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                                            checked={isSelected}
+                                                            onChange={(event) => handleToggleUserSelection(usuario, event.target.checked)}
+                                                            disabled={!usuarioId}
+                                                            aria-label={`Selecionar usuário ${usuario.nome || usuario.email || usuarioId}`}
+                                                        />
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{usuario.nome}</td>
+                                                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{usuario.email}</td>
+                                                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{renderUserRoleBadge(usuario)}</td>
+                                                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{getUserStoreLabel(usuario)}</td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <div className="flex justify-end gap-2">
+                                                            {userActions.map((action, actionIndex) => {
+                                                                const actionLabel = typeof action.label === 'function' ? action.label(usuario) : action.label;
+                                                                return (
+                                                                    <button key={actionIndex} onClick={() => action.onClick(usuario)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title={actionLabel}>
+                                                                        <action.icon className="w-4 h-4 text-gray-600" />
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="block md:hidden space-y-4">
+                            {filteredUsuarios.map((usuario, rowIndex) => {
+                                const usuarioId = getUsuarioId(usuario);
+                                const isSelected = selectedUserIds.includes(usuarioId);
+
+                                return (
+                                    <div key={usuarioId || rowIndex} className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 space-y-3">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                                                <input
+                                                    type="checkbox"
+                                                    className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                                    checked={isSelected}
+                                                    onChange={(event) => handleToggleUserSelection(usuario, event.target.checked)}
+                                                    disabled={!usuarioId}
+                                                    aria-label={`Selecionar usuário ${usuario.nome || usuario.email || usuarioId}`}
+                                                />
+                                                Selecionar
+                                            </label>
+                                            <div className="flex justify-end gap-2">
+                                                {userActions.map((action, actionIndex) => {
+                                                    const actionLabel = typeof action.label === 'function' ? action.label(usuario) : action.label;
+                                                    return (
+                                                        <button key={actionIndex} onClick={() => action.onClick(usuario)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700" title={actionLabel}>
+                                                            <action.icon className="w-4 h-4" />
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        <div className="text-sm">
+                                            <p className="font-bold text-lg text-pink-600">{usuario.nome}</p>
+                                            <p className="text-gray-700 mt-1">{usuario.email}</p>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2 text-sm">
+                                            <div>
+                                                <p className="text-xs text-gray-500">Permissão</p>
+                                                <div className="mt-1">{renderUserRoleBadge(usuario)}</div>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Loja</p>
+                                                <p className="mt-1 text-gray-900">{getUserStoreLabel(usuario)}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </>
                 ))}
                   
               </div>
@@ -12121,15 +12379,15 @@ const handleSubmit = async (e) => {
         )}
       </Modal>
 
-      <Modal isOpen={confirmDelete.isOpen} onClose={() => setConfirmDelete({ isOpen: false, onConfirm: ()=>{} })} title="Confirmar Exclusão" size="sm">
+      <Modal isOpen={confirmDelete.isOpen} onClose={() => setConfirmDelete({ isOpen: false, onConfirm: ()=>{} })} title={confirmDelete.title || "Confirmar Exclusão"} size="sm">
         <div className="space-y-6">
-            <p className="text-gray-600">Tem certeza que deseja excluir este item? Esta ação não pode ser desfeita.</p>
+            <p className="text-gray-600">{confirmDelete.message || 'Tem certeza que deseja excluir este item? Esta ação não pode ser desfeita.'}</p>
             <div className="flex justify-end gap-3">
                 <Button variant="secondary" onClick={() => setConfirmDelete({ isOpen: false, onConfirm: ()=>{} })}>Cancelar</Button>
-                <Button variant="danger" onClick={() => {
-                  confirmDelete.onConfirm();
+                <Button variant="danger" onClick={async () => {
+                  await confirmDelete.onConfirm();
                   setConfirmDelete({ isOpen: false, onConfirm: () => {} });
-                }}>Excluir</Button>
+                }}>{confirmDelete.confirmLabel || 'Excluir'}</Button>
             </div>
         </div>
       </Modal>
