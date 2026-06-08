@@ -119,6 +119,7 @@ As credenciais do aplicativo iFood Developer ficam em nivel global. Cada loja po
 | `ifoodOrderAction` | Callable | Confirmar, preparar, despachar, cancelar ou validar codigo |
 | `ifoodGetCancellationReasons` | Callable | Buscar motivos de cancelamento validos antes da solicitacao |
 | `ifoodLoadCatalogProducts` | Callable | Importar itens/produtos Catalog v2.0 para mapeamento |
+| `ifoodImportCatalogProduct` | Callable | Trazer item existente no iFood para a colecao interna de produtos, ja vinculado ao catalogo iFood |
 | `ifoodPublishProducts` | Callable | Publicar/atualizar produtos internos em lote com preco iFood e Codigo PDV |
 | `ifoodSaveProductMapping` | Callable | Vincular produto interno e item iFood |
 | `ifoodSyncStockNow` | Callable | Reconciliar saldo manualmente |

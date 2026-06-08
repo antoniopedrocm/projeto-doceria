@@ -163,6 +163,7 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   const [merchants, setMerchants] = useState([]);
   const [mapping, setMapping] = useState({productId: '', iFoodProductId: '', externalCode: '', catalogItemId: ''});
   const [catalogProducts, setCatalogProducts] = useState([]);
+  const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [cancellation, setCancellation] = useState({order: null, reasons: [], reason: ''});
   const [validation, setValidation] = useState({order: null, action: '', code: ''});
@@ -254,6 +255,37 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
     return {...item, productName: product?.nome || item.productId, quantity: Number(product?.estoque) || 0, product};
   }), [productMappings, products]);
   const mappingByProductId = useMemo(() => new Map(productMappings.map((item) => [item.productId, item])), [productMappings]);
+  const catalogRows = useMemo(() => {
+    const search = catalogSearch.trim().toLowerCase();
+    return catalogProducts.map((catalog) => {
+      const linked = productMappings.find((mappingItem) => (
+        mappingItem.iFoodProductId === catalog.productId
+        || mappingItem.catalogItemId === catalog.itemId
+        || (catalog.externalCode && mappingItem.externalCode === catalog.externalCode)
+      ));
+      const product = linked ? products.find((candidate) => candidate.id === linked.productId) : null;
+      return {
+        ...catalog,
+        linked,
+        product,
+        linkedProductName: product?.nome || linked?.productId || '',
+      };
+    }).filter((row) => {
+      if (!search) return true;
+      return [
+        row.name,
+        row.description,
+        row.categoryName,
+        row.externalCode,
+        row.productId,
+        row.itemId,
+        row.linkedProductName,
+      ].some((value) => String(value || '').toLowerCase().includes(search));
+    });
+  }, [catalogProducts, catalogSearch, productMappings, products]);
+  const syncedProducts = useMemo(() => mappedProducts.filter((item) => (
+    item.catalogManaged || item.syncStatus === 'synced' || item.lastSyncAt || item.importedFromIfood
+  )), [mappedProducts]);
   const productsReadyForIfood = products.filter((product) => Number(product.precoIfood) > 0);
   const critical = mappedProducts.filter((item) => item.quantity <= 3).length;
   const bestSellers = useMemo(() => {
@@ -445,6 +477,25 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
     const result = await invoke('ifoodLoadCatalogProducts');
     setCatalogProducts(result.products || []);
   }, 'Catalogo iFood carregado. Selecione o produto para vincular ao estoque.');
+
+  const selectCatalogForMapping = (catalogProduct) => {
+    setMapping((current) => ({
+      ...current,
+      catalogItemId: catalogProduct.itemId || '',
+      iFoodProductId: catalogProduct.productId || '',
+      externalCode: catalogProduct.externalCode || '',
+    }));
+    setMessage({type: 'success', text: 'Item iFood selecionado. Escolha o produto interno e clique em Vincular.'});
+  };
+
+  const importCatalogProduct = (catalogProduct) => perform(`catalog-import-${catalogProduct.itemId || catalogProduct.productId}`, async () => {
+    await invoke('ifoodImportCatalogProduct', {
+      itemId: catalogProduct.itemId,
+      productId: catalogProduct.productId,
+    });
+    const result = await invoke('ifoodLoadCatalogProducts');
+    setCatalogProducts(result.products || []);
+  }, 'Item iFood trazido para a aplicacao. Revise estoque/preco antes de ativar a sincronizacao.');
 
   if (!effectiveStoreId) {
     return (
@@ -670,14 +721,125 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
             </div>
           </section>
 
-          <details className={`rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
-            <summary className="cursor-pointer text-sm font-medium">Vincular item ja cadastrado no iFood</summary>
-            <form onSubmit={saveMapping} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <div className="xl:col-span-5">
+          <section className={`overflow-hidden rounded-lg border ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
+            <div className={`flex flex-col justify-between gap-3 border-b p-4 lg:flex-row lg:items-center ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+              <div>
+                <h2 className="font-semibold">Produtos ja sincronizados</h2>
+                <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{syncedProducts.length} produto(s) com vinculo, importacao ou estoque publicado no iFood.</p>
+              </div>
+              <Button dark={dark} disabled={!mappedProducts.length || busy === 'sync'} onClick={() => perform('sync', () => invoke('ifoodSyncStockNow'), 'Sincronizacao de estoque solicitada.')}>
+                <RefreshCw className={`h-4 w-4 ${busy === 'sync' ? 'animate-spin' : ''}`} />Reconciliar todos
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className={dark ? 'bg-slate-950 text-slate-400' : 'bg-gray-50 text-gray-500'}>
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">Produto interno</th>
+                    <th className="px-4 py-3 text-left font-medium">Produto iFood</th>
+                    <th className="px-4 py-3 text-left font-medium">Codigo PDV</th>
+                    <th className="px-4 py-3 text-left font-medium">Estoque app</th>
+                    <th className="px-4 py-3 text-left font-medium">Ultimo saldo iFood</th>
+                    <th className="px-4 py-3 text-left font-medium">Status</th>
+                    <th className="px-4 py-3 text-right font-medium">Acao</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {syncedProducts.map((item) => (
+                    <tr key={item.productId} className={`border-t ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+                      <td className="px-4 py-3"><p className="font-medium">{item.productName}</p><p className={dark ? 'text-slate-400' : 'text-gray-500'}>{item.product?.subcategoria || item.categoryName || '-'}</p></td>
+                      <td className={`px-4 py-3 ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{item.iFoodProductId || item.catalogItemId || '-'}</td>
+                      <td className={`px-4 py-3 ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{item.externalCode || '-'}</td>
+                      <td className="px-4 py-3 font-medium">{item.quantity} un.</td>
+                      <td className="px-4 py-3">{item.lastSyncedQuantity ?? item.pendingQuantity ?? '-'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2 py-1 text-xs ${
+                          item.syncStatus === 'error'
+                            ? 'bg-rose-50 text-rose-700'
+                            : item.syncStatus === 'synced' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                        }`}>{item.syncStatus === 'synced' ? 'Sincronizado' : item.importedFromIfood ? 'Importado' : item.syncStatus || 'Vinculado'}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button dark={dark} disabled={busy !== '' || !item.stockSyncEnabled} onClick={() => perform(`sync-${item.productId}`, () => invoke('ifoodSyncStockNow', {productId: item.productId}), 'Saldo enviado ao iFood.')}>
+                          <RefreshCw className="h-4 w-4" />Sincronizar
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!syncedProducts.length && <tr><td colSpan="7" className={`px-4 py-8 text-center ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Nenhum produto vinculado ou sincronizado ainda.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className={`overflow-hidden rounded-lg border ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
+            <div className={`flex flex-col justify-between gap-3 border-b p-4 lg:flex-row lg:items-center ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+              <div>
+                <h2 className="font-semibold">Catalogo cadastrado no iFood</h2>
+                <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{catalogProducts.length ? `${catalogRows.length} de ${catalogProducts.length} item(ns) carregados` : 'Carregue o catalogo para visualizar itens que ja existem no iFood.'}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div className="relative">
+                  <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${dark ? 'text-slate-500' : 'text-gray-400'}`} />
+                  <input className={`${inputClass(dark)} w-72 pl-9`} placeholder="Buscar item, categoria, codigo..." value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} />
+                </div>
                 <Button dark={dark} disabled={busy === 'catalog-load'} onClick={loadCatalogProducts}>
-                  <RefreshCw className={`h-4 w-4 ${busy === 'catalog-load' ? 'animate-spin' : ''}`} />Importar catalogo iFood
+                  <RefreshCw className={`h-4 w-4 ${busy === 'catalog-load' ? 'animate-spin' : ''}`} />Atualizar catalogo iFood
                 </Button>
               </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className={dark ? 'bg-slate-950 text-slate-400' : 'bg-gray-50 text-gray-500'}>
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">Item iFood</th>
+                    <th className="px-4 py-3 text-left font-medium">Categoria</th>
+                    <th className="px-4 py-3 text-left font-medium">Preco</th>
+                    <th className="px-4 py-3 text-left font-medium">Codigo PDV</th>
+                    <th className="px-4 py-3 text-left font-medium">Vinculo</th>
+                    <th className="px-4 py-3 text-right font-medium">Acao</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalogRows.map((item) => (
+                    <tr key={`${item.itemId}-${item.productId}`} className={`border-t ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{item.name}</p>
+                        <p className={`text-xs ${dark ? 'text-slate-500' : 'text-gray-400'}`}>{item.productId || item.itemId}</p>
+                      </td>
+                      <td className="px-4 py-3">{item.categoryName || '-'}</td>
+                      <td className="px-4 py-3 font-medium">{money(item.price)}</td>
+                      <td className={`px-4 py-3 ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{item.externalCode || '-'}</td>
+                      <td className="px-4 py-3">
+                        {item.linked ? (
+                          <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700">Vinculado a {item.linkedProductName}</span>
+                        ) : (
+                          <span className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700">Nao importado</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          {!item.linked && (
+                            <Button dark={dark} disabled={busy !== ''} onClick={() => importCatalogProduct(item)}>
+                              <Package className="h-4 w-4" />Trazer para aplicacao
+                            </Button>
+                          )}
+                          <Button dark={dark} disabled={busy !== ''} onClick={() => selectCatalogForMapping(item)}>
+                            <Save className="h-4 w-4" />Usar no vinculo
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!catalogRows.length && <tr><td colSpan="6" className={`px-4 py-8 text-center ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Nenhum item iFood carregado ou encontrado na busca.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <details className={`rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
+            <summary className="cursor-pointer text-sm font-medium">Vincular item ja cadastrado no iFood manualmente</summary>
+            <form onSubmit={saveMapping} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <Field dark={dark} label="Produto interno">
                 <select className={inputClass(dark)} value={mapping.productId} onChange={(event) => setMapping({...mapping, productId: event.target.value})} required>
                   <option value="">Selecione</option>

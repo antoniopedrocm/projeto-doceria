@@ -156,6 +156,16 @@ const itemPrice = (item = {}) => money(
   ?? (asNumber(item.totalPrice?.value ?? item.totalPrice) / Math.max(1, asNumber(item.quantity, 1)))
 );
 
+const catalogItemPrice = (item = {}) => money(
+  item.price?.value
+  ?? item.price
+  ?? item.itemPrice?.value
+  ?? item.itemPrice
+  ?? item.product?.price?.value
+  ?? item.product?.price
+  ?? 0
+);
+
 const normalizeOrderDetail = (event, detail, mappingIndex) => {
   const sourceItems = Array.isArray(detail.items)
     ? detail.items
@@ -847,6 +857,43 @@ const createIfoodFunctions = ({
     return Array.isArray(payload) ? payload : (payload.categories || []);
   };
 
+  const loadCatalogProductsFromIfood = async (lojaId, config) => {
+    if (!config.merchantId) throw new HttpsError('failed-precondition', 'Informe o Merchant ID do iFood.');
+    const payload = await requestIfood(
+      lojaId,
+      config,
+      `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/categories?include_items=true`
+    );
+    const categories = Array.isArray(payload) ? payload : (payload.categories || []);
+    const products = categories.flatMap((category) => (category.items || []).map((item) => {
+      const product = item.product || {};
+      return {
+        itemId: cleanText(item.id),
+        productId: cleanText(item.productId || product.id),
+        name: cleanText(item.name || product.name || 'Produto iFood'),
+        description: cleanText(item.description || product.description),
+        externalCode: cleanText(item.externalCode || product.externalCode),
+        productExternalCode: cleanText(product.externalCode),
+        categoryId: cleanText(category.id),
+        categoryName: cleanText(category.name || 'iFood'),
+        status: cleanText(item.status || product.status),
+        price: catalogItemPrice(item),
+      };
+    })).filter((item) => item.productId || item.itemId);
+    return {categories, products};
+  };
+
+  const findExistingCatalogMapping = async (lojaId, catalogProduct) => {
+    const snap = await db.collection('lojas').doc(lojaId).collection('ifoodProductMappings').get();
+    return snap.docs
+      .map((doc) => ({id: doc.id, productId: doc.id, ...doc.data()}))
+      .find((mapping) => (
+        cleanText(mapping.iFoodProductId) === cleanText(catalogProduct.productId)
+        || cleanText(mapping.catalogItemId) === cleanText(catalogProduct.itemId)
+        || (catalogProduct.externalCode && cleanText(mapping.externalCode) === cleanText(catalogProduct.externalCode))
+      )) || null;
+  };
+
   const ensureCatalogCategory = async (lojaId, config, categories, product) => {
     const categoryName = cleanText(product.subcategoria || product.categoria || 'Produtos') || 'Produtos';
     const existing = categories.find((category) => cleanText(category.name).toLowerCase() === categoryName.toLowerCase());
@@ -1272,23 +1319,96 @@ const createIfoodFunctions = ({
     ifoodLoadCatalogProducts: onCall({timeoutSeconds: 120}, async (request) => {
       const {lojaId} = await requireCallableStore(request);
       const config = await loadConfig(lojaId);
-      if (!config.merchantId) throw new HttpsError('failed-precondition', 'Informe o Merchant ID do iFood.');
-      const payload = await requestIfood(
-        lojaId,
-        config,
-        `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/categories?include_items=true`
-      );
-      const categories = Array.isArray(payload) ? payload : (payload.categories || []);
-      const products = categories.flatMap((category) => (category.items || []).map((item) => ({
-        itemId: cleanText(item.id),
-        productId: cleanText(item.productId || item.product?.id),
-        name: item.name || item.product?.name || 'Produto iFood',
-        externalCode: cleanText(item.externalCode || item.product?.externalCode),
-        categoryName: category.name || '',
-        status: item.status || '',
-      }))).filter((item) => item.productId);
+      const {categories, products} = await loadCatalogProductsFromIfood(lojaId, config);
       await audit(lojaId, 'catalog.loaded', {categories: categories.length, products: products.length});
       return {products};
+    }),
+
+    ifoodImportCatalogProduct: onCall({timeoutSeconds: 120}, async (request) => {
+      const {uid, lojaId} = await requireCallableStore(request);
+      const itemId = cleanText(request.data?.itemId);
+      const productId = cleanText(request.data?.productId);
+      if (!itemId && !productId) {
+        throw new HttpsError('invalid-argument', 'Informe o item ou produto do catalogo iFood.');
+      }
+      const config = await loadConfig(lojaId);
+      const {products: catalogProducts} = await loadCatalogProductsFromIfood(lojaId, config);
+      const catalogProduct = catalogProducts.find((item) => (
+        (itemId && item.itemId === itemId) || (productId && item.productId === productId)
+      ));
+      if (!catalogProduct) throw new HttpsError('not-found', 'Produto nao encontrado no catalogo iFood atual.');
+
+      const existingMapping = await findExistingCatalogMapping(lojaId, catalogProduct);
+      if (existingMapping?.productId) {
+        return {ok: true, alreadyMapped: true, productId: existingMapping.productId, mapping: existingMapping};
+      }
+
+      const productCollection = db.collection('lojas').doc(lojaId).collection('produtos');
+      const baseId = safeId(`ifood_${catalogProduct.productId || catalogProduct.itemId || catalogProduct.name}`);
+      let internalProductId = baseId;
+      let productRef = productCollection.doc(internalProductId);
+      let productSnap = await productRef.get();
+      if (productSnap.exists) {
+        internalProductId = safeId(`${baseId}_${Date.now()}`);
+        productRef = productCollection.doc(internalProductId);
+        productSnap = await productRef.get();
+      }
+
+      const status = cleanText(catalogProduct.status).toUpperCase();
+      const productData = {
+        nome: catalogProduct.name,
+        categoria: 'Delivery',
+        subcategoria: catalogProduct.categoryName || 'iFood',
+        preco: catalogProduct.price || 0,
+        precoIfood: catalogProduct.price || null,
+        custo: 0,
+        estoque: 0,
+        status: status && status !== 'AVAILABLE' ? 'Inativo' : 'Ativo',
+        descricao: catalogProduct.description || '',
+        tempoPreparo: '',
+        imageUrl: '',
+        origem: 'iFood',
+        ifoodImported: true,
+        ifoodProductId: catalogProduct.productId,
+        ifoodCatalogItemId: catalogProduct.itemId,
+        ifoodExternalCode: catalogProduct.externalCode,
+        ifoodCategoryId: catalogProduct.categoryId,
+        ifoodCategoryName: catalogProduct.categoryName,
+        createdByUid: uid,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      const mappingRef = db.collection('lojas').doc(lojaId).collection('ifoodProductMappings').doc(internalProductId);
+      await db.runTransaction(async (transaction) => {
+        transaction.set(productRef, productData, {merge: false});
+        transaction.set(mappingRef, {
+          productId: internalProductId,
+          iFoodProductId: catalogProduct.productId,
+          catalogItemId: catalogProduct.itemId,
+          externalCode: catalogProduct.externalCode,
+          productExternalCode: catalogProduct.productExternalCode,
+          categoryId: catalogProduct.categoryId,
+          categoryName: catalogProduct.categoryName,
+          ifoodPrice: catalogProduct.price || 0,
+          itemStatus: catalogProduct.status,
+          stockSyncEnabled: false,
+          catalogManaged: false,
+          importStatus: 'imported_waiting_review',
+          syncStatus: 'waiting_internal_stock_review',
+          importedFromIfood: true,
+          importedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+      });
+
+      await audit(lojaId, 'catalog.product_imported', {
+        uid,
+        productId: internalProductId,
+        iFoodProductId: catalogProduct.productId,
+        catalogItemId: catalogProduct.itemId,
+      });
+      return {ok: true, productId: internalProductId, product: productData};
     }),
 
     ifoodPublishProducts: onCall({timeoutSeconds: 300, memory: '512MiB'}, async (request) => {
