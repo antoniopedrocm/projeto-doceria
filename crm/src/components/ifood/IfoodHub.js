@@ -217,9 +217,9 @@ export default function IfoodHub({data, effectiveStoreId, selectedStoreId, avail
   ), [data.ifoodOrders]);
   const productMappings = data.ifoodProductMappings || [];
   const products = data.produtos || [];
-  const alerts = [...(data.ifoodAlerts || [])].sort(
-    (a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0)
-  );
+  const alerts = [...(data.ifoodAlerts || [])]
+    .filter((alert) => !['resolved', 'closed'].includes(String(alert.status || '').toLowerCase()))
+    .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
   const audit = [...(data.ifoodAudit || [])].sort(
     (a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0)
   );

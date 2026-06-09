@@ -9,6 +9,8 @@ const DEFAULT_API_URL = 'https://merchant-api.ifood.com.br';
 const DEFAULT_AUTH_URL = 'https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token';
 const DEFAULT_IFOOD_ENVIRONMENT = 'production';
 const ORDER_BASE_PATH = '/order/v1.0/orders';
+const EVENTS_POLLING_PATH = '/events/v1.0/events:polling?categories=ALL';
+const EVENTS_ACKNOWLEDGMENT_PATH = '/events/v1.0/events/acknowledgment';
 const ACTIVE_EXTERNAL_STATUSES = new Set([
   'PLACED',
   'CONFIRMED',
@@ -333,7 +335,12 @@ const createIfoodFunctions = ({
   }, {});
 
   const createAlert = async (lojaId, type, message, context = {}) => {
-    const key = safeId(`${type}_${context.orderId || context.productId || Date.now()}`);
+    const fingerprint = context.orderId
+      || context.productId
+      || context.eventId
+      || context.fingerprint
+      || crypto.createHash('sha1').update(`${type}:${message}`).digest('hex').slice(0, 16);
+    const key = safeId(`${type}_${fingerprint}`);
     await alertCollection(lojaId).doc(key).set({
       provider: PROVIDER,
       type,
@@ -343,6 +350,24 @@ const createIfoodFunctions = ({
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),
     }, {merge: true});
+  };
+
+  const resolveAlertsByType = async (lojaId, type) => {
+    const snap = await alertCollection(lojaId).where('type', '==', type).limit(50).get();
+    const batch = db.batch();
+    let count = 0;
+    snap.docs.forEach((doc) => {
+      if (doc.get('status') !== 'resolved') {
+        batch.set(doc.ref, {
+          status: 'resolved',
+          resolvedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        count += 1;
+      }
+    });
+    if (count) await batch.commit();
+    return count;
   };
 
   const normalizePlatformConfig = (platformConfig = {}) => ({
@@ -473,7 +498,7 @@ const createIfoodFunctions = ({
     return token;
   };
 
-  const requestIfood = async (lojaId, config, path, {method = 'GET', body, attempts = 4} = {}) => {
+  const requestIfood = async (lojaId, config, path, {method = 'GET', body, attempts = 4, headers = {}} = {}) => {
     const url = path.startsWith('http')
       ? path
       : new URL(path, `${config.apiBaseUrl || DEFAULT_API_URL}/`).toString();
@@ -487,6 +512,7 @@ const createIfoodFunctions = ({
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
+            ...headers,
           },
           body: body === undefined ? undefined : JSON.stringify(body),
         });
@@ -783,9 +809,9 @@ const createIfoodFunctions = ({
       }
     }
     if (acknowledgedEventIds.length) {
-      await requestIfood(lojaId, config, `${ORDER_BASE_PATH}:acknowledgment`, {
+      await requestIfood(lojaId, config, EVENTS_ACKNOWLEDGMENT_PATH, {
         method: 'POST',
-        body: {acknowledgedEventIds},
+        body: acknowledgedEventIds.map((id) => ({id})),
       });
     }
     await audit(lojaId, 'events.batch', {
@@ -994,9 +1020,14 @@ const createIfoodFunctions = ({
   const runPoll = async (lojaId, origin) => {
     const config = await loadConfig(lojaId);
     if (!config.enabled || !config.pollingEnabled || config.ordersSyncEnabled === false) return {skipped: true};
+    if (!config.merchantId) {
+      throw new HttpsError('failed-precondition', 'Informe o Merchant ID da loja antes de consultar eventos do iFood.');
+    }
     const started = Date.now();
     try {
-      const payload = await requestIfood(lojaId, config, `${ORDER_BASE_PATH}:polling`);
+      const payload = await requestIfood(lojaId, config, EVENTS_POLLING_PATH, {
+        headers: {'x-polling-merchants': config.merchantId},
+      });
       const events = Array.isArray(payload) ? payload : (payload.events || []);
       const result = await processEvents(lojaId, config, events, origin);
       const inventoryRetries = await reconcileFailedAvailability(lojaId);
@@ -1009,6 +1040,7 @@ const createIfoodFunctions = ({
         lastInventoryRetryCount: inventoryRetries.length,
         lastError: FieldValue.delete(),
       }, {merge: true});
+      await resolveAlertsByType(lojaId, 'api_poll_failure');
       return {...result, inventoryRetries: inventoryRetries.length};
     } catch (error) {
       await healthRef(lojaId).set({

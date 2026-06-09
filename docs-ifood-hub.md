@@ -44,12 +44,12 @@ sequenceDiagram
   participant I as iFood Order API
   participant D as Firestore/Estoque
   S->>F: ifoodScheduledPoll / ifoodPollNow
-  F->>I: GET /order/v1.0/orders:polling
+  F->>I: GET /events/v1.0/events:polling + x-polling-merchants
   I-->>F: Eventos
   F->>I: GET /order/v1.0/orders/{id}
   F->>D: Transacao idempotente: pedido + estoque + kardex + auditoria
   F->>I: POST /orders/{id}/confirm (automatico opcional)
-  F->>I: POST /order/v1.0/orders:acknowledgment
+  F->>I: POST /events/v1.0/events/acknowledgment
   D-->>S: Dashboard em tempo real
 ```
 
@@ -70,7 +70,7 @@ O saldo principal permanece em `lojas/{lojaId}/produtos/{productId}.estoque`. Ao
 
 Cada produto pode armazenar `precoIfood`, independente de `preco`. Em `Catalogo e estoque`, a operacao publica um produto ou um lote usando `PUT /catalog/v2.0/merchants/{merchantId}/items`. Para novos itens, a plataforma gera UUIDs v4 estaveis e um `externalCode`/Codigo PDV no formato `AGD_<id interno>`; novas publicacoes reutilizam os mesmos identificadores para atualizar o item, sem duplicacao.
 
-O processamento de pedidos segue Order; a publicacao de saldo usa a API oficial de Catalog v2.0. Para cada produto mapeado, a Function chama:
+O recebimento de eventos usa a API oficial de Events v1.0 (`/events:polling` e `/events/acknowledgment`) filtrada por `x-polling-merchants`; detalhes e comandos do ciclo de vida continuam no modulo Order. A publicacao de saldo usa a API oficial de Catalog v2.0. Para cada produto mapeado, a Function chama:
 
 ```http
 POST /catalog/v2.0/merchants/{merchantId}/inventory
