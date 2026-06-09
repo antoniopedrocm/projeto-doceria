@@ -70,7 +70,7 @@ O saldo principal permanece em `lojas/{lojaId}/produtos/{productId}.estoque`. Ao
 
 Cada produto pode armazenar `precoIfood`, independente de `preco`. Em `Catalogo e estoque`, a operacao publica um produto ou um lote usando `PUT /catalog/v2.0/merchants/{merchantId}/items`. Para novos itens, a plataforma gera UUIDs v4 estaveis e um `externalCode`/Codigo PDV no formato `AGD_<id interno>`; novas publicacoes reutilizam os mesmos identificadores para atualizar o item, sem duplicacao.
 
-O recebimento de eventos usa a API oficial de Events v1.0 (`/events:polling` e `/events/acknowledgment`) filtrada por `x-polling-merchants`; detalhes e comandos do ciclo de vida continuam no modulo Order. A publicacao de saldo usa a API oficial de Catalog v2.0. Para cada produto mapeado, a Function chama:
+O recebimento de eventos usa a API oficial de Events v1.0 (`/events:polling` e `/events/acknowledgment`) filtrada por `x-polling-merchants`; para receber todos os tipos/categorias da loja, a consulta nao envia filtro de categoria. Detalhes e comandos do ciclo de vida continuam no modulo Order. A publicacao de saldo usa a API oficial de Catalog v2.0. Para cada produto mapeado, a Function chama:
 
 ```http
 POST /catalog/v2.0/merchants/{merchantId}/inventory

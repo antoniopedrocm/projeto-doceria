@@ -9,7 +9,7 @@ const DEFAULT_API_URL = 'https://merchant-api.ifood.com.br';
 const DEFAULT_AUTH_URL = 'https://merchant-api.ifood.com.br/authentication/v1.0/oauth/token';
 const DEFAULT_IFOOD_ENVIRONMENT = 'production';
 const ORDER_BASE_PATH = '/order/v1.0/orders';
-const EVENTS_POLLING_PATH = '/events/v1.0/events:polling?categories=ALL';
+const EVENTS_POLLING_PATH = '/events/v1.0/events:polling';
 const EVENTS_ACKNOWLEDGMENT_PATH = '/events/v1.0/events/acknowledgment';
 const ACTIVE_EXTERNAL_STATUSES = new Set([
   'PLACED',
@@ -43,6 +43,37 @@ const maskSecret = (value) => {
 const fingerprintSecret = (value) => {
   const text = String(value || '');
   return text ? crypto.createHash('sha256').update(text).digest('hex').slice(0, 16) : '';
+};
+
+const describeValue = (value) => {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map(describeValue).filter(Boolean).join(', ');
+  if (typeof value === 'object') {
+    const preferred = [
+      value.message,
+      value.error,
+      value.description,
+      value.detail,
+      value.details,
+      value.reason,
+      value.code,
+    ].map(describeValue).filter(Boolean);
+    const knownLists = [
+      value.unauthorizedMerchants && `merchants sem permissao: ${describeValue(value.unauthorizedMerchants)}`,
+      value.errors && `erros: ${describeValue(value.errors)}`,
+      value.violations && `violacoes: ${describeValue(value.violations)}`,
+    ].filter(Boolean);
+    const combined = [...preferred, ...knownLists].join(' | ');
+    return combined || JSON.stringify(value);
+  }
+  return String(value);
+};
+
+const ifoodErrorDetail = (payload = {}) => {
+  const detail = describeValue(payload);
+  return detail || 'sem detalhe';
 };
 
 const normalizeEnvironment = (value) => {
@@ -489,7 +520,7 @@ const createIfoodFunctions = ({
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new HttpsError('failed-precondition', `Falha na autenticacao iFood (${response.status}): ${payload.error || payload.message || 'sem detalhe'}`);
+      throw new HttpsError('failed-precondition', `Falha na autenticacao iFood (${response.status}): ${ifoodErrorDetail(payload)}`);
     }
     const token = payload.accessToken || payload.access_token;
     if (!token) throw new HttpsError('failed-precondition', 'Autenticacao iFood nao retornou accessToken.');
@@ -520,10 +551,20 @@ const createIfoodFunctions = ({
           tokenCache.delete(lojaId);
           continue;
         }
-        const payload = await response.json().catch(() => ({}));
+        const textPayload = await response.text().catch(() => '');
+        let payload = {};
+        try {
+          payload = textPayload ? JSON.parse(textPayload) : {};
+        } catch (parseError) {
+          payload = {message: textPayload};
+        }
         if (response.ok) return payload;
-        const error = new HttpsError('failed-precondition', `iFood ${method} ${path} falhou (${response.status}): ${payload.message || payload.error || 'sem detalhe'}`);
+        const detail = ifoodErrorDetail(payload);
+        const error = new HttpsError('failed-precondition', `iFood ${method} ${path} falhou (${response.status}): ${detail}`);
         error.httpStatus = response.status;
+        error.ifoodPayload = payload;
+        error.ifoodDetail = detail;
+        error.ifoodPath = path;
         if (!RETRYABLE_STATUS.has(response.status) || attempt === attempts - 1) throw error;
         await delay(retryAfterMillis(response, attempt));
       } catch (error) {
@@ -1043,15 +1084,29 @@ const createIfoodFunctions = ({
       await resolveAlertsByType(lojaId, 'api_poll_failure');
       return {...result, inventoryRetries: inventoryRetries.length};
     } catch (error) {
+      let message = error.message;
+      const unauthorizedMerchants = error.ifoodPayload?.unauthorizedMerchants
+        || error.ifoodPayload?.unauthorized_merchants;
+      if (error.httpStatus === 403 && error.ifoodPath === EVENTS_POLLING_PATH) {
+        const merchants = describeValue(unauthorizedMerchants);
+        message = merchants
+          ? `Merchant ID sem permissao para esta credencial iFood: ${merchants}. Revise o Merchant ID salvo na loja ou autorize esta loja no aplicativo iFood Developer.`
+          : `Token iFood sem permissao para consultar eventos do Merchant ID ${config.merchantId}. Revise o Merchant ID salvo na loja, as permissoes do aplicativo e se a loja autorizou esta integracao no portal iFood Developer.`;
+      }
       await healthRef(lojaId).set({
         provider: PROVIDER,
         status: 'offline',
         lastPollAt: FieldValue.serverTimestamp(),
         latencyMs: Date.now() - started,
-        lastError: error.message,
+        lastError: message,
       }, {merge: true});
-      await createAlert(lojaId, 'api_poll_failure', error.message);
-      throw error;
+      await resolveAlertsByType(lojaId, 'api_poll_failure');
+      await createAlert(lojaId, 'api_poll_failure', message, {
+        httpStatus: error.httpStatus || null,
+        merchantId: config.merchantId || '',
+        fingerprint: error.httpStatus === 403 ? `403_${config.merchantId || 'merchant'}` : undefined,
+      });
+      throw new HttpsError(error.code || 'failed-precondition', message);
     }
   };
 
