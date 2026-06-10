@@ -4506,7 +4506,9 @@ function App() {
     }
 
     const permissionKeyFor = (item) => item.permission || item.id;
-    const customPermissions = user.customPermissions;
+    const customPermissions = user.customPermissions && typeof user.customPermissions === 'object'
+      ? sanitizePermissions(user.customPermissions, currentUserRole)
+      : null;
     const normalizedPermissions = sanitizePermissions(user.permissions, currentUserRole);
 
     return allMenuItems.filter(item => {
@@ -12880,8 +12882,8 @@ const handleSubmit = async (e) => {
     const menuItem = allMenuItems.find(item => item.id === menuId);
     const permissionKey = menuItem?.permission || menuId;
 
-    if (user.customPermissions) {
-      return Boolean(user.customPermissions[permissionKey]);
+    if (user.customPermissions && typeof user.customPermissions === 'object') {
+      return Boolean(sanitizePermissions(user.customPermissions, user.role)[permissionKey]);
     }
 
     const normalizedPermissions = sanitizePermissions(user.permissions, user.role);
