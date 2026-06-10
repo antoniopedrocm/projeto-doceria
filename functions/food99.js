@@ -130,6 +130,26 @@ const safeId = (value) => cleanText(value)
   .replace(/_+/g, '_')
   .slice(0, 110);
 
+const normalizeSecretLabelPart = (value, fallback) => {
+  let normalized = cleanText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[^a-z]+/, '')
+    .replace(/[^a-z0-9]+$/, '')
+    .slice(0, 63);
+  if (!normalized) normalized = fallback;
+  if (!/^[a-z]/.test(normalized)) normalized = `${fallback}_${normalized}`;
+  return normalized.slice(0, 63).replace(/[^a-z0-9]+$/, '') || fallback;
+};
+
+const normalizeSecretLabels = (labels = {}) => Object.entries(labels)
+  .filter(([, value]) => value != null && value !== '')
+  .reduce((normalized, [key, value]) => {
+    normalized[normalizeSecretLabelPart(key, 'label')] = normalizeSecretLabelPart(value, 'value');
+    return normalized;
+  }, {});
+
 const secretName = (projectId, secretId) => `projects/${projectId}/secrets/${secretId}`;
 
 const ensureSecret = async (projectId, secretId, labels) => {
@@ -145,7 +165,7 @@ const ensureSecret = async (projectId, secretId, labels) => {
     secretId,
     secret: {
       replication: {automatic: {}},
-      labels,
+      labels: normalizeSecretLabels(labels),
     },
   });
   return created.name;
@@ -370,6 +390,37 @@ const createFood99Functions = ({
     const uid = request.auth?.uid;
     const requester = await requireStoreAccess(uid, lojaId);
     return {uid, lojaId, requester};
+  };
+
+  const throwSecretManagerSaveError = (error) => {
+    const code = String(error.code || '').toUpperCase();
+    logger.error('[99Food] platform secret save failed', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+    });
+    if (code === '7' || code === 'PERMISSION_DENIED') {
+      throw new HttpsError(
+        'permission-denied',
+        'Nao foi possivel salvar as credenciais no Secret Manager. Verifique a permissao da conta de servico das Functions.'
+      );
+    }
+    if (code === '3' || code === 'INVALID_ARGUMENT') {
+      throw new HttpsError(
+        'failed-precondition',
+        'O Secret Manager recusou os metadados das credenciais. Atualize a pagina e tente salvar novamente.'
+      );
+    }
+    if (code === '5' || code === 'NOT_FOUND') {
+      throw new HttpsError(
+        'failed-precondition',
+        'Nao foi possivel localizar ou criar o segredo no Secret Manager.'
+      );
+    }
+    throw new HttpsError(
+      'internal',
+      'Nao foi possivel salvar as credenciais globais do 99Food no Secret Manager.'
+    );
   };
 
   const configRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99').doc('config');
@@ -1309,36 +1360,40 @@ const createFood99Functions = ({
         updatedAt: FieldValue.serverTimestamp(),
       };
 
-      if (updateCredentials) {
-        const [clientIdName, clientSecretName] = await Promise.all([
-          ensureSecret(projectId, 'food99_platform_client_id', {app: 'doceria', provider: '99Food', scope: 'platform'}),
-          ensureSecret(projectId, 'food99_platform_client_secret', {app: 'doceria', provider: '99Food', scope: 'platform'}),
-        ]);
-        const [clientIdSecretVersion, clientSecretSecretVersion] = await Promise.all([
-          addSecretVersion(clientIdName, clientId),
-          addSecretVersion(clientSecretName, clientSecret),
-        ]);
-        Object.assign(platformPatch, {
-          clientIdSecretVersion,
-          clientSecretSecretVersion,
-          clientIdMasked: maskSecret(clientId),
-          clientSecretMasked: maskSecret(clientSecret),
-          clientIdFingerprint: fingerprintSecret(clientId),
-          clientSecretFingerprint: fingerprintSecret(clientSecret),
-        });
-      }
+      try {
+        if (updateCredentials) {
+          const [clientIdName, clientSecretName] = await Promise.all([
+            ensureSecret(projectId, 'food99_platform_client_id', {app: 'doceria', provider: PROVIDER, scope: 'platform'}),
+            ensureSecret(projectId, 'food99_platform_client_secret', {app: 'doceria', provider: PROVIDER, scope: 'platform'}),
+          ]);
+          const [clientIdSecretVersion, clientSecretSecretVersion] = await Promise.all([
+            addSecretVersion(clientIdName, clientId),
+            addSecretVersion(clientSecretName, clientSecret),
+          ]);
+          Object.assign(platformPatch, {
+            clientIdSecretVersion,
+            clientSecretSecretVersion,
+            clientIdMasked: maskSecret(clientId),
+            clientSecretMasked: maskSecret(clientSecret),
+            clientIdFingerprint: fingerprintSecret(clientId),
+            clientSecretFingerprint: fingerprintSecret(clientSecret),
+          });
+        }
 
-      if (updateWebhookSecret) {
-        const webhookSecretName = await ensureSecret(projectId, 'food99_platform_webhook_secret', {
-          app: 'doceria',
-          provider: '99Food',
-          scope: 'platform',
-        });
-        Object.assign(platformPatch, {
-          webhookSecretVersion: await addSecretVersion(webhookSecretName, webhookSecret),
-          webhookSecretMasked: maskSecret(webhookSecret),
-          webhookSecretFingerprint: fingerprintSecret(webhookSecret),
-        });
+        if (updateWebhookSecret) {
+          const webhookSecretName = await ensureSecret(projectId, 'food99_platform_webhook_secret', {
+            app: 'doceria',
+            provider: PROVIDER,
+            scope: 'platform',
+          });
+          Object.assign(platformPatch, {
+            webhookSecretVersion: await addSecretVersion(webhookSecretName, webhookSecret),
+            webhookSecretMasked: maskSecret(webhookSecret),
+            webhookSecretFingerprint: fingerprintSecret(webhookSecret),
+          });
+        }
+      } catch (error) {
+        throwSecretManagerSaveError(error);
       }
 
       await platformConfigRef().set(platformPatch, {merge: true});
