@@ -176,12 +176,48 @@ match /lojas/{lojaId} {
     allow read: if isSignedIn() && !isReadOnlyAccountant();
   }
 
+  // Dados 99Food sao lidos pelo painel, mas toda mutacao passa pelas Functions.
+  match /food99/{docId} {
+    // Contem referencias a segredos e somente e carregado por callable autorizado.
+    allow read: if false;
+  }
+
+  match /food99Orders/{docId} {
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
+  }
+
+  match /food99Events/{docId} {
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
+  }
+
+  match /food99Alerts/{docId} {
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
+  }
+
+  match /food99Audit/{docId} {
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
+  }
+
+  match /food99Health/{docId} {
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
+  }
+
+  match /food99ProductMappings/{docId} {
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
+  }
+
+  match /food99Commands/{docId} {
+    allow read: if isSignedIn() && !isReadOnlyAccountant();
+  }
+
   match /{collection}/{document=**} {
     allow read: if collection != 'ifood'
+      && collection != 'food99'
       && collection != 'fiscalConfig'
       && canReadStoreCollection(lojaId, collection);
     allow write: if canStaffWrite()
       && collection != 'ifood'
+      && collection != 'food99'
       && collection != 'fiscalConfig'
       && collection != 'ifoodOrders'
       && collection != 'ifoodEvents'
@@ -189,7 +225,14 @@ match /lojas/{lojaId} {
       && collection != 'ifoodAudit'
       && collection != 'ifoodHealth'
       && collection != 'ifoodProductMappings'
-      && collection != 'ifoodCommands';
+      && collection != 'ifoodCommands'
+      && collection != 'food99Orders'
+      && collection != 'food99Events'
+      && collection != 'food99Alerts'
+      && collection != 'food99Audit'
+      && collection != 'food99Health'
+      && collection != 'food99ProductMappings'
+      && collection != 'food99Commands';
   }
 }
 

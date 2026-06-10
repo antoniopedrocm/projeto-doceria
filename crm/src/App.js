@@ -40,6 +40,7 @@ import { updateStock as updateStockService } from './services/stockService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
 import IfoodHub from './components/ifood/IfoodHub';
+import Food99Hub from './components/food99/Food99Hub';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
@@ -406,9 +407,10 @@ const MENU_PERMISSION_KEYS = [
   'financeiro',
   'nota-fiscal',
   'ifood',
+  'food99',
   'configuracoes'
 ];
-const ACCOUNTANT_RESTRICTED_MODULES = new Set(['ifood', 'configuracoes']);
+const ACCOUNTANT_RESTRICTED_MODULES = new Set(['ifood', 'food99', 'configuracoes']);
 
 const buildStoreCollectionPath = (storeId, collectionName, useLegacyPath = false) => {
   const shouldUseConfigPath = CONFIG_COLLECTIONS.has(collectionName) && !useLegacyPath;
@@ -492,6 +494,11 @@ const COLLECTIONS_TO_SYNC = [
   'ifoodProductMappings',
   'ifoodAudit',
   'ifoodHealth',
+  'food99Orders',
+  'food99Alerts',
+  'food99ProductMappings',
+  'food99Audit',
+  'food99Health',
   'logs',
   'cupons',
   'pedidos'
@@ -622,6 +629,7 @@ const getDefaultPermissionsForRole = (role) => {
       financeiro: true,
       'nota-fiscal': true,
       ifood: true,
+      food99: true,
       configuracoes: true,
     };
   }
@@ -693,6 +701,11 @@ const ACCOUNTANT_COLLECTION_PERMISSIONS = {
   ifoodProductMappings: ['ifood'],
   ifoodAudit: ['ifood'],
   ifoodHealth: ['ifood'],
+  food99Orders: ['food99'],
+  food99Alerts: ['food99'],
+  food99ProductMappings: ['food99'],
+  food99Audit: ['food99'],
+  food99Health: ['food99'],
   logs: ['configuracoes'],
   cupons: ['configuracoes'],
   pedidos: ['dashboard', 'pedidos', 'financeiro', 'relatorios', 'nota-fiscal'],
@@ -4480,6 +4493,7 @@ function App() {
     { id: 'financeiro', permission: 'financeiro', label: 'Financeiro', icon: DollarSign, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'nota-fiscal', permission: 'nota-fiscal', label: 'Nota Fiscal', icon: FileText, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'ifood', permission: 'ifood', label: 'iFood Hub', icon: Store, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'food99', permission: 'food99', label: '99Food Hub', icon: Store, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'configuracoes', permission: 'configuracoes', label: 'Configurações', icon: Settings, roles: [ROLE_OWNER, ROLE_MANAGER] },
   ];
   const currentUserRole = user ? user.role : null;
@@ -5759,7 +5773,7 @@ function App() {
     const [filterActiveOnly, setFilterActiveOnly] = useState(false);
     const [showModal, setShowModal] = useState(false); 
     const [editingProduct, setEditingProduct] = useState(null); 
-    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", precoIfood: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
+    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", precoIfood: "", preco99Food: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
     const [imageFile, setImageFile] = useState(null); 
     const [imagePreview, setImagePreview] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -5995,7 +6009,7 @@ function App() {
     const resetForm = () => {
       setShowModal(false);
       setEditingProduct(null);
-      setFormData({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", precoIfood: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
+      setFormData({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", precoIfood: "", preco99Food: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
       setImageFile(null);
       setImagePreview(null);
       setIsAddingSubcategory(false);
@@ -6021,6 +6035,7 @@ function App() {
                 ...formData,
                 preco: parseFloat(formData.preco || 0),
                 precoIfood: formData.precoIfood === '' ? null : parseFloat(formData.precoIfood || 0),
+                preco99Food: formData.preco99Food === '' ? null : parseFloat(formData.preco99Food || 0),
                 custo: parseFloat(formData.custo || 0),
                 estoque: parseInt(formData.estoque || 0),
                 imageUrl: imageUrl,
@@ -6058,6 +6073,7 @@ function App() {
         ...product,
         preco: String(product.preco),
         precoIfood: product.precoIfood == null ? '' : String(product.precoIfood),
+        preco99Food: product.preco99Food == null ? '' : String(product.preco99Food),
         custo: String(product.custo),
         estoque: String(product.estoque),
       });
@@ -6087,6 +6103,7 @@ function App() {
       },
       { header: "Preço", render: (row) => <span className="font-semibold text-green-600">R$ {(row.preco || 0).toFixed(2)}</span> },
       { header: "Preço iFood", render: (row) => row.precoIfood == null ? <span className="text-gray-400">-</span> : <span className="font-semibold text-pink-600">R$ {(Number(row.precoIfood) || 0).toFixed(2)}</span> },
+      { header: "Preço 99Food", render: (row) => row.preco99Food == null ? <span className="text-gray-400">-</span> : <span className="font-semibold text-orange-600">R$ {(Number(row.preco99Food) || 0).toFixed(2)}</span> },
       { header: "Estoque", render: (row) => <span className={`font-medium ${row.estoque < 10 ? 'text-red-600' : 'text-gray-800'}`}>{row.estoque} un</span> },
       {
         header: 'Movimentação Rápida',
@@ -6298,6 +6315,7 @@ function App() {
                   )}
                   <Input label="Preço (R$)" type="number" step="0.01" value={formData.preco} onChange={(e) => setFormData({...formData, preco: e.target.value})} />
                   <Input label="Preço iFood (R$)" type="number" min="0" step="0.01" value={formData.precoIfood} onChange={(e) => setFormData({...formData, precoIfood: e.target.value})} />
+                  <Input label="Preço 99Food (R$)" type="number" min="0" step="0.01" value={formData.preco99Food} onChange={(e) => setFormData({...formData, preco99Food: e.target.value})} />
                   <Input label="Custo (R$)" type="number" step="0.01" value={formData.custo} onChange={(e) => setFormData({...formData, custo: e.target.value})} />
                   <Input label="Estoque" type="number" value={formData.estoque} onChange={(e) => setFormData({...formData, estoque: e.target.value})} />
                   <Input label="Tempo de Preparo" value={formData.tempoPreparo} onChange={(e) => setFormData({...formData, tempoPreparo: e.target.value})} />
@@ -12935,6 +12953,7 @@ const handleSubmit = async (e) => {
       case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial />;
       case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
+      case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
       case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} /> : <PaginaInicial />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;

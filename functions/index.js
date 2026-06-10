@@ -17,6 +17,7 @@ const cors = require("cors");
 const crypto = require('crypto');
 const {createFiscalFunctions} = require('./fiscal');
 const {createIfoodFunctions} = require('./ifood');
+const {createFood99Functions} = require('./food99');
 
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
@@ -44,9 +45,10 @@ const MENU_PERMISSION_KEYS = [
   'financeiro',
   'nota-fiscal',
   'ifood',
+  'food99',
   'configuracoes',
 ];
-const ACCOUNTANT_RESTRICTED_MODULES = new Set(['ifood', 'configuracoes']);
+const ACCOUNTANT_RESTRICTED_MODULES = new Set(['ifood', 'food99', 'configuracoes']);
 
 const normalizeRole = (role) => {
   if (!role || typeof role !== 'string') return ROLE_ATTENDANT;
@@ -93,6 +95,7 @@ const getDefaultPermissionsForRole = (role) => {
       financeiro: true,
       'nota-fiscal': true,
       ifood: true,
+      food99: true,
       configuracoes: true,
     };
   }
@@ -1767,6 +1770,20 @@ Object.assign(exports, createFiscalFunctions({
 }));
 
 Object.assign(exports, createIfoodFunctions({
+    admin,
+    db,
+    onCall,
+    onRequest,
+    onSchedule,
+    onDocumentWritten,
+    HttpsError,
+    logger,
+    verifyManagementAccess,
+    userHasAccessToStores,
+    STORE_ALL_KEY,
+}));
+
+Object.assign(exports, createFood99Functions({
     admin,
     db,
     onCall,
