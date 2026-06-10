@@ -915,23 +915,95 @@ const createIfoodFunctions = ({
 
   const externalCodeForProduct = (productId) => `AGD_${safeId(productId).toUpperCase().slice(0, 72)}`;
 
-  const loadCatalogCategories = async (lojaId, config) => {
-    const payload = await requestIfood(
-      lojaId,
-      config,
-      `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/categories`
-    );
-    return Array.isArray(payload) ? payload : (payload.categories || []);
+  const isNoRouteError = (error) => (
+    error?.httpStatus === 404
+    && cleanText(error.ifoodDetail || error.message).toLowerCase().includes('no route matched')
+  );
+
+  const normalizeCatalogRecords = (payload = {}) => {
+    const records = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload.catalogs) ? payload.catalogs : (Array.isArray(payload.data) ? payload.data : []));
+    return records
+      .map((catalog) => ({
+        ...catalog,
+        catalogId: cleanText(catalog.catalogId || catalog.id),
+        context: Array.isArray(catalog.context)
+          ? catalog.context.map(cleanText).filter(Boolean)
+          : [cleanText(catalog.context)].filter(Boolean),
+        status: cleanText(catalog.status),
+      }))
+      .filter((catalog) => catalog.catalogId);
   };
 
-  const loadCatalogProductsFromIfood = async (lojaId, config) => {
+  const selectCatalog = (catalogs = [], preferredCatalogId = '') => {
+    const preferred = cleanText(preferredCatalogId);
+    if (preferred) {
+      const match = catalogs.find((catalog) => cleanText(catalog.catalogId) === preferred);
+      if (match) return match;
+    }
+    const hasDefaultContext = (catalog) => (catalog.context || [])
+      .map((context) => cleanText(context).toUpperCase())
+      .includes('DEFAULT');
+    return catalogs.find((catalog) => cleanText(catalog.status).toUpperCase() === 'AVAILABLE' && hasDefaultContext(catalog))
+      || catalogs.find(hasDefaultContext)
+      || catalogs.find((catalog) => cleanText(catalog.status).toUpperCase() === 'AVAILABLE')
+      || catalogs[0]
+      || null;
+  };
+
+  const loadCatalogsFromIfood = async (lojaId, config) => {
     if (!config.merchantId) throw new HttpsError('failed-precondition', 'Informe o Merchant ID do iFood.');
     const payload = await requestIfood(
       lojaId,
       config,
-      `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/categories?include_items=true`
+      `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/catalogs`
     );
-    const categories = Array.isArray(payload) ? payload : (payload.categories || []);
+    return normalizeCatalogRecords(payload);
+  };
+
+  const normalizeCatalogCategories = (payload = {}, catalog = null) => {
+    const records = Array.isArray(payload) ? payload : (payload.categories || []);
+    return records.map((category) => ({
+      ...category,
+      catalogId: cleanText(category.catalogId || catalog?.catalogId),
+      catalogContext: cleanText(category.catalogContext || (catalog?.context || [])[0]),
+    }));
+  };
+
+  const legacyCatalogCategoriesPath = (config, includeItems = false) => (
+    `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/categories${includeItems ? '?include_items=true' : ''}`
+  );
+
+  const loadCatalogCategories = async (lojaId, config, {includeItems = false} = {}) => {
+    if (!config.merchantId) throw new HttpsError('failed-precondition', 'Informe o Merchant ID do iFood.');
+    let catalogs = [];
+    try {
+      catalogs = await loadCatalogsFromIfood(lojaId, config);
+    } catch (error) {
+      if (!isNoRouteError(error)) throw error;
+    }
+
+    const catalog = selectCatalog(catalogs, config.catalogId);
+    if (catalog?.catalogId) {
+      try {
+        const payload = await requestIfood(
+          lojaId,
+          config,
+          `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/catalogs/${encodeURIComponent(catalog.catalogId)}/categories${includeItems ? '?include_items=true' : ''}`
+        );
+        return normalizeCatalogCategories(payload, catalog);
+      } catch (error) {
+        if (!isNoRouteError(error)) throw error;
+      }
+    }
+
+    const payload = await requestIfood(lojaId, config, legacyCatalogCategoriesPath(config, includeItems));
+    return normalizeCatalogCategories(payload);
+  };
+
+  const loadCatalogProductsFromIfood = async (lojaId, config) => {
+    const categories = await loadCatalogCategories(lojaId, config, {includeItems: true});
     const products = categories.flatMap((category) => (category.items || []).map((item) => {
       const product = item.product || {};
       return {
@@ -965,12 +1037,30 @@ const createIfoodFunctions = ({
     const categoryName = cleanText(product.subcategoria || product.categoria || 'Produtos') || 'Produtos';
     const existing = categories.find((category) => cleanText(category.name).toLowerCase() === categoryName.toLowerCase());
     if (existing?.id) return {id: existing.id, name: categoryName};
-    const created = await requestIfood(
-      lojaId,
-      config,
-      `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/categories`,
-      {method: 'POST', body: {name: categoryName, status: 'AVAILABLE', template: 'DEFAULT'}}
-    );
+    const existingCatalogId = cleanText(categories.find((category) => category.catalogId)?.catalogId);
+    const selectedCatalog = existingCatalogId
+      ? {catalogId: existingCatalogId}
+      : selectCatalog(await loadCatalogsFromIfood(lojaId, config), config.catalogId);
+    const scopedPath = selectedCatalog?.catalogId
+      ? `/catalog/v2.0/merchants/${encodeURIComponent(config.merchantId)}/catalogs/${encodeURIComponent(selectedCatalog.catalogId)}/categories`
+      : '';
+    let created;
+    try {
+      created = await requestIfood(
+        lojaId,
+        config,
+        scopedPath || legacyCatalogCategoriesPath(config),
+        {method: 'POST', body: {name: categoryName, status: 'AVAILABLE', template: 'DEFAULT'}}
+      );
+    } catch (error) {
+      if (!scopedPath || !isNoRouteError(error)) throw error;
+      created = await requestIfood(
+        lojaId,
+        config,
+        legacyCatalogCategoriesPath(config),
+        {method: 'POST', body: {name: categoryName, status: 'AVAILABLE', template: 'DEFAULT'}}
+      );
+    }
     const category = {id: cleanText(created.id), name: categoryName};
     if (!category.id) throw new Error(`iFood nao retornou ID para a categoria ${categoryName}.`);
     categories.push(category);
