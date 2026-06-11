@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CheckCircle, Clock, DollarSign, Moon, Package,
   Pencil, RefreshCw, Save, Search, Settings, ShoppingCart, Sun, Truck, Wifi, WifiOff, X
@@ -81,6 +81,19 @@ const catalogProductPayload = (item = {}) => ({
   price: Number(item.price) || 0,
   imageUrl: item.imageUrl || '',
 });
+
+const normalizeLookupText = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const productCategoryKeys = (product = {}) => [
+  product.subcategoria,
+  product.categoria,
+  product.categoryName,
+].map(normalizeLookupText).filter(Boolean);
 
 const catalogStatus = (item = {}) => {
   const linked = item.linked || {};
@@ -203,12 +216,14 @@ const Toggle = ({label, checked, onChange, dark}) => (
 export default function Food99Hub({data, effectiveStoreId, selectedStoreId, availableStores = [], storeInfoMap, onSelectStore, currentUser}) {
   const [tab, setTab] = useState('operacao');
   const [dark, setDark] = useState(() => window.localStorage.getItem('99Food-hub-theme') === 'dark');
+  const mappingPanelRef = useRef(null);
   const [config, setConfig] = useState(initialConfig);
   const [platformConfig, setPlatformConfig] = useState(initialPlatformConfig);
   const [platformSecrets, setPlatformSecrets] = useState({clientId: '', clientSecret: '', webhookSecret: ''});
   const [editingPlatformSecrets, setEditingPlatformSecrets] = useState({clientId: false, clientSecret: false, webhookSecret: false});
   const [remoteHealth, setRemoteHealth] = useState({status: 'not_configured'});
   const [merchants, setMerchants] = useState([]);
+  const [mappingPanelOpen, setMappingPanelOpen] = useState(false);
   const [mapping, setMapping] = useState({productId: '', food99ProductId: '', externalCode: '', catalogItemId: ''});
   const [catalogProducts, setCatalogProducts] = useState([]);
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -257,6 +272,8 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     setSelectedProductIds([]);
     setSelectedCatalogKeys([]);
     setBulkImportResult(null);
+    setMappingPanelOpen(false);
+    setMapping({productId: '', food99ProductId: '', externalCode: '', catalogItemId: ''});
     loadConfiguration();
   }, [loadConfiguration]);
 
@@ -342,6 +359,38 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
       ].some((value) => String(value || '').toLowerCase().includes(search));
     });
   }, [catalogRowsAll, catalogSearch]);
+  const suggestInternalProductForCatalog = useCallback((catalogProduct = {}) => {
+    const linkedProduct = catalogProduct.linked?.productId
+      ? products.find((product) => product.id === catalogProduct.linked.productId)
+      : null;
+    const linkedProductIsImported = linkedProduct?.food99Imported || linkedProduct?.origem === '99Food';
+    if (linkedProduct && !linkedProductIsImported) return linkedProduct.id;
+
+    const catalogNameKey = normalizeLookupText(catalogProduct.name);
+    const catalogCategoryKey = normalizeLookupText(catalogProduct.categoryName);
+    const nameMatches = products.filter((product) => normalizeLookupText(product.nome) === catalogNameKey);
+    const categoryMatches = catalogCategoryKey
+      ? nameMatches.filter((product) => productCategoryKeys(product).includes(catalogCategoryKey))
+      : [];
+    const candidates = categoryMatches.length ? categoryMatches : nameMatches;
+    if (!candidates.length) return linkedProduct?.id || '';
+
+    const [bestMatch] = [...candidates].sort((a, b) => {
+      const importedA = a.food99Imported || a.origem === '99Food' ? 1 : 0;
+      const importedB = b.food99Imported || b.origem === '99Food' ? 1 : 0;
+      if (importedA !== importedB) return importedA - importedB;
+      const inactiveA = String(a.status || '').toLowerCase() === 'inativo' ? 1 : 0;
+      const inactiveB = String(b.status || '').toLowerCase() === 'inativo' ? 1 : 0;
+      if (inactiveA !== inactiveB) return inactiveA - inactiveB;
+      return (Number(b.estoque) || 0) - (Number(a.estoque) || 0);
+    });
+    return bestMatch?.id || linkedProduct?.id || '';
+  }, [products]);
+  const selectedMappingCatalogProduct = useMemo(() => catalogProducts.find((product) => (
+    product.itemId === mapping.catalogItemId
+    || product.productId === mapping.food99ProductId
+    || (mapping.externalCode && product.externalCode === mapping.externalCode)
+  )), [catalogProducts, mapping.catalogItemId, mapping.externalCode, mapping.food99ProductId]);
   const selectedCatalogKeySet = useMemo(() => new Set(selectedCatalogKeys), [selectedCatalogKeys]);
   const catalogPageRows = catalogRows;
   const catalogPageKeys = useMemo(() => catalogPageRows.map((item) => item.selectionKey).filter(Boolean), [catalogPageRows]);
@@ -599,13 +648,24 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
   };
 
   const selectCatalogForMapping = (catalogProduct) => {
+    const suggestedProductId = suggestInternalProductForCatalog(catalogProduct);
     setMapping((current) => ({
       ...current,
+      productId: suggestedProductId || current.productId || '',
       catalogItemId: catalogProduct.itemId || '',
       food99ProductId: catalogProduct.productId || '',
       externalCode: catalogProduct.externalCode || '',
     }));
-    setMessage({type: 'success', text: 'Item 99Food selecionado. Escolha o produto interno e clique em Vincular.'});
+    setMappingPanelOpen(true);
+    window.setTimeout(() => {
+      mappingPanelRef.current?.scrollIntoView({behavior: 'smooth', block: 'center'});
+    }, 0);
+    setMessage({
+      type: 'success',
+      text: suggestedProductId
+        ? 'Item 99Food selecionado e produto interno sugerido. Confira os dados e clique em Vincular.'
+        : 'Item 99Food selecionado. Escolha o produto interno e clique em Vincular.',
+    });
   };
 
   const importCatalogProduct = (catalogProduct) => perform(`catalog-import-${catalogProduct.itemId || catalogProduct.productId}`, async () => {
@@ -1043,8 +1103,19 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
             </div>
           </section>
 
-          <details className={`rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
+          <details
+            ref={mappingPanelRef}
+            open={mappingPanelOpen}
+            onToggle={(event) => setMappingPanelOpen(event.currentTarget.open)}
+            className={`rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}
+          >
             <summary className="cursor-pointer text-sm font-medium">Vincular item ja cadastrado no 99Food manualmente</summary>
+            {mapping.food99ProductId && (
+              <div className={`mt-4 rounded-lg border p-3 text-sm ${dark ? 'border-sky-800 bg-sky-400/10 text-sky-200' : 'border-sky-100 bg-sky-50 text-sky-800'}`}>
+                <span className="font-medium">Item selecionado:</span> {selectedMappingCatalogProduct?.name || mapping.food99ProductId}
+                {mapping.externalCode ? <span className="ml-2 text-xs opacity-80">({mapping.externalCode})</span> : null}
+              </div>
+            )}
             <form onSubmit={saveMapping} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <Field dark={dark} label="Produto interno">
                 <select className={inputClass(dark)} value={mapping.productId} onChange={(event) => setMapping({...mapping, productId: event.target.value})} required>
