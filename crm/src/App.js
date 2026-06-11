@@ -1406,8 +1406,11 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
 
     const [showPerdaModal, setShowPerdaModal] = useState(false);
     const [showReceitaModal, setShowReceitaModal] = useState(false);
+    const [showRetiradaCaixaModal, setShowRetiradaCaixaModal] = useState(false);
     const [editingReceita, setEditingReceita] = useState(null);
+    const [editingRetiradaCaixa, setEditingRetiradaCaixa] = useState(null);
     const [receitaFormData, setReceitaFormData] = useState({});
+    const [retiradaCaixaFormData, setRetiradaCaixaFormData] = useState({ data: new Date().toISOString().split('T')[0], motivo: '', valor: '', observacoes: '' });
     const [editingPerda, setEditingPerda] = useState(null);
     const [perdaFormData, setPerdaFormData] = useState({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: '', motivo: 'Vencimento', outroMotivo: '' });
 
@@ -1430,6 +1433,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     const resetEstoqueForm = () => setEstoqueFormData({ nome: '', categoria: DEFAULT_FORNECEDOR_CATEGORIES[0], fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' });
     const resetPerdaForm = () => setPerdaFormData({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: new Date().toISOString().split('T')[0], motivo: 'Vencimento', outroMotivo: '' });
     const resetReceitaForm = () => setReceitaFormData({ nome: '', categoria: '', ingredientes: '', modoPreparo: '', tempoPreparo: '', rendimento: '', custoEstimado: '', observacoes: '' });
+    const resetRetiradaCaixaForm = () => setRetiradaCaixaFormData({ data: new Date().toISOString().split('T')[0], motivo: '', valor: '', observacoes: '' });
 
     const openStockMovementModal = (item, type) => {
         setStockMovementModal({ isOpen: true, type, item });
@@ -1581,6 +1585,50 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         return quantidade * custo;
     }, [perdaFormData.quantidade, perdaFormData.custoUnitario]);
 
+    const parseCurrencyInput = (value) => {
+        if (typeof value === 'number') return value;
+        const text = String(value ?? '').trim();
+        if (!text) return 0;
+        const sanitized = text.replace(/[^\d,.-]/g, '');
+        const normalized = sanitized.includes(',')
+            ? sanitized.replace(/\./g, '').replace(',', '.')
+            : sanitized;
+        const parsed = Number(normalized);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const getRetiradaCaixaDate = useCallback((item) => getJSDate(item.dataRetirada || item.dataPagamento || item.dataVencimento || item.createdAt), []);
+
+    const retiradasCaixa = useMemo(() => {
+        return (data.contas_a_pagar || [])
+            .filter(item => item.origem === 'retirada_caixa' || item.tipo === 'retirada_caixa')
+            .sort((a, b) => {
+                const dateA = getRetiradaCaixaDate(a) || new Date(0);
+                const dateB = getRetiradaCaixaDate(b) || new Date(0);
+                return dateB - dateA;
+            });
+    }, [data.contas_a_pagar, getRetiradaCaixaDate]);
+
+    const retiradaCaixaTotal = useMemo(() => (
+        retiradasCaixa.reduce((sum, item) => sum + (Number(item.valor) || 0), 0)
+    ), [retiradasCaixa]);
+
+    const getRetiradaCaixaRegistrant = (item) => (
+        item.registradoPorNome
+        || item.registradoPorEmail
+        || item.registradoPor
+        || '-'
+    );
+
+    const getCurrentUserName = () => (
+        currentUser?.nome
+        || currentUser?.displayName
+        || currentUser?.auth?.displayName
+        || currentUser?.auth?.email
+        || currentUser?.email
+        || 'Usuário'
+    );
+
 
     // Handlers Fornecedores
     const handleNewFornecedor = () => { setEditingFornecedor(null); resetFornecedorForm(); setShowFornecedorModal(true); };
@@ -1697,14 +1745,76 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         setShowReceitaModal(false);
     };
 
+    const handleNewRetiradaCaixa = () => {
+        setEditingRetiradaCaixa(null);
+        resetRetiradaCaixaForm();
+        setShowRetiradaCaixaModal(true);
+    };
+
+    const handleEditRetiradaCaixa = (retirada) => {
+        const dataRetirada = getRetiradaCaixaDate(retirada);
+        setEditingRetiradaCaixa(retirada);
+        setRetiradaCaixaFormData({
+            data: dataRetirada ? dataRetirada.toISOString().split('T')[0] : '',
+            motivo: retirada.motivo || (retirada.descricao || '').replace(/^Retirada do caixa\s*-\s*/i, ''),
+            valor: String(retirada.valor ?? ''),
+            observacoes: retirada.observacoes || retirada.observacao || ''
+        });
+        setShowRetiradaCaixaModal(true);
+    };
+
+    const handleRetiradaCaixaSubmit = async (e) => {
+        e.preventDefault();
+        const motivo = String(retiradaCaixaFormData.motivo || '').trim();
+        const valor = roundCurrency(parseCurrencyInput(retiradaCaixaFormData.valor));
+        const dataRetirada = retiradaCaixaFormData.data || new Date().toISOString().split('T')[0];
+
+        if (!motivo) { alert('Informe o motivo da retirada.'); return; }
+        if (!valor || valor <= 0) { alert('Informe um valor de retirada maior que zero.'); return; }
+
+        const dataToSave = {
+            descricao: `Retirada do caixa - ${motivo}`,
+            valor,
+            dataVencimento: dataRetirada,
+            dataPagamento: dataRetirada,
+            dataRetirada,
+            status: 'Pago',
+            categoria: 'Despesa Variável',
+            tipo: 'retirada_caixa',
+            origem: 'retirada_caixa',
+            motivo,
+            observacoes: String(retiradaCaixaFormData.observacoes || '').trim(),
+            registradoPorNome: getCurrentUserName(),
+            registradoPorEmail: currentUser?.auth?.email || currentUser?.email || '',
+            registradoPorUid: currentUser?.uid || currentUser?.auth?.uid || '',
+            registradoEm: editingRetiradaCaixa?.registradoEm || new Date().toISOString(),
+            atualizadoEm: new Date().toISOString()
+        };
+
+        if (editingRetiradaCaixa) {
+            await updateItem('contas_a_pagar', editingRetiradaCaixa.id, dataToSave);
+        } else {
+            await addItem('contas_a_pagar', dataToSave);
+        }
+
+        setShowRetiradaCaixaModal(false);
+        setEditingRetiradaCaixa(null);
+        resetRetiradaCaixaForm();
+    };
+
+    const handleDeleteRetiradaCaixa = (retirada) => setConfirmDelete({
+        isOpen: true,
+        onConfirm: () => deleteItem('contas_a_pagar', retirada.id)
+    });
+
     // UI Rendering
     return (
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
             <div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Fornecedores/Estoque</h1><p className="text-gray-600 mt-1">Organize seus parceiros, compras e insumos</p></div>
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2"><div className="flex space-x-2">
-                {['fornecedores', 'pedidos', 'estoque', 'receitas', 'perdas'].map(tab => (
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2"><div className="flex flex-wrap gap-2">
+                {['fornecedores', 'pedidos', 'estoque', 'caixa', 'receitas', 'perdas'].map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
-                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
+                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'caixa' && 'Retiradas do Caixa'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
                     </button>
                 ))}
             </div></div>
@@ -1786,6 +1896,68 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     />
                     {filteredEstoque.length === 0 && (
                         <div className="px-4 py-6 text-center text-gray-500">Nenhum item encontrado</div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === 'caixa' && (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
+                            <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                                    <Banknote className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-500">Total retirado</p>
+                                    <p className="text-2xl font-bold text-gray-900">{formatCurrencyBR(retiradaCaixaTotal)}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
+                            <p className="text-sm text-gray-500">Registros</p>
+                            <p className="text-2xl font-bold text-gray-900">{retiradasCaixa.length}</p>
+                        </div>
+                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
+                            <p className="text-sm font-semibold text-gray-800">Contabilização automática</p>
+                            <p className="text-sm text-gray-600 mt-1">Cada retirada entra como despesa paga no Financeiro.</p>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800">Retiradas do Caixa</h2>
+                            <p className="text-sm text-gray-600">Registre saídas imediatas, como compras pequenas ou acertos operacionais.</p>
+                        </div>
+                        <Button onClick={handleNewRetiradaCaixa} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Nova Retirada</Button>
+                    </div>
+
+                    <Table
+                        columns={[
+                            { header: 'Data', render: (row) => getRetiradaCaixaDate(row)?.toLocaleDateString('pt-BR') || '-' },
+                            {
+                                header: 'Motivo',
+                                render: (row) => (
+                                    <div>
+                                        <p className="font-semibold text-gray-900">{row.motivo || row.descricao || '-'}</p>
+                                        <p className="text-xs text-gray-500">{row.descricao || 'Retirada do caixa'}</p>
+                                    </div>
+                                )
+                            },
+                            { header: 'Valor', render: (row) => <span className="font-semibold text-rose-600">{formatCurrencyBR(row.valor || 0)}</span> },
+                            { header: 'Registrado por', render: (row) => getRetiradaCaixaRegistrant(row) },
+                            { header: 'Observação', render: (row) => row.observacoes || row.observacao || '-' }
+                        ]}
+                        data={retiradasCaixa}
+                        actions={[
+                            { icon: Edit, label: "Editar", onClick: handleEditRetiradaCaixa },
+                            { icon: Trash2, label: "Excluir", onClick: handleDeleteRetiradaCaixa }
+                        ]}
+                    />
+                    {retiradasCaixa.length === 0 && (
+                        <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 text-center text-gray-500">
+                            Nenhuma retirada do caixa registrada ainda.
+                        </div>
                     )}
                 </div>
             )}
@@ -1914,6 +2086,48 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                         <Input label="Nível Mínimo de Estoque" type="number" value={estoqueFormData.nivelMinimo || ''} onChange={e => setEstoqueFormData({...estoqueFormData, nivelMinimo: e.target.value})} />
                     </div>
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowEstoqueModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar Item</Button></div>
+                </form>
+            </Modal>
+            <Modal isOpen={showRetiradaCaixaModal} onClose={() => setShowRetiradaCaixaModal(false)} title={editingRetiradaCaixa ? 'Editar Retirada do Caixa' : 'Registrar Retirada do Caixa'} size="md">
+                <form onSubmit={handleRetiradaCaixaSubmit} className="space-y-4">
+                    <Input
+                        label="Motivo da retirada"
+                        placeholder="Ex.: compra de morango"
+                        value={retiradaCaixaFormData.motivo || ''}
+                        onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, motivo: e.target.value })}
+                        required
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Input
+                            label="Valor (R$)"
+                            inputMode="decimal"
+                            placeholder="10,00"
+                            value={retiradaCaixaFormData.valor || ''}
+                            onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, valor: e.target.value })}
+                            required
+                        />
+                        <Input
+                            label="Data da retirada"
+                            type="date"
+                            value={retiradaCaixaFormData.data || ''}
+                            onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, data: e.target.value })}
+                            required
+                        />
+                    </div>
+                    <Textarea
+                        label="Observação"
+                        rows="3"
+                        placeholder="Detalhe opcional da retirada"
+                        value={retiradaCaixaFormData.observacoes || ''}
+                        onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, observacoes: e.target.value })}
+                    />
+                    <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-800">
+                        Esta retirada será registrada automaticamente como despesa paga no Financeiro.
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button variant="secondary" type="button" onClick={() => setShowRetiradaCaixaModal(false)}>Cancelar</Button>
+                        <Button type="submit"><Save className="w-4 h-4"/> Salvar Retirada</Button>
+                    </div>
                 </form>
             </Modal>
             <ReceitasModal
