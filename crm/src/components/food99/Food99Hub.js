@@ -68,6 +68,20 @@ const catalogSelectionKey = (item = {}) => String(
   || ''
 ).trim();
 
+const catalogProductPayload = (item = {}) => ({
+  itemId: item.itemId || '',
+  productId: item.productId || '',
+  externalCode: item.externalCode || '',
+  productExternalCode: item.productExternalCode || '',
+  name: item.name || '',
+  description: item.description || '',
+  categoryId: item.categoryId || '',
+  categoryName: item.categoryName || '',
+  status: item.status ?? 1,
+  price: Number(item.price) || 0,
+  imageUrl: item.imageUrl || '',
+});
+
 const catalogStatus = (item = {}) => {
   const linked = item.linked || {};
   if (linked.syncStatus === 'error' || linked.publishStatus === 'error' || linked.syncError || linked.publishError) {
@@ -552,10 +566,28 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     }, 'Produto mapeado e sincronizacao de estoque iniciada.');
   };
 
-  const loadCatalogProducts = () => perform('catalog-load', async () => {
-    const result = await invoke('food99LoadCatalogProducts');
-    setCatalogProducts(result.products || []);
-  }, 'Catalogo 99Food carregado. Selecione o produto para vincular ao estoque.');
+  const loadCatalogProducts = async () => {
+    setBusy('catalog-load');
+    setMessage(null);
+    try {
+      const result = await invoke('food99LoadCatalogProducts');
+      setCatalogProducts(result.products || []);
+      if (result.stale) {
+        setMessage({
+          type: 'warning',
+          text: result.warning || 'A 99Food limitou novas consultas. Exibindo o ultimo catalogo carregado.',
+        });
+      } else if (result.fromCache) {
+        setMessage({type: 'success', text: 'Catalogo 99Food carregado do cache recente.'});
+      } else {
+        setMessage({type: 'success', text: 'Catalogo 99Food carregado. Selecione o produto para vincular ao estoque.'});
+      }
+    } catch (error) {
+      setMessage({type: 'error', text: error.message});
+    } finally {
+      setBusy('');
+    }
+  };
 
   const selectCatalogForMapping = (catalogProduct) => {
     setMapping((current) => ({
@@ -569,11 +601,8 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
 
   const importCatalogProduct = (catalogProduct) => perform(`catalog-import-${catalogProduct.itemId || catalogProduct.productId}`, async () => {
     await invoke('food99ImportCatalogProduct', {
-      itemId: catalogProduct.itemId,
-      productId: catalogProduct.productId,
+      ...catalogProductPayload(catalogProduct),
     });
-    const result = await invoke('food99LoadCatalogProducts');
-    setCatalogProducts(result.products || []);
   }, 'Item 99Food trazido para a aplicacao. Revise estoque/preco antes de ativar a sincronizacao.');
 
   const importSelectedCatalogProducts = async () => {
@@ -583,16 +612,9 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     setBulkImportResult(null);
     try {
       const result = await invoke('food99ImportCatalogProducts', {
-        items: selectedCatalogRows.map((item) => ({
-          itemId: item.itemId,
-          productId: item.productId,
-          externalCode: item.externalCode,
-          name: item.name,
-        })),
+        items: selectedCatalogRows.map(catalogProductPayload),
       });
       setBulkImportResult(result);
-      const refreshed = await invoke('food99LoadCatalogProducts');
-      setCatalogProducts(refreshed.products || []);
       if (!result.failed) clearCatalogSelection();
       const summaryText = `${result.imported || 0} importado(s), ${result.ignored || 0} ignorado(s), ${result.failed || 0} falhou(ram).`;
       setMessage({
@@ -664,7 +686,9 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
         <div className={`mb-5 flex items-center gap-2 rounded-lg border p-3 text-sm ${
           message.type === 'success'
             ? (dark ? 'border-emerald-700 bg-emerald-950 text-emerald-200' : 'border-emerald-200 bg-emerald-50 text-emerald-800')
-            : (dark ? 'border-rose-800 bg-rose-950 text-rose-200' : 'border-rose-200 bg-rose-50 text-rose-800')
+            : message.type === 'warning'
+              ? (dark ? 'border-amber-700 bg-amber-950 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800')
+              : (dark ? 'border-rose-800 bg-rose-950 text-rose-200' : 'border-rose-200 bg-rose-50 text-rose-800')
         }`}>
           {message.type === 'success' ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
           {message.text}

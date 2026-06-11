@@ -19,6 +19,8 @@ const SHOP_DETAIL_PATH = '/v1/shop/shop/detail';
 const CATALOG_LIST_PATH = '/v3/item/item/list';
 const CATALOG_UPLOAD_PATH = '/v3/item/item/upload';
 const ITEM_STATUS_PATH = '/v3/item/item/updateItemStatus';
+const CATALOG_CACHE_DOC_ID = 'catalogCache';
+const CATALOG_CACHE_TTL_MS = 120 * 1000;
 const ACTIVE_EXTERNAL_STATUSES = new Set([
   'PLACED',
   'CONFIRMED',
@@ -429,6 +431,7 @@ const createFood99Functions = ({
   const healthRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99Health').doc('status');
   const auditCollection = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99Audit');
   const alertCollection = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99Alerts');
+  const catalogCacheRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99').doc(CATALOG_CACHE_DOC_ID);
 
   const isPlatformAdmin = (requester = {}) => requester.role === 'dono' && requester.allStores === true;
 
@@ -488,6 +491,58 @@ const createFood99Functions = ({
       createdAt: FieldValue.serverTimestamp(),
     }, {merge: true});
   };
+
+  const catalogCacheFromSnap = (snap) => {
+    if (!snap.exists) return null;
+    const data = snap.data() || {};
+    const loadedAt = data.loadedAt?.toDate ? data.loadedAt.toDate() : null;
+    const products = Array.isArray(data.products) ? data.products : [];
+    const categories = Array.isArray(data.categories) ? data.categories : [];
+    if (!products.length && !categories.length) return null;
+    return {
+      products,
+      categories,
+      menuState: data.menuState || {categories, items: []},
+      loadedAt,
+    };
+  };
+
+  const loadCatalogCache = async (lojaId) => catalogCacheFromSnap(await catalogCacheRef(lojaId).get());
+
+  const catalogCacheAgeMs = (cache) => {
+    if (!cache?.loadedAt) return Number.POSITIVE_INFINITY;
+    return Date.now() - cache.loadedAt.getTime();
+  };
+
+  const isFreshCatalogCache = (cache) => catalogCacheAgeMs(cache) <= CATALOG_CACHE_TTL_MS;
+
+  const saveCatalogCache = async (lojaId, catalogData) => {
+    await catalogCacheRef(lojaId).set({
+      products: catalogData.products || [],
+      categories: catalogData.categories || [],
+      menuState: catalogData.menuState || {categories: catalogData.categories || [], items: []},
+      loadedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+  };
+
+  const isCatalogRateLimitError = (error) => (
+    error?.food99Errno === 10005
+    || String(error?.message || '').includes('calling frequency exceeds')
+    || String(error?.message || '').includes('errno":10005')
+  );
+
+  const catalogCacheResponse = (cache, stale = false, warning = '') => ({
+    categories: cache.categories || [],
+    products: cache.products || [],
+    menuState: cache.menuState || {categories: cache.categories || [], items: []},
+    fromCache: true,
+    stale,
+    cacheAgeSeconds: Number.isFinite(catalogCacheAgeMs(cache))
+      ? Math.max(0, Math.round(catalogCacheAgeMs(cache) / 1000))
+      : null,
+    warning,
+  });
 
   const resolveAlertsByType = async (lojaId, type) => {
     const snap = await alertCollection(lojaId).where('type', '==', type).limit(50).get();
@@ -622,6 +677,7 @@ const createFood99Functions = ({
       const error = new HttpsError('failed-precondition', `99Food ${providerPath} retornou erro ${payload.errno}: ${food99ErrorDetail(payload)}`);
       error.httpStatus = 200;
       error.food99Payload = payload;
+      error.food99Errno = asNumber(payload.errno);
       error.food99Path = providerPath;
       throw error;
     }
@@ -1085,40 +1141,63 @@ const createFood99Functions = ({
     return normalizeMenuState(payload);
   };
 
-  const loadCatalogCategories = async (lojaId, config) => {
-    const menuState = await loadMenuState(lojaId, config);
-    return menuState;
+  const loadCatalogProductsFrom99Food = async (lojaId, config, options = {}) => {
+    const force = Boolean(options.force);
+    const allowStale = options.allowStale !== false;
+    if (!config.merchantId) throw new HttpsError('failed-precondition', 'Informe o app_shop_id do 99Food.');
+    const cached = await loadCatalogCache(lojaId);
+    if (!force && isFreshCatalogCache(cached)) {
+      return catalogCacheResponse(cached, false);
+    }
+    try {
+      const menuState = await loadMenuState(lojaId, config);
+      const categoryByItemId = new Map();
+      menuState.categories.forEach((category) => {
+        (category.app_item_ids || []).forEach((itemId) => {
+          if (cleanText(itemId)) {
+            categoryByItemId.set(cleanText(itemId), category);
+          }
+        });
+      });
+      const products = menuState.items.map((item) => {
+        const itemId = cleanText(item.app_item_id);
+        const category = categoryByItemId.get(itemId) || {};
+        return {
+          itemId,
+          productId: itemId,
+          name: cleanText(item.item_name || item.name || 'Produto 99Food'),
+          description: cleanText(item.short_desc || item.description),
+          externalCode: itemId,
+          productExternalCode: cleanText(item.app_external_id),
+          categoryId: cleanText(category.app_category_id),
+          categoryName: cleanText(category.category_name || '99Food'),
+          status: asNumber(item.status, 1),
+          price: catalogItemPrice(item),
+          imageUrl: cleanText(item.head_img),
+        };
+      }).filter((item) => item.productId || item.itemId);
+      const catalogData = {categories: menuState.categories, products, menuState};
+      await saveCatalogCache(lojaId, catalogData);
+      return {...catalogData, fromCache: false, stale: false, cacheAgeSeconds: 0, warning: ''};
+    } catch (error) {
+      if (allowStale && cached && isCatalogRateLimitError(error)) {
+        await audit(lojaId, 'catalog.loaded_from_cache_rate_limited', {
+          ageSeconds: Math.round(catalogCacheAgeMs(cached) / 1000),
+          error: error.message,
+        }, 'warning');
+        return catalogCacheResponse(
+          cached,
+          true,
+          'A 99Food limitou novas consultas por frequência. Exibindo o último catálogo carregado.'
+        );
+      }
+      throw error;
+    }
   };
 
-  const loadCatalogProductsFrom99Food = async (lojaId, config) => {
-    if (!config.merchantId) throw new HttpsError('failed-precondition', 'Informe o app_shop_id do 99Food.');
-    const menuState = await loadMenuState(lojaId, config);
-    const categoryByItemId = new Map();
-    menuState.categories.forEach((category) => {
-      (category.app_item_ids || []).forEach((itemId) => {
-        if (cleanText(itemId)) {
-          categoryByItemId.set(cleanText(itemId), category);
-        }
-      });
-    });
-    const products = menuState.items.map((item) => {
-      const itemId = cleanText(item.app_item_id);
-      const category = categoryByItemId.get(itemId) || {};
-      return {
-        itemId,
-        productId: itemId,
-        name: cleanText(item.item_name || item.name || 'Produto 99Food'),
-        description: cleanText(item.short_desc || item.description),
-        externalCode: itemId,
-        productExternalCode: cleanText(item.app_external_id),
-        categoryId: cleanText(category.app_category_id),
-        categoryName: cleanText(category.category_name || '99Food'),
-        status: asNumber(item.status, 1),
-        price: catalogItemPrice(item),
-        imageUrl: cleanText(item.head_img),
-      };
-    }).filter((item) => item.productId || item.itemId);
-    return {categories: menuState.categories, products, menuState};
+  const loadCatalogCategories = async (lojaId, config) => {
+    const catalogData = await loadCatalogProductsFrom99Food(lojaId, config);
+    return catalogData.menuState;
   };
 
   const findExistingCatalogMapping = async (lojaId, catalogProduct) => {
@@ -1138,6 +1217,27 @@ const createFood99Functions = ({
     || catalogProduct.externalCode
     || catalogProduct.name
   );
+
+  const catalogProductFromClient = (input = {}) => {
+    const source = input.catalogProduct && typeof input.catalogProduct === 'object' ? input.catalogProduct : input;
+    const itemId = cleanText(source.itemId);
+    const productId = cleanText(source.productId || itemId);
+    const name = cleanText(source.name);
+    if ((!itemId && !productId) || !name) return null;
+    return {
+      itemId: itemId || productId,
+      productId: productId || itemId,
+      name,
+      description: cleanText(source.description),
+      externalCode: cleanText(source.externalCode || itemId || productId),
+      productExternalCode: cleanText(source.productExternalCode),
+      categoryId: cleanText(source.categoryId),
+      categoryName: cleanText(source.categoryName || '99Food'),
+      status: asNumber(source.status, 1),
+      price: money(source.price),
+      imageUrl: cleanText(source.imageUrl),
+    };
+  };
 
   const productBaseIdForCatalogProduct = (catalogProduct = {}) => safeId(
     `food99_${catalogProduct.productId || catalogProduct.itemId || catalogProduct.externalCode || catalogProduct.name}`
@@ -1776,9 +1876,19 @@ const createFood99Functions = ({
     food99LoadCatalogProducts: onCall({timeoutSeconds: 120}, async (request) => {
       const {lojaId} = await requireCallableStore(request);
       const config = await loadConfig(lojaId);
-      const {categories, products} = await loadCatalogProductsFrom99Food(lojaId, config);
-      await audit(lojaId, 'catalog.loaded', {categories: categories.length, products: products.length});
-      return {products};
+      const {categories, products, fromCache, stale, cacheAgeSeconds, warning} = await loadCatalogProductsFrom99Food(
+        lojaId,
+        config,
+        {force: request.data?.force === true}
+      );
+      await audit(lojaId, 'catalog.loaded', {
+        categories: categories.length,
+        products: products.length,
+        fromCache,
+        stale,
+        cacheAgeSeconds,
+      }, stale ? 'warning' : 'info');
+      return {products, fromCache, stale, cacheAgeSeconds, warning};
     }),
 
     food99ImportCatalogProduct: onCall({timeoutSeconds: 120}, async (request) => {
@@ -1789,10 +1899,28 @@ const createFood99Functions = ({
         throw new HttpsError('invalid-argument', 'Informe o item ou produto do catalogo 99Food.');
       }
       const config = await loadConfig(lojaId);
-      const {products: catalogProducts} = await loadCatalogProductsFrom99Food(lojaId, config);
-      const catalogProduct = catalogProducts.find((item) => (
-        (itemId && item.itemId === itemId) || (productId && item.productId === productId)
-      ));
+      const clientCatalogProduct = catalogProductFromClient(request.data || {});
+      let catalogProduct = null;
+      let allowClientFallback = false;
+      try {
+        const {products: catalogProducts} = await loadCatalogProductsFrom99Food(lojaId, config);
+        catalogProduct = catalogProducts.find((item) => (
+          (itemId && item.itemId === itemId) || (productId && item.productId === productId)
+        )) || null;
+      } catch (error) {
+        if (!isCatalogRateLimitError(error) || !clientCatalogProduct) throw error;
+        allowClientFallback = true;
+        catalogProduct = clientCatalogProduct;
+        await audit(lojaId, 'catalog.product_import_used_client_snapshot', {
+          uid,
+          itemId,
+          productId,
+          error: error.message,
+        }, 'warning');
+      }
+      if (!catalogProduct && allowClientFallback && clientCatalogProduct) {
+        catalogProduct = clientCatalogProduct;
+      }
       if (!catalogProduct) throw new HttpsError('not-found', 'Produto nao encontrado no catalogo 99Food atual.');
       return importCatalogProductFrom99Food(lojaId, uid, catalogProduct);
     }),
@@ -1806,7 +1934,22 @@ const createFood99Functions = ({
       }
 
       const config = await loadConfig(lojaId);
-      const {products: catalogProducts} = await loadCatalogProductsFrom99Food(lojaId, config);
+      let catalogProducts = [];
+      let allowClientFallback = false;
+      try {
+        const catalogData = await loadCatalogProductsFrom99Food(lojaId, config);
+        catalogProducts = catalogData.products;
+      } catch (error) {
+        if (!isCatalogRateLimitError(error)) throw error;
+        allowClientFallback = true;
+        catalogProducts = requestedItems.map(catalogProductFromClient).filter(Boolean);
+        await audit(lojaId, 'catalog.products_import_used_client_snapshot', {
+          uid,
+          requested: requestedItems.length,
+          availableSnapshots: catalogProducts.length,
+          error: error.message,
+        }, 'warning');
+      }
       const catalogByKey = new Map();
       catalogProducts.forEach((item) => {
         [
@@ -1823,7 +1966,8 @@ const createFood99Functions = ({
         const catalogProduct = catalogByKey.get(cleanText(requested.itemId))
           || catalogByKey.get(cleanText(requested.productId))
           || catalogByKey.get(cleanText(requested.externalCode))
-          || catalogByKey.get(requestedKey);
+          || catalogByKey.get(requestedKey)
+          || (allowClientFallback ? catalogProductFromClient(requested) : null);
         if (!catalogProduct) {
           const failedResult = {
             itemKey: requestedKey,
