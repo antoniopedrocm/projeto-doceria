@@ -241,6 +241,105 @@ const verifyStoreReadAccess = async (uid) => {
   throw new HttpsError('permission-denied', 'Você não tem permissão para consultar esta operação.');
 };
 
+const verifyPointStoreAccess = async (uid, lojaId) => {
+  if (!uid) {
+    throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
+  }
+  if (!lojaId || lojaId === STORE_ALL_KEY) {
+    throw new HttpsError('failed-precondition', 'Selecione uma loja específica para registrar o ponto.');
+  }
+  const profile = await getUserProfile(uid);
+  const role = normalizeRole(profile.role);
+  const stores = extractStoreIds(profile);
+
+  if (role === ROLE_OWNER && stores.length === 0) {
+    return {profile, role, stores, allStores: true};
+  }
+  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT].includes(role) && stores.includes(lojaId)) {
+    return {profile, role, stores, allStores: false};
+  }
+  throw new HttpsError('permission-denied', 'Você não tem permissão para registrar ponto nesta loja.');
+};
+
+const pointTimeToMinutes = (value) => {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+const formatPointMinutes = (minutes) => {
+  const hrs = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hrs}:${String(mins).padStart(2, '0')}`;
+};
+
+const calculatePointSummary = (record = {}) => {
+  const entrada = pointTimeToMinutes(record.horaEntrada);
+  const saida = pointTimeToMinutes(record.horaSaida);
+  if (entrada === null || saida === null) {
+    return {workedLabel: '', irregularidade: ''};
+  }
+
+  let workedMinutes = saida - entrada;
+  const almocoSaida = pointTimeToMinutes(record.horaAlmocoSaida);
+  const almocoRetorno = pointTimeToMinutes(record.horaAlmocoRetorno);
+  if (almocoSaida !== null && almocoRetorno !== null) {
+    workedMinutes -= almocoRetorno - almocoSaida;
+  }
+  if (!Number.isFinite(workedMinutes) || workedMinutes <= 0) {
+    return {workedLabel: '', irregularidade: ''};
+  }
+
+  const workedLabel = formatPointMinutes(workedMinutes);
+  const [year, month, day] = String(record.dia || '').split('-').map(Number);
+  const date = year && month && day ? new Date(year, month - 1, day) : null;
+  const dayOfWeek = date ? date.getDay() : null;
+  const expectedMinutes = dayOfWeek !== null && dayOfWeek >= 1 && dayOfWeek <= 5 ? 8 * 60 : 0;
+  const diff = workedMinutes - expectedMinutes;
+  const irregularidade = dayOfWeek === null
+    ? ''
+    : diff === 0
+      ? '0:00'
+      : `${diff > 0 ? '+' : '-'}${formatPointMinutes(Math.abs(diff))}`;
+  return {workedLabel, irregularidade};
+};
+
+const pointInconsistencies = (record = {}) => {
+  const issues = [];
+  if (record.horaSaida && !record.horaEntrada) {
+    issues.push('Saída registrada sem entrada correspondente.');
+  }
+  if (record.horaAlmocoSaida && !record.horaEntrada) {
+    issues.push('Início do almoço registrado sem entrada correspondente.');
+  }
+  if (record.horaAlmocoRetorno && !record.horaAlmocoSaida) {
+    issues.push('Retorno do almoço registrado sem início de almoço correspondente.');
+  }
+  return issues;
+};
+
+const pointStatusPatch = (record = {}) => {
+  const issues = pointInconsistencies(record);
+  if (issues.length) {
+    return {
+      inconsistente: true,
+      necessitaAjuste: true,
+      statusPonto: 'Pendente de ajuste',
+      inconsistencias: issues,
+    };
+  }
+  return {
+    inconsistente: false,
+    necessitaAjuste: false,
+    statusPonto: record.horaSaida ? 'Completo' : 'Em andamento',
+    inconsistencias: [],
+  };
+};
+
 const requireStoreId = (req, res) => {
   const lojaId = req.params.lojaId || req.query.lojaId || req.body?.lojaId;
   if (!lojaId) {
@@ -1252,6 +1351,183 @@ exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async
 
     throw new HttpsError('internal', 'Não foi possível salvar o endereço agora. Tente novamente.');
   }
+});
+
+const getSaoPauloPointNow = () => {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: DEFAULT_STORE_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(now).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return {
+    now,
+    dayKey: `${parts.year}-${parts.month}-${parts.day}`,
+    competenciaKey: `${parts.year}-${parts.month}`,
+    timeLabel: `${parts.hour === '24' ? '00' : parts.hour}:${parts.minute}`,
+  };
+};
+
+const pointPayloadForType = (type, timeLabel, coords, address) => {
+  const cleanAddress = typeof address === 'string' ? address.trim() : '';
+  const location = coords && Number.isFinite(Number(coords.latitude)) && Number.isFinite(Number(coords.longitude))
+    ? {
+        latitude: Number(coords.latitude),
+        longitude: Number(coords.longitude),
+        capturedAt: typeof coords.capturedAt === 'string' ? coords.capturedAt : new Date().toISOString(),
+      }
+    : null;
+  return {
+    entrada: {
+      horaEntrada: timeLabel,
+      localizacaoEntrada: location,
+      localizacaoEntradaEndereco: cleanAddress,
+    },
+    almoco_inicio: {
+      horaAlmocoSaida: timeLabel,
+    },
+    almoco_fim: {
+      horaAlmocoRetorno: timeLabel,
+    },
+    saida: {
+      horaSaida: timeLabel,
+      localizacaoSaida: location,
+      localizacaoSaidaEndereco: cleanAddress,
+    },
+  }[type] || null;
+};
+
+const validatePointTransition = (type, current = {}) => {
+  if (current.horaSaida) {
+    throw new HttpsError('failed-precondition', 'A jornada de hoje já foi encerrada.');
+  }
+  if (type === 'entrada') {
+    if (current.horaEntrada) throw new HttpsError('already-exists', 'A entrada de hoje já foi registrada.');
+    return;
+  }
+  if (type === 'almoco_inicio') {
+    if (!current.horaEntrada) throw new HttpsError('failed-precondition', 'Registre a entrada antes do início do almoço.');
+    if (current.horaAlmocoSaida) throw new HttpsError('already-exists', 'O início do almoço de hoje já foi registrado.');
+    return;
+  }
+  if (type === 'almoco_fim') {
+    if (!current.horaAlmocoSaida) throw new HttpsError('failed-precondition', 'Registre o início do almoço antes do retorno.');
+    if (current.horaAlmocoRetorno) throw new HttpsError('already-exists', 'O retorno do almoço de hoje já foi registrado.');
+    return;
+  }
+  if (type === 'saida') {
+    if (current.horaAlmocoSaida && !current.horaAlmocoRetorno) {
+      throw new HttpsError('failed-precondition', 'Registre o retorno do almoço antes da saída.');
+    }
+    return;
+  }
+  throw new HttpsError('invalid-argument', 'Tipo de registro de ponto inválido.');
+};
+
+exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => {
+  const uid = request.auth?.uid;
+  const lojaId = String(request.data?.lojaId || '').trim();
+  const type = String(request.data?.type || '').trim();
+  const {profile} = await verifyPointStoreAccess(uid, lojaId);
+  const {now, dayKey, competenciaKey, timeLabel} = getSaoPauloPointNow();
+  const pontosRef = db.collection('lojas').doc(lojaId).collection('pontos');
+  const fallbackRecordRef = pontosRef.doc(`${uid}_${dayKey}`);
+  const timestamp = admin.firestore.FieldValue.serverTimestamp();
+  const actionMap = {
+    entrada: 'entrada',
+    almoco_inicio: 'início do almoço',
+    almoco_fim: 'retorno do almoço',
+    saida: 'saída',
+  };
+  const payload = pointPayloadForType(type, timeLabel, request.data?.coords || null, request.data?.address || '');
+  if (!payload) {
+    throw new HttpsError('invalid-argument', 'Tipo de registro de ponto inválido.');
+  }
+
+  let responseRecord = null;
+  let responseRecordId = fallbackRecordRef.id;
+  await db.runTransaction(async (transaction) => {
+    const existingQuery = pontosRef
+      .where('funcionarioId', '==', uid)
+      .where('dia', '==', dayKey)
+      .where('competencia', '==', competenciaKey)
+      .limit(1);
+    const querySnap = await transaction.get(existingQuery);
+    const recordRef = querySnap.empty ? fallbackRecordRef : querySnap.docs[0].ref;
+    const recordSnap = querySnap.empty ? await transaction.get(recordRef) : querySnap.docs[0];
+    const existingData = recordSnap.exists ? recordSnap.data() || {} : {};
+    validatePointTransition(type, existingData);
+
+    const baseData = {
+      funcionarioId: uid,
+      funcionarioNome: profile.nome || profile.name || profile.email || 'Colaborador',
+      dia: dayKey,
+      data: admin.firestore.Timestamp.fromDate(now),
+      horaEntrada: '',
+      horaSaida: '',
+      horaAlmocoSaida: '',
+      horaAlmocoRetorno: '',
+      localizacaoEntrada: null,
+      localizacaoEntradaEndereco: '',
+      localizacaoSaida: null,
+      localizacaoSaidaEndereco: '',
+      irregularidade: '',
+      qtde: '',
+      justificativa: '',
+      competencia: competenciaKey,
+      empresaId: lojaId,
+      historicoAlteracoes: [],
+      createdAt: timestamp,
+    };
+    const mergedRecord = {
+      ...(recordSnap.exists ? {} : baseData),
+      ...existingData,
+      ...payload,
+      updatedAt: timestamp,
+    };
+    const statusPatch = pointStatusPatch(mergedRecord);
+    const summary = calculatePointSummary(mergedRecord);
+    const updateData = {
+      ...(recordSnap.exists ? {} : baseData),
+      ...payload,
+      ...statusPatch,
+      irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : summary.irregularidade,
+      qtde: statusPatch.inconsistente ? '' : summary.workedLabel,
+      updatedAt: timestamp,
+      historicoRegistros: admin.firestore.FieldValue.arrayUnion({
+        tipo: type,
+        descricao: actionMap[type],
+        hora: timeLabel,
+        registradoEm: now.toISOString(),
+      }),
+    };
+    transaction.set(recordRef, updateData, {merge: true});
+    responseRecordId = recordRef.id;
+    responseRecord = {
+      ...mergedRecord,
+      ...statusPatch,
+      irregularidade: updateData.irregularidade,
+      qtde: updateData.qtde,
+      id: recordRef.id,
+    };
+  });
+
+  return {
+    ok: true,
+    recordId: responseRecordId,
+    record: responseRecord,
+    inconsistent: Boolean(responseRecord?.inconsistente),
+    message: responseRecord?.inconsistente
+      ? 'Saída registrada sem entrada correspondente. Este ponto necessita de análise ou ajuste.'
+      : `Ponto de ${actionMap[type]} registrado com sucesso!`,
+  };
 });
 
 // Exporta o app Express como uma Cloud Function HTTP

@@ -4853,6 +4853,38 @@ function App() {
       return { workedLabel, irregularidade, workedMinutes };
     };
 
+    const getPointInconsistencies = (registro = {}) => {
+      const issues = [];
+      if (registro.horaSaida && !registro.horaEntrada) {
+        issues.push('Saída registrada sem entrada correspondente.');
+      }
+      if (registro.horaAlmocoSaida && !registro.horaEntrada) {
+        issues.push('Início do almoço registrado sem entrada correspondente.');
+      }
+      if (registro.horaAlmocoRetorno && !registro.horaAlmocoSaida) {
+        issues.push('Retorno do almoço registrado sem início de almoço correspondente.');
+      }
+      return issues;
+    };
+
+    const buildPointStatus = (registro = {}) => {
+      const issues = getPointInconsistencies(registro);
+      if (issues.length) {
+        return {
+          inconsistente: true,
+          necessitaAjuste: true,
+          statusPonto: 'Pendente de ajuste',
+          inconsistencias: issues,
+        };
+      }
+      return {
+        inconsistente: false,
+        necessitaAjuste: false,
+        statusPonto: registro.horaSaida ? 'Completo' : 'Em andamento',
+        inconsistencias: [],
+      };
+    };
+
     const getWorkedTime = (registro) => calculateWorkSummary(registro).workedLabel;
 
     const getRecordDateTime = (record) => {
@@ -4896,6 +4928,18 @@ function App() {
     }, [records, isManager, selectedEmployee, userId]);
 
     const todayRecord = todayRecordData;
+    const todayPointStatus = buildPointStatus(todayRecord || {});
+    const hasTodayEntry = Boolean(todayRecord?.horaEntrada);
+    const hasTodayLunchStart = Boolean(todayRecord?.horaAlmocoSaida);
+    const hasTodayLunchReturn = Boolean(todayRecord?.horaAlmocoRetorno);
+    const hasTodayExit = Boolean(todayRecord?.horaSaida);
+    const isTodayAtLunch = hasTodayLunchStart && !hasTodayLunchReturn;
+    const pointActionEnabled = {
+      entrada: !registerLoading && !hasTodayExit && !hasTodayEntry,
+      almoco_inicio: !registerLoading && hasTodayEntry && !hasTodayLunchStart && !hasTodayExit,
+      almoco_fim: !registerLoading && hasTodayLunchStart && !hasTodayLunchReturn && !hasTodayExit,
+      saida: !registerLoading && !hasTodayExit && !isTodayAtLunch,
+    };
 
     const requestLocation = () => requestCompatibleGeolocation({ source: 'meu-espaco-registro-ponto' });
 
@@ -4934,8 +4978,6 @@ function App() {
       }
     };
 
-    const formatTimeString = (dateObj) => dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
     const handleRegisterPoint = async (type) => {
       try {
         setRegisterLoading(true);
@@ -4948,94 +4990,25 @@ function App() {
         };
         const capturedAddress = await getAddressFromCoordinates(coords);
         const storeId = resolveActiveStoreForWrite();
-        const pontosRef = collection(db, 'lojas', storeId, 'pontos');
         const currentDate = new Date();
-        const dayKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
         const competenciaKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
         if (selectedMonth !== competenciaKey) {
           setSelectedMonth(competenciaKey);
         }
-        const existingQuery = query(
-          pontosRef,
-          where('funcionarioId', '==', userId),
-          where('dia', '==', dayKey),
-          where('competencia', '==', competenciaKey),
-          limit(1)
-        );
-        const snapshot = await getDocs(existingQuery);
-        const nowTime = formatTimeString(new Date());
-        const payload = {
-          entrada: {
-            horaEntrada: nowTime,
-            localizacaoEntrada: coords,
-            localizacaoEntradaEndereco: capturedAddress || ''
-          },
-          almoco_inicio: {
-            horaAlmocoSaida: nowTime
-          },
-          almoco_fim: {
-            horaAlmocoRetorno: nowTime
-          },
-          saida: {
-            horaSaida: nowTime,
-            localizacaoSaida: coords,
-            localizacaoSaidaEndereco: capturedAddress || ''
-          }
-        }[type];
-
-        if (!payload) {
-          throw new Error('Tipo de registro inválido.');
+        const registerPoint = httpsCallable(functions, 'registerEmployeePoint');
+        const response = await registerPoint({
+          lojaId: storeId,
+          type,
+          coords,
+          address: capturedAddress || '',
+        });
+        if (response.data?.record) {
+          setTodayRecordData(response.data.record);
         }
-
-        const baseData = {
-          funcionarioId: userId,
-          funcionarioNome: userName,
-          dia: dayKey,
-          data: Timestamp.now(),
-          horaEntrada: '',
-          horaSaida: '',
-          horaAlmocoSaida: '',
-          horaAlmocoRetorno: '',
-          localizacaoEntrada: null,
-          localizacaoEntradaEndereco: '',
-          localizacaoSaida: null,
-          localizacaoSaidaEndereco: '',
-          irregularidade: '',
-          qtde: '',
-          justificativa: '',
-          competencia: competenciaKey,
-          empresaId: currentStoreIdForDisplay,
-          historicoAlteracoes: [],
-          createdAt: serverTimestamp()
-        };
-
-        if (snapshot.empty) {
-          const recordToSave = { ...baseData, ...payload };
-          const summary = calculateWorkSummary(recordToSave);
-          await addDoc(pontosRef, {
-            ...recordToSave,
-            irregularidade: summary.irregularidade !== '-' ? summary.irregularidade : '',
-            qtde: summary.workedLabel !== '-' ? summary.workedLabel : ''
-          });
-        } else {
-          const existingData = snapshot.docs[0].data();
-          const docRef = snapshot.docs[0].ref;
-          const updatedRecord = { ...existingData, ...payload };
-          const summary = calculateWorkSummary(updatedRecord);
-          await updateDoc(docRef, {
-            ...payload,
-            irregularidade: summary.irregularidade !== '-' ? summary.irregularidade : '',
-            qtde: summary.workedLabel !== '-' ? summary.workedLabel : '',
-            updatedAt: serverTimestamp()
-          });
-        }
-        const actionMap = {
-          entrada: 'entrada',
-          almoco_inicio: 'início do almoço',
-          almoco_fim: 'retorno do almoço',
-          saida: 'saída'
-        };
-        setRegisterMessage({ type: 'success', text: `Ponto de ${actionMap[type]} registrado com sucesso!` });
+        setRegisterMessage({
+          type: response.data?.inconsistent ? 'warning' : 'success',
+          text: response.data?.message || 'Ponto registrado com sucesso!',
+        });
       } catch (error) {
         console.error('Erro ao registrar ponto', error);
         setRegisterMessage({ type: 'error', text: error.message || 'Não foi possível registrar o ponto.' });
@@ -5097,21 +5070,29 @@ function App() {
         const storeId = resolveActiveStoreForWrite();
         const recordRef = doc(db, 'lojas', storeId, 'pontos', editingRecord.id);
         const nowDate = new Date();
-        const summary = calculateWorkSummary({ ...editingRecord, ...editForm });
+        const editedRecord = { ...editingRecord, ...editForm };
+        const summary = calculateWorkSummary(editedRecord);
+        const statusPatch = buildPointStatus(editedRecord);
         await updateDoc(recordRef, {
           horaEntrada: editForm.horaEntrada || '',
           horaSaida: editForm.horaSaida || '',
           horaAlmocoSaida: editForm.horaAlmocoSaida || '',
           horaAlmocoRetorno: editForm.horaAlmocoRetorno || '',
-          irregularidade: summary.irregularidade !== '-' ? summary.irregularidade : '',
-          qtde: summary.workedLabel !== '-' ? summary.workedLabel : '',
+          ...statusPatch,
+          irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : (summary.irregularidade !== '-' ? summary.irregularidade : ''),
+          qtde: statusPatch.inconsistente ? '' : (summary.workedLabel !== '-' ? summary.workedLabel : ''),
           justificativa: editForm.justificativa || '',
           gestorId: userId,
           dataAjuste: serverTimestamp(),
           historicoAlteracoes: arrayUnion({
             data: nowDate.toISOString(),
             gestor: userName,
-            alteracoes: { ...editForm, irregularidade: summary.irregularidade, qtde: summary.workedLabel }
+            alteracoes: {
+              ...editForm,
+              irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : summary.irregularidade,
+              qtde: statusPatch.inconsistente ? '' : summary.workedLabel,
+              statusPonto: statusPatch.statusPonto,
+            }
           })
         });
         setRegisterMessage({ type: 'success', text: 'Registro de ponto atualizado.' });
@@ -5143,7 +5124,13 @@ function App() {
         </div>
 
         {registerMessage && (
-          <div className={`p-4 rounded-2xl ${registerMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+          <div className={`p-4 rounded-2xl ${
+            registerMessage.type === 'success'
+              ? 'bg-emerald-50 text-emerald-700'
+              : registerMessage.type === 'warning'
+                ? 'bg-amber-50 text-amber-800'
+                : 'bg-rose-50 text-rose-700'
+          }`}>
             {registerMessage.text}
           </div>
         )}
@@ -5160,32 +5147,47 @@ function App() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Button
                 onClick={() => handleRegisterPoint('entrada')}
-                disabled={registerLoading}
+                disabled={!pointActionEnabled.entrada}
               >
                 Registrar entrada
               </Button>
               <Button
                 variant="outline"
                 onClick={() => handleRegisterPoint('almoco_inicio')}
-                disabled={registerLoading || !todayRecord?.horaEntrada}
+                disabled={!pointActionEnabled.almoco_inicio}
               >
                 Registrar início do almoço
               </Button>
               <Button
                 variant="outline"
                 onClick={() => handleRegisterPoint('almoco_fim')}
-                disabled={registerLoading || !todayRecord?.horaAlmocoSaida}
+                disabled={!pointActionEnabled.almoco_fim}
               >
                 Registrar retorno do almoço
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => handleRegisterPoint('saida')}
-                disabled={registerLoading}
+                disabled={!pointActionEnabled.saida}
               >
                 Registrar saída
               </Button>
             </div>
+            {todayPointStatus.inconsistente && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">Este ponto necessita de análise ou ajuste.</p>
+                    <ul className="mt-1 list-disc pl-4">
+                      {todayPointStatus.inconsistencias.map((issue) => (
+                        <li key={issue}>{issue}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
             {todayRecord && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm bg-gray-50 rounded-xl p-4">
                 <div>
@@ -5286,6 +5288,7 @@ function App() {
                     <th className="py-3 px-4">Saída</th>
                     <th className="py-3 px-4">Irregularidade</th>
                     <th className="py-3 px-4">Qtde</th>
+                    <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">Justificativa</th>
                     {isManager && <th className="py-3 px-4">Localização</th>}
                     {isManager && <th className="py-3 px-4">Ações</th>}
@@ -5297,6 +5300,9 @@ function App() {
                     const diaSemana = date ? date.toLocaleDateString('pt-BR', { weekday: 'long' }) : '-';
                     const diaMes = date ? String(date.getDate()).padStart(2, '0') : '-';
                     const workSummary = calculateWorkSummary(registro);
+                    const recordPointStatus = buildPointStatus(registro);
+                    const statusLabel = registro.statusPonto || recordPointStatus.statusPonto;
+                    const isPendingAdjustment = Boolean(registro.inconsistente || registro.necessitaAjuste || recordPointStatus.inconsistente);
                     return (
                       <tr key={registro.id} className="hover:bg-gray-50">
                         <td className="py-3 px-4">{registro.funcionarioNome || '-'}</td>
@@ -5308,6 +5314,18 @@ function App() {
                         <td className="py-3 px-4 font-semibold">{formatTime(registro.horaSaida)}</td>
                         <td className="py-3 px-4">{workSummary.irregularidade}</td>
                         <td className="py-3 px-4">{workSummary.workedLabel}</td>
+                        <td className="py-3 px-4">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
+                            isPendingAdjustment
+                              ? 'bg-amber-50 text-amber-700'
+                              : registro.horaSaida
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : 'bg-sky-50 text-sky-700'
+                          }`}>
+                            {isPendingAdjustment && <AlertTriangle className="h-3 w-3" />}
+                            {statusLabel}
+                          </span>
+                        </td>
                         <td className="py-3 px-4 max-w-xs">{registro.justificativa || '-'}</td>
                         {isManager && (
                           <td className="py-3 px-4">
