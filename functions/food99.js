@@ -1132,6 +1132,184 @@ const createFood99Functions = ({
       )) || null;
   };
 
+  const catalogProductSelectionKey = (catalogProduct = {}) => cleanText(
+    catalogProduct.itemId
+    || catalogProduct.productId
+    || catalogProduct.externalCode
+    || catalogProduct.name
+  );
+
+  const productBaseIdForCatalogProduct = (catalogProduct = {}) => safeId(
+    `food99_${catalogProduct.productId || catalogProduct.itemId || catalogProduct.externalCode || catalogProduct.name}`
+  ) || safeId(`food99_${Date.now()}`);
+
+  const findExistingInternalProductForCatalog = async (lojaId, catalogProduct) => {
+    const collection = db.collection('lojas').doc(lojaId).collection('produtos');
+    const checks = [
+      ['food99ProductId', catalogProduct.productId],
+      ['food99CatalogItemId', catalogProduct.itemId],
+      ['food99ExternalCode', catalogProduct.externalCode],
+      ['codigoPDV', catalogProduct.externalCode],
+      ['codigoPdv', catalogProduct.externalCode],
+      ['sku', catalogProduct.externalCode],
+    ].filter(([, value]) => cleanText(value));
+
+    for (const [field, value] of checks) {
+      const snap = await collection.where(field, '==', cleanText(value)).limit(1).get();
+      if (!snap.empty) return snap.docs[0];
+    }
+
+    const baseRef = collection.doc(productBaseIdForCatalogProduct(catalogProduct));
+    const baseSnap = await baseRef.get();
+    return baseSnap.exists ? baseSnap : null;
+  };
+
+  const nextAvailableProductRef = async (lojaId, baseId) => {
+    const collection = db.collection('lojas').doc(lojaId).collection('produtos');
+    for (let index = 0; index < 100; index += 1) {
+      const candidateId = index === 0 ? baseId : safeId(`${baseId}_${index + 1}`);
+      const candidateRef = collection.doc(candidateId);
+      const candidateSnap = await candidateRef.get();
+      if (!candidateSnap.exists) return candidateRef;
+    }
+    return collection.doc(safeId(`${baseId}_${Date.now()}`));
+  };
+
+  const importedProductDataFromCatalog = (catalogProduct, uid) => {
+    const status = asNumber(catalogProduct.status, 1);
+    const pdvCode = cleanText(catalogProduct.externalCode || catalogProduct.productId || catalogProduct.itemId);
+    return {
+      nome: catalogProduct.name,
+      categoria: 'Delivery',
+      subcategoria: catalogProduct.categoryName || '99Food',
+      preco: catalogProduct.price || 0,
+      preco99Food: catalogProduct.price || null,
+      custo: 0,
+      estoque: 0,
+      status: status === 2 ? 'Inativo' : 'Ativo',
+      descricao: catalogProduct.description || '',
+      tempoPreparo: '',
+      imageUrl: cleanText(catalogProduct.imageUrl),
+      origem: '99Food',
+      codigoPDV: pdvCode,
+      codigoPdv: pdvCode,
+      sku: pdvCode,
+      food99Imported: true,
+      food99ProductId: catalogProduct.productId,
+      food99CatalogItemId: catalogProduct.itemId,
+      food99ExternalCode: catalogProduct.externalCode,
+      food99CategoryId: catalogProduct.categoryId,
+      food99CategoryName: catalogProduct.categoryName,
+      createdByUid: uid,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+  };
+
+  const catalogMappingData = (internalProductId, catalogProduct, overrides = {}) => ({
+    productId: internalProductId,
+    food99ProductId: catalogProduct.productId,
+    catalogItemId: catalogProduct.itemId,
+    externalCode: catalogProduct.externalCode,
+    productExternalCode: catalogProduct.productExternalCode,
+    categoryId: catalogProduct.categoryId,
+    categoryName: catalogProduct.categoryName,
+    food99Price: catalogProduct.price || 0,
+    itemStatus: catalogProduct.status,
+    stockSyncEnabled: false,
+    catalogManaged: false,
+    importStatus: 'imported_waiting_review',
+    syncStatus: 'waiting_internal_stock_review',
+    importedFrom99Food: true,
+    importedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    ...overrides,
+  });
+
+  const importCatalogProductFrom99Food = async (lojaId, uid, catalogProduct) => {
+    const itemKey = catalogProductSelectionKey(catalogProduct);
+    const resultBase = {
+      itemKey,
+      itemId: catalogProduct.itemId,
+      productId99Food: catalogProduct.productId,
+      externalCode: catalogProduct.externalCode,
+      name: catalogProduct.name,
+      categoryName: catalogProduct.categoryName,
+    };
+
+    const existingMapping = await findExistingCatalogMapping(lojaId, catalogProduct);
+    if (existingMapping?.productId) {
+      await audit(lojaId, 'catalog.product_import_skipped', {
+        uid,
+        reason: 'already_mapped',
+        productId: existingMapping.productId,
+        food99ProductId: catalogProduct.productId,
+        catalogItemId: catalogProduct.itemId,
+      }, 'info');
+      return {
+        ...resultBase,
+        ok: true,
+        status: 'ignored',
+        alreadyMapped: true,
+        reason: 'already_mapped',
+        message: 'Produto ja vinculado/importado.',
+        productId: existingMapping.productId,
+        mapping: existingMapping,
+      };
+    }
+
+    const existingProduct = await findExistingInternalProductForCatalog(lojaId, catalogProduct);
+    if (existingProduct?.exists) {
+      const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(existingProduct.id);
+      await mappingRef.set(catalogMappingData(existingProduct.id, catalogProduct, {
+        importStatus: 'existing_product_linked',
+        syncStatus: 'waiting_internal_stock_review',
+      }), {merge: true});
+      await audit(lojaId, 'catalog.product_import_skipped', {
+        uid,
+        reason: 'internal_product_exists',
+        productId: existingProduct.id,
+        food99ProductId: catalogProduct.productId,
+        catalogItemId: catalogProduct.itemId,
+      }, 'info');
+      return {
+        ...resultBase,
+        ok: true,
+        status: 'ignored',
+        alreadyExists: true,
+        reason: 'internal_product_exists',
+        message: 'Produto interno ja existia; mapeamento preservado.',
+        productId: existingProduct.id,
+      };
+    }
+
+    const baseId = productBaseIdForCatalogProduct(catalogProduct);
+    const productRef = await nextAvailableProductRef(lojaId, baseId);
+    const internalProductId = productRef.id;
+    const productData = importedProductDataFromCatalog(catalogProduct, uid);
+    const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(internalProductId);
+
+    await db.runTransaction(async (transaction) => {
+      transaction.set(productRef, productData, {merge: false});
+      transaction.set(mappingRef, catalogMappingData(internalProductId, catalogProduct), {merge: true});
+    });
+
+    await audit(lojaId, 'catalog.product_imported', {
+      uid,
+      productId: internalProductId,
+      food99ProductId: catalogProduct.productId,
+      catalogItemId: catalogProduct.itemId,
+    });
+    return {
+      ...resultBase,
+      ok: true,
+      status: 'imported',
+      message: 'Produto importado.',
+      productId: internalProductId,
+      product: productData,
+    };
+  };
+
   const ensureCatalogCategory = (menuState, product) => {
     const categoryName = cleanText(product.subcategoria || product.categoria || 'Produtos') || 'Produtos';
     const existing = menuState.categories.find((category) => (
@@ -1616,78 +1794,91 @@ const createFood99Functions = ({
         (itemId && item.itemId === itemId) || (productId && item.productId === productId)
       ));
       if (!catalogProduct) throw new HttpsError('not-found', 'Produto nao encontrado no catalogo 99Food atual.');
+      return importCatalogProductFrom99Food(lojaId, uid, catalogProduct);
+    }),
 
-      const existingMapping = await findExistingCatalogMapping(lojaId, catalogProduct);
-      if (existingMapping?.productId) {
-        return {ok: true, alreadyMapped: true, productId: existingMapping.productId, mapping: existingMapping};
+    food99ImportCatalogProducts: onCall({timeoutSeconds: 300, memory: '512MiB'}, async (request) => {
+      const {uid, lojaId} = await requireCallableStore(request);
+      const requestedItems = Array.isArray(request.data?.items) ? request.data.items : [];
+      const requestedKeys = new Set(requestedItems.map((item) => catalogProductSelectionKey(item)).filter(Boolean));
+      if (!requestedKeys.size) {
+        throw new HttpsError('invalid-argument', 'Selecione pelo menos um item do catalogo 99Food para importar.');
       }
 
-      const productCollection = db.collection('lojas').doc(lojaId).collection('produtos');
-      const baseId = safeId(`food99_${catalogProduct.productId || catalogProduct.itemId || catalogProduct.name}`);
-      let internalProductId = baseId;
-      let productRef = productCollection.doc(internalProductId);
-      let productSnap = await productRef.get();
-      if (productSnap.exists) {
-        internalProductId = safeId(`${baseId}_${Date.now()}`);
-        productRef = productCollection.doc(internalProductId);
-        productSnap = await productRef.get();
-      }
-
-      const status = asNumber(catalogProduct.status, 1);
-      const productData = {
-        nome: catalogProduct.name,
-        categoria: 'Delivery',
-        subcategoria: catalogProduct.categoryName || '99Food',
-        preco: catalogProduct.price || 0,
-        preco99Food: catalogProduct.price || null,
-        custo: 0,
-        estoque: 0,
-        status: status === 2 ? 'Inativo' : 'Ativo',
-        descricao: catalogProduct.description || '',
-        tempoPreparo: '',
-        imageUrl: '',
-        origem: '99Food',
-        food99Imported: true,
-        food99ProductId: catalogProduct.productId,
-        food99CatalogItemId: catalogProduct.itemId,
-        food99ExternalCode: catalogProduct.externalCode,
-        food99CategoryId: catalogProduct.categoryId,
-        food99CategoryName: catalogProduct.categoryName,
-        createdByUid: uid,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-
-      const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(internalProductId);
-      await db.runTransaction(async (transaction) => {
-        transaction.set(productRef, productData, {merge: false});
-        transaction.set(mappingRef, {
-          productId: internalProductId,
-          food99ProductId: catalogProduct.productId,
-          catalogItemId: catalogProduct.itemId,
-          externalCode: catalogProduct.externalCode,
-          productExternalCode: catalogProduct.productExternalCode,
-          categoryId: catalogProduct.categoryId,
-          categoryName: catalogProduct.categoryName,
-          food99Price: catalogProduct.price || 0,
-          itemStatus: catalogProduct.status,
-          stockSyncEnabled: false,
-          catalogManaged: false,
-          importStatus: 'imported_waiting_review',
-          syncStatus: 'waiting_internal_stock_review',
-          importedFrom99Food: true,
-          importedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        }, {merge: true});
+      const config = await loadConfig(lojaId);
+      const {products: catalogProducts} = await loadCatalogProductsFrom99Food(lojaId, config);
+      const catalogByKey = new Map();
+      catalogProducts.forEach((item) => {
+        [
+          item.itemId,
+          item.productId,
+          item.externalCode,
+          catalogProductSelectionKey(item),
+        ].map(cleanText).filter(Boolean).forEach((key) => catalogByKey.set(key, item));
       });
 
-      await audit(lojaId, 'catalog.product_imported', {
+      const results = [];
+      for (const requested of requestedItems) {
+        const requestedKey = catalogProductSelectionKey(requested);
+        const catalogProduct = catalogByKey.get(cleanText(requested.itemId))
+          || catalogByKey.get(cleanText(requested.productId))
+          || catalogByKey.get(cleanText(requested.externalCode))
+          || catalogByKey.get(requestedKey);
+        if (!catalogProduct) {
+          const failedResult = {
+            itemKey: requestedKey,
+            itemId: cleanText(requested.itemId),
+            productId99Food: cleanText(requested.productId),
+            externalCode: cleanText(requested.externalCode),
+            name: cleanText(requested.name) || requestedKey,
+            ok: false,
+            status: 'failed',
+            error: 'Produto nao encontrado no catalogo 99Food atual.',
+          };
+          results.push(failedResult);
+          await audit(lojaId, 'catalog.product_import_failed', {
+            uid,
+            requested,
+            error: failedResult.error,
+          }, 'warning');
+          continue;
+        }
+
+        try {
+          results.push(await importCatalogProductFrom99Food(lojaId, uid, catalogProduct));
+        } catch (error) {
+          const failedResult = {
+            itemKey: requestedKey,
+            itemId: catalogProduct.itemId,
+            productId99Food: catalogProduct.productId,
+            externalCode: catalogProduct.externalCode,
+            name: catalogProduct.name,
+            categoryName: catalogProduct.categoryName,
+            ok: false,
+            status: 'failed',
+            error: error.message,
+          };
+          results.push(failedResult);
+          await audit(lojaId, 'catalog.product_import_failed', {
+            uid,
+            food99ProductId: catalogProduct.productId,
+            catalogItemId: catalogProduct.itemId,
+            error: error.message,
+          }, 'warning');
+        }
+      }
+
+      const imported = results.filter((result) => result.status === 'imported').length;
+      const ignored = results.filter((result) => result.status === 'ignored').length;
+      const failed = results.filter((result) => result.status === 'failed').length;
+      await audit(lojaId, 'catalog.products_imported_batch', {
         uid,
-        productId: internalProductId,
-        food99ProductId: catalogProduct.productId,
-        catalogItemId: catalogProduct.itemId,
-      });
-      return {ok: true, productId: internalProductId, product: productData};
+        requested: requestedItems.length,
+        imported,
+        ignored,
+        failed,
+      }, failed ? 'warning' : 'info');
+      return {requested: requestedItems.length, imported, ignored, failed, results};
     }),
 
     food99PublishProducts: onCall({timeoutSeconds: 300, memory: '512MiB'}, async (request) => {

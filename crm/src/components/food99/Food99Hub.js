@@ -60,6 +60,40 @@ const toDate = (value) => {
 
 const dateTime = (value) => toDate(value)?.toLocaleString('pt-BR') || '-';
 
+const catalogSelectionKey = (item = {}) => String(
+  item.itemId
+  || item.productId
+  || item.externalCode
+  || item.name
+  || ''
+).trim();
+
+const catalogStatus = (item = {}) => {
+  const linked = item.linked || {};
+  if (linked.syncStatus === 'error' || linked.publishStatus === 'error' || linked.syncError || linked.publishError) {
+    return {id: 'sync_error', label: 'Erro de sincronizacao'};
+  }
+  if (!item.linked) return {id: 'not_imported', label: 'Nao importado'};
+  if (linked.importedFrom99Food && (
+    linked.importStatus === 'imported_waiting_review'
+    || linked.stockSyncEnabled === false
+    || linked.syncStatus === 'waiting_internal_stock_review'
+  )) {
+    return {id: 'imported_waiting_link', label: 'Importado aguardando vinculo'};
+  }
+  return {id: 'linked', label: `Vinculado${item.linkedProductName ? ` a ${item.linkedProductName}` : ''}`};
+};
+
+const catalogStatusClass = (statusId, dark) => {
+  const map = {
+    linked: dark ? 'bg-emerald-400/15 text-emerald-300' : 'bg-emerald-50 text-emerald-700',
+    not_imported: dark ? 'bg-amber-400/15 text-amber-300' : 'bg-amber-50 text-amber-700',
+    imported_waiting_link: dark ? 'bg-sky-400/15 text-sky-300' : 'bg-sky-50 text-sky-700',
+    sync_error: dark ? 'bg-rose-400/15 text-rose-300' : 'bg-rose-50 text-rose-700',
+  };
+  return map[statusId] || map.not_imported;
+};
+
 const statusClass = (status, dark) => {
   const map = {
     Pendente: dark ? 'bg-amber-400/15 text-amber-300' : 'bg-amber-50 text-amber-700',
@@ -164,6 +198,8 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
   const [mapping, setMapping] = useState({productId: '', food99ProductId: '', externalCode: '', catalogItemId: ''});
   const [catalogProducts, setCatalogProducts] = useState([]);
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [selectedCatalogKeys, setSelectedCatalogKeys] = useState([]);
+  const [bulkImportResult, setBulkImportResult] = useState(null);
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [cancellation, setCancellation] = useState({order: null, reasons: [], reason: ''});
   const [validation, setValidation] = useState({order: null, action: '', code: ''});
@@ -205,12 +241,19 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     setEditingPlatformSecrets({clientId: false, clientSecret: false, webhookSecret: false});
     setMerchants([]);
     setSelectedProductIds([]);
+    setSelectedCatalogKeys([]);
+    setBulkImportResult(null);
     loadConfiguration();
   }, [loadConfiguration]);
 
   useEffect(() => {
     window.localStorage.setItem('99Food-hub-theme', dark ? 'dark' : 'light');
   }, [dark]);
+
+  useEffect(() => {
+    const availableKeys = new Set(catalogProducts.map(catalogSelectionKey).filter(Boolean));
+    setSelectedCatalogKeys((current) => current.filter((key) => availableKeys.has(key)));
+  }, [catalogProducts]);
 
   const orders = useMemo(() => [...(data.food99Orders || [])].sort(
     (a, b) => (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0)
@@ -255,9 +298,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     return {...item, productName: product?.nome || item.productId, quantity: Number(product?.estoque) || 0, product};
   }), [productMappings, products]);
   const mappingByProductId = useMemo(() => new Map(productMappings.map((item) => [item.productId, item])), [productMappings]);
-  const catalogRows = useMemo(() => {
-    const search = catalogSearch.trim().toLowerCase();
-    return catalogProducts.map((catalog) => {
+  const catalogRowsAll = useMemo(() => catalogProducts.map((catalog) => {
       const linked = productMappings.find((mappingItem) => (
         mappingItem.food99ProductId === catalog.productId
         || mappingItem.catalogItemId === catalog.itemId
@@ -266,11 +307,15 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
       const product = linked ? products.find((candidate) => candidate.id === linked.productId) : null;
       return {
         ...catalog,
+        selectionKey: catalogSelectionKey(catalog),
         linked,
         product,
         linkedProductName: product?.nome || linked?.productId || '',
       };
-    }).filter((row) => {
+    }), [catalogProducts, productMappings, products]);
+  const catalogRows = useMemo(() => {
+    const search = catalogSearch.trim().toLowerCase();
+    return catalogRowsAll.filter((row) => {
       if (!search) return true;
       return [
         row.name,
@@ -282,7 +327,16 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
         row.linkedProductName,
       ].some((value) => String(value || '').toLowerCase().includes(search));
     });
-  }, [catalogProducts, catalogSearch, productMappings, products]);
+  }, [catalogRowsAll, catalogSearch]);
+  const selectedCatalogKeySet = useMemo(() => new Set(selectedCatalogKeys), [selectedCatalogKeys]);
+  const catalogPageRows = catalogRows;
+  const catalogPageKeys = useMemo(() => catalogPageRows.map((item) => item.selectionKey).filter(Boolean), [catalogPageRows]);
+  const catalogFilteredKeys = useMemo(() => catalogRows.map((item) => item.selectionKey).filter(Boolean), [catalogRows]);
+  const selectedCatalogRows = useMemo(() => catalogRowsAll.filter((item) => selectedCatalogKeySet.has(item.selectionKey)), [catalogRowsAll, selectedCatalogKeySet]);
+  const selectedVisibleCatalogCount = useMemo(() => catalogRows.filter((item) => selectedCatalogKeySet.has(item.selectionKey)).length, [catalogRows, selectedCatalogKeySet]);
+  const allPageSelected = catalogPageKeys.length > 0 && catalogPageKeys.every((key) => selectedCatalogKeySet.has(key));
+  const allFilteredSelected = catalogFilteredKeys.length > 0 && catalogFilteredKeys.every((key) => selectedCatalogKeySet.has(key));
+  const selectionLabel = `${selectedCatalogKeys.length} ${selectedCatalogKeys.length === 1 ? 'produto selecionado' : 'produtos selecionados'}`;
   const syncedProducts = useMemo(() => mappedProducts.filter((item) => (
     item.catalogManaged || item.syncStatus === 'synced' || item.lastSyncAt || item.importedFrom99Food
   )), [mappedProducts]);
@@ -445,6 +499,31 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     ));
   };
 
+  const setCatalogSelection = (keys, selected) => {
+    const cleanKeys = keys.map(String).map((key) => key.trim()).filter(Boolean);
+    setSelectedCatalogKeys((current) => {
+      const next = new Set(current);
+      cleanKeys.forEach((key) => {
+        if (selected) next.add(key);
+        else next.delete(key);
+      });
+      return [...next];
+    });
+  };
+
+  const toggleCatalogSelection = (key) => {
+    if (!key) return;
+    setSelectedCatalogKeys((current) => (
+      current.includes(key)
+        ? current.filter((itemKey) => itemKey !== key)
+        : [...current, key]
+    ));
+  };
+
+  const clearCatalogSelection = () => {
+    setSelectedCatalogKeys([]);
+  };
+
   const publishProducts = async (productIds) => {
     setBusy('catalog-publish');
     setMessage(null);
@@ -496,6 +575,36 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     const result = await invoke('food99LoadCatalogProducts');
     setCatalogProducts(result.products || []);
   }, 'Item 99Food trazido para a aplicacao. Revise estoque/preco antes de ativar a sincronizacao.');
+
+  const importSelectedCatalogProducts = async () => {
+    if (!selectedCatalogRows.length) return;
+    setBusy('catalog-import-bulk');
+    setMessage(null);
+    setBulkImportResult(null);
+    try {
+      const result = await invoke('food99ImportCatalogProducts', {
+        items: selectedCatalogRows.map((item) => ({
+          itemId: item.itemId,
+          productId: item.productId,
+          externalCode: item.externalCode,
+          name: item.name,
+        })),
+      });
+      setBulkImportResult(result);
+      const refreshed = await invoke('food99LoadCatalogProducts');
+      setCatalogProducts(refreshed.products || []);
+      if (!result.failed) clearCatalogSelection();
+      const summaryText = `${result.imported || 0} importado(s), ${result.ignored || 0} ignorado(s), ${result.failed || 0} falhou(ram).`;
+      setMessage({
+        type: result.failed ? 'error' : 'success',
+        text: summaryText,
+      });
+    } catch (error) {
+      setMessage({type: 'error', text: error.message});
+    } finally {
+      setBusy('');
+    }
+  };
 
   if (!effectiveStoreId) {
     return (
@@ -780,15 +889,74 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                   <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${dark ? 'text-slate-500' : 'text-gray-400'}`} />
                   <input className={`${inputClass(dark)} w-72 pl-9`} placeholder="Buscar item, categoria, codigo..." value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} />
                 </div>
+                <Button dark={dark} disabled={!catalogPageKeys.length} onClick={() => setCatalogSelection(catalogPageKeys, !allPageSelected)}>
+                  {allPageSelected ? 'Desmarcar pagina' : 'Selecionar pagina'}
+                </Button>
+                <Button dark={dark} disabled={!catalogFilteredKeys.length} onClick={() => setCatalogSelection(catalogFilteredKeys, !allFilteredSelected)}>
+                  {allFilteredSelected ? 'Desmarcar filtrados' : 'Selecionar filtrados'}
+                </Button>
                 <Button dark={dark} disabled={busy === 'catalog-load'} onClick={loadCatalogProducts}>
                   <RefreshCw className={`h-4 w-4 ${busy === 'catalog-load' ? 'animate-spin' : ''}`} />Atualizar catalogo 99Food
                 </Button>
               </div>
             </div>
+            {selectedCatalogKeys.length > 0 && (
+              <div className={`flex flex-col gap-3 border-b px-4 py-3 lg:flex-row lg:items-center lg:justify-between ${dark ? 'border-slate-800 bg-slate-950/60' : 'border-gray-100 bg-pink-50/50'}`}>
+                <div>
+                  <p className={`text-sm font-semibold ${dark ? 'text-slate-100' : 'text-gray-900'}`}>{selectionLabel}</p>
+                  <p className={`mt-1 text-xs ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{selectedVisibleCatalogCount} item(ns) visiveis nesta busca.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button primary disabled={busy !== ''} onClick={importSelectedCatalogProducts}>
+                    <Package className="h-4 w-4" />Trazer selecionados para aplicacao
+                  </Button>
+                  <Button dark={dark} disabled={busy !== ''} onClick={clearCatalogSelection}>
+                    <X className="h-4 w-4" />Limpar selecao
+                  </Button>
+                </div>
+              </div>
+            )}
+            {bulkImportResult && (
+              <div className={`border-b px-4 py-3 ${dark ? 'border-slate-800 bg-slate-950/40' : 'border-gray-100 bg-white'}`}>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${dark ? 'bg-emerald-400/15 text-emerald-300' : 'bg-emerald-50 text-emerald-700'}`}>{bulkImportResult.imported || 0} importado(s)</span>
+                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${dark ? 'bg-amber-400/15 text-amber-300' : 'bg-amber-50 text-amber-700'}`}>{bulkImportResult.ignored || 0} ignorado(s)</span>
+                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${dark ? 'bg-rose-400/15 text-rose-300' : 'bg-rose-50 text-rose-700'}`}>{bulkImportResult.failed || 0} falhou(ram)</span>
+                </div>
+                <div className={`mt-3 max-h-56 overflow-auto rounded-lg border ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+                  <table className="min-w-full text-xs">
+                    <tbody>
+                      {(bulkImportResult.results || []).map((result, index) => (
+                        <tr key={`${result.itemKey || result.itemId || result.name}-${result.status}-${index}`} className={`border-t first:border-t-0 ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+                          <td className="px-3 py-2 font-medium">{result.name || result.itemId || result.productId99Food}</td>
+                          <td className={`px-3 py-2 ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{result.externalCode || result.itemId || '-'}</td>
+                          <td className="px-3 py-2">
+                            <span className={`rounded-full px-2 py-1 ${result.status === 'imported' ? (dark ? 'bg-emerald-400/15 text-emerald-300' : 'bg-emerald-50 text-emerald-700') : result.status === 'failed' ? (dark ? 'bg-rose-400/15 text-rose-300' : 'bg-rose-50 text-rose-700') : (dark ? 'bg-amber-400/15 text-amber-300' : 'bg-amber-50 text-amber-700')}`}>
+                              {result.status === 'imported' ? 'Importado' : result.status === 'failed' ? 'Falhou' : 'Ignorado'}
+                            </span>
+                          </td>
+                          <td className={`px-3 py-2 ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{result.error || result.message || result.productId || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className={dark ? 'bg-slate-950 text-slate-400' : 'bg-gray-50 text-gray-500'}>
                   <tr>
+                    <th className="w-12 px-4 py-3 text-left font-medium">
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        disabled={!catalogPageKeys.length}
+                        onChange={() => setCatalogSelection(catalogPageKeys, !allPageSelected)}
+                        className="h-4 w-4 accent-pink-600"
+                        aria-label="Selecionar itens da pagina"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left font-medium">Item 99Food</th>
                     <th className="px-4 py-3 text-left font-medium">Categoria</th>
                     <th className="px-4 py-3 text-left font-medium">Preco</th>
@@ -798,8 +966,19 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                   </tr>
                 </thead>
                 <tbody>
-                  {catalogRows.map((item) => (
+                  {catalogPageRows.map((item) => {
+                    const status = catalogStatus(item);
+                    return (
                     <tr key={`${item.itemId}-${item.productId}`} className={`border-t ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedCatalogKeySet.has(item.selectionKey)}
+                          onChange={() => toggleCatalogSelection(item.selectionKey)}
+                          className="h-4 w-4 accent-pink-600"
+                          aria-label={`Selecionar ${item.name}`}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <p className="font-medium">{item.name}</p>
                         <p className={`text-xs ${dark ? 'text-slate-500' : 'text-gray-400'}`}>{item.productId || item.itemId}</p>
@@ -808,11 +987,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                       <td className="px-4 py-3 font-medium">{money(item.price)}</td>
                       <td className={`px-4 py-3 ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{item.externalCode || '-'}</td>
                       <td className="px-4 py-3">
-                        {item.linked ? (
-                          <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700">Vinculado a {item.linkedProductName}</span>
-                        ) : (
-                          <span className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700">Nao importado</span>
-                        )}
+                        <span className={`rounded-full px-2 py-1 text-xs ${catalogStatusClass(status.id, dark)}`}>{status.label}</span>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-2">
@@ -827,8 +1002,9 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                         </div>
                       </td>
                     </tr>
-                  ))}
-                  {!catalogRows.length && <tr><td colSpan="6" className={`px-4 py-8 text-center ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Nenhum item 99Food carregado ou encontrado na busca.</td></tr>}
+                    );
+                  })}
+                  {!catalogRows.length && <tr><td colSpan="7" className={`px-4 py-8 text-center ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Nenhum item 99Food carregado ou encontrado na busca.</td></tr>}
                 </tbody>
               </table>
             </div>
