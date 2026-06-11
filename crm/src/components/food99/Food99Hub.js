@@ -561,7 +561,16 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     event.preventDefault();
     if (!mapping.productId || !mapping.food99ProductId) return;
     perform('mapping-save', async () => {
-      await invoke('food99SaveProductMapping', {...mapping, stockSyncEnabled: true});
+      const selectedCatalogProduct = catalogProducts.find((product) => (
+        product.itemId === mapping.catalogItemId
+        || product.productId === mapping.food99ProductId
+        || (mapping.externalCode && product.externalCode === mapping.externalCode)
+      ));
+      await invoke('food99SaveProductMapping', {
+        ...mapping,
+        ...(selectedCatalogProduct ? {catalogProduct: catalogProductPayload(selectedCatalogProduct)} : {}),
+        stockSyncEnabled: true,
+      });
       setMapping({productId: '', food99ProductId: '', externalCode: '', catalogItemId: ''});
     }, 'Produto mapeado e sincronizacao de estoque iniciada.');
   };

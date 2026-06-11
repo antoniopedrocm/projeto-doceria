@@ -33,6 +33,12 @@ const LIFECYCLE_EXTERNAL_STATUSES = new Set([...ACTIVE_EXTERNAL_STATUSES, ...TER
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 const cleanText = (value) => String(value || '').trim();
+const normalizeLookupText = (value) => cleanText(value)
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
 const onlyDigits = (value) => String(value || '').replace(/\D/g, '');
 const asNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -1211,6 +1217,17 @@ const createFood99Functions = ({
       )) || null;
   };
 
+  const findConflictingCatalogMappingRefs = async (lojaId, catalogProduct, keepProductId) => {
+    const snap = await db.collection('lojas').doc(lojaId).collection('food99ProductMappings').get();
+    return snap.docs.filter((mappingDoc) => {
+      if (mappingDoc.id === keepProductId) return false;
+      const mapping = mappingDoc.data() || {};
+      return cleanText(mapping.food99ProductId) === cleanText(catalogProduct.productId)
+        || cleanText(mapping.catalogItemId) === cleanText(catalogProduct.itemId)
+        || (catalogProduct.externalCode && cleanText(mapping.externalCode) === cleanText(catalogProduct.externalCode));
+    }).map((mappingDoc) => mappingDoc.ref);
+  };
+
   const catalogProductSelectionKey = (catalogProduct = {}) => cleanText(
     catalogProduct.itemId
     || catalogProduct.productId
@@ -1243,8 +1260,30 @@ const createFood99Functions = ({
     `food99_${catalogProduct.productId || catalogProduct.itemId || catalogProduct.externalCode || catalogProduct.name}`
   ) || safeId(`food99_${Date.now()}`);
 
+  const productCategoryKeys = (product = {}) => [
+    product.subcategoria,
+    product.categoria,
+    product.categoryName,
+  ].map(normalizeLookupText).filter(Boolean);
+
+  const chooseBestExistingProductMatch = (productDocs) => {
+    const ranked = [...productDocs].sort((a, b) => {
+      const productA = a.data() || {};
+      const productB = b.data() || {};
+      const importedA = productA.food99Imported || productA.origem === '99Food' ? 1 : 0;
+      const importedB = productB.food99Imported || productB.origem === '99Food' ? 1 : 0;
+      if (importedA !== importedB) return importedA - importedB;
+      const inactiveA = cleanText(productA.status).toLowerCase() === 'inativo' ? 1 : 0;
+      const inactiveB = cleanText(productB.status).toLowerCase() === 'inativo' ? 1 : 0;
+      if (inactiveA !== inactiveB) return inactiveA - inactiveB;
+      return asNumber(productB.estoque) - asNumber(productA.estoque);
+    });
+    return ranked[0] || null;
+  };
+
   const findExistingInternalProductForCatalog = async (lojaId, catalogProduct) => {
     const collection = db.collection('lojas').doc(lojaId).collection('produtos');
+    const matchedByReference = new Map();
     const checks = [
       ['food99ProductId', catalogProduct.productId],
       ['food99CatalogItemId', catalogProduct.itemId],
@@ -1256,12 +1295,33 @@ const createFood99Functions = ({
 
     for (const [field, value] of checks) {
       const snap = await collection.where(field, '==', cleanText(value)).limit(1).get();
-      if (!snap.empty) return snap.docs[0];
+      snap.docs.forEach((productDoc) => matchedByReference.set(productDoc.id, productDoc));
     }
 
     const baseRef = collection.doc(productBaseIdForCatalogProduct(catalogProduct));
     const baseSnap = await baseRef.get();
-    return baseSnap.exists ? baseSnap : null;
+    if (baseSnap.exists) matchedByReference.set(baseSnap.id, baseSnap);
+
+    const catalogNameKey = normalizeLookupText(catalogProduct.name);
+    if (!catalogNameKey) return chooseBestExistingProductMatch([...matchedByReference.values()]);
+
+    const catalogCategoryKey = normalizeLookupText(catalogProduct.categoryName);
+    const productsSnap = await collection.get();
+    const nameMatches = productsSnap.docs.filter((productDoc) => (
+      normalizeLookupText(productDoc.get('nome')) === catalogNameKey
+    ));
+    if (!nameMatches.length) return chooseBestExistingProductMatch([...matchedByReference.values()]);
+
+    const categoryMatches = catalogCategoryKey
+      ? nameMatches.filter((productDoc) => productCategoryKeys(productDoc.data()).includes(catalogCategoryKey))
+      : [];
+    if (categoryMatches.length) return chooseBestExistingProductMatch(categoryMatches);
+    if (nameMatches.length === 1) return nameMatches[0];
+    const nonImportedNameMatches = nameMatches.filter((productDoc) => {
+      const data = productDoc.data() || {};
+      return !data.food99Imported && data.origem !== '99Food';
+    });
+    return chooseBestExistingProductMatch(nonImportedNameMatches.length ? nonImportedNameMatches : nameMatches);
   };
 
   const nextAvailableProductRef = async (lojaId, baseId) => {
@@ -1326,6 +1386,21 @@ const createFood99Functions = ({
     ...overrides,
   });
 
+  const food99ProductLinkPatch = (catalogProduct) => {
+    const pdvCode = cleanText(catalogProduct.externalCode || catalogProduct.productId || catalogProduct.itemId);
+    return {
+      preco99Food: catalogProduct.price || null,
+      codigoPDV99Food: pdvCode,
+      food99ProductId: catalogProduct.productId,
+      food99CatalogItemId: catalogProduct.itemId,
+      food99ExternalCode: catalogProduct.externalCode,
+      food99CategoryId: catalogProduct.categoryId,
+      food99CategoryName: catalogProduct.categoryName,
+      food99LinkedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+  };
+
   const importCatalogProductFrom99Food = async (lojaId, uid, catalogProduct) => {
     const itemKey = catalogProductSelectionKey(catalogProduct);
     const resultBase = {
@@ -1337,8 +1412,9 @@ const createFood99Functions = ({
       categoryName: catalogProduct.categoryName,
     };
 
+    const existingProduct = await findExistingInternalProductForCatalog(lojaId, catalogProduct);
     const existingMapping = await findExistingCatalogMapping(lojaId, catalogProduct);
-    if (existingMapping?.productId) {
+    if (existingMapping?.productId && (!existingProduct?.exists || existingProduct.id === existingMapping.productId)) {
       await audit(lojaId, 'catalog.product_import_skipped', {
         uid,
         reason: 'already_mapped',
@@ -1358,17 +1434,22 @@ const createFood99Functions = ({
       };
     }
 
-    const existingProduct = await findExistingInternalProductForCatalog(lojaId, catalogProduct);
     if (existingProduct?.exists) {
       const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(existingProduct.id);
-      await mappingRef.set(catalogMappingData(existingProduct.id, catalogProduct, {
-        importStatus: 'existing_product_linked',
-        syncStatus: 'waiting_internal_stock_review',
-      }), {merge: true});
+      const conflictRefs = await findConflictingCatalogMappingRefs(lojaId, catalogProduct, existingProduct.id);
+      await db.runTransaction(async (transaction) => {
+        transaction.set(existingProduct.ref, food99ProductLinkPatch(catalogProduct), {merge: true});
+        transaction.set(mappingRef, catalogMappingData(existingProduct.id, catalogProduct, {
+          importStatus: 'existing_product_linked',
+          syncStatus: 'waiting_internal_stock_review',
+        }), {merge: true});
+        conflictRefs.forEach((conflictRef) => transaction.delete(conflictRef));
+      });
       await audit(lojaId, 'catalog.product_import_skipped', {
         uid,
         reason: 'internal_product_exists',
         productId: existingProduct.id,
+        replacedMappingProductId: existingMapping?.productId || '',
         food99ProductId: catalogProduct.productId,
         catalogItemId: catalogProduct.itemId,
       }, 'info');
@@ -2069,16 +2150,39 @@ const createFood99Functions = ({
       if (!productId || !food99ProductId) {
         throw new HttpsError('invalid-argument', 'Produto interno e ID do produto 99Food sao obrigatorios.');
       }
+      const catalogProduct = catalogProductFromClient(request.data || {}) || {
+        itemId: cleanText(request.data?.catalogItemId) || food99ProductId,
+        productId: food99ProductId,
+        externalCode: cleanText(request.data?.externalCode) || food99ProductId,
+        productExternalCode: '',
+        categoryId: '',
+        categoryName: '',
+        itemStatus: null,
+        price: null,
+      };
+      const conflictRefs = await findConflictingCatalogMappingRefs(lojaId, catalogProduct, productId);
+      const productRef = db.collection('lojas').doc(lojaId).collection('produtos').doc(productId);
       const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(productId);
-      await mappingRef.set({
-        productId,
-        food99ProductId,
-        externalCode: cleanText(request.data?.externalCode),
-        catalogItemId: cleanText(request.data?.catalogItemId),
-        stockSyncEnabled: request.data?.stockSyncEnabled !== false,
-        catalogManaged: false,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, {merge: true});
+      await db.runTransaction(async (transaction) => {
+        transaction.set(productRef, food99ProductLinkPatch(catalogProduct), {merge: true});
+        transaction.set(mappingRef, {
+          productId,
+          food99ProductId,
+          externalCode: cleanText(request.data?.externalCode),
+          catalogItemId: cleanText(request.data?.catalogItemId),
+          productExternalCode: cleanText(catalogProduct.productExternalCode),
+          categoryId: cleanText(catalogProduct.categoryId),
+          categoryName: cleanText(catalogProduct.categoryName),
+          food99Price: catalogProduct.price || null,
+          itemStatus: catalogProduct.status ?? null,
+          stockSyncEnabled: request.data?.stockSyncEnabled !== false,
+          catalogManaged: false,
+          importStatus: 'manual_linked',
+          syncStatus: 'mapping_saved',
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        conflictRefs.forEach((conflictRef) => transaction.delete(conflictRef));
+      });
       try {
         await syncProductAvailability(lojaId, productId, 'mapping_saved');
       } catch (error) {
