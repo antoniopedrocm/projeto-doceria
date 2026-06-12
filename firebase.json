@@ -10,6 +10,7 @@
     "source": "functions"
   },
   "hosting": {
+    "target": "prod",
     "public": "crm/build",
     "cleanUrls": true,
     "ignore": [
