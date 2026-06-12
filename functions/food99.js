@@ -1491,6 +1491,62 @@ const createFood99Functions = ({
     };
   };
 
+  const linkCatalogProductToExistingInternalProduct = async (lojaId, uid, catalogProduct) => {
+    const itemKey = catalogProductSelectionKey(catalogProduct);
+    const resultBase = {
+      itemKey,
+      itemId: catalogProduct.itemId,
+      productId99Food: catalogProduct.productId,
+      externalCode: catalogProduct.externalCode,
+      name: catalogProduct.name,
+      categoryName: catalogProduct.categoryName,
+    };
+    const existingProduct = await findExistingInternalProductForCatalog(lojaId, catalogProduct);
+    if (!existingProduct?.exists) {
+      await audit(lojaId, 'catalog.product_link_failed', {
+        uid,
+        reason: 'internal_product_not_found',
+        food99ProductId: catalogProduct.productId,
+        catalogItemId: catalogProduct.itemId,
+        name: catalogProduct.name,
+      }, 'warning');
+      return {
+        ...resultBase,
+        ok: false,
+        status: 'failed',
+        reason: 'internal_product_not_found',
+        error: 'Produto interno correspondente nao encontrado.',
+      };
+    }
+
+    const existingMapping = await findExistingCatalogMapping(lojaId, catalogProduct);
+    const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(existingProduct.id);
+    const conflictRefs = await findConflictingCatalogMappingRefs(lojaId, catalogProduct, existingProduct.id);
+    await db.runTransaction(async (transaction) => {
+      transaction.set(existingProduct.ref, food99ProductLinkPatch(catalogProduct), {merge: true});
+      transaction.set(mappingRef, catalogMappingData(existingProduct.id, catalogProduct, {
+        importStatus: 'manual_batch_linked',
+        syncStatus: 'waiting_internal_stock_review',
+      }), {merge: true});
+      conflictRefs.forEach((conflictRef) => transaction.delete(conflictRef));
+    });
+    await audit(lojaId, 'catalog.product_linked_batch', {
+      uid,
+      productId: existingProduct.id,
+      replacedMappingProductId: existingMapping?.productId || '',
+      food99ProductId: catalogProduct.productId,
+      catalogItemId: catalogProduct.itemId,
+    });
+    return {
+      ...resultBase,
+      ok: true,
+      status: 'linked',
+      productId: existingProduct.id,
+      replacedMappingProductId: existingMapping?.productId || '',
+      message: 'Produto vinculado ao item 99Food.',
+    };
+  };
+
   const ensureCatalogCategory = (menuState, product) => {
     const categoryName = cleanText(product.subcategoria || product.categoria || 'Produtos') || 'Produtos';
     const existing = menuState.categories.find((category) => (
@@ -2104,6 +2160,105 @@ const createFood99Functions = ({
         failed,
       }, failed ? 'warning' : 'info');
       return {requested: requestedItems.length, imported, ignored, failed, results};
+    }),
+
+    food99LinkCatalogProducts: onCall({timeoutSeconds: 300, memory: '512MiB'}, async (request) => {
+      const {uid, lojaId} = await requireCallableStore(request);
+      const requestedItems = Array.isArray(request.data?.items) ? request.data.items : [];
+      const requestedKeys = new Set(requestedItems.map((item) => catalogProductSelectionKey(item)).filter(Boolean));
+      if (!requestedKeys.size) {
+        throw new HttpsError('invalid-argument', 'Selecione pelo menos um item do catalogo 99Food para vincular.');
+      }
+
+      const config = await loadConfig(lojaId);
+      let catalogProducts = [];
+      let allowClientFallback = false;
+      try {
+        const catalogData = await loadCatalogProductsFrom99Food(lojaId, config);
+        catalogProducts = catalogData.products;
+      } catch (error) {
+        if (!isCatalogRateLimitError(error)) throw error;
+        allowClientFallback = true;
+        catalogProducts = requestedItems.map(catalogProductFromClient).filter(Boolean);
+        await audit(lojaId, 'catalog.products_link_used_client_snapshot', {
+          uid,
+          requested: requestedItems.length,
+          availableSnapshots: catalogProducts.length,
+          error: error.message,
+        }, 'warning');
+      }
+
+      const catalogByKey = new Map();
+      catalogProducts.forEach((item) => {
+        [
+          item.itemId,
+          item.productId,
+          item.externalCode,
+          catalogProductSelectionKey(item),
+        ].map(cleanText).filter(Boolean).forEach((key) => catalogByKey.set(key, item));
+      });
+
+      const results = [];
+      for (const requested of requestedItems) {
+        const requestedKey = catalogProductSelectionKey(requested);
+        const catalogProduct = catalogByKey.get(cleanText(requested.itemId))
+          || catalogByKey.get(cleanText(requested.productId))
+          || catalogByKey.get(cleanText(requested.externalCode))
+          || catalogByKey.get(requestedKey)
+          || (allowClientFallback ? catalogProductFromClient(requested) : null);
+        if (!catalogProduct) {
+          const failedResult = {
+            itemKey: requestedKey,
+            itemId: cleanText(requested.itemId),
+            productId99Food: cleanText(requested.productId),
+            externalCode: cleanText(requested.externalCode),
+            name: cleanText(requested.name) || requestedKey,
+            ok: false,
+            status: 'failed',
+            error: 'Produto nao encontrado no catalogo 99Food atual.',
+          };
+          results.push(failedResult);
+          await audit(lojaId, 'catalog.product_link_failed', {
+            uid,
+            requested,
+            error: failedResult.error,
+          }, 'warning');
+          continue;
+        }
+
+        try {
+          results.push(await linkCatalogProductToExistingInternalProduct(lojaId, uid, catalogProduct));
+        } catch (error) {
+          const failedResult = {
+            itemKey: requestedKey,
+            itemId: catalogProduct.itemId,
+            productId99Food: catalogProduct.productId,
+            externalCode: catalogProduct.externalCode,
+            name: catalogProduct.name,
+            categoryName: catalogProduct.categoryName,
+            ok: false,
+            status: 'failed',
+            error: error.message,
+          };
+          results.push(failedResult);
+          await audit(lojaId, 'catalog.product_link_failed', {
+            uid,
+            food99ProductId: catalogProduct.productId,
+            catalogItemId: catalogProduct.itemId,
+            error: error.message,
+          }, 'warning');
+        }
+      }
+
+      const linked = results.filter((result) => result.status === 'linked').length;
+      const failed = results.filter((result) => result.status === 'failed').length;
+      await audit(lojaId, 'catalog.products_linked_batch', {
+        uid,
+        requested: requestedItems.length,
+        linked,
+        failed,
+      }, failed ? 'warning' : 'info');
+      return {requested: requestedItems.length, linked, failed, results};
     }),
 
     food99PublishProducts: onCall({timeoutSeconds: 300, memory: '512MiB'}, async (request) => {

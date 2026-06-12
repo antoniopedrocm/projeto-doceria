@@ -229,6 +229,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedCatalogKeys, setSelectedCatalogKeys] = useState([]);
   const [bulkImportResult, setBulkImportResult] = useState(null);
+  const [bulkLinkResult, setBulkLinkResult] = useState(null);
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [cancellation, setCancellation] = useState({order: null, reasons: [], reason: ''});
   const [validation, setValidation] = useState({order: null, action: '', code: ''});
@@ -272,6 +273,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     setSelectedProductIds([]);
     setSelectedCatalogKeys([]);
     setBulkImportResult(null);
+    setBulkLinkResult(null);
     setMappingPanelOpen(false);
     setMapping({productId: '', food99ProductId: '', externalCode: '', catalogItemId: ''});
     loadConfiguration();
@@ -679,6 +681,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     setBusy('catalog-import-bulk');
     setMessage(null);
     setBulkImportResult(null);
+    setBulkLinkResult(null);
     try {
       const result = await invoke('food99ImportCatalogProducts', {
         items: selectedCatalogRows.map(catalogProductPayload),
@@ -689,6 +692,32 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
       setMessage({
         type: result.failed ? 'error' : 'success',
         text: summaryText,
+      });
+    } catch (error) {
+      setMessage({type: 'error', text: error.message});
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const linkSelectedCatalogProducts = async () => {
+    if (!selectedCatalogRows.length) return;
+    setBusy('catalog-link-bulk');
+    setMessage(null);
+    setBulkImportResult(null);
+    setBulkLinkResult(null);
+    try {
+      const result = await invoke('food99LinkCatalogProducts', {
+        items: selectedCatalogRows.map(catalogProductPayload),
+      });
+      setBulkLinkResult(result);
+      if (!result.failed) clearCatalogSelection();
+      const summaryText = `${result.linked || 0} vinculado(s), ${result.failed || 0} falhou(ram).`;
+      setMessage({
+        type: result.failed ? 'warning' : 'success',
+        text: result.failed
+          ? `${summaryText} Confira os itens sem produto interno correspondente.`
+          : summaryText,
       });
     } catch (error) {
       setMessage({type: 'error', text: error.message});
@@ -1000,12 +1029,41 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                   <p className={`mt-1 text-xs ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{selectedVisibleCatalogCount} item(ns) visiveis nesta busca.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Button primary disabled={busy !== ''} onClick={linkSelectedCatalogProducts}>
+                    <Save className="h-4 w-4" />Usar selecionados no vinculo
+                  </Button>
                   <Button primary disabled={busy !== ''} onClick={importSelectedCatalogProducts}>
                     <Package className="h-4 w-4" />Trazer selecionados para aplicacao
                   </Button>
                   <Button dark={dark} disabled={busy !== ''} onClick={clearCatalogSelection}>
                     <X className="h-4 w-4" />Limpar selecao
                   </Button>
+                </div>
+              </div>
+            )}
+            {bulkLinkResult && (
+              <div className={`border-b px-4 py-3 ${dark ? 'border-slate-800 bg-slate-950/40' : 'border-gray-100 bg-white'}`}>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${dark ? 'bg-emerald-400/15 text-emerald-300' : 'bg-emerald-50 text-emerald-700'}`}>{bulkLinkResult.linked || 0} vinculado(s)</span>
+                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${dark ? 'bg-rose-400/15 text-rose-300' : 'bg-rose-50 text-rose-700'}`}>{bulkLinkResult.failed || 0} falhou(ram)</span>
+                </div>
+                <div className={`mt-3 max-h-56 overflow-auto rounded-lg border ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+                  <table className="min-w-full text-xs">
+                    <tbody>
+                      {(bulkLinkResult.results || []).map((result, index) => (
+                        <tr key={`${result.itemKey || result.itemId || result.name}-${result.status}-${index}`} className={`border-t first:border-t-0 ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
+                          <td className="px-3 py-2 font-medium">{result.name || result.itemId || result.productId99Food}</td>
+                          <td className={`px-3 py-2 ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{result.externalCode || result.itemId || '-'}</td>
+                          <td className="px-3 py-2">
+                            <span className={`rounded-full px-2 py-1 ${result.status === 'linked' ? (dark ? 'bg-emerald-400/15 text-emerald-300' : 'bg-emerald-50 text-emerald-700') : (dark ? 'bg-rose-400/15 text-rose-300' : 'bg-rose-50 text-rose-700')}`}>
+                              {result.status === 'linked' ? 'Vinculado' : 'Falhou'}
+                            </span>
+                          </td>
+                          <td className={`px-3 py-2 ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{result.error || result.message || result.productId || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
