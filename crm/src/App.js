@@ -4836,7 +4836,10 @@ function App() {
 
   const MeuEspaco = ({ user, resolveActiveStoreForWrite, currentStoreIdForDisplay }) => {
     const now = new Date();
+    const initialDay = toDateInputValue(now);
     const initialMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const [recordFilterMode, setRecordFilterMode] = useState('today');
+    const [selectedDay, setSelectedDay] = useState(initialDay);
     const [selectedMonth, setSelectedMonth] = useState(initialMonth);
     const [companyInfo, setCompanyInfo] = useState({
       nome: '',
@@ -4864,11 +4867,41 @@ function App() {
     const isManager = user ? [ROLE_OWNER, ROLE_MANAGER].includes(user.role) : false;
     const userId = user?.auth?.uid || '';
     const userName = user?.auth?.displayName || user?.auth?.email || 'Gestor';
+    const todayKey = toDateInputValue(new Date());
+    const activeDayFilter = recordFilterMode === 'today' ? todayKey : (recordFilterMode === 'day' ? selectedDay : '');
+    const recordsQueryMonth = useMemo(() => {
+      if (recordFilterMode === 'today') return todayKey.slice(0, 7);
+      if (recordFilterMode === 'day' && selectedDay) return selectedDay.slice(0, 7);
+      return selectedMonth || initialMonth;
+    }, [initialMonth, recordFilterMode, selectedDay, selectedMonth, todayKey]);
 
     const competenciaLabel = useMemo(() => {
-      const [year, month] = selectedMonth.split('-');
+      const [year, month] = recordsQueryMonth.split('-');
       return `${month}/${year}`;
-    }, [selectedMonth]);
+    }, [recordsQueryMonth]);
+
+    const selectedDayLabel = useMemo(() => {
+      if (!activeDayFilter) return '';
+      const [year, month, day] = activeDayFilter.split('-').map(Number);
+      if (!year || !month || !day) return '';
+      return new Date(year, month - 1, day).toLocaleDateString('pt-BR');
+    }, [activeDayFilter]);
+
+    const selectedMonthLabel = useMemo(() => {
+      const [year, month] = recordsQueryMonth.split('-').map(Number);
+      if (!year || !month) return '';
+      return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    }, [recordsQueryMonth]);
+
+    const recordsTitle = recordFilterMode === 'month'
+      ? 'Registros do mês'
+      : recordFilterMode === 'day'
+        ? 'Registros do dia'
+        : 'Registros de hoje';
+
+    const recordsSubtitle = recordFilterMode === 'month'
+      ? `Visualização automática de ${selectedMonthLabel}.`
+      : `Visualização automática de ${selectedDayLabel || 'hoje'}.`;
 
     useEffect(() => {
       if (isManager) {
@@ -4950,7 +4983,7 @@ function App() {
 
       setRecordsLoading(true);
       const pontosRef = collection(db, 'lojas', currentStoreIdForDisplay, 'pontos');
-      const pontosQuery = query(pontosRef, where('competencia', '==', selectedMonth));
+      const pontosQuery = query(pontosRef, where('competencia', '==', recordsQueryMonth));
       const unsubscribe = onSnapshot(pontosQuery, (snapshot) => {
         const data = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
         setRecords(data);
@@ -4967,7 +5000,7 @@ function App() {
       });
 
       return () => unsubscribe();
-    }, [currentStoreIdForDisplay, selectedMonth]);
+    }, [currentStoreIdForDisplay, recordsQueryMonth]);
 
     useEffect(() => {
       if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY || !userId) {
@@ -5117,6 +5150,36 @@ function App() {
       return baseDate;
     };
 
+    const getRecordDayKey = (record) => {
+      if (record?.dia) return record.dia;
+      const date = getDayInfo(record);
+      return date ? toDateInputValue(date) : '';
+    };
+
+    const handleTodayFilter = () => {
+      const currentDay = toDateInputValue(new Date());
+      setRecordFilterMode('today');
+      setSelectedDay(currentDay);
+      setSelectedMonth(currentDay.slice(0, 7));
+    };
+
+    const handleDayFilterChange = (event) => {
+      const value = event.target.value;
+      setSelectedDay(value);
+      if (value) {
+        setRecordFilterMode('day');
+        setSelectedMonth(value.slice(0, 7));
+      }
+    };
+
+    const handleMonthFilterChange = (event) => {
+      const value = event.target.value;
+      setSelectedMonth(value);
+      if (value) {
+        setRecordFilterMode('month');
+      }
+    };
+
     const filteredRecords = useMemo(() => {
       const sorted = [...records].sort((a, b) => {
         const dateA = getRecordDateTime(a);
@@ -5134,12 +5197,15 @@ function App() {
         if (createdA && !createdB) return 1;
         return 0;
       });
+      const dateFiltered = activeDayFilter
+        ? sorted.filter(item => getRecordDayKey(item) === activeDayFilter)
+        : sorted;
       if (isManager) {
-        if (selectedEmployee === 'all') return sorted;
-        return sorted.filter(item => item.funcionarioId === selectedEmployee);
+        if (selectedEmployee === 'all') return dateFiltered;
+        return dateFiltered.filter(item => item.funcionarioId === selectedEmployee);
       }
-      return sorted.filter(item => item.funcionarioId === userId);
-    }, [records, isManager, selectedEmployee, userId]);
+      return dateFiltered.filter(item => item.funcionarioId === userId);
+    }, [records, activeDayFilter, isManager, selectedEmployee, userId]);
 
     const todayRecord = todayRecordData;
     const todayPointStatus = buildPointStatus(todayRecord || {});
@@ -5205,10 +5271,13 @@ function App() {
         const capturedAddress = await getAddressFromCoordinates(coords);
         const storeId = resolveActiveStoreForWrite();
         const currentDate = new Date();
+        const dayKey = toDateInputValue(currentDate);
         const competenciaKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
         if (selectedMonth !== competenciaKey) {
           setSelectedMonth(competenciaKey);
         }
+        setSelectedDay(dayKey);
+        setRecordFilterMode('today');
         const registerPoint = httpsCallable(functions, 'registerEmployeePoint');
         const response = await registerPoint({
           lojaId: storeId,
@@ -5334,7 +5403,7 @@ function App() {
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/20 to-rose-50/20 min-h-screen">
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl font-bold text-gray-800">Meu Espaço</h1>
-          <p className="text-gray-600">Registre seu ponto e acompanhe os horários do mês atual.</p>
+          <p className="text-gray-600">Registre seu ponto e acompanhe os horários da equipe.</p>
         </div>
 
         {registerMessage && (
@@ -5452,20 +5521,40 @@ function App() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div>
-                <h2 className="text-xl font-semibold text-gray-800">Registros do mês</h2>
-                <p className="text-gray-500 text-sm">Visualização automática do mês selecionado.</p>
+                <h2 className="text-xl font-semibold text-gray-800">{recordsTitle}</h2>
+                <p className="text-gray-500 text-sm">{recordsSubtitle}</p>
               </div>
               <span className="inline-flex items-center rounded-full bg-pink-100 text-pink-700 px-3 py-1 text-sm font-semibold">
                 Registros ({filteredRecords.length})
               </span>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 w-full md:w-auto">
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleTodayFilter}
+                  className={`w-full px-5 py-3 rounded-xl text-sm font-semibold border transition-all ${
+                    recordFilterMode === 'today'
+                      ? 'bg-pink-600 text-white border-pink-600 shadow-md'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-pink-50 hover:text-pink-700'
+                  }`}
+                >
+                  Hoje
+                </button>
+              </div>
+              <Input
+                type="date"
+                label="Selecionar dia"
+                value={selectedDay}
+                onChange={handleDayFilterChange}
+                className={recordFilterMode === 'day' ? 'border-pink-400 ring-2 ring-pink-100' : ''}
+              />
               <Input
                 type="month"
-                label="Mês"
+                label="Selecionar mês"
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="min-w-[160px]"
+                onChange={handleMonthFilterChange}
+                className={recordFilterMode === 'month' ? 'border-pink-400 ring-2 ring-pink-100' : ''}
               />
               {isManager && (
                 <Select label="Colaborador" value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)} disabled={employeesLoading} className="min-w-[200px]">
