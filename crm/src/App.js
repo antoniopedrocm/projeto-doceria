@@ -4321,6 +4321,7 @@ function App() {
     const scripts = [
         { id: 'jspdf', src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js' },
         { id: 'jspdf-autotable', src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js' },
+        { id: 'qrcode', src: 'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js' },
         { id: 'xlsx', src: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js' },
         { id: 'chartjs', src: 'https://cdn.jsdelivr.net/npm/chart.js' }
     ];
@@ -11962,33 +11963,43 @@ const handleSubmit = async (e) => {
       try {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        if (typeof doc.autoTable !== 'function') {
+          throw new Error('Não foi possível carregar o layout de tabela do PDF. Atualize a página e tente novamente.');
+        }
+
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 8;
+        const margin = 6;
         const contentWidth = pageWidth - (margin * 2);
         const issuerAddress = invoice?.issuer?.address || invoice?.serviceResult?.issuer?.address || issuerForm.address || {};
+        const serviceResult = invoice?.serviceResult || {};
+        const taxes = invoice?.taxes || serviceResult?.taxes || invoice?.totals?.taxes || serviceResult?.totals?.taxes || {};
+        const transport = invoice?.transport || invoice?.transporter || serviceResult?.transport || serviceResult?.transporter || {};
         const issuer = {
-          legalName: invoice?.issuer?.legalName || invoice?.serviceResult?.issuer?.legalName || issuerForm.legalName || storeName || '-',
-          tradeName: invoice?.issuer?.tradeName || invoice?.serviceResult?.issuer?.tradeName || issuerForm.tradeName || '',
+          legalName: invoice?.issuer?.legalName || serviceResult?.issuer?.legalName || issuerForm.legalName || storeName || '-',
+          tradeName: invoice?.issuer?.tradeName || serviceResult?.issuer?.tradeName || issuerForm.tradeName || '',
           cnpj: getInvoiceIssuerDocument(invoice) || issuerForm.cnpj || '',
-          stateRegistration: invoice?.issuer?.stateRegistration || invoice?.serviceResult?.issuer?.stateRegistration || issuerForm.stateRegistration || '',
-          address: issuerAddress
+          stateRegistration: invoice?.issuer?.stateRegistration || serviceResult?.issuer?.stateRegistration || issuerForm.stateRegistration || '',
+          stateRegistrationSt: invoice?.issuer?.stateRegistrationSt || invoice?.issuer?.inscricaoEstadualSt || serviceResult?.issuer?.stateRegistrationSt || issuerForm.stateRegistrationSt || '',
+          address: issuerAddress,
+          logoUrl: invoice?.issuer?.logoUrl || serviceResult?.issuer?.logoUrl || issuerForm.logoUrl || '/logotipo.png'
         };
         const customerAddress = getOrderCustomerAddress(invoice);
         const customer = {
           name: getInvoiceCustomerName(invoice),
           document: getInvoiceCustomerDocument(invoice),
-          stateRegistration: invoice?.customer?.stateRegistration || invoice?.customer?.inscricaoEstadual || '',
+          stateRegistration: invoice?.customer?.stateRegistration || invoice?.customer?.inscricaoEstadual || serviceResult?.customer?.stateRegistration || '',
+          phone: invoice?.customer?.phone || invoice?.customer?.telefone || serviceResult?.customer?.phone || '',
           address: customerAddress
         };
         const invoiceNumber = formatFiscalNumber(invoice.number);
         const invoiceSeries = formatFiscalSeries(invoice.series);
         const invoiceModel = invoice.model || '65';
-        const issuedAt = formatDateTime(invoice.issuedAt || invoice.createdAt);
-        const authorizedAt = formatDateTime(invoice.authorizedAt || invoice.serviceResult?.authorizedAt || (invoice.status === 'authorized' ? invoice.updatedAt : null));
+        const issuedAtRaw = invoice.issuedAt || invoice.createdAt;
+        const authorizedAt = formatDateTime(invoice.authorizedAt || serviceResult?.authorizedAt || (invoice.status === 'authorized' ? invoice.updatedAt : null));
         const reason = fiscalReturnReason(invoice);
         const items = getInvoiceItems(invoice);
-        const productsTotal = Number(invoice?.totals?.products ?? invoice?.serviceResult?.totals?.products ?? items.reduce((sum, item) => {
+        const productsTotal = Number(invoice?.totals?.products ?? serviceResult?.totals?.products ?? items.reduce((sum, item) => {
           const quantity = Number(item.quantity ?? item.quantidade ?? item.qCom ?? 1) || 1;
           const unitValue = Number(item.unitValue ?? item.valorUnitario ?? item.preco ?? item.valor ?? item.vUnCom ?? 0) || 0;
           return sum + (quantity * unitValue);
@@ -11996,83 +12007,274 @@ const handleSubmit = async (e) => {
         const discount = getInvoiceDiscount(invoice);
         const freight = getInvoiceFreight(invoice);
         const invoiceTotal = getInvoiceValue(invoice);
-        const keyDigits = onlyDigitsText(invoice.key);
-        const accessKey = keyDigits ? keyDigits.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : (invoice.key || '-');
+        const keyDigits = onlyDigitsText(invoice.key || serviceResult?.key);
+        const accessKey = keyDigits ? keyDigits.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : (invoice.key || serviceResult?.key || '-');
         const operationNature = invoice.operationNature || invoice.naturezaOperacao || settingsForm.operationNature || 'Venda';
         const statusText = statusLabel[invoice.status] || invoice.status || '-';
+        const qrSource = invoice.qrCodeUrl || invoice.qrCode || invoice.qrUrl || invoice.urlConsulta || invoice.consultationUrl || serviceResult.qrCodeUrl || serviceResult.qrCode || serviceResult.urlConsulta || serviceResult.consultationUrl || sefazConsultaUrl(invoice);
+        if (!qrSource) {
+          throw new Error('Não foi possível gerar o QR Code: a nota não possui URL de consulta ou chave de acesso.');
+        }
+
+        const dash = (value) => {
+          const textValue = String(value ?? '').trim();
+          return textValue || '-';
+        };
+        const empty = (value) => {
+          const textValue = String(value ?? '').trim();
+          return textValue || '';
+        };
         const formatDocumentFull = (value) => {
           const digits = onlyDigitsText(value);
           if (digits.length === 11) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
           if (digits.length === 14) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
-          return value || '-';
+          return dash(value);
         };
-
-        const setFont = (size = 8, style = 'normal') => {
+        const moneyPlain = (value) => Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const qtyPlain = (value) => Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+        const percentPlain = (value) => Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const dateOnly = (value) => {
+          const date = getJSDate(value);
+          return date ? date.toLocaleDateString('pt-BR') : '-';
+        };
+        const timeOnly = (value) => {
+          const date = getJSDate(value);
+          return date ? date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-';
+        };
+        const normalizeAddress = (address = {}) => {
+          if (typeof address === 'string') return { full: address };
+          const street = address.street || address.logradouro || address.endereco || '';
+          const number = address.number || address.numero || '';
+          const district = address.district || address.bairro || '';
+          const city = address.city || address.cidade || address.municipio || '';
+          const state = address.state || address.uf || '';
+          const zip = address.zip || address.cep || '';
+          const phone = address.phone || address.telefone || '';
+          return {
+            street,
+            number,
+            district,
+            city,
+            state,
+            zip,
+            phone,
+            full: [
+              [street, number].filter(Boolean).join(', '),
+              district,
+              [city, state].filter(Boolean).join('/'),
+              zip ? `CEP: ${zip}` : '',
+              phone ? `FONE: ${phone}` : ''
+            ].filter(Boolean).join(' - ')
+          };
+        };
+        const issuerAddressFields = normalizeAddress(issuer.address);
+        const customerAddressFields = normalizeAddress(customer.address);
+        const setFont = (size = 7, style = 'normal') => {
           doc.setFont('helvetica', style);
           doc.setFontSize(size);
         };
-        const text = (value, x, y, options = {}) => doc.text(String(value || '-'), x, y, options);
-        const fitText = (value, maxWidth) => doc.splitTextToSize(String(value || '-'), maxWidth);
-        const drawBox = (x, y, w, h, title, value, options = {}) => {
+        const fitText = (value, maxWidth) => doc.splitTextToSize(String(value ?? '-'), maxWidth);
+        const text = (value, x, y, options = {}) => doc.text(String(value ?? '-'), x, y, options);
+        const field = (x, y, w, h, label, value, options = {}) => {
           doc.rect(x, y, w, h);
-          setFont(6, 'bold');
-          text(String(title || '').toUpperCase(), x + 1.2, y + 3.2);
-          setFont(options.size || 8, options.bold ? 'bold' : 'normal');
-          const lines = fitText(value || '-', w - 2.4).slice(0, options.maxLines || 2);
-          doc.text(lines, x + 1.2, y + 7.2);
+          setFont(options.labelSize || 5.2, 'bold');
+          text(String(label || '').toUpperCase(), x + 1, y + 2.8);
+          setFont(options.size || 6.7, options.bold ? 'bold' : 'normal');
+          const lines = fitText(options.blank ? empty(value) : dash(value), w - 2).slice(0, options.maxLines || 2);
+          if (lines.length) doc.text(lines, x + 1, y + (options.valueY || 6.5));
         };
-        const addressLine = (address = {}) => [
-          ...(typeof address === 'string'
-            ? [address]
-            : [
-                [address.street || address.logradouro, address.number || address.numero].filter(Boolean).join(', '),
-                address.district || address.bairro,
-                [address.city || address.cidade, address.state || address.uf].filter(Boolean).join('/'),
-                address.zip || address.cep
-              ])
-        ].filter(Boolean).join(' - ') || '-';
+        const sectionTitle = (title, y) => {
+          setFont(6.5, 'bold');
+          text(String(title || '').toUpperCase(), margin, y);
+        };
+        const addImageFromUrl = async (url) => {
+          if (!url) return '';
+          try {
+            const response = await fetch(url, { mode: 'cors' });
+            if (!response.ok) return '';
+            const blob = await response.blob();
+            return await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result || '');
+              reader.onerror = () => resolve('');
+              reader.readAsDataURL(blob);
+            });
+          } catch (error) {
+            console.warn('[NotaFiscal] Não foi possível carregar a logo do DANFE A4.', error);
+            return '';
+          }
+        };
+        const generateQrCodeDataUrl = async (value) => {
+          const source = String(value || '').trim();
+          if (!source) return '';
+          if (source.startsWith('data:image/')) return source;
+          if (typeof window.QRCode?.toDataURL === 'function') {
+            return await window.QRCode.toDataURL(source, { width: 170, margin: 1, errorCorrectionLevel: 'M' });
+          }
+          throw new Error('Não foi possível carregar o gerador de QR Code. Atualize a página e tente novamente.');
+        };
 
-        doc.setLineWidth(0.2);
-        doc.setDrawColor(20, 20, 20);
-        doc.setTextColor(20, 20, 20);
+        const logoDataUrl = await addImageFromUrl(issuer.logoUrl);
+        const qrDataUrl = await generateQrCodeDataUrl(qrSource);
+        const protocolText = `${invoice.protocol || serviceResult.protocol || '-'}${authorizedAt !== '-' ? ` - ${authorizedAt}` : ''}`;
+        const issuedDate = dateOnly(issuedAtRaw);
+        const issuedTime = timeOnly(issuedAtRaw);
 
-        doc.rect(margin, 8, 74, 32);
-        setFont(10, 'bold');
-        doc.text(fitText(issuer.legalName, 70), margin + 2, 14);
-        setFont(7);
-        doc.text(fitText(addressLine(issuer.address), 70), margin + 2, 23);
-        text(`CNPJ: ${formatDocumentFull(issuer.cnpj)}`, margin + 2, 34);
-        if (issuer.stateRegistration) text(`IE: ${issuer.stateRegistration}`, margin + 38, 34);
+        doc.setLineWidth(0.15);
+        doc.setDrawColor(15, 15, 15);
+        doc.setTextColor(15, 15, 15);
 
-        doc.rect(margin + 74, 8, 58, 32);
-        setFont(11, 'bold');
-        text('DANFE A4', margin + 103, 15, { align: 'center' });
-        setFont(7);
-        doc.text(['Documento Auxiliar', 'da Nota Fiscal Eletrônica'], margin + 103, 21, { align: 'center' });
+        let y = 6;
+        doc.rect(margin, y, contentWidth, 23);
+        doc.line(margin + 140, y, margin + 140, y + 23);
+        setFont(6.4);
+        doc.text(fitText(`RECEBI(EMOS) DE ${issuer.legalName}, OS PRODUTOS CONSTANTES DA NOTA FISCAL ELETRÔNICA INDICADA AO LADO, BEM COMO ATESTAMOS QUE OS MESMOS FORAM EXAMINADOS.`, 136), margin + 2, y + 4);
+        field(margin + 2, y + 13, 52, 8, 'Data de recebimento', '', { blank: true, maxLines: 1 });
+        field(margin + 54, y + 13, 84, 8, 'Identificação e assinatura do recebedor', '', { blank: true, maxLines: 1 });
         setFont(8, 'bold');
-        text(`Modelo ${invoiceModel}`, margin + 103, 33, { align: 'center' });
-
-        doc.rect(margin + 132, 8, contentWidth - 132, 32);
-        setFont(8, 'bold');
-        text(`NF-e Nº ${invoiceNumber}`, margin + 134, 16);
-        text(`Série ${invoiceSeries}`, margin + 134, 23);
-        setFont(7);
-        text(`Emissão: ${issuedAt}`, margin + 134, 31);
-
-        drawBox(margin, 42, contentWidth, 14, 'Chave de acesso', accessKey, { size: 9, bold: true, maxLines: 1 });
-        drawBox(margin, 58, 96, 14, 'Natureza da operação', operationNature, { maxLines: 1 });
-        drawBox(margin + 96, 58, contentWidth - 96, 14, 'Protocolo de autorização', `${invoice.protocol || '-'}${authorizedAt !== '-' ? ` - ${authorizedAt}` : ''}`, { maxLines: 1 });
-
+        text('NF-e', margin + 169, y + 5, { align: 'center' });
         setFont(7, 'bold');
-        text('DESTINATÁRIO / REMETENTE', margin, 78);
-        drawBox(margin, 80, 96, 13, 'Nome / Razão social', customer.name, { maxLines: 1 });
-        drawBox(margin + 96, 80, 48, 13, 'CPF/CNPJ', formatDocumentFull(customer.document), { maxLines: 1 });
-        drawBox(margin + 144, 80, contentWidth - 144, 13, 'Inscrição estadual', customer.stateRegistration || '-', { maxLines: 1 });
-        drawBox(margin, 93, 144, 13, 'Endereço', addressLine(customer.address), { maxLines: 1 });
-        drawBox(margin + 144, 93, contentWidth - 144, 13, 'Data/Hora emissão', issuedAt, { maxLines: 1 });
+        text(`Nº ${invoiceNumber}`, margin + 169, y + 12, { align: 'center' });
+        text(`SÉRIE ${invoiceSeries}`, margin + 169, y + 18, { align: 'center' });
+        y += 26;
 
-        setFont(7, 'bold');
-        text('PRODUTOS / SERVIÇOS', margin, 112);
+        const headerY = y;
+        const issuerW = 78;
+        const danfeW = 54;
+        const qrW = contentWidth - issuerW - danfeW;
+        doc.rect(margin, headerY, issuerW, 52);
+        doc.rect(margin + issuerW, headerY, danfeW, 52);
+        doc.rect(margin + issuerW + danfeW, headerY, qrW, 52);
+        if (logoDataUrl) {
+          try {
+            const props = doc.getImageProperties(logoDataUrl);
+            const maxLogoW = 33;
+            const maxLogoH = 12;
+            const ratio = Math.min(maxLogoW / props.width, maxLogoH / props.height);
+            const logoFormat = logoDataUrl.includes('image/jpeg') || logoDataUrl.includes('image/jpg') ? 'JPEG' : 'PNG';
+            doc.addImage(logoDataUrl, logoFormat, margin + 2, headerY + 3, props.width * ratio, props.height * ratio);
+          } catch (error) {
+            console.warn('[NotaFiscal] Logo carregada, mas não pôde ser adicionada ao PDF.', error);
+          }
+        }
+        setFont(7.6, 'bold');
+        doc.text(fitText(issuer.legalName, issuerW - 4), margin + 2, headerY + 18);
+        setFont(6.2);
+        if (issuer.tradeName) doc.text(fitText(issuer.tradeName, issuerW - 4), margin + 2, headerY + 24);
+        doc.text(fitText(issuerAddressFields.full || '-', issuerW - 4).slice(0, 4), margin + 2, headerY + 30);
+        text(`CNPJ: ${formatDocumentFull(issuer.cnpj)}`, margin + 2, headerY + 46);
+        text(`IE: ${dash(issuer.stateRegistration)}`, margin + 42, headerY + 46);
+
+        setFont(13, 'bold');
+        text('DANFE', margin + issuerW + (danfeW / 2), headerY + 8, { align: 'center' });
+        setFont(6.5, 'bold');
+        doc.text(['DOCUMENTO AUXILIAR', 'DA NOTA FISCAL', 'ELETRÔNICA'], margin + issuerW + (danfeW / 2), headerY + 15, { align: 'center' });
+        setFont(6.4);
+        text('0 - ENTRADA', margin + issuerW + 5, headerY + 29);
+        text('1 - SAÍDA', margin + issuerW + 5, headerY + 35);
+        setFont(7.2, 'bold');
+        text(`Nº ${invoiceNumber}`, margin + issuerW + (danfeW / 2), headerY + 29, { align: 'center' });
+        text(`SÉRIE ${invoiceSeries}`, margin + issuerW + (danfeW / 2), headerY + 36, { align: 'center' });
+        setFont(6.2);
+        text(`Modelo ${invoiceModel}`, margin + issuerW + 3, headerY + 49);
+        text(`Emissão: ${issuedDate} ${issuedTime}`, margin + issuerW + 21, headerY + 49);
+
+        const qrX = margin + issuerW + danfeW;
+        setFont(5.5, 'bold');
+        text('CHAVE DE ACESSO', qrX + 2, headerY + 4);
+        setFont(6.4, 'bold');
+        doc.text(fitText(accessKey, qrW - 27).slice(0, 3), qrX + 2, headerY + 9);
+        if (qrDataUrl) doc.addImage(qrDataUrl, 'PNG', qrX + qrW - 25, headerY + 4, 22, 22);
+        setFont(5.5);
+        doc.text(fitText('Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda.gov.br/portal ou no site da Sefaz Autorizadora', qrW - 5), qrX + 2, headerY + 30);
+        field(qrX + 2, headerY + 39, qrW - 4, 11, 'Protocolo de autorização de uso', protocolText, { maxLines: 1, size: 6.2 });
+        y = headerY + 55;
+
+        field(margin, y, 94, 12, 'Natureza da operação', operationNature, { maxLines: 1 });
+        field(margin + 94, y, 38, 12, 'Inscrição estadual', issuer.stateRegistration, { maxLines: 1 });
+        field(margin + 132, y, 36, 12, 'Inscrição estadual do subst. trib.', issuer.stateRegistrationSt, { blank: true, maxLines: 1 });
+        field(margin + 168, y, contentWidth - 168, 12, 'CNPJ', formatDocumentFull(issuer.cnpj), { maxLines: 1 });
+        y += 17;
+
+        sectionTitle('Destinatário/Remetente', y);
+        y += 2;
+        field(margin, y, 92, 11, 'Nome/Razão social', customer.name, { maxLines: 1 });
+        field(margin + 92, y, 38, 11, 'C.N.P.J./C.P.F.', formatDocumentFull(customer.document), { maxLines: 1 });
+        field(margin + 130, y, 34, 11, 'Data da emissão', issuedDate, { maxLines: 1 });
+        field(margin + 164, y, contentWidth - 164, 11, 'Data da saída/entrada', issuedDate, { maxLines: 1 });
+        y += 11;
+        field(margin, y, 78, 11, 'Endereço', [customerAddressFields.street, customerAddressFields.number].filter(Boolean).join(', '), { blank: true, maxLines: 1 });
+        field(margin + 78, y, 32, 11, 'Bairro/Distrito', customerAddressFields.district, { blank: true, maxLines: 1 });
+        field(margin + 110, y, 22, 11, 'CEP', customerAddressFields.zip, { blank: true, maxLines: 1 });
+        field(margin + 132, y, 35, 11, 'Município', customerAddressFields.city, { blank: true, maxLines: 1 });
+        field(margin + 167, y, 10, 11, 'UF', customerAddressFields.state, { blank: true, maxLines: 1 });
+        field(margin + 177, y, contentWidth - 177, 11, 'Fone/Fax', customer.phone || customerAddressFields.phone, { blank: true, maxLines: 1 });
+        y += 11;
+        field(margin, y, 50, 11, 'Inscrição estadual', customer.stateRegistration, { blank: true, maxLines: 1 });
+        field(margin + 50, y, 32, 11, 'Hora da saída', issuedTime, { maxLines: 1 });
+        field(margin + 82, y, contentWidth - 82, 11, 'Informações do consumidor', customerAddressFields.full, { blank: true, maxLines: 1 });
+        y += 16;
+
+        sectionTitle('Fatura/Duplicatas', y);
+        y += 2;
+        const installmentText = invoice?.billing?.installments?.length
+          ? invoice.billing.installments.map((item) => `${item.number || item.numero || '-'}: ${dateOnly(item.dueDate || item.vencimento)} ${moneyPlain(item.amount || item.valor)}`).join('; ')
+          : '';
+        field(margin, y, contentWidth, 12, 'Número / Vencimento / Valor', installmentText, { blank: true, maxLines: 1 });
+        y += 17;
+
+        sectionTitle('Cálculo do Imposto', y);
+        y += 2;
+        const taxCellW = contentWidth / 7;
+        [
+          ['BC ICMS', taxes.icmsBase || taxes.baseIcms || taxes.vBC],
+          ['Valor ICMS', taxes.icms || taxes.valorIcms || taxes.vICMS],
+          ['BC ICMS ST', taxes.icmsStBase || taxes.baseIcmsSt || taxes.vBCST],
+          ['Valor ICMS ST', taxes.icmsSt || taxes.valorIcmsSt || taxes.vST],
+          ['Valor IPI', taxes.ipi || taxes.vIPI],
+          ['Valor PIS', taxes.pis || taxes.vPIS],
+          ['Valor COFINS', taxes.cofins || taxes.vCOFINS]
+        ].forEach(([label, value], index) => field(margin + (index * taxCellW), y, taxCellW, 11, label, moneyPlain(value), { maxLines: 1 }));
+        y += 11;
+        [
+          ['Valor total dos produtos', productsTotal],
+          ['Valor do frete', freight],
+          ['Valor do seguro', taxes.insurance || taxes.seguro || invoice?.insurance],
+          ['Desconto', discount],
+          ['Outras despesas', taxes.otherExpenses || taxes.outrasDespesas || invoice?.otherExpenses],
+          ['Valor total da nota', invoiceTotal]
+        ].forEach(([label, value], index) => {
+          const w = index === 5 ? taxCellW * 2 : taxCellW;
+          const x = margin + (index < 5 ? index * taxCellW : 5 * taxCellW);
+          field(x, y, w, 11, label, moneyPlain(value), { bold: index === 5, maxLines: 1 });
+        });
+        y += 16;
+
+        sectionTitle('Transportador/Volumes Transportados', y);
+        y += 2;
+        field(margin, y, 54, 11, 'Razão social', transport.legalName || transport.razaoSocial, { blank: true, maxLines: 1 });
+        field(margin + 54, y, 32, 11, 'Frete por conta de', transport.freightMode || transport.modalidadeFrete || (freight > 0 ? '0 - Remetente' : '9 - Sem frete'), { maxLines: 1 });
+        field(margin + 86, y, 24, 11, 'Código ANTT', transport.anttCode || transport.codigoAntt, { blank: true, maxLines: 1 });
+        field(margin + 110, y, 26, 11, 'Placa do veículo', transport.vehiclePlate || transport.placaVeiculo, { blank: true, maxLines: 1 });
+        field(margin + 136, y, 10, 11, 'UF', transport.vehicleUf || transport.ufPlaca, { blank: true, maxLines: 1 });
+        field(margin + 146, y, contentWidth - 146, 11, 'C.N.P.J./C.P.F.', formatDocumentFull(transport.document || transport.cnpj || transport.cpf), { blank: true, maxLines: 1 });
+        y += 11;
+        field(margin, y, 72, 11, 'Endereço', transport.address || transport.endereco, { blank: true, maxLines: 1 });
+        field(margin + 72, y, 42, 11, 'Município', transport.city || transport.municipio, { blank: true, maxLines: 1 });
+        field(margin + 114, y, 10, 11, 'UF', transport.state || transport.uf, { blank: true, maxLines: 1 });
+        field(margin + 124, y, 32, 11, 'Inscrição estadual', transport.stateRegistration || transport.inscricaoEstadual, { blank: true, maxLines: 1 });
+        field(margin + 156, y, 20, 11, 'Quantidade', qtyPlain(transport.quantity || transport.quantidade), { maxLines: 1 });
+        field(margin + 176, y, contentWidth - 176, 11, 'Espécie', transport.species || transport.especie, { blank: true, maxLines: 1 });
+        y += 11;
+        field(margin, y, 42, 11, 'Marca', transport.brand || transport.marca, { blank: true, maxLines: 1 });
+        field(margin + 42, y, 42, 11, 'Numeração', transport.numbering || transport.numeracao, { blank: true, maxLines: 1 });
+        field(margin + 84, y, 34, 11, 'Peso bruto', qtyPlain(transport.grossWeight || transport.pesoBruto), { maxLines: 1 });
+        field(margin + 118, y, 34, 11, 'Peso líquido', qtyPlain(transport.netWeight || transport.pesoLiquido), { maxLines: 1 });
+        field(margin + 152, y, contentWidth - 152, 11, 'Forma de pagamento', getInvoicePaymentMethod(invoice), { maxLines: 1 });
+        y += 16;
+
+        sectionTitle('Dados dos Produtos/Serviços', y);
+        y += 2;
         const productRows = items.map((item, index) => {
           const productId = String(item.productId || item.produtoId || item.id || '').trim();
           const fiscalProduct = productId ? fiscalProductsById.get(productId) : null;
@@ -12083,94 +12285,87 @@ const handleSubmit = async (e) => {
             item.code || item.codigo || fiscalProduct?.code || productId || String(index + 1),
             item.description || item.nome || item.produto || fiscalProduct?.description || 'Produto',
             formatNcmCode(item.ncm || fiscalProduct?.ncm || DEFAULT_NCM_PRODUCT),
+            item.csosn || item.cst || item.icmsCst || fiscalProduct?.csosn || '102',
             item.cfop || item.cfopNfe || item.cfopNfce || fiscalProduct?.cfopNfe || fiscalProduct?.cfop || DEFAULT_CFOP_OPERATION,
             item.unit || item.unidade || item.uCom || fiscalProduct?.unit || 'un',
-            Number(quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }),
-            formatCurrencyBR(unitValue),
-            formatCurrencyBR(totalValue)
+            qtyPlain(quantity),
+            moneyPlain(unitValue),
+            moneyPlain(totalValue),
+            moneyPlain(item.icmsBase || item.vBC || 0),
+            moneyPlain(item.icmsValue || item.vICMS || 0),
+            moneyPlain(item.ipiValue || item.vIPI || 0),
+            percentPlain(item.icmsRate || item.pICMS || 0),
+            percentPlain(item.ipiRate || item.pIPI || 0)
           ];
         });
-        const tableHead = [['Código', 'Descrição', 'NCM', 'CFOP', 'Un.', 'Qtd.', 'Vl. unit.', 'Vl. total']];
-        if (typeof doc.autoTable === 'function') {
-          doc.autoTable({
-            startY: 114,
-            head: tableHead,
-            body: productRows.length ? productRows : [['-', 'Nenhum item detalhado encontrado', '-', '-', '-', '-', '-', '-']],
-            margin: { left: margin, right: margin },
-            styles: { fontSize: 6.5, cellPadding: 1.1, lineColor: [80, 80, 80], lineWidth: 0.1, overflow: 'linebreak', textColor: [20, 20, 20] },
-            headStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: 'bold' },
-            columnStyles: {
-              0: { cellWidth: 19 },
-              1: { cellWidth: 55 },
-              2: { cellWidth: 20 },
-              3: { cellWidth: 14 },
-              4: { cellWidth: 10 },
-              5: { cellWidth: 16, halign: 'right' },
-              6: { cellWidth: 24, halign: 'right' },
-              7: { cellWidth: 26, halign: 'right' }
-            }
-          });
-        } else {
-          let y = 114;
-          tableHead[0].forEach((title, index) => text(title, margin + (index * 23), y));
-          y += 5;
-          productRows.forEach((row) => {
-            row.forEach((value, index) => text(value, margin + (index * 23), y));
-            y += 5;
-          });
-        }
+        doc.autoTable({
+          startY: y,
+          head: [['Código', 'Descrição', 'NCM', 'CSOSN/CST', 'CFOP', 'UN.', 'Quant.', 'V.Unit.', 'V.Total', 'BC.ICMS', 'V.ICMS', 'V.IPI', '%ICMS', '%IPI']],
+          body: productRows.length ? productRows : [['-', 'Nenhum item detalhado encontrado', '-', '-', '-', '-', '0,00', '0,00', '0,00', '0,00', '0,00', '0,00', '0,00', '0,00']],
+          margin: { left: margin, right: margin },
+          styles: { fontSize: 5.25, cellPadding: 0.7, lineColor: [40, 40, 40], lineWidth: 0.08, overflow: 'linebreak', textColor: [15, 15, 15] },
+          headStyles: { fillColor: [238, 238, 238], textColor: [15, 15, 15], fontStyle: 'bold', fontSize: 5.1 },
+          alternateRowStyles: { fillColor: [252, 252, 252] },
+          columnStyles: {
+            0: { cellWidth: 12 },
+            1: { cellWidth: 45 },
+            2: { cellWidth: 15 },
+            3: { cellWidth: 13 },
+            4: { cellWidth: 12 },
+            5: { cellWidth: 7 },
+            6: { cellWidth: 13, halign: 'right' },
+            7: { cellWidth: 16, halign: 'right' },
+            8: { cellWidth: 16, halign: 'right' },
+            9: { cellWidth: 14, halign: 'right' },
+            10: { cellWidth: 12, halign: 'right' },
+            11: { cellWidth: 12, halign: 'right' },
+            12: { cellWidth: 10, halign: 'right' },
+            13: { cellWidth: 10, halign: 'right' }
+          }
+        });
 
-        let y = Math.max((doc.lastAutoTable?.finalY || 160) + 6, 160);
-        if (y > 232) {
+        y = (doc.lastAutoTable?.finalY || y + 20) + 4;
+        if (y > 252) {
           doc.addPage();
-          y = 14;
+          y = margin + 4;
         }
-
-        setFont(7, 'bold');
-        text('CÁLCULO DO IMPOSTO', margin, y);
+        sectionTitle('Dados Adicionais', y);
         y += 2;
-        drawBox(margin, y, 38, 13, 'Base ICMS', formatCurrencyBR(invoice?.taxes?.icmsBase || 0), { maxLines: 1 });
-        drawBox(margin + 38, y, 38, 13, 'Valor ICMS', formatCurrencyBR(invoice?.taxes?.icms || 0), { maxLines: 1 });
-        drawBox(margin + 76, y, 38, 13, 'Valor produtos', formatCurrencyBR(productsTotal), { maxLines: 1 });
-        drawBox(margin + 114, y, 38, 13, 'Desconto', formatCurrencyBR(discount), { maxLines: 1 });
-        drawBox(margin + 152, y, contentWidth - 152, 13, 'Valor total da nota', formatCurrencyBR(invoiceTotal), { bold: true, maxLines: 1 });
-        y += 18;
-
-        setFont(7, 'bold');
-        text('TRANSPORTE / PAGAMENTO', margin, y);
-        y += 2;
-        drawBox(margin, y, 68, 13, 'Modalidade do frete', freight > 0 ? 'Com cobrança de frete' : 'Sem frete', { maxLines: 1 });
-        drawBox(margin + 68, y, 64, 13, 'Forma de pagamento', getInvoicePaymentMethod(invoice), { maxLines: 1 });
-        drawBox(margin + 132, y, contentWidth - 132, 13, 'Valor pago', formatCurrencyBR(getInvoicePaidAmount(invoice)), { maxLines: 1 });
-        y += 18;
-
         const additionalInfo = [
           invoice.status === 'cancelled' ? `NOTA CANCELADA${invoice.cancelReason ? ` - ${invoice.cancelReason}` : ''}` : '',
+          invoice.additionalInfo || invoice.observacao || serviceResult.additionalInfo || '',
           `Status fiscal: ${statusText}`,
-          invoice.additionalInfo || invoice.observacao || invoice.serviceResult?.additionalInfo || '',
-          reason && invoice.status !== 'authorized' ? `Retorno SEFAZ: ${reason}` : '',
-          `Pedido: ${invoice.orderId || '-'}`,
-          `Chave: ${keyDigits || invoice.key || '-'}`
+          reason ? `Retorno SEFAZ: ${reason}` : '',
+          `Forma de pagamento: ${getInvoicePaymentMethod(invoice)}`,
+          `Pedido vinculado: ${invoice.orderId || '-'}`,
+          `Chave de acesso: ${keyDigits || invoice.key || '-'}`
         ].filter(Boolean).join('\n');
-        setFont(7, 'bold');
-        text('DADOS ADICIONAIS / INFORMAÇÕES COMPLEMENTARES', margin, y);
-        y += 2;
-        doc.rect(margin, y, contentWidth, 34);
-        setFont(7);
-        doc.text(fitText(additionalInfo || '-', contentWidth - 4).slice(0, 8), margin + 2, y + 5);
+        doc.rect(margin, y, contentWidth * 0.62, 34);
+        doc.rect(margin + (contentWidth * 0.62), y, contentWidth * 0.38, 34);
+        setFont(5.4, 'bold');
+        text('INFORMAÇÕES COMPLEMENTARES', margin + 1, y + 3);
+        text('RESERVADO AO FISCO', margin + (contentWidth * 0.62) + 1, y + 3);
+        setFont(6.2);
+        doc.text(fitText(additionalInfo || '-', (contentWidth * 0.62) - 3).slice(0, 11), margin + 1.5, y + 7);
 
         if (invoice.status === 'cancelled') {
           doc.setTextColor(190, 0, 0);
           setFont(34, 'bold');
-          doc.text('CANCELADA', pageWidth / 2, 156, { align: 'center', angle: 35 });
-          doc.setTextColor(20, 20, 20);
+          doc.text('CANCELADA', pageWidth / 2, 158, { align: 'center', angle: 35 });
+          doc.setTextColor(15, 15, 15);
         }
 
         const pageCount = doc.internal.getNumberOfPages();
         for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
           doc.setPage(pageNumber);
           setFont(6);
-          doc.text(`DANFE A4 gerado pela plataforma Ana Guimarães Doceria - Página ${pageNumber}/${pageCount}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+          doc.text(`Folha ${pageNumber}/${pageCount}`, pageWidth - margin, pageHeight - 5, { align: 'right' });
+          doc.text('DANFE A4 gerado pela plataforma Ana Guimarães Doceria', margin, pageHeight - 5);
+          if (pageNumber === 1) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.2);
+            doc.text(`FOLHA 1/${pageCount}`, margin + issuerW + (danfeW / 2), headerY + 43, { align: 'center' });
+          }
         }
 
         const filename = `DANFE-A4-${invoiceNumber}-${invoiceSeries}.pdf`.replace(/[^\w.-]+/g, '-');
