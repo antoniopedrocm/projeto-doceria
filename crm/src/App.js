@@ -11534,20 +11534,6 @@ const handleSubmit = async (e) => {
         'Não foi possível carregar o gerador de PDF. Atualize a página e tente novamente.'
       );
       await loadBrowserScript(
-        'jspdf-autotable',
-        'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js',
-        () => {
-          if (!window.jspdf?.jsPDF) return false;
-          try {
-            const probe = new window.jspdf.jsPDF();
-            return typeof probe.autoTable === 'function';
-          } catch (error) {
-            return false;
-          }
-        },
-        'Não foi possível carregar o layout de tabela do PDF. Atualize a página e tente novamente.'
-      );
-      await loadBrowserScript(
         'qrcode',
         'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js',
         () => typeof window.QRCode?.toDataURL === 'function',
@@ -12066,9 +12052,6 @@ const handleSubmit = async (e) => {
         await ensureDanfeA4Libraries();
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-        if (typeof doc.autoTable !== 'function') {
-          throw new Error('Não foi possível carregar o layout de tabela do PDF. Atualize a página e tente novamente.');
-        }
 
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -12402,33 +12385,60 @@ const handleSubmit = async (e) => {
             percentPlain(item.ipiRate || item.pIPI || 0)
           ];
         });
-        doc.autoTable({
-          startY: y,
-          head: [['Código', 'Descrição', 'NCM', 'CSOSN/CST', 'CFOP', 'UN.', 'Quant.', 'V.Unit.', 'V.Total', 'BC.ICMS', 'V.ICMS', 'V.IPI', '%ICMS', '%IPI']],
-          body: productRows.length ? productRows : [['-', 'Nenhum item detalhado encontrado', '-', '-', '-', '-', '0,00', '0,00', '0,00', '0,00', '0,00', '0,00', '0,00', '0,00']],
-          margin: { left: margin, right: margin },
-          styles: { fontSize: 5.25, cellPadding: 0.7, lineColor: [40, 40, 40], lineWidth: 0.08, overflow: 'linebreak', textColor: [15, 15, 15] },
-          headStyles: { fillColor: [238, 238, 238], textColor: [15, 15, 15], fontStyle: 'bold', fontSize: 5.1 },
-          alternateRowStyles: { fillColor: [252, 252, 252] },
-          columnStyles: {
-            0: { cellWidth: 12 },
-            1: { cellWidth: 45 },
-            2: { cellWidth: 15 },
-            3: { cellWidth: 13 },
-            4: { cellWidth: 12 },
-            5: { cellWidth: 7 },
-            6: { cellWidth: 13, halign: 'right' },
-            7: { cellWidth: 16, halign: 'right' },
-            8: { cellWidth: 16, halign: 'right' },
-            9: { cellWidth: 14, halign: 'right' },
-            10: { cellWidth: 12, halign: 'right' },
-            11: { cellWidth: 12, halign: 'right' },
-            12: { cellWidth: 10, halign: 'right' },
-            13: { cellWidth: 10, halign: 'right' }
+        const tableHeaders = ['Código', 'Descrição', 'NCM', 'CSOSN/CST', 'CFOP', 'UN.', 'Quant.', 'V.Unit.', 'V.Total', 'BC.ICMS', 'V.ICMS', 'V.IPI', '%ICMS', '%IPI'];
+        const tableWidths = [12, 45, 15, 13, 12, 7, 13, 16, 16, 14, 12, 12, 10, 10];
+        const rightAlignedColumns = new Set([6, 7, 8, 9, 10, 11, 12, 13]);
+        const tableRows = productRows.length ? productRows : [['-', 'Nenhum item detalhado encontrado', '-', '-', '-', '-', '0,00', '0,00', '0,00', '0,00', '0,00', '0,00', '0,00', '0,00']];
+        const tableBottom = 252;
+        const drawProductTableHeader = (startY) => {
+          let x = margin;
+          doc.setFillColor(238, 238, 238);
+          setFont(4.9, 'bold');
+          tableHeaders.forEach((header, index) => {
+            const width = tableWidths[index];
+            doc.rect(x, startY, width, 5.4, 'FD');
+            doc.text(fitText(header, width - 1.2).slice(0, 2), x + 0.6, startY + 2.1);
+            x += width;
+          });
+          return startY + 5.4;
+        };
+        const drawProductTableRow = (row, startY, rowIndex) => {
+          setFont(5.15);
+          const wrappedCells = row.map((value, index) => fitText(value, tableWidths[index] - 1.2).slice(0, index === 1 ? 4 : 2));
+          const rowHeight = Math.max(5.2, Math.max(...wrappedCells.map((lines) => lines.length)) * 2.3 + 1.6);
+          let nextY = startY;
+          if (nextY + rowHeight > tableBottom) {
+            doc.addPage();
+            nextY = margin + 5;
+            sectionTitle('Dados dos Produtos/Serviços (continuação)', nextY);
+            nextY += 2;
+            nextY = drawProductTableHeader(nextY);
           }
+          let x = margin;
+          if (rowIndex % 2 === 1) {
+            doc.setFillColor(252, 252, 252);
+            doc.rect(margin, nextY, tableWidths.reduce((sum, width) => sum + width, 0), rowHeight, 'F');
+          }
+          wrappedCells.forEach((lines, index) => {
+            const width = tableWidths[index];
+            doc.rect(x, nextY, width, rowHeight);
+            lines.forEach((line, lineIndex) => {
+              const textY = nextY + 2.2 + (lineIndex * 2.25);
+              if (rightAlignedColumns.has(index)) {
+                doc.text(line, x + width - 0.8, textY, { align: 'right' });
+              } else {
+                doc.text(line, x + 0.7, textY);
+              }
+            });
+            x += width;
+          });
+          return nextY + rowHeight;
+        };
+        y = drawProductTableHeader(y);
+        tableRows.forEach((row, index) => {
+          y = drawProductTableRow(row, y, index);
         });
-
-        y = (doc.lastAutoTable?.finalY || y + 20) + 4;
+        y += 4;
         if (y > 252) {
           doc.addPage();
           y = margin + 4;
