@@ -11661,6 +11661,245 @@ const handleSubmit = async (e) => {
       }
     };
 
+    const handleExportDanfeA4 = async (invoice) => {
+      if (!invoice?.id) return;
+      if (!['authorized', 'cancelled'].includes(invoice.status)) {
+        setMessage({ type: 'error', text: 'O DANFE A4 fica disponível apenas para notas autorizadas ou canceladas.' });
+        return;
+      }
+      if (typeof window.jspdf === 'undefined') {
+        setMessage({ type: 'error', text: 'Não foi possível carregar o gerador de PDF. Atualize a página e tente novamente.' });
+        return;
+      }
+
+      setBusyOrderId(`danfe-a4:${invoice.id}`);
+      setMessage(null);
+
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 8;
+        const contentWidth = pageWidth - (margin * 2);
+        const issuerAddress = invoice?.issuer?.address || invoice?.serviceResult?.issuer?.address || issuerForm.address || {};
+        const issuer = {
+          legalName: invoice?.issuer?.legalName || invoice?.serviceResult?.issuer?.legalName || issuerForm.legalName || storeName || '-',
+          tradeName: invoice?.issuer?.tradeName || invoice?.serviceResult?.issuer?.tradeName || issuerForm.tradeName || '',
+          cnpj: getInvoiceIssuerDocument(invoice) || issuerForm.cnpj || '',
+          stateRegistration: invoice?.issuer?.stateRegistration || invoice?.serviceResult?.issuer?.stateRegistration || issuerForm.stateRegistration || '',
+          address: issuerAddress
+        };
+        const customerAddress = getOrderCustomerAddress(invoice);
+        const customer = {
+          name: getInvoiceCustomerName(invoice),
+          document: getInvoiceCustomerDocument(invoice),
+          stateRegistration: invoice?.customer?.stateRegistration || invoice?.customer?.inscricaoEstadual || '',
+          address: customerAddress
+        };
+        const invoiceNumber = formatFiscalNumber(invoice.number);
+        const invoiceSeries = formatFiscalSeries(invoice.series);
+        const invoiceModel = invoice.model || '65';
+        const issuedAt = formatDateTime(invoice.issuedAt || invoice.createdAt);
+        const authorizedAt = formatDateTime(invoice.authorizedAt || invoice.serviceResult?.authorizedAt || (invoice.status === 'authorized' ? invoice.updatedAt : null));
+        const reason = fiscalReturnReason(invoice);
+        const items = getInvoiceItems(invoice);
+        const productsTotal = Number(invoice?.totals?.products ?? invoice?.serviceResult?.totals?.products ?? items.reduce((sum, item) => {
+          const quantity = Number(item.quantity ?? item.quantidade ?? item.qCom ?? 1) || 1;
+          const unitValue = Number(item.unitValue ?? item.valorUnitario ?? item.preco ?? item.valor ?? item.vUnCom ?? 0) || 0;
+          return sum + (quantity * unitValue);
+        }, 0)) || 0;
+        const discount = getInvoiceDiscount(invoice);
+        const freight = getInvoiceFreight(invoice);
+        const invoiceTotal = getInvoiceValue(invoice);
+        const keyDigits = onlyDigitsText(invoice.key);
+        const accessKey = keyDigits ? keyDigits.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : (invoice.key || '-');
+        const operationNature = invoice.operationNature || invoice.naturezaOperacao || settingsForm.operationNature || 'Venda';
+        const statusText = statusLabel[invoice.status] || invoice.status || '-';
+        const formatDocumentFull = (value) => {
+          const digits = onlyDigitsText(value);
+          if (digits.length === 11) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+          if (digits.length === 14) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+          return value || '-';
+        };
+
+        const setFont = (size = 8, style = 'normal') => {
+          doc.setFont('helvetica', style);
+          doc.setFontSize(size);
+        };
+        const text = (value, x, y, options = {}) => doc.text(String(value || '-'), x, y, options);
+        const fitText = (value, maxWidth) => doc.splitTextToSize(String(value || '-'), maxWidth);
+        const drawBox = (x, y, w, h, title, value, options = {}) => {
+          doc.rect(x, y, w, h);
+          setFont(6, 'bold');
+          text(String(title || '').toUpperCase(), x + 1.2, y + 3.2);
+          setFont(options.size || 8, options.bold ? 'bold' : 'normal');
+          const lines = fitText(value || '-', w - 2.4).slice(0, options.maxLines || 2);
+          doc.text(lines, x + 1.2, y + 7.2);
+        };
+        const addressLine = (address = {}) => [
+          ...(typeof address === 'string'
+            ? [address]
+            : [
+                [address.street || address.logradouro, address.number || address.numero].filter(Boolean).join(', '),
+                address.district || address.bairro,
+                [address.city || address.cidade, address.state || address.uf].filter(Boolean).join('/'),
+                address.zip || address.cep
+              ])
+        ].filter(Boolean).join(' - ') || '-';
+
+        doc.setLineWidth(0.2);
+        doc.setDrawColor(20, 20, 20);
+        doc.setTextColor(20, 20, 20);
+
+        doc.rect(margin, 8, 74, 32);
+        setFont(10, 'bold');
+        doc.text(fitText(issuer.legalName, 70), margin + 2, 14);
+        setFont(7);
+        doc.text(fitText(addressLine(issuer.address), 70), margin + 2, 23);
+        text(`CNPJ: ${formatDocumentFull(issuer.cnpj)}`, margin + 2, 34);
+        if (issuer.stateRegistration) text(`IE: ${issuer.stateRegistration}`, margin + 38, 34);
+
+        doc.rect(margin + 74, 8, 58, 32);
+        setFont(11, 'bold');
+        text('DANFE A4', margin + 103, 15, { align: 'center' });
+        setFont(7);
+        doc.text(['Documento Auxiliar', 'da Nota Fiscal Eletrônica'], margin + 103, 21, { align: 'center' });
+        setFont(8, 'bold');
+        text(`Modelo ${invoiceModel}`, margin + 103, 33, { align: 'center' });
+
+        doc.rect(margin + 132, 8, contentWidth - 132, 32);
+        setFont(8, 'bold');
+        text(`NF-e Nº ${invoiceNumber}`, margin + 134, 16);
+        text(`Série ${invoiceSeries}`, margin + 134, 23);
+        setFont(7);
+        text(`Emissão: ${issuedAt}`, margin + 134, 31);
+
+        drawBox(margin, 42, contentWidth, 14, 'Chave de acesso', accessKey, { size: 9, bold: true, maxLines: 1 });
+        drawBox(margin, 58, 96, 14, 'Natureza da operação', operationNature, { maxLines: 1 });
+        drawBox(margin + 96, 58, contentWidth - 96, 14, 'Protocolo de autorização', `${invoice.protocol || '-'}${authorizedAt !== '-' ? ` - ${authorizedAt}` : ''}`, { maxLines: 1 });
+
+        setFont(7, 'bold');
+        text('DESTINATÁRIO / REMETENTE', margin, 78);
+        drawBox(margin, 80, 96, 13, 'Nome / Razão social', customer.name, { maxLines: 1 });
+        drawBox(margin + 96, 80, 48, 13, 'CPF/CNPJ', formatDocumentFull(customer.document), { maxLines: 1 });
+        drawBox(margin + 144, 80, contentWidth - 144, 13, 'Inscrição estadual', customer.stateRegistration || '-', { maxLines: 1 });
+        drawBox(margin, 93, 144, 13, 'Endereço', addressLine(customer.address), { maxLines: 1 });
+        drawBox(margin + 144, 93, contentWidth - 144, 13, 'Data/Hora emissão', issuedAt, { maxLines: 1 });
+
+        setFont(7, 'bold');
+        text('PRODUTOS / SERVIÇOS', margin, 112);
+        const productRows = items.map((item, index) => {
+          const productId = String(item.productId || item.produtoId || item.id || '').trim();
+          const fiscalProduct = productId ? fiscalProductsById.get(productId) : null;
+          const quantity = Number(item.quantity ?? item.quantidade ?? item.qCom ?? 1) || 1;
+          const unitValue = Number(item.unitValue ?? item.valorUnitario ?? item.preco ?? item.valor ?? item.vUnCom ?? 0) || 0;
+          const totalValue = Number(item.total ?? item.valorTotal ?? item.vProd ?? unitValue * quantity) || 0;
+          return [
+            item.code || item.codigo || fiscalProduct?.code || productId || String(index + 1),
+            item.description || item.nome || item.produto || fiscalProduct?.description || 'Produto',
+            formatNcmCode(item.ncm || fiscalProduct?.ncm || DEFAULT_NCM_PRODUCT),
+            item.cfop || item.cfopNfe || item.cfopNfce || fiscalProduct?.cfopNfe || fiscalProduct?.cfop || DEFAULT_CFOP_OPERATION,
+            item.unit || item.unidade || item.uCom || fiscalProduct?.unit || 'un',
+            Number(quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }),
+            formatCurrencyBR(unitValue),
+            formatCurrencyBR(totalValue)
+          ];
+        });
+        const tableHead = [['Código', 'Descrição', 'NCM', 'CFOP', 'Un.', 'Qtd.', 'Vl. unit.', 'Vl. total']];
+        if (typeof doc.autoTable === 'function') {
+          doc.autoTable({
+            startY: 114,
+            head: tableHead,
+            body: productRows.length ? productRows : [['-', 'Nenhum item detalhado encontrado', '-', '-', '-', '-', '-', '-']],
+            margin: { left: margin, right: margin },
+            styles: { fontSize: 6.5, cellPadding: 1.1, lineColor: [80, 80, 80], lineWidth: 0.1, overflow: 'linebreak', textColor: [20, 20, 20] },
+            headStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: 'bold' },
+            columnStyles: {
+              0: { cellWidth: 19 },
+              1: { cellWidth: 55 },
+              2: { cellWidth: 20 },
+              3: { cellWidth: 14 },
+              4: { cellWidth: 10 },
+              5: { cellWidth: 16, halign: 'right' },
+              6: { cellWidth: 24, halign: 'right' },
+              7: { cellWidth: 26, halign: 'right' }
+            }
+          });
+        } else {
+          let y = 114;
+          tableHead[0].forEach((title, index) => text(title, margin + (index * 23), y));
+          y += 5;
+          productRows.forEach((row) => {
+            row.forEach((value, index) => text(value, margin + (index * 23), y));
+            y += 5;
+          });
+        }
+
+        let y = Math.max((doc.lastAutoTable?.finalY || 160) + 6, 160);
+        if (y > 232) {
+          doc.addPage();
+          y = 14;
+        }
+
+        setFont(7, 'bold');
+        text('CÁLCULO DO IMPOSTO', margin, y);
+        y += 2;
+        drawBox(margin, y, 38, 13, 'Base ICMS', formatCurrencyBR(invoice?.taxes?.icmsBase || 0), { maxLines: 1 });
+        drawBox(margin + 38, y, 38, 13, 'Valor ICMS', formatCurrencyBR(invoice?.taxes?.icms || 0), { maxLines: 1 });
+        drawBox(margin + 76, y, 38, 13, 'Valor produtos', formatCurrencyBR(productsTotal), { maxLines: 1 });
+        drawBox(margin + 114, y, 38, 13, 'Desconto', formatCurrencyBR(discount), { maxLines: 1 });
+        drawBox(margin + 152, y, contentWidth - 152, 13, 'Valor total da nota', formatCurrencyBR(invoiceTotal), { bold: true, maxLines: 1 });
+        y += 18;
+
+        setFont(7, 'bold');
+        text('TRANSPORTE / PAGAMENTO', margin, y);
+        y += 2;
+        drawBox(margin, y, 68, 13, 'Modalidade do frete', freight > 0 ? 'Com cobrança de frete' : 'Sem frete', { maxLines: 1 });
+        drawBox(margin + 68, y, 64, 13, 'Forma de pagamento', getInvoicePaymentMethod(invoice), { maxLines: 1 });
+        drawBox(margin + 132, y, contentWidth - 132, 13, 'Valor pago', formatCurrencyBR(getInvoicePaidAmount(invoice)), { maxLines: 1 });
+        y += 18;
+
+        const additionalInfo = [
+          invoice.status === 'cancelled' ? `NOTA CANCELADA${invoice.cancelReason ? ` - ${invoice.cancelReason}` : ''}` : '',
+          `Status fiscal: ${statusText}`,
+          invoice.additionalInfo || invoice.observacao || invoice.serviceResult?.additionalInfo || '',
+          reason && invoice.status !== 'authorized' ? `Retorno SEFAZ: ${reason}` : '',
+          `Pedido: ${invoice.orderId || '-'}`,
+          `Chave: ${keyDigits || invoice.key || '-'}`
+        ].filter(Boolean).join('\n');
+        setFont(7, 'bold');
+        text('DADOS ADICIONAIS / INFORMAÇÕES COMPLEMENTARES', margin, y);
+        y += 2;
+        doc.rect(margin, y, contentWidth, 34);
+        setFont(7);
+        doc.text(fitText(additionalInfo || '-', contentWidth - 4).slice(0, 8), margin + 2, y + 5);
+
+        if (invoice.status === 'cancelled') {
+          doc.setTextColor(190, 0, 0);
+          setFont(34, 'bold');
+          doc.text('CANCELADA', pageWidth / 2, 156, { align: 'center', angle: 35 });
+          doc.setTextColor(20, 20, 20);
+        }
+
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+          doc.setPage(pageNumber);
+          setFont(6);
+          doc.text(`DANFE A4 gerado pela plataforma Ana Guimarães Doceria - Página ${pageNumber}/${pageCount}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+        }
+
+        const filename = `DANFE-A4-${invoiceNumber}-${invoiceSeries}.pdf`.replace(/[^\w.-]+/g, '-');
+        doc.save(filename);
+        setMessage({ type: 'success', text: 'DANFE A4 exportado com sucesso.' });
+      } catch (error) {
+        console.error('[NotaFiscal] Exportação DANFE A4 falhou:', error);
+        setMessage({ type: 'error', text: error?.message || 'Não foi possível exportar o DANFE A4.' });
+      } finally {
+        setBusyOrderId('');
+      }
+    };
+
     const handleCopyInvoiceKey = async (invoice) => {
       const key = String(invoice?.key || '').trim();
       if (!key) {
@@ -12083,6 +12322,7 @@ const handleSubmit = async (e) => {
     const invoiceActions = [
       { icon: Eye, label: 'Ver detalhes', onClick: (row) => setInvoiceToView(row) },
       { icon: FileText, label: 'Baixar/visualizar DANFE PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => row.status === 'authorized' },
+      { icon: Printer, label: 'Exportar DANFE A4', onClick: handleExportDanfeA4, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
       { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => row.status === 'authorized' },
       { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' && Boolean(row.orderId) },
       { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => !isReadOnly && row.status === 'authorized' }
@@ -13151,6 +13391,7 @@ const handleSubmit = async (e) => {
                 <DetailSection title="Arquivos e ações fiscais">
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoicePdf(invoice)} disabled={invoice.status !== 'authorized'} title="Visualizar ou baixar DANFE/PDF"><FileText className="w-4 h-4" /> DANFE/PDF</Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleExportDanfeA4(invoice)} disabled={!['authorized', 'cancelled'].includes(invoice.status)} title="Exportar DANFE em folha A4"><Printer className="w-4 h-4" /> DANFE A4</Button>
                     <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoiceXml(invoice)} disabled={invoice.status !== 'authorized'} title="Baixar XML autorizado"><Download className="w-4 h-4" /> XML</Button>
                     <Button size="sm" variant="secondary" onClick={() => handleCopyInvoiceKey(invoice)} title="Copiar chave de acesso"><Key className="w-4 h-4" /> Copiar chave</Button>
                     {sefazUrl && (
