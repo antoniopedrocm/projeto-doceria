@@ -57,9 +57,9 @@ const fiscalPaymentCodeFromText = (method) => {
     || value.includes('gerado')
     || value.includes('venda')
     || value.includes('copia e cola')
-    || value === 'pix'
   );
   if (isDynamicPix) return '17';
+  if (isPix) return '20';
 
   if (value.includes('dinheiro') || value.includes('cash') || value.includes('especie')) return '01';
   if (value.includes('debito') || value.includes('debit')) return '04';
