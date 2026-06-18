@@ -5158,9 +5158,9 @@ function App() {
 
     const handleTodayFilter = () => {
       const currentDay = toDateInputValue(new Date());
-      setRecordFilterMode('today');
       setSelectedDay(currentDay);
       setSelectedMonth(currentDay.slice(0, 7));
+      setRecordFilterMode((currentMode) => currentMode === 'today' ? 'month' : 'today');
     };
 
     const handleDayFilterChange = (event) => {
