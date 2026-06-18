@@ -5180,6 +5180,277 @@ function App() {
       }
     };
 
+    const getSelectedEmployeeIdForExport = () => {
+      if (!isManager) return userId;
+      return selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : '';
+    };
+
+    const formatCompanyAddressForPointSheet = (value) => {
+      if (!value) return '-';
+      if (typeof value === 'string') return value;
+      if (typeof value === 'object') {
+        return [
+          value.enderecoCompleto,
+          [value.rua || value.logradouro || value.street, value.numero || value.number].filter(Boolean).join(', '),
+          value.bairro || value.district,
+          [value.cidade || value.city, value.uf || value.state].filter(Boolean).join(' - '),
+          value.cep || value.zip
+        ].filter(Boolean).join(' - ') || '-';
+      }
+      return String(value);
+    };
+
+    const parseIrregularityToMinutes = (value) => {
+      const text = String(value || '').trim();
+      if (!text || text === '-') return 0;
+      const match = text.match(/([+-])?\s*(\d{1,4}):(\d{2})/);
+      if (!match) return 0;
+      const sign = match[1] === '-' ? -1 : 1;
+      const hours = Number(match[2]);
+      const minutes = Number(match[3]);
+      if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0;
+      return sign * ((hours * 60) + minutes);
+    };
+
+    const formatMinutesForPointSheet = (minutes, { signed = false } = {}) => {
+      const normalized = Number(minutes) || 0;
+      const sign = normalized < 0 ? '-' : signed && normalized > 0 ? '+' : '';
+      const abs = Math.abs(normalized);
+      const hours = Math.floor(abs / 60);
+      const mins = abs % 60;
+      return `${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+    };
+
+    const getPointSheetEmployee = (employeeId, employeeRecords = []) => {
+      const employee = employees.find((item) => item.id === employeeId) || {};
+      const firstRecord = employeeRecords[0] || {};
+      return {
+        id: employeeId,
+        name: employee.nome || employee.displayName || employee.email || firstRecord.funcionarioNome || user?.auth?.displayName || user?.auth?.email || employeeId,
+        email: employee.email || firstRecord.funcionarioEmail || '',
+        registration: employee.matricula || employee.matriculaFuncionario || employee.employeeCode || employee.codigo || firstRecord.matricula || '-',
+        category: employee.categoriaPonto || employee.tipoPonto || firstRecord.categoriaPonto || firstRecord.tipoPonto || '-'
+      };
+    };
+
+    const getPointSheetMonthLabel = () => {
+      const [year, month] = recordsQueryMonth.split('-').map(Number);
+      if (!year || !month) return recordsQueryMonth;
+      const label = new Date(year, month - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    };
+
+    const handleExportPointSheet = () => {
+      const employeeId = getSelectedEmployeeIdForExport();
+      if (!employeeId) {
+        setRegisterMessage({ type: 'error', text: 'Selecione um colaborador para gerar a folha de ponto.' });
+        return;
+      }
+      if (typeof window.jspdf === 'undefined') {
+        setRegisterMessage({ type: 'error', text: 'Não foi possível carregar o gerador de PDF. Atualize a página e tente novamente.' });
+        return;
+      }
+
+      try {
+        const employeeMonthlyRecords = records
+          .filter((item) => item.funcionarioId === employeeId)
+          .sort((a, b) => {
+            const dateA = getRecordDateTime(a);
+            const dateB = getRecordDateTime(b);
+            return (dateA?.getTime() || 0) - (dateB?.getTime() || 0);
+          });
+
+        if (employeeMonthlyRecords.length === 0) {
+          setRegisterMessage({ type: 'error', text: 'Não existem registros para gerar a folha de ponto deste colaborador na competência selecionada.' });
+          return;
+        }
+
+        const [year, month] = recordsQueryMonth.split('-').map(Number);
+        if (!year || !month) {
+          setRegisterMessage({ type: 'error', text: 'Competência inválida para gerar a folha de ponto.' });
+          return;
+        }
+
+        const recordsByDay = new Map();
+        employeeMonthlyRecords.forEach((record) => {
+          const dayKey = getRecordDayKey(record);
+          if (!dayKey) return;
+          if (!recordsByDay.has(dayKey)) recordsByDay.set(dayKey, record);
+        });
+
+        const employee = getPointSheetEmployee(employeeId, employeeMonthlyRecords);
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const rows = [];
+        let creditMinutes = 0;
+        let debitMinutes = 0;
+
+        for (let day = 1; day <= daysInMonth; day += 1) {
+          const date = new Date(year, month - 1, day);
+          const dayKey = toDateInputValue(date);
+          const record = recordsByDay.get(dayKey);
+          const summary = record ? calculateWorkSummary(record) : { irregularidade: '-', workedLabel: '-' };
+          const irregularityMinutes = parseIrregularityToMinutes(summary.irregularidade);
+          if (irregularityMinutes > 0) creditMinutes += irregularityMinutes;
+          if (irregularityMinutes < 0) debitMinutes += Math.abs(irregularityMinutes);
+          const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+          const fallbackJustification = date.getDay() === 0 ? 'FOLGA' : date.getDay() === 6 ? 'FOLGA COMPENSADA' : 'Sem registro';
+
+          rows.push([
+            dayOfWeek,
+            date.toLocaleDateString('pt-BR'),
+            formatTime(record?.horaEntrada),
+            formatTime(record?.horaAlmocoSaida),
+            formatTime(record?.horaAlmocoRetorno),
+            formatTime(record?.horaSaida),
+            summary.irregularidade || '-',
+            summary.workedLabel || '-',
+            record?.justificativa || (!record ? fallbackJustification : '-'),
+            record?.adicionalNoturno || record?.adicNoturno || '-'
+          ]);
+        }
+
+        const balanceMinutes = creditMinutes - debitMinutes;
+        const overtimeToPay = Math.max(balanceMinutes, 0);
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        if (typeof doc.autoTable !== 'function') {
+          throw new Error('Não foi possível carregar o layout de tabela do PDF. Atualize a página e tente novamente.');
+        }
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 8;
+        const contentWidth = pageWidth - (margin * 2);
+        const emittedAt = new Date().toLocaleString('pt-BR');
+        const monthLabel = getPointSheetMonthLabel();
+        const companyName = companyInfo.nome || storeName || 'Empresa';
+        const companyAddress = formatCompanyAddressForPointSheet(companyInfo.endereco);
+
+        const setFont = (size = 8, style = 'normal') => {
+          doc.setFont('helvetica', style);
+          doc.setFontSize(size);
+        };
+        const drawLine = (y) => {
+          doc.setLineWidth(0.15);
+          doc.line(margin, y, pageWidth - margin, y);
+        };
+        const labelValue = (label, value, x, y, width) => {
+          setFont(7, 'bold');
+          doc.text(`${label}:`, x, y);
+          setFont(7);
+          const labelWidth = doc.getTextWidth(`${label}: `);
+          doc.text(doc.splitTextToSize(String(value || '-'), width - labelWidth), x + labelWidth, y);
+        };
+
+        setFont(11, 'bold');
+        doc.text('CARTÃO DE PONTO', pageWidth / 2, 10, { align: 'center' });
+        drawLine(13);
+        setFont(7);
+        doc.text(`Emissão: ${emittedAt}`, margin, 18);
+        doc.text('Página: 0001', pageWidth - margin, 18, { align: 'right' });
+        drawLine(22);
+
+        labelValue('Empresa', companyName, margin, 28, 145);
+        labelValue('Mês/Ano Competência', monthLabel, margin + 170, 28, 105);
+        labelValue('Endereço', companyAddress, margin, 34, 170);
+        labelValue('CNPJ', companyInfo.cnpj || '-', margin + 170, 34, 105);
+        labelValue('Hor. de Trab.', companyInfo.horarioTrabalho || '-', margin, 40, 180);
+        labelValue('Atividade Econômica', companyInfo.atividade || '-', margin + 170, 40, 105);
+        drawLine(45);
+
+        labelValue('Funcionário', employee.name, margin, 51, 150);
+        labelValue('Categoria de Ponto', employee.category, margin + 170, 51, 105);
+        labelValue('Matrícula', employee.registration, margin, 57, 95);
+        if (employee.email) labelValue('E-mail', employee.email, margin + 70, 57, 105);
+        drawLine(62);
+
+        doc.autoTable({
+          startY: 65,
+          head: [[
+            'Dia Sem',
+            'Data',
+            'Entrada',
+            'Saída almoço',
+            'Retorno almoço',
+            'Saída',
+            'Irregularidade',
+            'Qtde',
+            'Justificativa',
+            'Adic. Noturno'
+          ]],
+          body: rows,
+          margin: { left: margin, right: margin },
+          styles: { fontSize: 6.2, cellPadding: 1, lineColor: [190, 190, 190], lineWidth: 0.1, textColor: [20, 20, 20], overflow: 'linebreak' },
+          headStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [252, 252, 252] },
+          columnStyles: {
+            0: { cellWidth: 16 },
+            1: { cellWidth: 20 },
+            2: { cellWidth: 18 },
+            3: { cellWidth: 22 },
+            4: { cellWidth: 24 },
+            5: { cellWidth: 18 },
+            6: { cellWidth: 26 },
+            7: { cellWidth: 18 },
+            8: { cellWidth: 79 },
+            9: { cellWidth: 20 }
+          }
+        });
+
+        let y = (doc.lastAutoTable?.finalY || 160) + 5;
+        if (y > pageHeight - 38) {
+          doc.addPage();
+          y = margin;
+        }
+
+        drawLine(y);
+        y += 6;
+        setFont(8, 'bold');
+        doc.text('Resumo do mês', margin, y);
+        y += 5;
+        const summaryBoxes = [
+          ['Créditos Mês', formatMinutesForPointSheet(creditMinutes)],
+          ['Débitos Mês', formatMinutesForPointSheet(debitMinutes)],
+          ['Saldo do Mês', formatMinutesForPointSheet(balanceMinutes, { signed: balanceMinutes !== 0 })],
+          ['Total de Horas Extras a Pagar', formatMinutesForPointSheet(overtimeToPay)]
+        ];
+        const boxWidth = contentWidth / summaryBoxes.length;
+        summaryBoxes.forEach(([label, value], index) => {
+          const x = margin + (index * boxWidth);
+          doc.rect(x, y, boxWidth, 13);
+          setFont(6, 'bold');
+          doc.text(label.toUpperCase(), x + 2, y + 4);
+          setFont(10, 'bold');
+          doc.text(value, x + 2, y + 10);
+        });
+        y += 22;
+
+        setFont(8);
+        doc.text('CONFIRMO A FREQUÊNCIA ACIMA', margin, y);
+        y += 19;
+        doc.line(margin, y, margin + 95, y);
+        doc.line(pageWidth - margin - 95, y, pageWidth - margin, y);
+        setFont(7);
+        doc.text(companyInfo.gestorResponsavel || 'Chefe/Gerente', margin + 47.5, y + 5, { align: 'center' });
+        doc.text(employee.name || 'Funcionário', pageWidth - margin - 47.5, y + 5, { align: 'center' });
+        doc.text('Assinatura do responsável', margin + 47.5, y + 10, { align: 'center' });
+        doc.text('Assinatura do funcionário', pageWidth - margin - 47.5, y + 10, { align: 'center' });
+
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+          doc.setPage(pageNumber);
+          setFont(6);
+          doc.text(`Folha de ponto gerada pela plataforma Ana Guimarães Doceria - Página ${String(pageNumber).padStart(4, '0')}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+        }
+
+        const safeName = normalizeSearchText(employee.name).replace(/\s+/g, '-').replace(/[^\w-]/g, '') || 'colaborador';
+        doc.save(`folha-ponto-${safeName}-${recordsQueryMonth}.pdf`);
+        setRegisterMessage({ type: 'success', text: 'Folha de ponto exportada com sucesso.' });
+      } catch (error) {
+        console.error('[MeuEspaco] Falha ao exportar folha de ponto:', error);
+        setRegisterMessage({ type: 'error', text: error?.message || 'Não foi possível exportar a folha de ponto.' });
+      }
+    };
+
     const filteredRecords = useMemo(() => {
       const sorted = [...records].sort((a, b) => {
         const dateA = getRecordDateTime(a);
@@ -5220,6 +5491,7 @@ function App() {
       almoco_fim: !registerLoading && hasTodayLunchStart && !hasTodayLunchReturn && !hasTodayExit,
       saida: !registerLoading && !hasTodayExit && !isTodayAtLunch,
     };
+    const canExportPointSheet = !isManager || (selectedEmployee && selectedEmployee !== 'all');
 
     const requestLocation = () => requestCompatibleGeolocation({ source: 'meu-espaco-registro-ponto' });
 
@@ -5528,7 +5800,7 @@ function App() {
                 Registros ({filteredRecords.length})
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 w-full md:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 w-full md:w-auto">
               <div className="flex items-end">
                 <button
                   type="button"
@@ -5569,6 +5841,18 @@ function App() {
                     </>
                   )}
                 </Select>
+              )}
+              {canExportPointSheet && (
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={handleExportPointSheet}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 shadow-sm transition-all hover:border-pink-300 hover:bg-pink-50 hover:text-pink-700"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Imprimir folha de ponto
+                  </button>
+                </div>
               )}
             </div>
           </div>
