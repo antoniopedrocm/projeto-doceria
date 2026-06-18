@@ -138,6 +138,63 @@ const downloadBase64File = (base64, filename, contentType = 'application/octet-s
   link.remove();
   URL.revokeObjectURL(url);
 };
+const decodeBase64Utf8 = (base64) => {
+  const binary = atob(base64 || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
+};
+const loadBrowserScript = (id, src, isReady, errorMessage) => {
+  if (isReady()) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let script = document.getElementById(id);
+    if (script && !isReady()) {
+      script.remove();
+      script = null;
+    }
+    let timeoutId = null;
+    const cleanup = () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+    const resolveReady = () => {
+      settled = true;
+      cleanup();
+      if (script) script.dataset.loaded = 'true';
+      resolve();
+    };
+    const rejectLoad = () => {
+      settled = true;
+      cleanup();
+      reject(new Error(errorMessage));
+    };
+    const finish = () => {
+      if (settled) return;
+      if (isReady()) {
+        resolveReady();
+      }
+    };
+    const fail = () => {
+      if (settled) return;
+      rejectLoad();
+    };
+    if (!script) {
+      script = document.createElement('script');
+      script.id = id;
+      script.src = src;
+      script.async = true;
+      document.body.appendChild(script);
+    }
+    script.addEventListener('load', finish, { once: true });
+    script.addEventListener('error', fail, { once: true });
+    timeoutId = window.setTimeout(() => {
+      if (!settled) {
+        if (isReady()) finish();
+        else fail();
+      }
+    }, 10000);
+  });
+};
 
 const isSafariBrowser = () => {
   if (typeof navigator === 'undefined') return false;
@@ -11469,6 +11526,55 @@ const handleSubmit = async (e) => {
       return artifact;
     };
 
+    const ensureDanfeA4Libraries = async () => {
+      await loadBrowserScript(
+        'jspdf',
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        () => Boolean(window.jspdf?.jsPDF),
+        'Não foi possível carregar o gerador de PDF. Atualize a página e tente novamente.'
+      );
+      await loadBrowserScript(
+        'jspdf-autotable',
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js',
+        () => {
+          if (!window.jspdf?.jsPDF) return false;
+          try {
+            const probe = new window.jspdf.jsPDF();
+            return typeof probe.autoTable === 'function';
+          } catch (error) {
+            return false;
+          }
+        },
+        'Não foi possível carregar o layout de tabela do PDF. Atualize a página e tente novamente.'
+      );
+      await loadBrowserScript(
+        'qrcode',
+        'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js',
+        () => typeof window.QRCode?.toDataURL === 'function',
+        'Não foi possível carregar o gerador de QR Code. Atualize a página e tente novamente.'
+      );
+    };
+
+    const getInvoiceQrCodeFromAuthorizedXml = async (invoiceId) => {
+      if (!invoiceId) return '';
+      try {
+        const fn = httpsCallable(functions, 'fiscalGetInvoiceArtifact');
+        const response = await fn(callablePayload({ invoiceId, type: 'authorizedXml' }));
+        const artifact = response.data || {};
+        const xmlText = decodeBase64Utf8(artifact.base64 || '');
+        if (!xmlText) return '';
+        const xml = new DOMParser().parseFromString(xmlText, 'application/xml');
+        const parserError = xml.getElementsByTagName('parsererror')?.[0];
+        if (parserError) return '';
+        const qrNode = xml.getElementsByTagName('qrCode')?.[0]
+          || xml.getElementsByTagNameNS('*', 'qrCode')?.[0];
+        return qrNode?.textContent?.trim() || '';
+      } catch (error) {
+        console.warn('[NotaFiscal] Não foi possível reaproveitar o QR Code do XML autorizado.', error);
+        return '';
+      }
+    };
+
     const setIssuerField = (field, value) => {
       setIssuerForm((prev) => ({ ...prev, [field]: value }));
     };
@@ -11952,15 +12058,12 @@ const handleSubmit = async (e) => {
         setMessage({ type: 'error', text: 'O DANFE A4 fica disponível apenas para notas autorizadas ou canceladas.' });
         return;
       }
-      if (typeof window.jspdf === 'undefined') {
-        setMessage({ type: 'error', text: 'Não foi possível carregar o gerador de PDF. Atualize a página e tente novamente.' });
-        return;
-      }
 
       setBusyOrderId(`danfe-a4:${invoice.id}`);
       setMessage(null);
 
       try {
+        await ensureDanfeA4Libraries();
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         if (typeof doc.autoTable !== 'function') {
@@ -12011,7 +12114,8 @@ const handleSubmit = async (e) => {
         const accessKey = keyDigits ? keyDigits.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : (invoice.key || serviceResult?.key || '-');
         const operationNature = invoice.operationNature || invoice.naturezaOperacao || settingsForm.operationNature || 'Venda';
         const statusText = statusLabel[invoice.status] || invoice.status || '-';
-        const qrSource = invoice.qrCodeUrl || invoice.qrCode || invoice.qrUrl || invoice.urlConsulta || invoice.consultationUrl || serviceResult.qrCodeUrl || serviceResult.qrCode || serviceResult.urlConsulta || serviceResult.consultationUrl || sefazConsultaUrl(invoice);
+        const xmlQrCode = await getInvoiceQrCodeFromAuthorizedXml(invoice.id);
+        const qrSource = invoice.qrCodeUrl || invoice.qrCode || invoice.qrUrl || invoice.urlConsulta || invoice.consultationUrl || serviceResult.qrCodeUrl || serviceResult.qrCode || serviceResult.urlConsulta || serviceResult.consultationUrl || xmlQrCode || sefazConsultaUrl(invoice);
         if (!qrSource) {
           throw new Error('Não foi possível gerar o QR Code: a nota não possui URL de consulta ou chave de acesso.');
         }
