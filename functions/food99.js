@@ -31,6 +31,9 @@ const ACTIVE_EXTERNAL_STATUSES = new Set([
 const TERMINAL_EXTERNAL_STATUSES = new Set(['CONCLUDED', 'CANCELLED']);
 const LIFECYCLE_EXTERNAL_STATUSES = new Set([...ACTIVE_EXTERNAL_STATUSES, ...TERMINAL_EXTERNAL_STATUSES]);
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+const DEFAULT_TIMEZONE = 'America/Sao_Paulo';
+const COMPLETED_APP_STATUSES = new Set(['finalizado', 'concluido', 'concluído', 'completed', 'complete', 'finished', 'delivered']);
+const CANCELLED_APP_STATUSES = new Set(['cancelado', 'cancelled', 'canceled']);
 
 const cleanText = (value) => String(value || '').trim();
 const normalizeLookupText = (value) => cleanText(value)
@@ -51,6 +54,78 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const timestampNow = () => new Date().toISOString();
 const isNonEmptyString = (value) => typeof value === 'string' && value.trim().length > 0;
 const truncate = (value, maxLength) => cleanText(value).slice(0, maxLength);
+
+const dateKeyInTimezone = (value, timezone = DEFAULT_TIMEZONE) => {
+  const date = value instanceof Date ? value : new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+const todayIntervalInTimezone = (timezone = DEFAULT_TIMEZONE) => {
+  const now = new Date();
+  const todayKey = dateKeyInTimezone(now, timezone);
+  return {
+    timezone,
+    todayKey,
+    startLabel: `${todayKey}T00:00:00`,
+    endIso: now.toISOString(),
+  };
+};
+
+const firestoreDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value.toDate === 'function') return value.toDate();
+  if (typeof value === 'number') {
+    const millis = value > 100000000000 ? value : value * 1000;
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+};
+
+const orderRelevantDate = (order = {}) => firestoreDate(
+  order.completedAt
+  || order.finalizedAt
+  || order.deliveredAt
+  || order.cancelledAt
+  || order.updatedAt
+  || order.lastEventAt
+  || order.createdAt
+  || order.data
+);
+
+const normalizedStatusText = (value) => cleanText(value)
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase();
+
+const isCompletedOrderStatus = (order = {}) => {
+  const external = cleanText(order.externalStatus || order.food99Status || order.status99Food).toUpperCase();
+  if (['CONCLUDED', 'COMPLETED', 'DELIVERED', 'FINISHED'].includes(external)) return true;
+  const status = normalizedStatusText(order.status);
+  return COMPLETED_APP_STATUSES.has(status);
+};
+
+const isCancelledOrderStatus = (order = {}) => {
+  const external = cleanText(order.externalStatus || order.food99Status || order.status99Food).toUpperCase();
+  if (['CANCELLED', 'CANCELED'].includes(external)) return true;
+  const status = normalizedStatusText(order.status);
+  return CANCELLED_APP_STATUSES.has(status);
+};
 
 const maskSecret = (value) => {
   const text = cleanText(value);
@@ -314,6 +389,17 @@ const normalizeOrderDetail = (event, detail, mappingIndex) => {
     centsToMoney(data.price?.real_pay_price ?? data.price?.real_price ?? data.price?.order_price)
     || items.reduce((sum, item) => sum + item.total, 0)
   );
+  const statusChangedAt = data.complete_time
+    || data.delivered_time
+    || data.delivery_time
+    || data.finish_time
+    || data.cancel_time
+    || data.update_time
+    || data.updated_at
+    || event.createdAt
+    || data.create_time
+    || data.created_at
+    || timestampNow();
   const address = data.receive_address || {};
   const customerName = cleanText(address.name)
     || cleanText(`${address.first_name || ''} ${address.last_name || ''}`)
@@ -341,6 +427,7 @@ const normalizeOrderDetail = (event, detail, mappingIndex) => {
     paymentMethod: asNumber(data.pay_type) === 2 ? 'Dinheiro 99Food' : '99Food',
     total,
     items,
+    statusChangedAt,
     detail: data,
   };
 };
@@ -884,6 +971,13 @@ const createFood99Functions = ({
         }, {merge: true});
       });
 
+      const terminalDate = firestoreDate(normalizedOrder.statusChangedAt || event.createdAt) || new Date();
+      const terminalPatch = normalizedOrder.externalStatus === 'CONCLUDED'
+        ? {completedAt: terminalDate, finalizedAt: terminalDate}
+        : normalizedOrder.externalStatus === 'CANCELLED'
+          ? {cancelledAt: terminalDate}
+          : {};
+
       const internalOrder = {
         clienteNome: normalizedOrder.customerName,
         clienteDocumento: normalizedOrder.customerDocument,
@@ -905,6 +999,7 @@ const createFood99Functions = ({
         food99OrderId: normalizedOrder.food99OrderId,
         food99DisplayId: normalizedOrder.displayId,
         food99Status: normalizedOrder.externalStatus,
+        ...terminalPatch,
         updatedAt: FieldValue.serverTimestamp(),
       };
       transaction.set(orderRef, {
@@ -918,6 +1013,7 @@ const createFood99Functions = ({
         unmappedItems: unmapped.map((item) => ({food99ItemId: item.food99ItemId, nome: item.nome})),
         lastEventId: eventId,
         lastEventAt: event.createdAt || timestampNow(),
+        ...terminalPatch,
         updatedAt: FieldValue.serverTimestamp(),
         createdAt: existing.createdAt || FieldValue.serverTimestamp(),
       }, {merge: true});
@@ -1079,6 +1175,74 @@ const createFood99Functions = ({
       failures,
     }, failures.length ? 'warning' : 'info');
     return {received: events.length, acknowledged: acknowledgedEventIds.length, failures};
+  };
+
+  const buildDailyDashboardSummary = async (lojaId, interval = todayIntervalInTimezone()) => {
+    const [externalSnap, internalSnap] = await Promise.all([
+      db.collection('lojas').doc(lojaId).collection('food99Orders').get(),
+      db.collection('lojas').doc(lojaId).collection('pedidos').get(),
+    ]);
+    const byOrderId = new Map();
+    externalSnap.docs.forEach((orderDoc) => {
+      const order = {id: orderDoc.id, ...orderDoc.data()};
+      const key = cleanText(order.food99OrderId || order.id || orderDoc.id);
+      if (key) byOrderId.set(key, order);
+    });
+    internalSnap.docs.forEach((orderDoc) => {
+      const data = orderDoc.data() || {};
+      const isFood99 = cleanText(data.origem).toLowerCase() === '99food'
+        || cleanText(data.canalVenda).toLowerCase() === '99food'
+        || cleanText(data.food99OrderId);
+      if (!isFood99) return;
+      const order = {id: orderDoc.id, ...data};
+      const key = cleanText(order.food99OrderId || order.id || orderDoc.id);
+      if (!key) return;
+      byOrderId.set(key, {...(byOrderId.get(key) || {}), ...order});
+    });
+
+    const todayOrders = [...byOrderId.values()].filter((order) => {
+      const relevantDate = orderRelevantDate(order);
+      return relevantDate && dateKeyInTimezone(relevantDate, interval.timezone) === interval.todayKey;
+    });
+    const activeStatuses = new Set(['pendente', 'em preparo', 'pronto', 'saiu para entrega']);
+    const pendingOrders = todayOrders.filter((order) => normalizedStatusText(order.status) === 'pendente');
+    const preparingOrders = todayOrders.filter((order) => normalizedStatusText(order.status) === 'em preparo');
+    const completedOrders = todayOrders.filter(isCompletedOrderStatus);
+    const cancelledOrders = todayOrders.filter(isCancelledOrderStatus);
+    const activeOrders = todayOrders.filter((order) => activeStatuses.has(normalizedStatusText(order.status)));
+    const pendingSla = pendingOrders.filter((order) => {
+      const created = firestoreDate(order.createdAt || order.data);
+      return created && Date.now() - created.getTime() > 8 * 60 * 1000;
+    }).length;
+    const completeTimes = completedOrders.map((order) => {
+      const created = firestoreDate(order.createdAt || order.data);
+      const completed = orderRelevantDate(order);
+      return created && completed ? (completed.getTime() - created.getTime()) / 60000 : null;
+    }).filter((minutes) => minutes !== null && Number.isFinite(minutes));
+    const revenue = todayOrders
+      .filter((order) => !isCancelledOrderStatus(order))
+      .reduce((sum, order) => sum + (Number(order.total) || 0), 0);
+    const summary = {
+      novos: pendingOrders.length,
+      preparo: preparingOrders.length,
+      finalizados: completedOrders.length,
+      cancelados: cancelledOrders.length,
+      revenue: money(revenue),
+      sla: pendingSla,
+      mean: completeTimes.length ? Math.round(completeTimes.reduce((a, b) => a + b, 0) / completeTimes.length) : 0,
+      totalToday: todayOrders.length,
+      activeToday: activeOrders.length,
+    };
+    logger.info('[99Food] daily dashboard summary', {
+      lojaId,
+      interval,
+      food99OrdersRead: externalSnap.size,
+      internalOrdersRead: internalSnap.size,
+      todayOrders: todayOrders.length,
+      completedToday: summary.finalizados,
+      revenue: summary.revenue,
+    });
+    return {summary, interval, ordersRead: byOrderId.size};
   };
 
   const syncProductAvailability = async (lojaId, productId, reason = 'stock_change') => {
@@ -1669,6 +1833,8 @@ const createFood99Functions = ({
     try {
       await tokenForStore(lojaId, config);
       const inventoryRetries = await reconcileFailedAvailability(lojaId);
+      const interval = todayIntervalInTimezone();
+      const dashboard = await buildDailyDashboardSummary(lojaId, interval);
       const result = {received: 0, acknowledged: 0, failures: []};
       await healthRef(lojaId).set({
         provider: PROVIDER,
@@ -1676,11 +1842,37 @@ const createFood99Functions = ({
         lastPollAt: FieldValue.serverTimestamp(),
         latencyMs: Date.now() - started,
         lastBatch: result,
+        lastDashboardSummary: dashboard.summary,
+        lastDashboardInterval: dashboard.interval,
+        lastDashboardOrdersRead: dashboard.ordersRead,
         lastInventoryRetryCount: inventoryRetries.length,
         lastError: FieldValue.delete(),
       }, {merge: true});
+      logger.info('[99Food] poll completed', {
+        lojaId,
+        origin,
+        interval: dashboard.interval,
+        eventsReceived: result.received,
+        ordersUpdated: result.acknowledged,
+        completedToday: dashboard.summary.finalizados,
+        ordersRead: dashboard.ordersRead,
+        inventoryRetries: inventoryRetries.length,
+      });
+      await audit(lojaId, 'poll.completed', {
+        origin,
+        interval: dashboard.interval,
+        eventsReceived: result.received,
+        ordersUpdated: result.acknowledged,
+        completedToday: dashboard.summary.finalizados,
+        ordersRead: dashboard.ordersRead,
+      }, 'info');
       await resolveAlertsByType(lojaId, 'api_poll_failure');
-      return {...result, inventoryRetries: inventoryRetries.length};
+      return {
+        ...result,
+        inventoryRetries: inventoryRetries.length,
+        dashboardSummary: dashboard.summary,
+        interval: dashboard.interval,
+      };
     } catch (error) {
       let message = error.message;
       await healthRef(lojaId).set({
@@ -2451,7 +2643,24 @@ const createFood99Functions = ({
           return;
         }
         const result = await processEvents(lojaId, config, events, 'webhook');
-        response.status(200).json({acknowledged: true, result});
+        const interval = todayIntervalInTimezone();
+        const dashboard = await buildDailyDashboardSummary(lojaId, interval);
+        await healthRef(lojaId).set({
+          provider: PROVIDER,
+          status: 'online',
+          lastWebhookAt: FieldValue.serverTimestamp(),
+          lastDashboardSummary: dashboard.summary,
+          lastDashboardInterval: dashboard.interval,
+          lastDashboardOrdersRead: dashboard.ordersRead,
+        }, {merge: true});
+        logger.info('[99Food] webhook processed', {
+          lojaId,
+          eventsReceived: events.length,
+          ordersUpdated: result.acknowledged,
+          completedToday: dashboard.summary.finalizados,
+          interval: dashboard.interval,
+        });
+        response.status(200).json({acknowledged: true, result, dashboardSummary: dashboard.summary});
       } catch (error) {
         logger.error('[99Food] webhook failed', {lojaId, error: error.message});
         response.status(500).json({error: error.message});

@@ -59,6 +59,54 @@ const toDate = (value) => {
 };
 
 const dateTime = (value) => toDate(value)?.toLocaleString('pt-BR') || '-';
+const DASHBOARD_TIMEZONE = 'America/Sao_Paulo';
+const COMPLETED_STATUS_KEYS = new Set(['finalizado', 'concluido', 'completed', 'complete', 'finished', 'delivered']);
+const CANCELLED_STATUS_KEYS = new Set(['cancelado', 'cancelled', 'canceled']);
+
+const dateKeyInTimezone = (value, timezone = DASHBOARD_TIMEZONE) => {
+  const date = toDate(value);
+  if (!date) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+const todayKeyInSaoPaulo = () => dateKeyInTimezone(new Date(), DASHBOARD_TIMEZONE);
+
+const normalizeStatusKey = (value) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase();
+
+const isCompletedOrder = (order = {}) => {
+  const external = String(order.externalStatus || order.food99Status || order.status99Food || '').toUpperCase();
+  if (['CONCLUDED', 'COMPLETED', 'DELIVERED', 'FINISHED'].includes(external)) return true;
+  return COMPLETED_STATUS_KEYS.has(normalizeStatusKey(order.status));
+};
+
+const isCancelledOrder = (order = {}) => {
+  const external = String(order.externalStatus || order.food99Status || order.status99Food || '').toUpperCase();
+  if (['CANCELLED', 'CANCELED'].includes(external)) return true;
+  return CANCELLED_STATUS_KEYS.has(normalizeStatusKey(order.status));
+};
+
+const relevantOrderDate = (order = {}) => (
+  order.completedAt
+  || order.finalizedAt
+  || order.deliveredAt
+  || order.cancelledAt
+  || order.updatedAt
+  || order.lastEventAt
+  || order.createdAt
+  || order.data
+);
 
 const catalogSelectionKey = (item = {}) => String(
   item.itemId
@@ -291,6 +339,24 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
   const orders = useMemo(() => [...(data.food99Orders || [])].sort(
     (a, b) => (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0)
   ), [data.food99Orders]);
+  const dashboardOrders = useMemo(() => {
+    const byOrderId = new Map();
+    (data.food99Orders || []).forEach((order) => {
+      const key = String(order.food99OrderId || order.id || '').trim();
+      if (key) byOrderId.set(key, order);
+    });
+    (data.pedidos || []).forEach((order) => {
+      const isFood99 = String(order.origem || '').toLowerCase() === '99food'
+        || String(order.canalVenda || '').toLowerCase() === '99food'
+        || Boolean(order.food99OrderId);
+      if (!isFood99) return;
+      const key = String(order.food99OrderId || order.id || '').trim();
+      if (!key) return;
+      byOrderId.set(key, {...(byOrderId.get(key) || {}), ...order});
+    });
+    const todayKey = todayKeyInSaoPaulo();
+    return [...byOrderId.values()].filter((order) => dateKeyInTimezone(relevantOrderDate(order), DASHBOARD_TIMEZONE) === todayKey);
+  }, [data.food99Orders, data.pedidos]);
   const productMappings = data.food99ProductMappings || [];
   const products = data.produtos || [];
   const alerts = [...(data.food99Alerts || [])]
@@ -304,27 +370,42 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
   const storeLabel = storeInfoMap?.[effectiveStoreId]?.nome || effectiveStoreId || selectedStoreId || 'loja';
 
   const summary = useMemo(() => {
-    const current = orders.filter((order) => order.status !== 'Cancelado');
-    const active = orders.filter((order) => ['Pendente', 'Em Preparo', 'Pronto', 'Saiu para Entrega'].includes(order.status));
+    const backendSummary = health.lastDashboardSummary || null;
+    const intervalKey = health.lastDashboardInterval?.todayKey || '';
+    if (backendSummary && intervalKey === todayKeyInSaoPaulo()) {
+      return {
+        novos: Number(backendSummary.novos) || 0,
+        preparo: Number(backendSummary.preparo) || 0,
+        finalizados: Number(backendSummary.finalizados) || 0,
+        cancelados: Number(backendSummary.cancelados) || 0,
+        revenue: Number(backendSummary.revenue) || 0,
+        sla: Number(backendSummary.sla) || 0,
+        mean: Number(backendSummary.mean) || 0,
+      };
+    }
+
+    const current = dashboardOrders.filter((order) => !isCancelledOrder(order));
+    const active = dashboardOrders.filter((order) => ['Pendente', 'Em Preparo', 'Pronto', 'Saiu para Entrega'].includes(order.status));
     const pendingSla = active.filter((order) => {
       const created = toDate(order.createdAt);
       return created && Date.now() - created.getTime() > 8 * 60 * 1000 && order.status === 'Pendente';
     }).length;
-    const completeTimes = orders.filter((order) => order.status === 'Finalizado').map((order) => {
-      const created = toDate(order.createdAt);
-      const updated = toDate(order.updatedAt);
-      return created && updated ? (updated.getTime() - created.getTime()) / 60000 : null;
+    const completedOrders = dashboardOrders.filter(isCompletedOrder);
+    const completeTimes = completedOrders.map((order) => {
+      const created = toDate(order.createdAt || order.data);
+      const completed = toDate(relevantOrderDate(order));
+      return created && completed ? (completed.getTime() - created.getTime()) / 60000 : null;
     }).filter((minutes) => minutes !== null);
     return {
-      novos: orders.filter((order) => order.status === 'Pendente').length,
-      preparo: orders.filter((order) => order.status === 'Em Preparo').length,
-      finalizados: orders.filter((order) => order.status === 'Finalizado').length,
-      cancelados: orders.filter((order) => order.status === 'Cancelado').length,
+      novos: dashboardOrders.filter((order) => order.status === 'Pendente').length,
+      preparo: dashboardOrders.filter((order) => order.status === 'Em Preparo').length,
+      finalizados: completedOrders.length,
+      cancelados: dashboardOrders.filter(isCancelledOrder).length,
       revenue: current.reduce((sum, order) => sum + (Number(order.total) || 0), 0),
       sla: pendingSla,
       mean: completeTimes.length ? Math.round(completeTimes.reduce((a, b) => a + b, 0) / completeTimes.length) : 0,
     };
-  }, [orders]);
+  }, [dashboardOrders, health.lastDashboardInterval?.todayKey, health.lastDashboardSummary]);
 
   const mappedProducts = useMemo(() => productMappings.map((item) => {
     const product = products.find((candidate) => candidate.id === item.productId);
