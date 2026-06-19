@@ -36,6 +36,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 // --- CORREÇÃO: Importa o novo AudioManager ---
 import { audioManager } from './utils/AudioManager.js';
 import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceWorkerMessages } from './utils/notifications.js';
+import { createLocalQrCodeDataUrl } from './utils/localQrCode.js';
 import { updateStock as updateStockService } from './services/stockService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
@@ -4378,7 +4379,6 @@ function App() {
     const scripts = [
         { id: 'jspdf', src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js' },
         { id: 'jspdf-autotable', src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js' },
-        { id: 'qrcode', src: 'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js' },
         { id: 'xlsx', src: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js' },
         { id: 'chartjs', src: 'https://cdn.jsdelivr.net/npm/chart.js' }
     ];
@@ -11533,12 +11533,6 @@ const handleSubmit = async (e) => {
         () => Boolean(window.jspdf?.jsPDF),
         'Não foi possível carregar o gerador de PDF. Atualize a página e tente novamente.'
       );
-      await loadBrowserScript(
-        'qrcode',
-        'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js',
-        () => typeof window.QRCode?.toDataURL === 'function',
-        'Não foi possível carregar o gerador de QR Code. Atualize a página e tente novamente.'
-      );
     };
 
     const getInvoiceQrCodeFromAuthorizedXml = async (invoiceId) => {
@@ -12098,10 +12092,6 @@ const handleSubmit = async (e) => {
         const operationNature = invoice.operationNature || invoice.naturezaOperacao || settingsForm.operationNature || 'Venda';
         const statusText = statusLabel[invoice.status] || invoice.status || '-';
         const xmlQrCode = await getInvoiceQrCodeFromAuthorizedXml(invoice.id);
-        const qrSource = invoice.qrCodeUrl || invoice.qrCode || invoice.qrUrl || invoice.urlConsulta || invoice.consultationUrl || serviceResult.qrCodeUrl || serviceResult.qrCode || serviceResult.urlConsulta || serviceResult.consultationUrl || xmlQrCode || sefazConsultaUrl(invoice);
-        if (!qrSource) {
-          throw new Error('Não foi possível gerar o QR Code: a nota não possui URL de consulta ou chave de acesso.');
-        }
 
         const dash = (value) => {
           const textValue = String(value ?? '').trim();
@@ -12191,18 +12181,119 @@ const handleSubmit = async (e) => {
             return '';
           }
         };
+        const isDanfeDebugEnabled = process.env.NODE_ENV !== 'production';
+        const logDanfeQr = (message, details = {}) => {
+          if (isDanfeDebugEnabled) console.debug(`[NotaFiscal] ${message}`, details);
+        };
+        const readQrCandidate = (candidate) => {
+          if (!candidate) return '';
+          if (typeof candidate === 'string') return candidate;
+          if (typeof candidate === 'object') {
+            return candidate.dataUrl
+              || candidate.dataURL
+              || candidate.base64
+              || candidate.image
+              || candidate.url
+              || candidate.text
+              || '';
+          }
+          return '';
+        };
+        const normalizeQrImageDataUrl = (candidate) => {
+          const source = String(readQrCandidate(candidate) || '').trim();
+          if (!source) return '';
+          if (/^data:image\//i.test(source)) return source;
+          if (/^iVBORw0KGgo/i.test(source)) return `data:image/png;base64,${source}`;
+          if (/^\/9j\//i.test(source)) return `data:image/jpeg;base64,${source}`;
+          if (/^R0lGOD/i.test(source)) return `data:image/gif;base64,${source}`;
+          return '';
+        };
+        const firstQrImageDataUrl = (...candidates) => {
+          for (const candidate of candidates) {
+            const dataUrl = normalizeQrImageDataUrl(candidate);
+            if (dataUrl) return dataUrl;
+          }
+          return '';
+        };
+        const firstQrText = (...candidates) => {
+          for (const candidate of candidates) {
+            const source = String(readQrCandidate(candidate) || '').trim();
+            if (source) return source;
+          }
+          return '';
+        };
         const generateQrCodeDataUrl = async (value) => {
           const source = String(value || '').trim();
           if (!source) return '';
-          if (source.startsWith('data:image/')) return source;
-          if (typeof window.QRCode?.toDataURL === 'function') {
-            return await window.QRCode.toDataURL(source, { width: 170, margin: 1, errorCorrectionLevel: 'M' });
+          const existingImage = normalizeQrImageDataUrl(source);
+          if (existingImage) {
+            logDanfeQr('QR Code reaproveitado como imagem salva na nota.');
+            return existingImage;
           }
-          throw new Error('Não foi possível carregar o gerador de QR Code. Atualize a página e tente novamente.');
+          if (typeof window.QRCode?.toDataURL === 'function') {
+            try {
+              const generated = await window.QRCode.toDataURL(source, { width: 170, margin: 1, errorCorrectionLevel: 'M' });
+              logDanfeQr('QR Code gerado por biblioteca ja carregada.');
+              return generated;
+            } catch (error) {
+              console.warn('[NotaFiscal] Gerador de QR legado falhou; usando fallback local.', error);
+            }
+          }
+          try {
+            const generated = createLocalQrCodeDataUrl(source, { size: 180, margin: 4 });
+            if (generated) {
+              logDanfeQr('QR Code gerado localmente para o DANFE A4.');
+              return generated;
+            }
+          } catch (error) {
+            console.warn('[NotaFiscal] Gerador local de QR Code falhou; o DANFE A4 sera emitido sem QR.', error);
+          }
+          logDanfeQr('QR Code indisponivel para o DANFE A4.');
+          return '';
         };
 
         const logoDataUrl = await addImageFromUrl(issuer.logoUrl);
-        const qrDataUrl = await generateQrCodeDataUrl(qrSource);
+        const storedQrImage = firstQrImageDataUrl(
+          invoice.qrCodeImage,
+          invoice.qrCodeBase64,
+          invoice.qrCodeDataUrl,
+          invoice.qrCodeDataURL,
+          invoice.danfe?.qrCode,
+          invoice.danfe?.qrCodeImage,
+          invoice.danfe?.qrCodeBase64,
+          invoice.danfe?.qrCodeDataUrl,
+          invoice.nfce?.qrCode,
+          invoice.nfce?.qrCodeImage,
+          invoice.nfce?.qrCodeBase64,
+          invoice.nfce?.qrCodeDataUrl,
+          serviceResult.qrCodeImage,
+          serviceResult.qrCodeBase64,
+          serviceResult.qrCodeDataUrl,
+          serviceResult.qrCodeDataURL
+        );
+        const qrTextSource = firstQrText(
+          invoice.qrCodeUrl,
+          invoice.qrCode,
+          invoice.qrUrl,
+          invoice.urlConsulta,
+          invoice.consultationUrl,
+          invoice.danfe?.qrCodeUrl,
+          invoice.danfe?.urlConsulta,
+          invoice.nfce?.qrCodeUrl,
+          invoice.nfce?.qrCode,
+          invoice.nfce?.urlConsulta,
+          invoice.xml?.infNFeSupl?.qrCode,
+          serviceResult.qrCodeUrl,
+          serviceResult.qrCode,
+          serviceResult.qrUrl,
+          serviceResult.urlConsulta,
+          serviceResult.consultationUrl,
+          serviceResult.xml?.infNFeSupl?.qrCode,
+          xmlQrCode,
+          sefazConsultaUrl(invoice)
+        );
+        const qrDataUrl = storedQrImage || await generateQrCodeDataUrl(qrTextSource);
+        if (storedQrImage) logDanfeQr('QR Code reaproveitado dos dados salvos da nota.');
         const protocolText = `${invoice.protocol || serviceResult.protocol || '-'}${authorizedAt !== '-' ? ` - ${authorizedAt}` : ''}`;
         const issuedDate = dateOnly(issuedAtRaw);
         const issuedTime = timeOnly(issuedAtRaw);
@@ -12271,7 +12362,22 @@ const handleSubmit = async (e) => {
         text('CHAVE DE ACESSO', qrX + 2, headerY + 4);
         setFont(6.4, 'bold');
         doc.text(fitText(accessKey, qrW - 27).slice(0, 3), qrX + 2, headerY + 9);
-        if (qrDataUrl) doc.addImage(qrDataUrl, 'PNG', qrX + qrW - 25, headerY + 4, 22, 22);
+        if (qrDataUrl) {
+          try {
+            doc.addImage(qrDataUrl, 'PNG', qrX + qrW - 25, headerY + 4, 22, 22);
+          } catch (error) {
+            console.warn('[NotaFiscal] QR Code gerado, mas nao pode ser adicionado ao DANFE A4.', error);
+            setFont(5.3);
+            doc.rect(qrX + qrW - 25, headerY + 4, 22, 22);
+            text('QR Code', qrX + qrW - 14, headerY + 13, { align: 'center' });
+            text('indisponivel', qrX + qrW - 14, headerY + 17, { align: 'center' });
+          }
+        } else {
+          setFont(5.3);
+          doc.rect(qrX + qrW - 25, headerY + 4, 22, 22);
+          text('QR Code', qrX + qrW - 14, headerY + 13, { align: 'center' });
+          text('indisponivel', qrX + qrW - 14, headerY + 17, { align: 'center' });
+        }
         setFont(5.5);
         doc.text(fitText('Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda.gov.br/portal ou no site da Sefaz Autorizadora', qrW - 5), qrX + 2, headerY + 30);
         field(qrX + 2, headerY + 39, qrW - 4, 11, 'Protocolo de autorização de uso', protocolText, { maxLines: 1, size: 6.2 });
