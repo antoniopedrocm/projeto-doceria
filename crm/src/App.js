@@ -12475,49 +12475,39 @@ const handleSubmit = async (e) => {
             unit: item.unit || item.unidade || item.uCom || fiscalProduct?.unit || 'un',
             quantity: qtyPlain(quantity),
             unitValue: moneyPlain(unitValue),
-            totalValue: moneyPlain(totalValue),
-            icmsBase: moneyPlain(item.icmsBase || item.vBC || 0),
-            icmsValue: moneyPlain(item.icmsValue || item.vICMS || 0),
-            ipiValue: moneyPlain(item.ipiValue || item.vIPI || 0),
-            icmsRate: percentPlain(item.icmsRate || item.pICMS || 0),
-            ipiRate: percentPlain(item.ipiRate || item.pIPI || 0)
+            totalValue: moneyPlain(totalValue)
           };
         });
         const tableRows = productRows.length ? productRows : [{
           code: '-',
           description: 'Nenhum item detalhado encontrado',
           ncm: '-',
-          cst: '-',
           cfop: '-',
           unit: '-',
           quantity: '0,00',
           unitValue: '0,00',
-          totalValue: '0,00',
-          icmsBase: '0,00',
-          icmsValue: '0,00',
-          ipiValue: '0,00',
-          icmsRate: '0,00',
-          ipiRate: '0,00'
+          totalValue: '0,00'
         }];
         const productTableWidth = contentWidth;
-        const productMainColumns = [
-          { key: 'code', label: 'Código', width: 32, maxLines: 3 },
-          { key: 'description', label: 'Descrição do produto', width: productTableWidth - 103, maxLines: 4 },
-          { key: 'quantity', label: 'Qtd.', width: 17, align: 'right', maxLines: 1 },
-          { key: 'unitValue', label: 'Valor\nunit.', width: 27, align: 'right', maxLines: 2 },
-          { key: 'totalValue', label: 'Valor\ntotal', width: 27, align: 'right', maxLines: 2 }
+        const productColumns = [
+          { key: 'code', label: 'Código', width: 31, maxLines: 2 },
+          { key: 'description', label: 'Descrição', width: productTableWidth - 124, maxLines: 3 },
+          { key: 'ncm', label: 'NCM', width: 22, maxLines: 1 },
+          { key: 'cfop', label: 'CFOP', width: 17, align: 'center', maxLines: 1 },
+          { key: 'quantity', label: 'Qtd.', width: 14, align: 'right', maxLines: 1 },
+          { key: 'unitValue', label: 'Vl.unit.', width: 20, align: 'right', maxLines: 1 },
+          { key: 'totalValue', label: 'Vl.total', width: 20, align: 'right', maxLines: 1 }
         ];
         const tableBottom = 252;
         const drawProductTableHeader = (startY) => {
           let x = margin;
-          const headerHeight = 7;
+          const headerHeight = 5.8;
           doc.setDrawColor(15, 15, 15);
-          doc.setFillColor(242, 242, 242);
           doc.setTextColor(15, 15, 15);
-          setFont(5.25, 'bold');
-          productMainColumns.forEach((column) => {
+          setFont(5.1, 'bold');
+          productColumns.forEach((column) => {
             const width = column.width;
-            doc.rect(x, startY, width, headerHeight, 'FD');
+            doc.rect(x, startY, width, headerHeight);
             const lines = fitText(column.label, width - 1.4).slice(0, 2);
             doc.text(lines, column.align === 'right' ? x + width - 0.8 : x + 0.8, startY + 2.5, {
               align: column.align || 'left'
@@ -12526,28 +12516,14 @@ const handleSubmit = async (e) => {
           });
           return startY + headerHeight;
         };
-        const drawProductTableRow = (row, startY, rowIndex) => {
+        const drawProductTableRow = (row, startY) => {
           doc.setDrawColor(15, 15, 15);
           doc.setTextColor(15, 15, 15);
-          setFont(5.15);
-          const wrappedCells = productMainColumns.map((column) => (
+          setFont(5);
+          const wrappedCells = productColumns.map((column) => (
             fitText(row[column.key], column.width - 1.6).slice(0, column.maxLines || 2)
           ));
-          const mainRowHeight = Math.max(7, Math.max(...wrappedCells.map((lines) => lines.length)) * 2.35 + 1.9);
-          const extraParts = [
-            `NCM: ${row.ncm}`,
-            `CST: ${row.cst}`,
-            `CFOP: ${row.cfop}`,
-            `UN: ${row.unit}`,
-            `BC ICMS: ${row.icmsBase}`,
-            `V.ICMS: ${row.icmsValue}`
-          ];
-          if (Number(String(row.icmsRate).replace(/\./g, '').replace(',', '.')) > 0) extraParts.push(`%ICMS: ${row.icmsRate}`);
-          if (Number(String(row.ipiValue).replace(/\./g, '').replace(',', '.')) > 0) extraParts.push(`V.IPI: ${row.ipiValue}`);
-          if (Number(String(row.ipiRate).replace(/\./g, '').replace(',', '.')) > 0) extraParts.push(`%IPI: ${row.ipiRate}`);
-          const extraLines = fitText(extraParts.join('   |   '), productTableWidth - 2).slice(0, 3);
-          const extraRowHeight = Math.max(5.2, extraLines.length * 2.25 + 2);
-          const rowHeight = mainRowHeight + extraRowHeight;
+          const rowHeight = Math.max(6.5, Math.max(...wrappedCells.map((lines) => lines.length)) * 2.35 + 2);
           let nextY = startY;
           if (nextY + rowHeight > tableBottom) {
             doc.addPage();
@@ -12558,27 +12534,21 @@ const handleSubmit = async (e) => {
           }
 
           let x = margin;
-          doc.setFillColor(rowIndex % 2 === 1 ? 252 : 255, rowIndex % 2 === 1 ? 252 : 255, rowIndex % 2 === 1 ? 252 : 255);
-          productMainColumns.forEach((column, index) => {
+          productColumns.forEach((column, index) => {
             const width = column.width;
             const lines = wrappedCells[index];
-            doc.rect(x, nextY, width, mainRowHeight, 'FD');
+            doc.rect(x, nextY, width, rowHeight);
             lines.forEach((line, lineIndex) => {
               const textY = nextY + 2.2 + (lineIndex * 2.25);
               if (column.align === 'right') {
                 doc.text(line, x + width - 0.8, textY, { align: 'right' });
+              } else if (column.align === 'center') {
+                doc.text(line, x + (width / 2), textY, { align: 'center' });
               } else {
                 doc.text(line, x + 0.7, textY);
               }
             });
             x += width;
-          });
-
-          doc.setFillColor(248, 248, 248);
-          doc.rect(margin, nextY + mainRowHeight, productTableWidth, extraRowHeight, 'FD');
-          setFont(4.9);
-          extraLines.forEach((line, lineIndex) => {
-            doc.text(line, margin + 0.9, nextY + mainRowHeight + 2.4 + (lineIndex * 2.2));
           });
           return nextY + rowHeight;
         };
