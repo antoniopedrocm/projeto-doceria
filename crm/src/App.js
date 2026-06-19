@@ -36,7 +36,6 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 // --- CORREÇÃO: Importa o novo AudioManager ---
 import { audioManager } from './utils/AudioManager.js';
 import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceWorkerMessages } from './utils/notifications.js';
-import { createLocalQrCodeDataUrl } from './utils/localQrCode.js';
 import { updateStock as updateStockService } from './services/stockService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
@@ -72,6 +71,19 @@ const CFOP_OPERATION_OPTIONS = [
   { value: '6107', label: '6107 - Produção própria interestadual para não contribuinte' },
   { value: '6102', label: '6102 - Revenda interestadual' },
   { value: '6108', label: '6108 - Revenda interestadual para não contribuinte' },
+];
+const CODE128_PATTERNS = [
+  '212222', '222122', '222221', '121223', '121322', '131222', '122213', '122312', '132212', '221213',
+  '221312', '231212', '112232', '122132', '122231', '113222', '123122', '123221', '223211', '221132',
+  '221231', '213212', '223112', '312131', '311222', '321122', '321221', '312212', '322112', '322211',
+  '212123', '212321', '232121', '111323', '131123', '131321', '112313', '132113', '132311', '211313',
+  '231113', '231311', '112133', '112331', '132131', '113123', '113321', '133121', '313121', '211331',
+  '231131', '213113', '213311', '213131', '311123', '311321', '331121', '312113', '312311', '332111',
+  '314111', '221411', '431111', '111224', '111422', '121124', '121421', '141122', '141221', '112214',
+  '112412', '122114', '122411', '142112', '142211', '241211', '221114', '413111', '241112', '134111',
+  '111242', '121142', '121241', '114212', '124112', '124211', '411212', '421112', '421211', '212141',
+  '214121', '412121', '111143', '111341', '131141', '114113', '114311', '411113', '411311', '113141',
+  '114131', '311141', '411131', '211412', '211214', '211232', '2331112'
 ];
 const createManualInvoiceItemDraft = () => ({
   draftId: `manual-item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -138,12 +150,6 @@ const downloadBase64File = (base64, filename, contentType = 'application/octet-s
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-};
-const decodeBase64Utf8 = (base64) => {
-  const binary = atob(base64 || '');
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new TextDecoder('utf-8').decode(bytes);
 };
 const loadBrowserScript = (id, src, isReady, errorMessage) => {
   if (isReady()) return Promise.resolve();
@@ -10722,6 +10728,7 @@ const handleSubmit = async (e) => {
     const fiscalProducts = data.fiscalProducts || [];
     const storeProducts = data.produtos || [];
     const orders = data.pedidos || [];
+    const clients = data.clientes || [];
     const fiscalProductsById = useMemo(() => {
       const map = new Map();
       fiscalProducts.forEach((item) => {
@@ -10835,6 +10842,30 @@ const handleSubmit = async (e) => {
       return map;
     }, [orders]);
 
+    const clientsLookup = useMemo(() => {
+      const byId = new Map();
+      const byDocument = new Map();
+      const byEmail = new Map();
+      const byPhone = new Map();
+      const byName = new Map();
+      const add = (map, key, client) => {
+        const normalizedKey = String(key || '').trim();
+        if (normalizedKey && !map.has(normalizedKey)) map.set(normalizedKey, client);
+      };
+
+      clients.forEach((client) => {
+        if (!client) return;
+        add(byId, client.id, client);
+        add(byId, client.clienteId, client);
+        add(byDocument, onlyDigitsText(client.cpfCnpj || client.cpf || client.cnpj || client.documento), client);
+        add(byEmail, String(client.email || '').toLowerCase(), client);
+        add(byPhone, onlyDigitsText(client.telefone || client.phone || client.celular || client.whatsapp), client);
+        add(byName, normalizeSearchText(client.nome || client.name), client);
+      });
+
+      return { byId, byDocument, byEmail, byPhone, byName };
+    }, [clients]);
+
     const invoicesByOrderId = useMemo(() => {
       const map = new Map();
       invoices.forEach((invoice) => {
@@ -10930,32 +10961,104 @@ const handleSubmit = async (e) => {
       getInvoiceOrigin(invoice) === 'manual' ? 'Manual / Avulsa' : 'Pedido'
     ), [getInvoiceOrigin]);
 
+    const findInvoiceClient = useCallback((invoice) => {
+      const order = getInvoiceOrder(invoice);
+      const pickFromMap = (map, candidates, normalize = (value) => String(value || '').trim()) => {
+        for (const candidate of candidates) {
+          const key = normalize(candidate);
+          if (key && map.has(key)) return map.get(key);
+        }
+        return null;
+      };
+
+      return pickFromMap(clientsLookup.byId, [
+        invoice?.customerId,
+        invoice?.clienteId,
+        invoice?.customer?.id,
+        invoice?.customer?.clienteId,
+        order?.clienteId,
+        order?.customerId,
+        order?.cliente?.id,
+        order?.customer?.id
+      ])
+        || pickFromMap(clientsLookup.byDocument, [
+          invoice?.customerDocument,
+          invoice?.customer?.document,
+          invoice?.customer?.cpf,
+          invoice?.customer?.cnpj,
+          order?.clienteDocumento,
+          order?.cpf,
+          order?.documento,
+          order?.customer?.document,
+          order?.customer?.cpf,
+          order?.customer?.cnpj,
+          order?.fiscal?.customerDocument
+        ], onlyDigitsText)
+        || pickFromMap(clientsLookup.byEmail, [
+          invoice?.customer?.email,
+          invoice?.customerEmail,
+          order?.clienteEmail,
+          order?.email,
+          order?.customer?.email
+        ], (value) => String(value || '').toLowerCase().trim())
+        || pickFromMap(clientsLookup.byPhone, [
+          invoice?.customer?.phone,
+          invoice?.customer?.telefone,
+          invoice?.customerPhone,
+          order?.clienteTelefone,
+          order?.telefone,
+          order?.customer?.phone,
+          order?.customer?.telefone
+        ], onlyDigitsText)
+        || pickFromMap(clientsLookup.byName, [
+          invoice?.customerName,
+          invoice?.clienteNome,
+          invoice?.customer?.name,
+          invoice?.customer?.nome,
+          order?.clienteNome,
+          order?.customer?.name,
+          order?.cliente?.nome
+        ], normalizeSearchText);
+    }, [clientsLookup, getInvoiceOrder]);
+
     const getInvoiceCustomerName = useCallback((invoice) => {
       const order = getInvoiceOrder(invoice);
+      const client = findInvoiceClient(invoice);
       return invoice?.customerName
         || invoice?.clienteNome
         || invoice?.customer?.name
         || invoice?.customer?.nome
+        || client?.nome
+        || client?.name
         || order?.clienteNome
         || order?.customer?.name
         || order?.cliente?.nome
         || '-';
-    }, [getInvoiceOrder]);
+    }, [findInvoiceClient, getInvoiceOrder]);
 
     const getInvoiceCustomerDocument = useCallback((invoice) => {
       const order = getInvoiceOrder(invoice);
-      return invoice?.customerDocument
-        || invoice?.customer?.document
-        || invoice?.customer?.cpf
-        || invoice?.customer?.cnpj
-        || order?.clienteDocumento
-        || order?.cpf
-        || order?.documento
-        || order?.customer?.document
-        || order?.customer?.cpf
-        || order?.fiscal?.customerDocument
-        || '';
-    }, [getInvoiceOrder]);
+      const client = findInvoiceClient(invoice);
+      const documentCandidates = [
+        invoice?.customerDocument,
+        invoice?.customer?.document,
+        invoice?.customer?.cpf,
+        invoice?.customer?.cnpj,
+        client?.cpfCnpj,
+        client?.cpf,
+        client?.cnpj,
+        client?.documento,
+        order?.clienteDocumento,
+        order?.cpf,
+        order?.documento,
+        order?.customer?.document,
+        order?.customer?.cpf,
+        order?.customer?.cnpj,
+        order?.fiscal?.customerDocument
+      ];
+      const validDocument = documentCandidates.find((value) => [11, 14].includes(onlyDigitsText(value).length));
+      return validDocument || documentCandidates.find((value) => String(value || '').trim() && String(value || '').trim() !== '-') || '';
+    }, [findInvoiceClient, getInvoiceOrder]);
 
     const getInvoiceIssuerDocument = useCallback((invoice) => (
       invoice?.issuerDocument
@@ -11535,26 +11638,6 @@ const handleSubmit = async (e) => {
       );
     };
 
-    const getInvoiceQrCodeFromAuthorizedXml = async (invoiceId) => {
-      if (!invoiceId) return '';
-      try {
-        const fn = httpsCallable(functions, 'fiscalGetInvoiceArtifact');
-        const response = await fn(callablePayload({ invoiceId, type: 'authorizedXml' }));
-        const artifact = response.data || {};
-        const xmlText = decodeBase64Utf8(artifact.base64 || '');
-        if (!xmlText) return '';
-        const xml = new DOMParser().parseFromString(xmlText, 'application/xml');
-        const parserError = xml.getElementsByTagName('parsererror')?.[0];
-        if (parserError) return '';
-        const qrNode = xml.getElementsByTagName('qrCode')?.[0]
-          || xml.getElementsByTagNameNS('*', 'qrCode')?.[0];
-        return qrNode?.textContent?.trim() || '';
-      } catch (error) {
-        console.warn('[NotaFiscal] Não foi possível reaproveitar o QR Code do XML autorizado.', error);
-        return '';
-      }
-    };
-
     const setIssuerField = (field, value) => {
       setIssuerForm((prev) => ({ ...prev, [field]: value }));
     };
@@ -12091,7 +12174,6 @@ const handleSubmit = async (e) => {
         const accessKey = keyDigits ? keyDigits.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : (invoice.key || serviceResult?.key || '-');
         const operationNature = invoice.operationNature || invoice.naturezaOperacao || settingsForm.operationNature || 'Venda';
         const statusText = statusLabel[invoice.status] || invoice.status || '-';
-        const xmlQrCode = await getInvoiceQrCodeFromAuthorizedXml(invoice.id);
 
         const dash = (value) => {
           const textValue = String(value ?? '').trim();
@@ -12181,119 +12263,44 @@ const handleSubmit = async (e) => {
             return '';
           }
         };
-        const isDanfeDebugEnabled = process.env.NODE_ENV !== 'production';
-        const logDanfeQr = (message, details = {}) => {
-          if (isDanfeDebugEnabled) console.debug(`[NotaFiscal] ${message}`, details);
-        };
-        const readQrCandidate = (candidate) => {
-          if (!candidate) return '';
-          if (typeof candidate === 'string') return candidate;
-          if (typeof candidate === 'object') {
-            return candidate.dataUrl
-              || candidate.dataURL
-              || candidate.base64
-              || candidate.image
-              || candidate.url
-              || candidate.text
-              || '';
+        const drawCode128CBarcode = (digits, x, y, width, height) => {
+          const source = onlyDigitsText(digits);
+          if (!/^\d{44}$/.test(source)) {
+            setFont(5.3);
+            doc.rect(x, y, width, height);
+            text('Codigo de barras indisponivel', x + (width / 2), y + (height / 2) + 1, { align: 'center' });
+            return false;
           }
-          return '';
-        };
-        const normalizeQrImageDataUrl = (candidate) => {
-          const source = String(readQrCandidate(candidate) || '').trim();
-          if (!source) return '';
-          if (/^data:image\//i.test(source)) return source;
-          if (/^iVBORw0KGgo/i.test(source)) return `data:image/png;base64,${source}`;
-          if (/^\/9j\//i.test(source)) return `data:image/jpeg;base64,${source}`;
-          if (/^R0lGOD/i.test(source)) return `data:image/gif;base64,${source}`;
-          return '';
-        };
-        const firstQrImageDataUrl = (...candidates) => {
-          for (const candidate of candidates) {
-            const dataUrl = normalizeQrImageDataUrl(candidate);
-            if (dataUrl) return dataUrl;
+
+          const codewords = [105];
+          for (let index = 0; index < source.length; index += 2) {
+            codewords.push(Number(source.slice(index, index + 2)));
           }
-          return '';
-        };
-        const firstQrText = (...candidates) => {
-          for (const candidate of candidates) {
-            const source = String(readQrCandidate(candidate) || '').trim();
-            if (source) return source;
-          }
-          return '';
-        };
-        const generateQrCodeDataUrl = async (value) => {
-          const source = String(value || '').trim();
-          if (!source) return '';
-          const existingImage = normalizeQrImageDataUrl(source);
-          if (existingImage) {
-            logDanfeQr('QR Code reaproveitado como imagem salva na nota.');
-            return existingImage;
-          }
-          if (typeof window.QRCode?.toDataURL === 'function') {
-            try {
-              const generated = await window.QRCode.toDataURL(source, { width: 170, margin: 1, errorCorrectionLevel: 'M' });
-              logDanfeQr('QR Code gerado por biblioteca ja carregada.');
-              return generated;
-            } catch (error) {
-              console.warn('[NotaFiscal] Gerador de QR legado falhou; usando fallback local.', error);
+          const checksum = codewords.reduce((sum, codeword, index) => (
+            index === 0 ? sum + codeword : sum + (codeword * index)
+          ), 0) % 103;
+          codewords.push(checksum, 106);
+
+          const totalModules = codewords.reduce((sum, codeword) => (
+            sum + String(CODE128_PATTERNS[codeword] || '').split('').reduce((patternSum, value) => patternSum + Number(value || 0), 0)
+          ), 20);
+          const moduleWidth = width / totalModules;
+          let cursorX = x + (moduleWidth * 10);
+          doc.setFillColor(0, 0, 0);
+
+          codewords.forEach((codeword) => {
+            const pattern = String(CODE128_PATTERNS[codeword] || '');
+            for (let index = 0; index < pattern.length; index += 1) {
+              const segmentWidth = Number(pattern[index] || 0) * moduleWidth;
+              if (index % 2 === 0) doc.rect(cursorX, y, segmentWidth, height, 'F');
+              cursorX += segmentWidth;
             }
-          }
-          try {
-            const generated = createLocalQrCodeDataUrl(source, { size: 180, margin: 4 });
-            if (generated) {
-              logDanfeQr('QR Code gerado localmente para o DANFE A4.');
-              return generated;
-            }
-          } catch (error) {
-            console.warn('[NotaFiscal] Gerador local de QR Code falhou; o DANFE A4 sera emitido sem QR.', error);
-          }
-          logDanfeQr('QR Code indisponivel para o DANFE A4.');
-          return '';
+          });
+
+          return true;
         };
 
         const logoDataUrl = await addImageFromUrl(issuer.logoUrl);
-        const storedQrImage = firstQrImageDataUrl(
-          invoice.qrCodeImage,
-          invoice.qrCodeBase64,
-          invoice.qrCodeDataUrl,
-          invoice.qrCodeDataURL,
-          invoice.danfe?.qrCode,
-          invoice.danfe?.qrCodeImage,
-          invoice.danfe?.qrCodeBase64,
-          invoice.danfe?.qrCodeDataUrl,
-          invoice.nfce?.qrCode,
-          invoice.nfce?.qrCodeImage,
-          invoice.nfce?.qrCodeBase64,
-          invoice.nfce?.qrCodeDataUrl,
-          serviceResult.qrCodeImage,
-          serviceResult.qrCodeBase64,
-          serviceResult.qrCodeDataUrl,
-          serviceResult.qrCodeDataURL
-        );
-        const qrTextSource = firstQrText(
-          invoice.qrCodeUrl,
-          invoice.qrCode,
-          invoice.qrUrl,
-          invoice.urlConsulta,
-          invoice.consultationUrl,
-          invoice.danfe?.qrCodeUrl,
-          invoice.danfe?.urlConsulta,
-          invoice.nfce?.qrCodeUrl,
-          invoice.nfce?.qrCode,
-          invoice.nfce?.urlConsulta,
-          invoice.xml?.infNFeSupl?.qrCode,
-          serviceResult.qrCodeUrl,
-          serviceResult.qrCode,
-          serviceResult.qrUrl,
-          serviceResult.urlConsulta,
-          serviceResult.consultationUrl,
-          serviceResult.xml?.infNFeSupl?.qrCode,
-          xmlQrCode,
-          sefazConsultaUrl(invoice)
-        );
-        const qrDataUrl = storedQrImage || await generateQrCodeDataUrl(qrTextSource);
-        if (storedQrImage) logDanfeQr('QR Code reaproveitado dos dados salvos da nota.');
         const protocolText = `${invoice.protocol || serviceResult.protocol || '-'}${authorizedAt !== '-' ? ` - ${authorizedAt}` : ''}`;
         const issuedDate = dateOnly(issuedAtRaw);
         const issuedTime = timeOnly(issuedAtRaw);
@@ -12361,25 +12368,10 @@ const handleSubmit = async (e) => {
         setFont(5.5, 'bold');
         text('CHAVE DE ACESSO', qrX + 2, headerY + 4);
         setFont(6.4, 'bold');
-        doc.text(fitText(accessKey, qrW - 27).slice(0, 3), qrX + 2, headerY + 9);
-        if (qrDataUrl) {
-          try {
-            doc.addImage(qrDataUrl, 'PNG', qrX + qrW - 25, headerY + 4, 22, 22);
-          } catch (error) {
-            console.warn('[NotaFiscal] QR Code gerado, mas nao pode ser adicionado ao DANFE A4.', error);
-            setFont(5.3);
-            doc.rect(qrX + qrW - 25, headerY + 4, 22, 22);
-            text('QR Code', qrX + qrW - 14, headerY + 13, { align: 'center' });
-            text('indisponivel', qrX + qrW - 14, headerY + 17, { align: 'center' });
-          }
-        } else {
-          setFont(5.3);
-          doc.rect(qrX + qrW - 25, headerY + 4, 22, 22);
-          text('QR Code', qrX + qrW - 14, headerY + 13, { align: 'center' });
-          text('indisponivel', qrX + qrW - 14, headerY + 17, { align: 'center' });
-        }
+        doc.text(fitText(accessKey, qrW - 5).slice(0, 3), qrX + 2, headerY + 9);
+        drawCode128CBarcode(keyDigits, qrX + 3, headerY + 19, qrW - 6, 10);
         setFont(5.5);
-        doc.text(fitText('Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda.gov.br/portal ou no site da Sefaz Autorizadora', qrW - 5), qrX + 2, headerY + 30);
+        doc.text(fitText('Consulta de autenticidade no portal nacional da NF-e www.nfe.fazenda.gov.br/portal ou no site da Sefaz Autorizadora', qrW - 5), qrX + 2, headerY + 33);
         field(qrX + 2, headerY + 39, qrW - 4, 11, 'Protocolo de autorização de uso', protocolText, { maxLines: 1, size: 6.2 });
         y = headerY + 55;
 
