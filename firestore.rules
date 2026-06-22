@@ -36,6 +36,18 @@ function isOwnerUser() {
   return isSignedIn() && currentUserData().role == 'dono';
 }
 
+function canManageStorePoints(lojaId) {
+  return isSignedIn()
+    && !isReadOnlyAccountant()
+    && (
+      isOwnerUser()
+      || (
+        (currentUserData().role == 'gerente' || currentUserData().role == 'administrador_master')
+        && currentUserHasStore(lojaId)
+      )
+    );
+}
+
 function currentUserHasStore(lojaId) {
   return currentUserData().lojaId == lojaId
     || (currentUserData().keys().hasAny(['lojaIds']) && lojaId in currentUserData().lojaIds);
@@ -197,6 +209,11 @@ match /lojas/{lojaId} {
 
   match /ifoodCommands/{docId} {
     allow read: if isSignedIn() && !isReadOnlyAccountant();
+  }
+
+  match /pontos/{pontoId} {
+    allow read: if canReadStoreCollection(lojaId, 'pontos');
+    allow create, update, delete: if canManageStorePoints(lojaId);
   }
 
   // Dados 99Food sao lidos pelo painel, mas toda mutacao passa pelas Functions.

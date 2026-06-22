@@ -4943,6 +4943,18 @@ function App() {
     const [editingRecord, setEditingRecord] = useState(null);
     const [editForm, setEditForm] = useState({ horaEntrada: '', horaSaida: '', horaAlmocoSaida: '', horaAlmocoRetorno: '', irregularidade: '', qtde: '', justificativa: '' });
     const [savingEdit, setSavingEdit] = useState(false);
+    const [manualPointModalOpen, setManualPointModalOpen] = useState(false);
+    const [manualPointForm, setManualPointForm] = useState({
+      funcionarioId: '',
+      dia: initialDay,
+      horaEntrada: '',
+      horaAlmocoSaida: '',
+      horaAlmocoRetorno: '',
+      horaSaida: '',
+      justificativa: ''
+    });
+    const [manualPointError, setManualPointError] = useState('');
+    const [savingManualPoint, setSavingManualPoint] = useState(false);
     const [todayRecordData, setTodayRecordData] = useState(null);
 
     const isManager = user ? [ROLE_OWNER, ROLE_MANAGER].includes(user.role) : false;
@@ -5128,6 +5140,16 @@ function App() {
     };
 
     const formatTime = (value) => value || '--:--';
+
+    const getEmployeeDisplayName = (employee = {}) => (
+      employee.nome || employee.displayName || employee.name || employee.email || employee.id || 'Colaboradora'
+    );
+
+    const isManualManagerRecord = (record = {}) => (
+      record.tipoLancamento === 'manual_pelo_gestor'
+      || record.lancamentoManualGestor === true
+      || record.manualPeloGestor === true
+    );
 
     const formatMinutesToLabel = (minutes) => {
       const hrs = Math.floor(minutes / 60);
@@ -5685,6 +5707,132 @@ function App() {
       }
     };
 
+    const openManualPointModal = () => {
+      if (!isManager) return;
+      const baseDay = activeDayFilter || selectedDay || todayKey;
+      setManualPointForm({
+        funcionarioId: selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : '',
+        dia: baseDay,
+        horaEntrada: '',
+        horaAlmocoSaida: '',
+        horaAlmocoRetorno: '',
+        horaSaida: '',
+        justificativa: ''
+      });
+      setManualPointError('');
+      setManualPointModalOpen(true);
+    };
+
+    const handleSaveManualPoint = async () => {
+      if (!isManager) return;
+
+      const employee = employees.find((item) => item.id === manualPointForm.funcionarioId);
+      const dayKey = manualPointForm.dia;
+      const hasAnyTime = [
+        manualPointForm.horaEntrada,
+        manualPointForm.horaAlmocoSaida,
+        manualPointForm.horaAlmocoRetorno,
+        manualPointForm.horaSaida
+      ].some(Boolean);
+
+      if (!employee) {
+        setManualPointError('Selecione a colaboradora.');
+        return;
+      }
+      if (!dayKey) {
+        setManualPointError('Informe a data do ponto.');
+        return;
+      }
+      if (!hasAnyTime) {
+        setManualPointError('Informe pelo menos um horário para lançar o ponto.');
+        return;
+      }
+      if (!manualPointForm.justificativa.trim()) {
+        setManualPointError('Informe a justificativa do lançamento manual.');
+        return;
+      }
+
+      try {
+        setSavingManualPoint(true);
+        setManualPointError('');
+        const storeId = resolveActiveStoreForWrite();
+        const competenciaKey = dayKey.slice(0, 7);
+        const pontosRef = collection(db, 'lojas', storeId, 'pontos');
+        const duplicateQuery = query(
+          pontosRef,
+          where('funcionarioId', '==', employee.id),
+          where('dia', '==', dayKey),
+          where('competencia', '==', competenciaKey),
+          limit(1)
+        );
+        const duplicateSnap = await getDocs(duplicateQuery);
+        if (!duplicateSnap.empty) {
+          setManualPointError('Já existe registro para esta colaboradora nesta data. Use a opção Editar para ajustar.');
+          return;
+        }
+
+        const recordDraft = {
+          horaEntrada: manualPointForm.horaEntrada || '',
+          horaAlmocoSaida: manualPointForm.horaAlmocoSaida || '',
+          horaAlmocoRetorno: manualPointForm.horaAlmocoRetorno || '',
+          horaSaida: manualPointForm.horaSaida || '',
+          dia: dayKey,
+          competencia: competenciaKey,
+        };
+        const summary = calculateWorkSummary(recordDraft);
+        const statusPatch = buildPointStatus(recordDraft);
+        const managerAudit = {
+          data: new Date().toISOString(),
+          tipo: 'manual_pelo_gestor',
+          gestorId: userId,
+          gestor: userName,
+          funcionarioId: employee.id,
+          funcionarioNome: getEmployeeDisplayName(employee),
+          justificativa: manualPointForm.justificativa.trim(),
+          horarios: {
+            horaEntrada: recordDraft.horaEntrada,
+            horaAlmocoSaida: recordDraft.horaAlmocoSaida,
+            horaAlmocoRetorno: recordDraft.horaAlmocoRetorno,
+            horaSaida: recordDraft.horaSaida
+          }
+        };
+
+        await addDoc(pontosRef, {
+          ...recordDraft,
+          ...statusPatch,
+          funcionarioId: employee.id,
+          funcionarioNome: getEmployeeDisplayName(employee),
+          funcionarioEmail: employee.email || '',
+          data: Timestamp.fromDate(new Date(`${dayKey}T00:00:00`)),
+          createdAt: serverTimestamp(),
+          atualizadoEm: serverTimestamp(),
+          irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : (summary.irregularidade !== '-' ? summary.irregularidade : ''),
+          qtde: statusPatch.inconsistente ? '' : (summary.workedLabel !== '-' ? summary.workedLabel : ''),
+          justificativa: manualPointForm.justificativa.trim(),
+          tipoLancamento: 'manual_pelo_gestor',
+          lancamentoManualGestor: true,
+          manualPeloGestor: true,
+          semLocalizacaoManual: true,
+          localizacaoObservacao: 'Sem localização — lançamento manual pelo gestor',
+          gestorId: userId,
+          gestorNome: userName,
+          dataLancamentoManual: serverTimestamp(),
+          historicoAlteracoes: arrayUnion(managerAudit)
+        });
+
+        setSelectedDay(dayKey);
+        setSelectedMonth(competenciaKey);
+        setRecordFilterMode('day');
+        setRegisterMessage({ type: 'success', text: 'Ponto manual lançado com auditoria do gestor.' });
+        setManualPointModalOpen(false);
+      } catch (error) {
+        console.error('Erro ao lançar ponto manual', error);
+        setManualPointError(error.message || 'Não foi possível lançar o ponto manual.');
+      } finally {
+        setSavingManualPoint(false);
+      }
+    };
+
     const openEditModal = (record) => {
       const summary = calculateWorkSummary(record);
       setEditingRecord(record);
@@ -5709,26 +5857,47 @@ function App() {
         const editedRecord = { ...editingRecord, ...editForm };
         const summary = calculateWorkSummary(editedRecord);
         const statusPatch = buildPointStatus(editedRecord);
-        await updateDoc(recordRef, {
+        const previousValues = {
+          horaEntrada: editingRecord.horaEntrada || '',
+          horaSaida: editingRecord.horaSaida || '',
+          horaAlmocoSaida: editingRecord.horaAlmocoSaida || '',
+          horaAlmocoRetorno: editingRecord.horaAlmocoRetorno || '',
+          irregularidade: editingRecord.irregularidade || '',
+          qtde: editingRecord.qtde || '',
+          justificativa: editingRecord.justificativa || '',
+          statusPonto: editingRecord.statusPonto || ''
+        };
+        const nextValues = {
           horaEntrada: editForm.horaEntrada || '',
           horaSaida: editForm.horaSaida || '',
           horaAlmocoSaida: editForm.horaAlmocoSaida || '',
           horaAlmocoRetorno: editForm.horaAlmocoRetorno || '',
-          ...statusPatch,
           irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : (summary.irregularidade !== '-' ? summary.irregularidade : ''),
           qtde: statusPatch.inconsistente ? '' : (summary.workedLabel !== '-' ? summary.workedLabel : ''),
           justificativa: editForm.justificativa || '',
+          statusPonto: statusPatch.statusPonto
+        };
+        await updateDoc(recordRef, {
+          horaEntrada: nextValues.horaEntrada,
+          horaSaida: nextValues.horaSaida,
+          horaAlmocoSaida: nextValues.horaAlmocoSaida,
+          horaAlmocoRetorno: nextValues.horaAlmocoRetorno,
+          ...statusPatch,
+          irregularidade: nextValues.irregularidade,
+          qtde: nextValues.qtde,
+          justificativa: nextValues.justificativa,
           gestorId: userId,
+          gestorNome: userName,
           dataAjuste: serverTimestamp(),
           historicoAlteracoes: arrayUnion({
             data: nowDate.toISOString(),
+            tipo: 'ajuste_ponto',
+            gestorId: userId,
             gestor: userName,
-            alteracoes: {
-              ...editForm,
-              irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : summary.irregularidade,
-              qtde: statusPatch.inconsistente ? '' : summary.workedLabel,
-              statusPonto: statusPatch.statusPonto,
-            }
+            justificativa: nextValues.justificativa,
+            valorAnterior: previousValues,
+            valorNovo: nextValues,
+            alteracoes: nextValues
           })
         });
         setRegisterMessage({ type: 'success', text: 'Registro de ponto atualizado.' });
@@ -5881,7 +6050,7 @@ function App() {
                 Registros ({filteredRecords.length})
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 w-full md:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3 w-full md:w-auto">
               <div className="flex items-end">
                 <button
                   type="button"
@@ -5935,6 +6104,18 @@ function App() {
                   </button>
                 </div>
               )}
+              {isManager && (
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={openManualPointModal}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-pink-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Lançar ponto manual
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -5971,9 +6152,19 @@ function App() {
                     const recordPointStatus = buildPointStatus(registro);
                     const statusLabel = registro.statusPonto || recordPointStatus.statusPonto;
                     const isPendingAdjustment = Boolean(registro.inconsistente || registro.necessitaAjuste || recordPointStatus.inconsistente);
+                    const manualManagerRecord = isManualManagerRecord(registro);
                     return (
                       <tr key={registro.id} className="hover:bg-gray-50">
-                        <td className="py-3 px-4">{registro.funcionarioNome || '-'}</td>
+                        <td className="py-3 px-4">
+                          <div className="space-y-1">
+                            <p>{registro.funcionarioNome || '-'}</p>
+                            {manualManagerRecord && (
+                              <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                Lançado pelo gestor
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-4 capitalize">{diaSemana}</td>
                         <td className="py-3 px-4">{diaMes}</td>
                         <td className="py-3 px-4 font-semibold">{formatTime(registro.horaEntrada)}</td>
@@ -5998,6 +6189,11 @@ function App() {
                         {isManager && (
                           <td className="py-3 px-4">
                             <div className="space-y-3 text-xs">
+                              {manualManagerRecord && (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-700">
+                                  Sem localização — lançamento manual pelo gestor
+                                </div>
+                              )}
                               {registro.localizacaoEntrada && (
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-1 font-semibold text-pink-600">
@@ -6034,6 +6230,9 @@ function App() {
                                   </a>
                                 </div>
                               )}
+                              {!manualManagerRecord && !registro.localizacaoEntrada && !registro.localizacaoSaida && (
+                                <span className="text-gray-400">-</span>
+                              )}
                             </div>
                           </td>
                         )}
@@ -6050,6 +6249,55 @@ function App() {
             </div>
           )}
         </div>
+
+        <Modal isOpen={manualPointModalOpen} onClose={() => setManualPointModalOpen(false)} title="Lançar ponto manual" size="lg">
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              Este registro será marcado como lançamento manual pelo gestor e ficará sem localização real da colaboradora.
+            </div>
+            {manualPointError && (
+              <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+                {manualPointError}
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select
+                label="Colaboradora"
+                value={manualPointForm.funcionarioId}
+                onChange={(e) => setManualPointForm({ ...manualPointForm, funcionarioId: e.target.value })}
+                disabled={employeesLoading}
+                required
+              >
+                <option value="">Selecione</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>{getEmployeeDisplayName(employee)}</option>
+                ))}
+              </Select>
+              <Input
+                label="Data do ponto"
+                type="date"
+                value={manualPointForm.dia}
+                onChange={(e) => setManualPointForm({ ...manualPointForm, dia: e.target.value })}
+                required
+              />
+              <Input label="Entrada" type="time" value={manualPointForm.horaEntrada} onChange={(e) => setManualPointForm({ ...manualPointForm, horaEntrada: e.target.value })} />
+              <Input label="Saída para almoço" type="time" value={manualPointForm.horaAlmocoSaida} onChange={(e) => setManualPointForm({ ...manualPointForm, horaAlmocoSaida: e.target.value })} />
+              <Input label="Retorno do almoço" type="time" value={manualPointForm.horaAlmocoRetorno} onChange={(e) => setManualPointForm({ ...manualPointForm, horaAlmocoRetorno: e.target.value })} />
+              <Input label="Saída final" type="time" value={manualPointForm.horaSaida} onChange={(e) => setManualPointForm({ ...manualPointForm, horaSaida: e.target.value })} />
+            </div>
+            <Textarea
+              label="Justificativa obrigatória"
+              value={manualPointForm.justificativa}
+              onChange={(e) => setManualPointForm({ ...manualPointForm, justificativa: e.target.value })}
+              placeholder="Ex.: Colaboradora compareceu ao trabalho, porém esqueceu de registrar o ponto no sistema."
+              required
+            />
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setManualPointModalOpen(false)}>Cancelar</Button>
+              <Button onClick={handleSaveManualPoint} disabled={savingManualPoint}>{savingManualPoint ? 'Salvando...' : 'Salvar lançamento manual'}</Button>
+            </div>
+          </div>
+        </Modal>
 
         <Modal isOpen={Boolean(editingRecord)} onClose={() => setEditingRecord(null)} title="Editar registro" size="lg">
           <div className="space-y-4">
