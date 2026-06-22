@@ -28,6 +28,29 @@ function accountantHasStore(lojaId) {
     || lojaId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lojaIds;
 }
 
+function currentUserData() {
+  return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+}
+
+function isOwnerUser() {
+  return isSignedIn() && currentUserData().role == 'dono';
+}
+
+function currentUserHasStore(lojaId) {
+  return currentUserData().lojaId == lojaId
+    || (currentUserData().keys().hasAny(['lojaIds']) && lojaId in currentUserData().lojaIds);
+}
+
+function canReadTransferenciaEntreLojasDoc() {
+  return isSignedIn()
+    && (!isReadOnlyAccountant() || accountantHasModule('entre-lojas'))
+    && (
+      isOwnerUser()
+      || currentUserHasStore(resource.data.lojaOrigemId)
+      || (resource.data.status != 'rascunho' && currentUserHasStore(resource.data.lojaDestinoId))
+    );
+}
+
 function canReadStoreCollection(lojaId, collection) {
   return isSignedIn() && (
     !isReadOnlyAccountant()
@@ -251,6 +274,13 @@ match /customProfiles/{userId} {
   allow write: if canStaffWrite();
 }
 
+match /transferenciasEntreLojas/{transferenciaId} {
+  allow get: if canReadTransferenciaEntreLojasDoc();
+  allow list: if isSignedIn()
+    && (!isReadOnlyAccountant() || accountantHasModule('entre-lojas'));
+  allow create, update, delete: if canStaffWrite();
+}
+
 // --- REGRAS PARA OUTRAS COLEÇÕES (Acesso somente para usuários autenticados no CRM) ---
 match /{collection}/{document=**} {
   allow read: if isSignedIn()
@@ -258,6 +288,7 @@ match /{collection}/{document=**} {
     && collection != 'integrations'
     && collection != 'users'
     && collection != 'customProfiles'
+    && collection != 'transferenciasEntreLojas'
     && (!isReadOnlyAccountant()
       || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
   allow write: if canStaffWrite()

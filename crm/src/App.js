@@ -9632,6 +9632,30 @@ const handleSubmit = async (e) => {
       return allowedOriginStoreIds[0] || '';
     }, [allowedOriginStoreIds, currentStoreIdForDisplay]);
 
+    const isDraftHiddenForCurrentViewer = useCallback((transfer) => {
+      if (!transfer || transfer.status !== 'rascunho') return false;
+      const originId = normalizeStoreId(transfer.lojaOrigemId);
+      const destinationId = normalizeStoreId(transfer.lojaDestinoId);
+
+      if (selectedStoreIdForView) {
+        return destinationId === selectedStoreIdForView && originId !== selectedStoreIdForView;
+      }
+
+      if (canAccessAllTransfers) return false;
+      const canSeeAsOrigin = originId && allowedStoreIds.includes(originId);
+      const canSeeAsDestination = destinationId && allowedStoreIds.includes(destinationId);
+      return canSeeAsDestination && !canSeeAsOrigin;
+    }, [allowedStoreIds, canAccessAllTransfers, selectedStoreIdForView]);
+
+    const canReadTransferForCurrentViewer = useCallback((transfer) => {
+      if (!transfer) return false;
+      if (isDraftHiddenForCurrentViewer(transfer)) return false;
+      if (canAccessAllTransfers) return true;
+      const originId = normalizeStoreId(transfer.lojaOrigemId);
+      const destinationId = normalizeStoreId(transfer.lojaDestinoId);
+      return allowedStoreIds.includes(originId) || allowedStoreIds.includes(destinationId);
+    }, [allowedStoreIds, canAccessAllTransfers, isDraftHiddenForCurrentViewer]);
+
     const parseLocalDate = (value) => {
       if (!value) return null;
       if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -9738,7 +9762,9 @@ const handleSubmit = async (e) => {
         const merged = new Map();
 
         [...originDocs, ...destinationDocs].forEach((docSnap) => {
-          merged.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+          const transfer = { id: docSnap.id, ...docSnap.data() };
+          if (!canReadTransferForCurrentViewer(transfer)) return;
+          merged.set(docSnap.id, transfer);
         });
 
         const sortedRows = Array.from(merged.values()).sort((a, b) => {
@@ -9802,7 +9828,7 @@ const handleSubmit = async (e) => {
         isActive = false;
         unsubscribes.forEach((unsubscribe) => unsubscribe());
       };
-    }, [allowedOriginStoreIds, allowedStoreIds, availableStores, canAccessAllTransfers, currentStoreIdForDisplay, selectedStoreId, selectedStoreIdForView, storeInfoMap, user, userStoreIds]);
+    }, [allowedOriginStoreIds, allowedStoreIds, availableStores, canAccessAllTransfers, canReadTransferForCurrentViewer, currentStoreIdForDisplay, selectedStoreId, selectedStoreIdForView, storeInfoMap, user, userStoreIds]);
 
     useEffect(() => {
       if (!user) {
@@ -10073,7 +10099,7 @@ const handleSubmit = async (e) => {
     useEffect(() => {
       if (!viewingTransfer?.id) return;
       const latestTransfer = (transferencias || []).find((item) => item.id === viewingTransfer.id);
-      if (!latestTransfer) {
+      if (!latestTransfer || !canReadTransferForCurrentViewer(latestTransfer)) {
         setViewingTransfer(null);
         setActionComment('');
         return;
@@ -10081,7 +10107,7 @@ const handleSubmit = async (e) => {
       if (latestTransfer !== viewingTransfer) {
         setViewingTransfer(latestTransfer);
       }
-    }, [transferencias, viewingTransfer]);
+    }, [canReadTransferForCurrentViewer, transferencias, viewingTransfer]);
 
     const formatMoney = (value) => `R$ ${(Number(value) || 0).toFixed(2)}`;
     const formatDate = (value) => parseLocalDate(value)?.toLocaleDateString('pt-BR') || '-';
@@ -10609,6 +10635,7 @@ const handleSubmit = async (e) => {
 
     const canActOnTransfer = (transfer, action) => {
       if (!user || !transfer) return false;
+      if (!canReadTransferForCurrentViewer(transfer)) return false;
       const linkedClosing = transfer.fechamentoId ? fechamentos.find((closing) => closing.id === transfer.fechamentoId) : null;
       const linkedClosingStatus = linkedClosing?.status || transfer.fechamentoStatus;
       if (
@@ -11361,11 +11388,8 @@ const handleSubmit = async (e) => {
     };
 
     const canViewTransfer = useCallback((transfer) => {
-      if (canAccessAllTransfers) return true;
-      const originId = normalizeStoreId(transfer?.lojaOrigemId);
-      const destinationId = normalizeStoreId(transfer?.lojaDestinoId);
-      return allowedStoreIds.includes(originId) || allowedStoreIds.includes(destinationId);
-    }, [allowedStoreIds, canAccessAllTransfers]);
+      return canReadTransferForCurrentViewer(transfer);
+    }, [canReadTransferForCurrentViewer]);
 
     const matchesSelectedStoreView = useCallback((transfer) => {
       if (!selectedStoreIdForView) return true;
