@@ -882,6 +882,11 @@ const getOrderAddressDetails = (order, clientes = []) => {
 
 const roundCurrency = (value) => Number((Number(value || 0)).toFixed(2));
 
+const isProductInactive = (product = {}) => {
+  const status = product.status || 'Ativo';
+  return product.ativo === false || status === 'Inativo' || status !== 'Ativo';
+};
+
 const getOrderItemProductId = (item) => item?.produtoId || item?.productId || item?.id || null;
 
 const getClientPrimaryAddressText = (cliente = {}) => {
