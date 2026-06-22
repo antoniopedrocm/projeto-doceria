@@ -120,6 +120,18 @@ const createManualInvoiceCustomerDraft = () => ({
   }
 });
 const DEFAULT_FORNECEDOR_CATEGORIES = ['Insumos', 'Embalagens', 'Bebidas', 'Decoração', 'Serviços'];
+const TRANSFER_TABLE_COLUMN_OPTIONS = [
+  { id: 'numero', label: 'Nº' },
+  { id: 'origem', label: 'Origem' },
+  { id: 'destino', label: 'Destino' },
+  { id: 'itens', label: 'Itens' },
+  { id: 'repasse', label: 'Repasse' },
+  { id: 'revenda', label: 'Revenda' },
+  { id: 'status', label: 'Status' },
+  { id: 'fechamento', label: 'Fechamento' },
+  { id: 'criadaEm', label: 'Criada em' }
+];
+const DEFAULT_VISIBLE_TRANSFER_COLUMNS = TRANSFER_TABLE_COLUMN_OPTIONS.map((column) => column.id);
 const CONFIG_DOC_ID = 'config';
 const DEFAULT_ALARM_PAUSE_MINUTES = 5;
 const MIN_ALARM_PAUSE_MINUTES = 1;
@@ -9429,26 +9441,67 @@ const handleSubmit = async (e) => {
   
   const EntreLojas = () => {
     const [transferencias, setTransferencias] = useState([]);
+    const [moduleTab, setModuleTab] = useState('remessas');
+    const [fechamentos, setFechamentos] = useState([]);
     const [activeTab, setActiveTab] = useState('todas');
     const [statusFilter, setStatusFilter] = useState('todos');
     const [origemFilter, setOrigemFilter] = useState('todos');
     const [destinoFilter, setDestinoFilter] = useState('todos');
     const [startDateFilter, setStartDateFilter] = useState('');
     const [endDateFilter, setEndDateFilter] = useState('');
+    const [showTransferColumnsMenu, setShowTransferColumnsMenu] = useState(false);
+    const transferColumnsButtonRef = useRef(null);
+    const transferColumnsMenuRef = useRef(null);
+    const [visibleTransferColumns, setVisibleTransferColumns] = usePersistentState('entreLojasVisibleTransferColumns', DEFAULT_VISIBLE_TRANSFER_COLUMNS);
+    const [closingStatusFilter, setClosingStatusFilter] = useState('todos');
+    const [closingOrigemFilter, setClosingOrigemFilter] = useState('todos');
+    const [closingDestinoFilter, setClosingDestinoFilter] = useState('todos');
+    const [closingMonthFilter, setClosingMonthFilter] = useState('');
+    const [closingStartDateFilter, setClosingStartDateFilter] = useState('');
+    const [closingEndDateFilter, setClosingEndDateFilter] = useState('');
     const [showModal, setShowModal] = useState(false);
+    const [showClosingModal, setShowClosingModal] = useState(false);
+    const [viewingClosing, setViewingClosing] = useState(null);
     const [viewingTransfer, setViewingTransfer] = useState(null);
     const [editingTransfer, setEditingTransfer] = useState(null);
+    const [editingClosing, setEditingClosing] = useState(null);
     const [isSavingTransfer, setIsSavingTransfer] = useState(false);
+    const [isSavingClosing, setIsSavingClosing] = useState(false);
     const [formError, setFormError] = useState('');
+    const [closingFormError, setClosingFormError] = useState('');
+    const [transferSyncNotice, setTransferSyncNotice] = useState('');
+    const [closingSyncNotice, setClosingSyncNotice] = useState('');
     const [repasseConfigPercentual, setRepasseConfigPercentual] = useState(0);
     const [actionComment, setActionComment] = useState('');
+    const [closingActionComment, setClosingActionComment] = useState('');
+    const [closingPaymentForm, setClosingPaymentForm] = useState({
+      formaPagamento: '',
+      dataPagamento: new Date().toISOString().slice(0, 10)
+    });
+    const [transferToMove, setTransferToMove] = useState(null);
+    const [moveTargetClosingId, setMoveTargetClosingId] = useState('');
+    const [showAddTransfersModal, setShowAddTransfersModal] = useState(false);
+    const [closingTransferSelection, setClosingTransferSelection] = useState([]);
     const [formData, setFormData] = useState({
       lojaOrigemId: '',
       lojaDestinoId: '',
       dataRemessa: new Date().toISOString().slice(0, 10),
       observacaoOrigem: '',
+      fechamentoId: '',
+      fechamentoNome: '',
+      fechamentoStatus: '',
       itens: []
     });
+    const [closingFormData, setClosingFormData] = useState({
+      nome: '',
+      lojaOrigemId: '',
+      lojaDestinoId: '',
+      periodoInicio: new Date().toISOString().slice(0, 10),
+      periodoFim: new Date().toISOString().slice(0, 10),
+      observacaoOrigem: '',
+      observacaoDestino: ''
+    });
+    const selectedStoreForCleanupRef = useRef(null);
 
     const userStoreIds = useMemo(() => {
       if (!user) return [];
@@ -9468,16 +9521,98 @@ const handleSubmit = async (e) => {
     const canMarkAsPaid = user?.role === ROLE_OWNER || user?.role === ROLE_MANAGER;
     const canConfirmPaymentByRole = user?.role === ROLE_OWNER || user?.role === ROLE_MANAGER;
     const isEditingTransfer = !!editingTransfer?.id;
+    const isEditingClosing = !!editingClosing?.id;
     const canChangeOriginStore = allowedOriginStoreIds.length > 1;
+    const visibleTransferColumnSet = useMemo(() => {
+      const validColumnIds = new Set(TRANSFER_TABLE_COLUMN_OPTIONS.map((column) => column.id));
+      const selectedColumns = Array.isArray(visibleTransferColumns)
+        ? visibleTransferColumns.filter((columnId) => validColumnIds.has(columnId))
+        : [];
+      return new Set(selectedColumns.length ? selectedColumns : DEFAULT_VISIBLE_TRANSFER_COLUMNS);
+    }, [visibleTransferColumns]);
 
-    const DEBUG_ENTRE_LOJAS = false;
+    const toggleTransferColumnVisibility = useCallback((columnId) => {
+      setVisibleTransferColumns((previous) => {
+        const validColumnIds = new Set(TRANSFER_TABLE_COLUMN_OPTIONS.map((column) => column.id));
+        const currentColumns = Array.isArray(previous)
+          ? previous.filter((currentColumnId) => validColumnIds.has(currentColumnId))
+          : DEFAULT_VISIBLE_TRANSFER_COLUMNS;
+        const nextColumns = currentColumns.includes(columnId)
+          ? currentColumns.filter((currentColumnId) => currentColumnId !== columnId)
+          : [...currentColumns, columnId];
+
+        return nextColumns.length ? nextColumns : currentColumns;
+      });
+    }, [setVisibleTransferColumns]);
+
+    useEffect(() => {
+      if (!showTransferColumnsMenu) return undefined;
+
+      const closeOnOutsidePointer = (event) => {
+        if (
+          transferColumnsButtonRef.current?.contains(event.target)
+          || transferColumnsMenuRef.current?.contains(event.target)
+        ) {
+          return;
+        }
+        setShowTransferColumnsMenu(false);
+      };
+      const closeOnEscape = (event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        setShowTransferColumnsMenu(false);
+        transferColumnsButtonRef.current?.focus();
+      };
+
+      document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+      document.addEventListener('keydown', closeOnEscape);
+      return () => {
+        document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+        document.removeEventListener('keydown', closeOnEscape);
+      };
+    }, [showTransferColumnsMenu]);
+
+    useEffect(() => {
+      if (
+        showTransferColumnsMenu
+        && (
+          moduleTab !== 'remessas'
+          || showModal
+          || showClosingModal
+          || viewingClosing
+          || viewingTransfer
+          || showAddTransfersModal
+          || transferToMove
+        )
+      ) {
+        setShowTransferColumnsMenu(false);
+      }
+    }, [
+      moduleTab,
+      showAddTransfersModal,
+      showClosingModal,
+      showModal,
+      showTransferColumnsMenu,
+      transferToMove,
+      viewingClosing,
+      viewingTransfer
+    ]);
+
+    const DEBUG_ENTRE_LOJAS_SYNC = false;
     const entreLojasLog = (...args) => {
-      if (DEBUG_ENTRE_LOJAS) console.log('[EntreLojas][DEBUG]', ...args);
+      if (DEBUG_ENTRE_LOJAS_SYNC) console.log('[EntreLojas][DEBUG]', ...args);
     };
 
     const normalizeStoreId = (value) => String(value || '').trim();
+    const chunkArray = (items = [], size = 10) => {
+      const chunks = [];
+      for (let index = 0; index < items.length; index += size) {
+        chunks.push(items.slice(index, index + size));
+      }
+      return chunks;
+    };
 
-    const allowedStoreIds = useMemo(() => Array.from(new Set(userStoreIds.map(normalizeStoreId).filter(Boolean))).slice(0, 10), [userStoreIds]);
+    const allowedStoreIds = useMemo(() => Array.from(new Set(userStoreIds.map(normalizeStoreId).filter(Boolean))), [userStoreIds]);
 
     const selectedStoreIdForView = useMemo(() => {
       if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) return null;
@@ -9492,18 +9627,92 @@ const handleSubmit = async (e) => {
       return allowedOriginStoreIds[0] || '';
     }, [allowedOriginStoreIds, currentStoreIdForDisplay]);
 
+    const parseLocalDate = (value) => {
+      if (!value) return null;
+      if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const localDate = new Date(`${value}T00:00:00`);
+        return Number.isNaN(localDate.getTime()) ? null : localDate;
+      }
+      const parsed = getJSDate(value) || new Date(`${value}T00:00:00`);
+      return Number.isNaN(parsed?.getTime()) ? null : parsed;
+    };
+
+    const formatInputDate = (date) => {
+      if (!date) return '';
+      const parsed = parseLocalDate(date);
+      if (!parsed) return '';
+      const year = parsed.getFullYear();
+      const month = String(parsed.getMonth() + 1).padStart(2, '0');
+      const day = String(parsed.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const computeWeekOfMonth = (dateValue) => {
+      const parsed = parseLocalDate(dateValue) || new Date();
+      return Math.max(1, Math.ceil(parsed.getDate() / 7));
+    };
+
+    const buildDefaultClosingName = (periodoInicio, periodoFim) => {
+      const start = parseLocalDate(periodoInicio) || parseLocalDate(periodoFim) || new Date();
+      const month = start.toLocaleDateString('pt-BR', { month: 'long' });
+      const normalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+      return `${normalizedMonth}/${start.getFullYear()} - Semana ${computeWeekOfMonth(start)}`;
+    };
+
+    const getDefaultClosingFormData = useCallback(() => {
+      const start = new Date();
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      const periodoInicio = formatInputDate(start);
+      const periodoFim = formatInputDate(end);
+      return {
+        nome: buildDefaultClosingName(periodoInicio, periodoFim),
+        lojaOrigemId: getDefaultOriginStoreId(),
+        lojaDestinoId: '',
+        periodoInicio,
+        periodoFim,
+        observacaoOrigem: '',
+        observacaoDestino: ''
+      };
+    }, [getDefaultOriginStoreId]);
+
     useEffect(() => {
-      if (!user) return undefined;
+      if (!user) {
+        setTransferencias([]);
+        return undefined;
+      }
+
       const transfersRef = collection(db, 'transferenciasEntreLojas');
+      let isActive = true;
+      const unsubscribes = [];
+
+      entreLojasLog('Contexto de carregamento', {
+        usuarioUid: user?.auth?.uid || null,
+        role: user?.role,
+        selectedStoreId,
+        currentStoreIdForDisplay,
+        selectedStoreIdForView,
+        allowedStoreIds,
+        allowedOriginStoreIds,
+        availableStores: availableStores.map((storeId) => ({ id: storeId, nome: storeInfoMap[storeId]?.nome || storeId }))
+      });
 
       if (canAccessAllTransfers) {
         const baseQuery = query(transfersRef, orderBy('dataCriacao', 'desc'), limit(250));
-        return onSnapshot(baseQuery, (snapshot) => {
+        const unsubscribe = onSnapshot(baseQuery, (snapshot) => {
+          if (!isActive) return;
           const rows = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+          entreLojasLog('Resultado query admin/dono', { quantidadeFinal: rows.length });
           setTransferencias(rows);
         }, (error) => {
           console.error('[EntreLojas] Erro ao carregar transferências:', error);
         });
+
+        return () => {
+          isActive = false;
+          unsubscribe();
+        };
       }
 
       if (!allowedStoreIds.length) {
@@ -9512,93 +9721,215 @@ const handleSubmit = async (e) => {
         return undefined;
       }
 
-      entreLojasLog('Contexto de carregamento', {
-        userProfileRole: user?.role,
-        selectedStoreId,
-        currentStoreIdForDisplay,
-        selectedStoreIdForView,
-        allowedStoreIds,
-        allowedOriginStoreIds,
-        availableStores: availableStores.map((storeId) => ({ id: storeId, nome: storeInfoMap[storeId]?.nome || storeId }))
-      });
-      const originQuery = query(transfersRef, where('lojaOrigemId', 'in', allowedStoreIds), limit(250));
-      const destinationQuery = query(transfersRef, where('lojaDestinoId', 'in', allowedStoreIds), limit(250));
+      const originDocsByChunk = new Map();
+      const destinationDocsByChunk = new Map();
+      const allowedStoreChunks = chunkArray(allowedStoreIds, 10);
 
-      const mergeTransfers = (originDocs, destinationDocs) => {
+      const mergeTransfers = () => {
+        if (!isActive) return;
+
+        const originDocs = Array.from(originDocsByChunk.values()).flat();
+        const destinationDocs = Array.from(destinationDocsByChunk.values()).flat();
         const merged = new Map();
+
         [...originDocs, ...destinationDocs].forEach((docSnap) => {
           merged.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
         });
+
         const sortedRows = Array.from(merged.values()).sort((a, b) => {
           const dateA = getJSDate(a.dataCriacao)?.getTime() || 0;
           const dateB = getJSDate(b.dataCriacao)?.getTime() || 0;
           return dateB - dateA;
         });
         const limitedRows = sortedRows.slice(0, 250);
+
         entreLojasLog('Merge de transferências', {
-          origem: originDocs.length,
-          destino: destinationDocs.length,
-          totalMesclado: limitedRows.length,
-          transferencias: limitedRows.map((item) => ({ id: item.id, numero: item.numero, lojaOrigemId: item.lojaOrigemId, lojaDestinoId: item.lojaDestinoId, status: item.status }))
+          quantidadeOrigem: originDocs.length,
+          quantidadeDestino: destinationDocs.length,
+          quantidadeFinal: limitedRows.length,
+          chunks: allowedStoreChunks.length,
+          transferencias: limitedRows.map((item) => ({
+            id: item.id,
+            numero: item.numero,
+            lojaOrigemId: item.lojaOrigemId,
+            lojaDestinoId: item.lojaDestinoId,
+            status: item.status
+          }))
         });
+
         setTransferencias(limitedRows);
       };
 
-      let originDocs = [];
-      let destinationDocs = [];
+      allowedStoreChunks.forEach((storeChunk, chunkIndex) => {
+        const originQuery = query(transfersRef, where('lojaOrigemId', 'in', storeChunk), limit(250));
+        const destinationQuery = query(transfersRef, where('lojaDestinoId', 'in', storeChunk), limit(250));
 
-      const unsubscribeOrigin = onSnapshot(originQuery, (snapshot) => {
-        originDocs = snapshot.docs;
-        entreLojasLog('Resultado query origem', { quantidade: originDocs.length, ids: originDocs.map((docSnap) => docSnap.id) });
-        mergeTransfers(originDocs, destinationDocs);
-      }, (error) => {
-        console.error('[EntreLojas] Erro ao carregar transferências por origem:', error);
-      });
+        const unsubscribeOrigin = onSnapshot(originQuery, (snapshot) => {
+          originDocsByChunk.set(chunkIndex, snapshot.docs);
+          entreLojasLog('Resultado query origem', {
+            chunkIndex,
+            lojas: storeChunk,
+            quantidade: snapshot.docs.length,
+            ids: snapshot.docs.map((docSnap) => docSnap.id)
+          });
+          mergeTransfers();
+        }, (error) => {
+          console.error('[EntreLojas] Erro ao carregar transferências por origem:', error);
+        });
 
-      const unsubscribeDestination = onSnapshot(destinationQuery, (snapshot) => {
-        destinationDocs = snapshot.docs;
-        entreLojasLog('Resultado query destino', { quantidade: destinationDocs.length, ids: destinationDocs.map((docSnap) => docSnap.id) });
-        mergeTransfers(originDocs, destinationDocs);
-      }, (error) => {
-        console.error('[EntreLojas] Erro ao carregar transferências por destino:', error);
+        const unsubscribeDestination = onSnapshot(destinationQuery, (snapshot) => {
+          destinationDocsByChunk.set(chunkIndex, snapshot.docs);
+          entreLojasLog('Resultado query destino', {
+            chunkIndex,
+            lojas: storeChunk,
+            quantidade: snapshot.docs.length,
+            ids: snapshot.docs.map((docSnap) => docSnap.id)
+          });
+          mergeTransfers();
+        }, (error) => {
+          console.error('[EntreLojas] Erro ao carregar transferências por destino:', error);
+        });
+
+        unsubscribes.push(unsubscribeOrigin, unsubscribeDestination);
       });
 
       return () => {
-        unsubscribeOrigin();
-        unsubscribeDestination();
+        isActive = false;
+        unsubscribes.forEach((unsubscribe) => unsubscribe());
       };
-    }, [allowedOriginStoreIds, allowedStoreIds, canAccessAllTransfers, currentStoreIdForDisplay, selectedStoreId, selectedStoreIdForView, user, userStoreIds]);
+    }, [allowedOriginStoreIds, allowedStoreIds, availableStores, canAccessAllTransfers, currentStoreIdForDisplay, selectedStoreId, selectedStoreIdForView, storeInfoMap, user, userStoreIds]);
+
+    useEffect(() => {
+      if (!user) {
+        setFechamentos([]);
+        return undefined;
+      }
+
+      const closingsRef = collection(db, 'fechamentosEntreLojas');
+      let isActive = true;
+      const unsubscribes = [];
+
+      if (canAccessAllTransfers) {
+        const baseQuery = query(closingsRef, orderBy('dataCriacao', 'desc'), limit(250));
+        const unsubscribe = onSnapshot(baseQuery, (snapshot) => {
+          if (!isActive) return;
+          const rows = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+          entreLojasLog('Fechamentos admin/dono', { quantidadeFinal: rows.length });
+          setFechamentos(rows);
+        }, (error) => {
+          console.error('[EntreLojas] Erro ao carregar fechamentos:', error);
+        });
+
+        return () => {
+          isActive = false;
+          unsubscribe();
+        };
+      }
+
+      if (!allowedStoreIds.length) {
+        setFechamentos([]);
+        return undefined;
+      }
+
+      const originDocsByChunk = new Map();
+      const destinationDocsByChunk = new Map();
+      const allowedStoreChunks = chunkArray(allowedStoreIds, 10);
+
+      const mergeClosings = () => {
+        if (!isActive) return;
+
+        const originDocs = Array.from(originDocsByChunk.values()).flat();
+        const destinationDocs = Array.from(destinationDocsByChunk.values()).flat();
+        const merged = new Map();
+
+        [...originDocs, ...destinationDocs].forEach((docSnap) => {
+          merged.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+        });
+
+        const sortedRows = Array.from(merged.values()).sort((a, b) => {
+          const dateA = getJSDate(a.dataCriacao)?.getTime() || 0;
+          const dateB = getJSDate(b.dataCriacao)?.getTime() || 0;
+          return dateB - dateA;
+        }).slice(0, 250);
+
+        entreLojasLog('Merge de fechamentos', {
+          quantidadeOrigem: originDocs.length,
+          quantidadeDestino: destinationDocs.length,
+          quantidadeFinal: sortedRows.length,
+          chunks: allowedStoreChunks.length
+        });
+
+        setFechamentos(sortedRows);
+      };
+
+      allowedStoreChunks.forEach((storeChunk, chunkIndex) => {
+        const originQuery = query(closingsRef, where('lojaOrigemId', 'in', storeChunk), limit(250));
+        const destinationQuery = query(closingsRef, where('lojaDestinoId', 'in', storeChunk), limit(250));
+
+        const unsubscribeOrigin = onSnapshot(originQuery, (snapshot) => {
+          originDocsByChunk.set(chunkIndex, snapshot.docs);
+          entreLojasLog('Fechamentos por origem', { chunkIndex, lojas: storeChunk, quantidade: snapshot.docs.length });
+          mergeClosings();
+        }, (error) => {
+          console.error('[EntreLojas] Erro ao carregar fechamentos por origem:', error);
+        });
+
+        const unsubscribeDestination = onSnapshot(destinationQuery, (snapshot) => {
+          destinationDocsByChunk.set(chunkIndex, snapshot.docs);
+          entreLojasLog('Fechamentos por destino', { chunkIndex, lojas: storeChunk, quantidade: snapshot.docs.length });
+          mergeClosings();
+        }, (error) => {
+          console.error('[EntreLojas] Erro ao carregar fechamentos por destino:', error);
+        });
+
+        unsubscribes.push(unsubscribeOrigin, unsubscribeDestination);
+      });
+
+      return () => {
+        isActive = false;
+        unsubscribes.forEach((unsubscribe) => unsubscribe());
+      };
+    }, [allowedStoreIds, canAccessAllTransfers, storeInfoMap, user]);
 
     const storesForSelect = useMemo(
       () => availableStores.map((storeId) => ({ id: storeId, nome: storeInfoMap[storeId]?.nome || storeId })),
       [availableStores, storeInfoMap]
     );
 
-    const productOptions = useMemo(() => (data.produtos || []).map((item) => ({
-      id: item.id,
-      nome: item.nome || item.descricao || 'Produto sem nome',
-      preco: Number(item.preco || item.precoVenda || item.valor || 0),
-      custo: [item.custo, item.precoCusto, item.valorCusto, item.custoUnitario, item.precoCompra]
-        .map((value) => Number(value))
-        .find((value) => Number.isFinite(value) && value >= 0)
-    })), [data.produtos]);
+    const productOptions = useMemo(() => {
+      const originStoreId = normalizeStoreId(formData.lojaOrigemId);
+
+      return (data.produtos || [])
+        .filter((item) => {
+          const productStoreId = normalizeStoreId(item.lojaId);
+          return !originStoreId || !productStoreId || productStoreId === originStoreId;
+        })
+        .map((item) => ({
+          id: item.id,
+          lojaId: item.lojaId || originStoreId || null,
+          nome: item.nome || item.descricao || 'Produto sem nome',
+          preco: Number(item.preco || item.precoVenda || item.valor || 0),
+          custo: [item.custo, item.precoCusto, item.valorCusto, item.custoUnitario, item.precoCompra]
+            .map((value) => Number(value))
+            .find((value) => Number.isFinite(value) && value >= 0)
+        }));
+    }, [data.produtos, formData.lojaOrigemId]);
 
     useEffect(() => {
       if (!formData.lojaOrigemId) {
         setRepasseConfigPercentual(0);
-        return;
+        return undefined;
       }
-      const fetchRepasseConfig = async () => {
-        try {
-          const configSnap = await getDoc(getStoreConfigDocRef(formData.lojaOrigemId));
-          const percentual = Number(configSnap.data()?.entreLojas?.percentualRepasse);
-          setRepasseConfigPercentual(Number.isFinite(percentual) && percentual >= 0 ? percentual : 0);
-        } catch (error) {
-          console.error('[EntreLojas] Erro ao carregar percentual de repasse:', error);
-          setRepasseConfigPercentual(0);
-        }
-      };
-      fetchRepasseConfig();
+
+      const unsubscribe = onSnapshot(getStoreConfigDocRef(formData.lojaOrigemId), (configSnap) => {
+        const percentual = Number(configSnap.data()?.entreLojas?.percentualRepasse);
+        setRepasseConfigPercentual(Number.isFinite(percentual) && percentual >= 0 ? percentual : 0);
+      }, (error) => {
+        console.error('[EntreLojas] Erro ao sincronizar percentual de repasse:', error);
+        setRepasseConfigPercentual(0);
+      });
+
+      return () => unsubscribe();
     }, [formData.lojaOrigemId]);
 
     const computeTotals = useCallback((items = []) => {
@@ -9615,15 +9946,53 @@ const handleSubmit = async (e) => {
 
     const resetForm = () => {
       setFormError('');
+      setTransferSyncNotice('');
       setEditingTransfer(null);
       setFormData({
         lojaOrigemId: getDefaultOriginStoreId(),
         lojaDestinoId: '',
         dataRemessa: new Date().toISOString().slice(0, 10),
         observacaoOrigem: '',
+        fechamentoId: '',
+        fechamentoNome: '',
+        fechamentoStatus: '',
         itens: []
       });
     };
+
+    useEffect(() => {
+      if (selectedStoreForCleanupRef.current === selectedStoreIdForView) return;
+      selectedStoreForCleanupRef.current = selectedStoreIdForView;
+      if (!showModal && !viewingTransfer && !showClosingModal && !viewingClosing && !transferToMove && !showAddTransfersModal) return;
+      setShowModal(false);
+      setShowClosingModal(false);
+      setViewingTransfer(null);
+      setViewingClosing(null);
+      setTransferToMove(null);
+      setMoveTargetClosingId('');
+      setShowAddTransfersModal(false);
+      setClosingTransferSelection([]);
+      setActionComment('');
+      setClosingActionComment('');
+      setClosingPaymentForm({ formaPagamento: '', dataPagamento: new Date().toISOString().slice(0, 10) });
+      setFormError('');
+      setClosingFormError('');
+      setTransferSyncNotice('');
+      setClosingSyncNotice('');
+      setEditingTransfer(null);
+      setEditingClosing(null);
+      setFormData({
+        lojaOrigemId: getDefaultOriginStoreId(),
+        lojaDestinoId: '',
+        dataRemessa: new Date().toISOString().slice(0, 10),
+        observacaoOrigem: '',
+        fechamentoId: '',
+        fechamentoNome: '',
+        fechamentoStatus: '',
+        itens: []
+      });
+      setClosingFormData(getDefaultClosingFormData());
+    }, [getDefaultClosingFormData, getDefaultOriginStoreId, selectedStoreIdForView, showAddTransfersModal, showClosingModal, showModal, transferToMove, viewingClosing, viewingTransfer]);
 
     useEffect(() => {
       if (!showModal || isEditingTransfer) return;
@@ -9646,7 +10015,71 @@ const handleSubmit = async (e) => {
       setShowModal(true);
     };
 
+    const resetClosingForm = () => {
+      setClosingFormError('');
+      setClosingSyncNotice('');
+      setEditingClosing(null);
+      setClosingFormData(getDefaultClosingFormData());
+    };
+
+    const openNewClosingModal = () => {
+      setEditingClosing(null);
+      setClosingFormData(getDefaultClosingFormData());
+      setClosingFormError('');
+      setClosingSyncNotice('');
+      setShowClosingModal(true);
+    };
+
+    const startEditingClosing = (closing) => {
+      if (!canEditClosing(closing)) return;
+      setClosingFormError('');
+      setClosingSyncNotice('');
+      setEditingClosing(closing);
+      setClosingFormData({
+        nome: closing.nome || '',
+        lojaOrigemId: closing.lojaOrigemId || '',
+        lojaDestinoId: closing.lojaDestinoId || '',
+        periodoInicio: closing.periodoInicio || new Date().toISOString().slice(0, 10),
+        periodoFim: closing.periodoFim || closing.periodoInicio || new Date().toISOString().slice(0, 10),
+        observacaoOrigem: closing.observacaoOrigem || '',
+        observacaoDestino: closing.observacaoDestino || ''
+      });
+      setShowClosingModal(true);
+    };
+
+    const openNewTransferForClosing = (closing) => {
+      if (!closing || closing.status !== 'aberto') return;
+      setFormError('');
+      setTransferSyncNotice('');
+      setEditingTransfer(null);
+      setFormData({
+        lojaOrigemId: closing.lojaOrigemId || '',
+        lojaDestinoId: closing.lojaDestinoId || '',
+        dataRemessa: new Date().toISOString().slice(0, 10),
+        observacaoOrigem: '',
+        fechamentoId: closing.id,
+        fechamentoNome: closing.nome || '',
+        fechamentoStatus: closing.status || '',
+        itens: []
+      });
+      setShowModal(true);
+    };
+
+    useEffect(() => {
+      if (!viewingTransfer?.id) return;
+      const latestTransfer = (transferencias || []).find((item) => item.id === viewingTransfer.id);
+      if (!latestTransfer) {
+        setViewingTransfer(null);
+        setActionComment('');
+        return;
+      }
+      if (latestTransfer !== viewingTransfer) {
+        setViewingTransfer(latestTransfer);
+      }
+    }, [transferencias, viewingTransfer]);
+
     const formatMoney = (value) => `R$ ${(Number(value) || 0).toFixed(2)}`;
+    const formatDate = (value) => parseLocalDate(value)?.toLocaleDateString('pt-BR') || '-';
     const statusLabelMap = {
       rascunho: 'Rascunho',
       aguardando_conferencia: 'Aguardando conferência',
@@ -9663,6 +10096,48 @@ const handleSubmit = async (e) => {
     };
 
     const getStatusClassName = (status) => statusClassMap[status] || 'bg-pink-100 text-pink-700';
+    const closingStatusLabelMap = {
+      aberto: 'Aberto',
+      fechado: 'Fechado',
+      pagamento_informado: 'Pagamento informado',
+      pagamento_confirmado: 'Pagamento confirmado',
+      pagamento_contestado: 'Pagamento contestado',
+      cancelado: 'Cancelado'
+    };
+    const closingStatusClassMap = {
+      aberto: 'bg-blue-100 text-blue-700',
+      fechado: 'bg-purple-100 text-purple-700',
+      pagamento_informado: 'bg-orange-100 text-orange-700',
+      pagamento_confirmado: 'bg-green-100 text-green-700',
+      pagamento_contestado: 'bg-red-100 text-red-700',
+      cancelado: 'bg-gray-100 text-gray-600'
+    };
+    const getClosingStatusClassName = (status) => closingStatusClassMap[status] || 'bg-pink-100 text-pink-700';
+
+    const computeClosingTotals = (transfers = []) => {
+      return (transfers || []).reduce((acc, transfer) => {
+        if (!transfer || ['cancelado', 'cancelada'].includes(transfer.status)) return acc;
+        acc.quantidadeRemessas += 1;
+        acc.quantidadeTotalItens += Number(transfer.quantidadeTotalItens) || 0;
+        acc.totalRepasse += Number(transfer.totalRepasse) || 0;
+        acc.totalRevenda += Number(transfer.totalRevenda) || 0;
+        if (['pagamento_informado', 'pagamento_confirmado'].includes(transfer.status)) {
+          acc.quantidadeRemessasPagas += 1;
+          acc.totalPagoRepasse += Number(transfer.totalRepasse) || 0;
+          acc.totalPagoRevenda += Number(transfer.totalRevenda) || 0;
+        }
+        return acc;
+      }, { quantidadeRemessas: 0, quantidadeRemessasPagas: 0, quantidadeTotalItens: 0, totalRepasse: 0, totalRevenda: 0, totalPagoRepasse: 0, totalPagoRevenda: 0 });
+    };
+
+    const buildClosingHistoryEntry = (acao, status, comentario) => ({
+      acao,
+      status,
+      data: Timestamp.now(),
+      usuarioUid: user?.auth?.uid || '',
+      usuarioNome: user?.name || user?.email || '',
+      comentario
+    });
 
     const addItemToTransfer = () => {
       setFormData((prev) => ({
@@ -9739,7 +10214,194 @@ const handleSubmit = async (e) => {
       return '';
     };
 
-    const isTransferLockedForEdit = (transfer) => ['pagamento_informado', 'pagamento_confirmado', 'cancelado', 'cancelada'].includes(transfer?.status);
+    const readStoreSnapshotOrThrow = async (storeId, label) => {
+      if (!storeId) throw new Error(`Loja ${label} inválida.`);
+      const storeSnap = await getDoc(doc(db, 'lojas', storeId));
+      if (!storeSnap.exists()) {
+        throw new Error(`A loja ${label} não existe mais ou você não tem permissão para acessá-la.`);
+      }
+      return storeSnap;
+    };
+
+    const extractProductCost = (productData = {}) => (
+      [productData.custo, productData.precoCusto, productData.valorCusto, productData.custoUnitario, productData.precoCompra]
+        .map((value) => Number(value))
+        .find((value) => Number.isFinite(value) && value >= 0)
+    );
+
+    const buildValidatedTransferPayload = async (mode = 'rascunho') => {
+      const origemId = normalizeStoreId(formData.lojaOrigemId);
+      const destinoId = normalizeStoreId(formData.lojaDestinoId);
+      const fechamentoId = normalizeStoreId(formData.fechamentoId);
+      const changes = [];
+
+      if (!canAccessAllTransfers && (!allowedStoreIds.includes(origemId) || !allowedStoreIds.includes(destinoId))) {
+        throw new Error('Você não tem permissão para esta loja de origem ou destino.');
+      }
+
+      if (!allowedOriginStoreIds.includes(origemId)) {
+        throw new Error(isEditingTransfer ? 'Você não pode editar remessa para essa loja de origem.' : 'Você não pode criar remessa para essa loja de origem.');
+      }
+
+      if (origemId === destinoId) {
+        throw new Error('A loja destino deve ser diferente da loja origem.');
+      }
+
+      const [origemSnap, destinoSnap, configSnap, currentTransferSnap, fechamentoSnap, productSnaps] = await Promise.all([
+        readStoreSnapshotOrThrow(origemId, 'origem'),
+        readStoreSnapshotOrThrow(destinoId, 'destino'),
+        getDoc(getStoreConfigDocRef(origemId)),
+        isEditingTransfer && editingTransfer?.id
+          ? getDoc(doc(db, 'transferenciasEntreLojas', editingTransfer.id))
+          : Promise.resolve(null),
+        fechamentoId
+          ? getDoc(doc(db, 'fechamentosEntreLojas', fechamentoId))
+          : Promise.resolve(null),
+        Promise.all((formData.itens || []).map((item) => getDoc(getStoreDocRef(origemId, 'produtos', item.produtoId))))
+      ]);
+
+      if (isEditingTransfer) {
+        if (!currentTransferSnap?.exists()) {
+          throw new Error('Esta remessa não existe mais. Atualize a lista e tente novamente.');
+        }
+
+        const latestTransfer = { id: currentTransferSnap.id, ...currentTransferSnap.data() };
+        if (!canEditTransfer(latestTransfer)) {
+          throw new Error(isTransferLockedForEdit(latestTransfer) ? 'Remessa bloqueada para edição.' : 'Você não tem permissão para editar esta remessa.');
+        }
+      }
+
+      let fechamentoAtual = null;
+      if (fechamentoId) {
+        if (!fechamentoSnap?.exists()) {
+          throw new Error('O fechamento vinculado não existe mais. Remova o vínculo ou escolha outro fechamento.');
+        }
+        fechamentoAtual = { id: fechamentoSnap.id, ...fechamentoSnap.data() };
+        if (fechamentoAtual.status !== 'aberto') {
+          const ownerEditingLockedClosing = isEditingTransfer && user?.role === ROLE_OWNER;
+          if (!ownerEditingLockedClosing) {
+            throw new Error('Este fechamento não está aberto para receber ou editar remessas.');
+          }
+        }
+        if (normalizeStoreId(fechamentoAtual.lojaOrigemId) !== origemId || normalizeStoreId(fechamentoAtual.lojaDestinoId) !== destinoId) {
+          throw new Error('A remessa precisa ter a mesma origem e destino do fechamento vinculado.');
+        }
+        if (!canAccessAllTransfers && !allowedStoreIds.includes(origemId) && !allowedStoreIds.includes(destinoId)) {
+          throw new Error('Você não tem permissão para usar este fechamento.');
+        }
+      }
+
+      const percentual = Number(configSnap.data()?.entreLojas?.percentualRepasse);
+      const percentualAtual = Number.isFinite(percentual) && percentual >= 0 ? percentual : 0;
+      if (percentualAtual !== repasseConfigPercentual) {
+        changes.push(`Percentual de repasse atualizado para ${percentualAtual.toFixed(2)}%.`);
+      }
+
+      const formItems = [];
+      const itemsPayload = (formData.itens || []).map((item, index) => {
+        const productSnap = productSnaps[index];
+        if (!item.produtoId || !productSnap?.exists()) {
+          throw new Error(`Produto inválido no item ${index + 1}.`);
+        }
+
+        const product = { id: productSnap.id, ...productSnap.data() };
+        if (isProductInactive(product)) {
+          changes.push(`${product.nome || item.nome || item.produtoId}: produto inativo mantido na remessa interna.`);
+        }
+
+        const quantidade = Number(item.quantidade);
+        if (!Number.isFinite(quantidade) || quantidade <= 0) {
+          throw new Error(`Quantidade inválida para ${product.nome || item.nome || item.produtoId}.`);
+        }
+
+        const custoAtual = extractProductCost(product);
+        const precoAtual = Number(product.preco || product.precoVenda || product.valor || 0);
+        if (!Number.isFinite(precoAtual) || precoAtual < 0) {
+          throw new Error(`Preço de revenda inválido para ${product.nome || item.nome || item.produtoId}.`);
+        }
+
+        const repasseAtual = Number.isFinite(custoAtual)
+          ? Number((custoAtual * (1 + (percentualAtual / 100))).toFixed(2))
+          : Number(item.valorUnitarioRepasse || 0);
+        const revendaAtual = Number(precoAtual.toFixed(2));
+
+        if (!Number.isFinite(repasseAtual) || repasseAtual < 0) {
+          throw new Error(`Valor de repasse inválido para ${product.nome || item.nome || item.produtoId}.`);
+        }
+
+        const valorFormRepasse = Number(item.valorUnitarioRepasse || 0);
+        const valorFormRevenda = Number(item.valorUnitarioRevenda || 0);
+        if (Math.abs(valorFormRepasse - repasseAtual) > 0.009) {
+          changes.push(`${product.nome || item.nome}: repasse atualizado para ${formatMoney(repasseAtual)}.`);
+        }
+        if (Math.abs(valorFormRevenda - revendaAtual) > 0.009) {
+          changes.push(`${product.nome || item.nome}: revenda atualizada para ${formatMoney(revendaAtual)}.`);
+        }
+        if ((product.nome || '') && product.nome !== item.nome) {
+          changes.push(`${item.nome || item.produtoId}: nome atualizado para ${product.nome}.`);
+        }
+
+        formItems.push({
+          ...item,
+          produtoId: product.id,
+          produtoBusca: product.nome || item.produtoBusca || '',
+          nome: product.nome || item.nome || 'Produto',
+          quantidade,
+          valorUnitarioRepasse: repasseAtual,
+          valorUnitarioRevenda: revendaAtual,
+          semCusto: !Number.isFinite(custoAtual)
+        });
+
+        return {
+          produtoId: product.id,
+          nome: product.nome || item.nome || 'Produto',
+          quantidade,
+          valorUnitarioRepasse: repasseAtual,
+          valorUnitarioRevenda: revendaAtual,
+          totalRepasse: Number((quantidade * repasseAtual).toFixed(2)),
+          totalRevenda: Number((quantidade * revendaAtual).toFixed(2))
+        };
+      });
+
+      const totals = computeTotals(itemsPayload);
+      const finalStatus = isEditingTransfer
+        ? (mode === 'enviar' && editingTransfer?.status === 'rascunho' ? 'aguardando_conferencia' : (editingTransfer?.status || 'rascunho'))
+        : (mode === 'enviar' ? 'aguardando_conferencia' : 'rascunho');
+      const origemNome = storeInfoMap[origemId]?.nome || origemSnap.data()?.nome || origemId;
+      const destinoNome = storeInfoMap[destinoId]?.nome || destinoSnap.data()?.nome || destinoId;
+
+      return {
+        changes,
+        formItems,
+        percentualAtual,
+        payload: {
+          lojaOrigemId: origemId,
+          lojaOrigemNome: origemNome,
+          lojaDestinoId: destinoId,
+          lojaDestinoNome: destinoNome,
+          status: finalStatus,
+          dataRemessa: formData.dataRemessa || null,
+          observacaoOrigem: formData.observacaoOrigem || '',
+          totalRepasse: totals.totalRepasse,
+          totalRevenda: totals.totalRevenda,
+          quantidadeTotalItens: totals.quantidadeTotalItens,
+          itens: itemsPayload,
+          storeVisibility: Array.from(new Set([origemId, destinoId])),
+          percentualRepasseAplicado: percentualAtual,
+          fechamentoId: fechamentoAtual?.id || null,
+          fechamentoNome: fechamentoAtual?.nome || '',
+          fechamentoStatus: fechamentoAtual?.status || ''
+        }
+      };
+    };
+
+    const isTransferLockedForEdit = (transfer) => {
+      if (['pagamento_informado', 'pagamento_confirmado', 'cancelado', 'cancelada'].includes(transfer?.status)) return true;
+      const linkedClosing = transfer?.fechamentoId ? fechamentos.find((closing) => closing.id === transfer.fechamentoId) : null;
+      const closingStatus = linkedClosing?.status || transfer?.fechamentoStatus;
+      if (closingStatus && closingStatus !== 'aberto' && user?.role !== ROLE_OWNER) return true;
+      return false;
+    };
 
     const isOriginStoreAllowed = (transfer) => {
       if (!transfer) return false;
@@ -9758,7 +10420,53 @@ const handleSubmit = async (e) => {
 
     const canDeleteTransfer = (transfer) => {
       if (!user || !transfer) return false;
-      return transfer.status === 'aguardando_conferencia' && isOriginStoreAllowed(transfer);
+      return ['rascunho', 'aguardando_conferencia'].includes(transfer.status) && isOriginStoreAllowed(transfer);
+    };
+
+    const recalculateClosingTotals = async (fechamentoId) => {
+      if (!fechamentoId) return;
+
+      await runTransaction(db, async (transaction) => {
+        const closingRef = doc(db, 'fechamentosEntreLojas', fechamentoId);
+        const closingSnap = await transaction.get(closingRef);
+        if (!closingSnap.exists()) return;
+
+        const closing = { id: closingSnap.id, ...closingSnap.data() };
+        const remessaIds = Array.from(new Set((closing.remessaIds || []).filter(Boolean)));
+        const transferRefs = remessaIds.map((transferId) => doc(db, 'transferenciasEntreLojas', transferId));
+        const transferSnaps = [];
+
+        for (const transferRef of transferRefs) {
+          transferSnaps.push(await transaction.get(transferRef));
+        }
+
+        const linkedTransfers = transferSnaps
+          .filter((transferSnap) => transferSnap.exists())
+          .map((transferSnap) => ({ id: transferSnap.id, ...transferSnap.data() }))
+          .filter((transfer) => transfer.fechamentoId === fechamentoId);
+        const activeLinkedTransfers = linkedTransfers.filter((transfer) => !['cancelado', 'cancelada'].includes(transfer.status));
+        const totals = computeClosingTotals(activeLinkedTransfers);
+        const closingPaidInFull = ['pagamento_informado', 'pagamento_confirmado', 'pagamento_contestado'].includes(closing.status);
+        const totalPagoRepasse = closingPaidInFull ? totals.totalRepasse : totals.totalPagoRepasse;
+        const totalPagoRevenda = closingPaidInFull ? totals.totalRevenda : totals.totalPagoRevenda;
+        const quantidadeRemessasPagas = closingPaidInFull ? totals.quantidadeRemessas : totals.quantidadeRemessasPagas;
+        const totalRestanteRepasse = Math.max(0, totals.totalRepasse - totalPagoRepasse);
+        const totalRestanteRevenda = Math.max(0, totals.totalRevenda - totalPagoRevenda);
+
+        transaction.update(closingRef, {
+          remessaIds: activeLinkedTransfers.map((transfer) => transfer.id),
+          quantidadeRemessas: totals.quantidadeRemessas,
+          quantidadeRemessasPagas,
+          quantidadeTotalItens: totals.quantidadeTotalItens,
+          totalRepasse: Number(totals.totalRepasse.toFixed(2)),
+          totalRevenda: Number(totals.totalRevenda.toFixed(2)),
+          totalPagoRepasse: Number(totalPagoRepasse.toFixed(2)),
+          totalPagoRevenda: Number(totalPagoRevenda.toFixed(2)),
+          totalRestanteRepasse: Number(totalRestanteRepasse.toFixed(2)),
+          totalRestanteRevenda: Number(totalRestanteRevenda.toFixed(2)),
+          dataAtualizacao: serverTimestamp()
+        });
+      });
     };
 
     const startEditingTransfer = (transfer) => {
@@ -9770,6 +10478,9 @@ const handleSubmit = async (e) => {
         lojaDestinoId: transfer.lojaDestinoId || '',
         dataRemessa: transfer.dataRemessa || new Date().toISOString().slice(0, 10),
         observacaoOrigem: transfer.observacaoOrigem || '',
+        fechamentoId: transfer.fechamentoId || '',
+        fechamentoNome: transfer.fechamentoNome || '',
+        fechamentoStatus: transfer.fechamentoStatus || '',
         itens: (transfer.itens || []).map((item) => ({
           produtoId: item.produtoId || '',
           produtoBusca: item.nome || '',
@@ -9796,52 +10507,36 @@ const handleSubmit = async (e) => {
       }
       setIsSavingTransfer(true);
       setFormError('');
+      setTransferSyncNotice('');
       try {
-        const totals = computeTotals(formData.itens);
-        const itemsPayload = formData.itens.map((item) => {
-          const quantidade = Number(item.quantidade) || 0;
-          const valorUnitarioRepasse = Number(item.valorUnitarioRepasse) || 0;
-          const valorUnitarioRevenda = Number(item.valorUnitarioRevenda) || 0;
-          return {
-            produtoId: item.produtoId,
-            nome: item.nome,
-            quantidade,
-            valorUnitarioRepasse,
-            valorUnitarioRevenda,
-            totalRepasse: quantidade * valorUnitarioRepasse,
-            totalRevenda: quantidade * valorUnitarioRevenda
-          };
-        });
+        const validated = await buildValidatedTransferPayload(mode);
 
-        const origemNome = storeInfoMap[formData.lojaOrigemId]?.nome || formData.lojaOrigemId;
-        const destinoNome = storeInfoMap[formData.lojaDestinoId]?.nome || formData.lojaDestinoId;
-        const finalStatus = isEditingTransfer
-          ? (mode === 'enviar' && editingTransfer?.status === 'rascunho' ? 'aguardando_conferencia' : (editingTransfer?.status || 'rascunho'))
-          : (mode === 'enviar' ? 'aguardando_conferencia' : 'rascunho');
+        if (validated.changes.length) {
+          setRepasseConfigPercentual(validated.percentualAtual);
+          setFormData((prev) => ({
+            ...prev,
+            itens: validated.formItems
+          }));
+          const notice = `Dados atualizados automaticamente: ${validated.changes.slice(0, 4).join(' ')} A remessa será salva com os dados atuais.`;
+          setTransferSyncNotice(notice);
+          entreLojasLog('Remessa interna atualizada sem bloquear salvamento', { changes: validated.changes });
+        }
+
+        const { payload } = validated;
         const now = serverTimestamp();
         if (isEditingTransfer && editingTransfer?.id) {
           const transferRef = doc(db, 'transferenciasEntreLojas', editingTransfer.id);
           await updateDoc(transferRef, {
-            lojaOrigemId: formData.lojaOrigemId,
-            lojaOrigemNome: origemNome,
-            lojaDestinoId: formData.lojaDestinoId,
-            lojaDestinoNome: destinoNome,
-            status: finalStatus,
-            dataRemessa: formData.dataRemessa || null,
+            ...payload,
             dataEnvio: mode === 'enviar' && editingTransfer?.status === 'rascunho' ? now : (editingTransfer.dataEnvio || null),
             enviadoPorUid: mode === 'enviar' && editingTransfer?.status === 'rascunho' ? (user?.auth?.uid || '') : (editingTransfer.enviadoPorUid || null),
             enviadoPorNome: mode === 'enviar' && editingTransfer?.status === 'rascunho' ? (user?.name || user?.email || '') : (editingTransfer.enviadoPorNome || null),
-            observacaoOrigem: formData.observacaoOrigem || '',
-            totalRepasse: totals.totalRepasse,
-            totalRevenda: totals.totalRevenda,
-            quantidadeTotalItens: totals.quantidadeTotalItens,
-            itens: itemsPayload,
-            storeVisibility: Array.from(new Set([formData.lojaOrigemId, formData.lojaDestinoId])),
+            dataAtualizacao: now,
             historico: arrayUnion({
               acao: editingTransfer?.status === 'rascunho'
                 ? (mode === 'enviar' ? 'enviado_para_conferencia' : 'rascunho_atualizado')
                 : 'remessa_atualizada',
-              status: finalStatus,
+              status: payload.status,
               data: Timestamp.now(),
               usuarioUid: user?.auth?.uid || '',
               usuarioNome: user?.name || user?.email || '',
@@ -9850,16 +10545,15 @@ const handleSubmit = async (e) => {
                 : 'Remessa atualizada sem alteração automática de status'
             })
           });
+          if (payload.fechamentoId || editingTransfer?.fechamentoId) {
+            await recalculateClosingTotals(payload.fechamentoId || editingTransfer.fechamentoId);
+          }
         } else {
-          await addDoc(collection(db, 'transferenciasEntreLojas'), {
-            numero: Date.now(),
-            lojaOrigemId: formData.lojaOrigemId,
-            lojaOrigemNome: origemNome,
-            lojaDestinoId: formData.lojaDestinoId,
-            lojaDestinoNome: destinoNome,
-            status: finalStatus,
+          const transferNumber = Date.now();
+          const newTransferRef = await addDoc(collection(db, 'transferenciasEntreLojas'), {
+            numero: transferNumber,
+            ...payload,
             dataCriacao: now,
-            dataRemessa: formData.dataRemessa || null,
             dataEnvio: mode === 'enviar' ? now : null,
             dataConferencia: null,
             dataPagamentoInformado: null,
@@ -9874,26 +10568,28 @@ const handleSubmit = async (e) => {
             pagamentoInformadoPorNome: null,
             pagamentoConfirmadoPorUid: null,
             pagamentoConfirmadoPorNome: null,
-            observacaoOrigem: formData.observacaoOrigem || '',
             observacaoDestino: '',
             observacaoPagamento: '',
             formaPagamento: '',
             dataPagamento: null,
-            totalRepasse: totals.totalRepasse,
-            totalRevenda: totals.totalRevenda,
-            quantidadeTotalItens: totals.quantidadeTotalItens,
-            itens: itemsPayload,
             stockIntegration: { enabled: false, status: 'pendente' },
-            storeVisibility: Array.from(new Set([formData.lojaOrigemId, formData.lojaDestinoId])),
             historico: [{
               acao: mode === 'enviar' ? 'remessa_enviada' : 'remessa_criada',
-              status: finalStatus,
+              status: payload.status,
               data: Timestamp.now(),
               usuarioUid: user?.auth?.uid || '',
               usuarioNome: user?.name || user?.email || '',
               comentario: mode === 'enviar' ? 'Remessa enviada para conferência' : 'Remessa salva como rascunho'
             }]
           });
+          if (payload.fechamentoId) {
+            await updateDoc(doc(db, 'fechamentosEntreLojas', payload.fechamentoId), {
+              remessaIds: arrayUnion(newTransferRef.id),
+              dataAtualizacao: serverTimestamp(),
+              historico: arrayUnion(buildClosingHistoryEntry('remessa_adicionada', 'aberto', `Remessa #${transferNumber} criada dentro do fechamento`))
+            });
+            await recalculateClosingTotals(payload.fechamentoId);
+          }
         }
 
         setShowModal(false);
@@ -9908,8 +10604,26 @@ const handleSubmit = async (e) => {
 
     const canActOnTransfer = (transfer, action) => {
       if (!user || !transfer) return false;
+      const linkedClosing = transfer.fechamentoId ? fechamentos.find((closing) => closing.id === transfer.fechamentoId) : null;
+      const linkedClosingStatus = linkedClosing?.status || transfer.fechamentoStatus;
+      if (
+        transfer.fechamentoId
+        && linkedClosingStatus
+        && linkedClosingStatus !== 'aberto'
+        && user.role !== ROLE_OWNER
+        && ['conferir', 'marcar_pago', 'cancelar'].includes(action)
+      ) {
+        return false;
+      }
       if (action === 'editar_remessa') return canEditTransfer(transfer);
       if (action === 'excluir_remessa') return canDeleteTransfer(transfer);
+      if (action === 'cancelar') {
+        const originAllowed = user.role === ROLE_OWNER || allowedStoreIds.includes(normalizeStoreId(transfer.lojaOrigemId));
+        return originAllowed && !['pagamento_confirmado', 'cancelado', 'cancelada'].includes(transfer.status);
+      }
+      if (transfer.fechamentoId && ['confirmar_pagamento', 'contestar_pagamento'].includes(action)) {
+        return false;
+      }
       if (user.role === ROLE_OWNER) return true;
       const originAllowed = allowedStoreIds.includes(normalizeStoreId(transfer.lojaOrigemId));
       const destinationAllowed = allowedStoreIds.includes(normalizeStoreId(transfer.lojaDestinoId));
@@ -9928,6 +10642,9 @@ const handleSubmit = async (e) => {
 
       try {
         await deleteDoc(doc(db, 'transferenciasEntreLojas', transfer.id));
+        if (transfer.fechamentoId) {
+          await recalculateClosingTotals(transfer.fechamentoId);
+        }
         if (viewingTransfer?.id === transfer.id) {
           setViewingTransfer(null);
         }
@@ -9949,6 +10666,7 @@ const handleSubmit = async (e) => {
       const transferRef = doc(db, 'transferenciasEntreLojas', transfer.id);
       await updateDoc(transferRef, {
         ...payload,
+        dataAtualizacao: serverTimestamp(),
         historico: arrayUnion({
           ...historyEntry,
           data: Timestamp.now(),
@@ -9958,7 +10676,8 @@ const handleSubmit = async (e) => {
       });
     };
 
-    const handleTransferAction = async (transfer, action) => {
+    const handleTransferAction = async (transfer, action, commentOverride = null) => {
+      const actionObservation = commentOverride !== null ? commentOverride : actionComment;
       try {
         if (action === 'conferir_sem_divergencia' && canActOnTransfer(transfer, 'conferir')) {
           await patchTransfer(transfer, {
@@ -9966,11 +10685,11 @@ const handleSubmit = async (e) => {
             dataConferencia: serverTimestamp(),
             conferidoPorUid: user?.auth?.uid || '',
             conferidoPorNome: user?.name || user?.email || '',
-            observacaoDestino: actionComment || ''
+            observacaoDestino: actionObservation || ''
           }, {
             acao: 'conferencia_sem_divergencia',
             status: 'conferencia_sem_divergencia',
-            comentario: actionComment || 'Conferência sem divergência'
+            comentario: actionObservation || 'Conferência sem divergência'
           });
         }
         if (action === 'conferir_com_divergencia' && canActOnTransfer(transfer, 'conferir')) {
@@ -9979,11 +10698,11 @@ const handleSubmit = async (e) => {
             dataConferencia: serverTimestamp(),
             conferidoPorUid: user?.auth?.uid || '',
             conferidoPorNome: user?.name || user?.email || '',
-            observacaoDestino: actionComment || ''
+            observacaoDestino: actionObservation || ''
           }, {
             acao: 'conferencia_com_divergencia',
             status: 'conferencia_com_divergencia',
-            comentario: actionComment || 'Conferência com divergência'
+            comentario: actionObservation || 'Conferência com divergência'
           });
         }
         if (action === 'marcar_pago' && canActOnTransfer(transfer, 'marcar_pago')) {
@@ -9992,11 +10711,11 @@ const handleSubmit = async (e) => {
             dataPagamentoInformado: serverTimestamp(),
             pagamentoInformadoPorUid: user?.auth?.uid || '',
             pagamentoInformadoPorNome: user?.name || user?.email || '',
-            observacaoPagamento: actionComment || ''
+            observacaoPagamento: actionObservation || ''
           }, {
             acao: 'pagamento_informado',
             status: 'pagamento_informado',
-            comentario: actionComment || 'Pagamento informado pela loja destino'
+            comentario: actionObservation || 'Pagamento informado pela loja destino'
           });
         }
         if (action === 'confirmar_pagamento' && canActOnTransfer(transfer, 'confirmar_pagamento')) {
@@ -10005,27 +10724,634 @@ const handleSubmit = async (e) => {
             dataPagamentoConfirmado: serverTimestamp(),
             pagamentoConfirmadoPorUid: user?.auth?.uid || '',
             pagamentoConfirmadoPorNome: user?.name || user?.email || '',
-            observacaoPagamento: actionComment || transfer.observacaoPagamento || ''
+            observacaoPagamento: actionObservation || transfer.observacaoPagamento || ''
           }, {
             acao: 'pagamento_confirmado',
             status: 'pagamento_confirmado',
-            comentario: actionComment || 'Pagamento confirmado pela loja origem'
+            comentario: actionObservation || 'Pagamento confirmado pela loja origem'
           });
         }
         if (action === 'contestar_pagamento' && canActOnTransfer(transfer, 'contestar_pagamento')) {
           await patchTransfer(transfer, {
             status: 'pagamento_contestado',
-            observacaoPagamento: actionComment || transfer.observacaoPagamento || ''
+            observacaoPagamento: actionObservation || transfer.observacaoPagamento || ''
           }, {
             acao: 'pagamento_contestado',
             status: 'pagamento_contestado',
-            comentario: actionComment || 'Pagamento contestado pela loja origem'
+            comentario: actionObservation || 'Pagamento contestado pela loja origem'
           });
         }
+        if (action === 'cancelar' && canActOnTransfer(transfer, 'cancelar')) {
+          await patchTransfer(transfer, {
+            status: 'cancelado',
+            dataCancelamento: serverTimestamp(),
+            canceladoPorUid: user?.auth?.uid || '',
+            canceladoPorNome: user?.name || user?.email || '',
+            observacaoCancelamento: actionObservation || '',
+            fechamentoId: null,
+            fechamentoNome: '',
+            fechamentoStatus: ''
+          }, {
+            acao: 'remessa_cancelada',
+            status: 'cancelado',
+            comentario: actionObservation || 'Remessa cancelada pela loja origem'
+          });
+        }
+        if (transfer.fechamentoId) {
+          await recalculateClosingTotals(transfer.fechamentoId);
+        }
         setActionComment('');
+        if (commentOverride !== null) setClosingActionComment('');
       } catch (error) {
         console.error('[EntreLojas] Erro ao executar ação:', error);
         alert(error?.message || 'Não foi possível executar a ação.');
+      }
+    };
+
+    const isStoreAllowedForUser = (storeId) => {
+      if (canAccessAllTransfers) return true;
+      return allowedStoreIds.includes(normalizeStoreId(storeId));
+    };
+
+    const canViewClosing = useCallback((closing) => {
+      if (canAccessAllTransfers) return true;
+      const originId = normalizeStoreId(closing?.lojaOrigemId);
+      const destinationId = normalizeStoreId(closing?.lojaDestinoId);
+      return allowedStoreIds.includes(originId) || allowedStoreIds.includes(destinationId);
+    }, [allowedStoreIds, canAccessAllTransfers]);
+
+    const canCreateClosing = () => {
+      if (!user) return false;
+      if (user.role === ROLE_OWNER || user.role === ROLE_MANAGER) return true;
+      return false;
+    };
+
+    const canEditClosing = (closing) => {
+      if (!user || !closing) return false;
+      if (closing.status !== 'aberto') return false;
+      if (user.role === ROLE_OWNER) return true;
+      if (user.role === ROLE_MANAGER) return isStoreAllowedForUser(closing.lojaOrigemId) || isStoreAllowedForUser(closing.lojaDestinoId);
+      return false;
+    };
+
+    const canCloseClosing = (closing) => canEditClosing(closing);
+    const canPayClosing = (closing) => {
+      if (!user || !closing || !['fechado', 'pagamento_contestado'].includes(closing.status)) return false;
+      if (user.role === ROLE_OWNER) return true;
+      return user.role === ROLE_MANAGER && isStoreAllowedForUser(closing.lojaDestinoId);
+    };
+    const canConfirmClosingPayment = (closing) => {
+      if (!user || !closing || closing.status !== 'pagamento_informado') return false;
+      if (user.role === ROLE_OWNER) return true;
+      return user.role === ROLE_MANAGER && isStoreAllowedForUser(closing.lojaOrigemId);
+    };
+    const canContestClosingPayment = canConfirmClosingPayment;
+    const canCancelClosing = (closing) => {
+      if (!user || !closing || closing.status === 'pagamento_confirmado') return false;
+      if (user.role === ROLE_OWNER) return true;
+      return user.role === ROLE_MANAGER && (isStoreAllowedForUser(closing.lojaOrigemId) || isStoreAllowedForUser(closing.lojaDestinoId));
+    };
+    const canDeleteClosing = (closing) => {
+      if (!user || !closing) return false;
+      if (!['aberto', 'cancelado'].includes(closing.status)) return false;
+      if (user.role === ROLE_OWNER) return true;
+      return user.role === ROLE_MANAGER && (isStoreAllowedForUser(closing.lojaOrigemId) || isStoreAllowedForUser(closing.lojaDestinoId));
+    };
+    const canCreateTransferInClosing = (closing) => {
+      if (!user || !closing || closing.status !== 'aberto') return false;
+      if (!canViewClosing(closing)) return false;
+      if (user.role === ROLE_OWNER) return true;
+      return allowedOriginStoreIds.includes(normalizeStoreId(closing.lojaOrigemId));
+    };
+
+    const canMoveTransferToClosing = (transfer, closing) => {
+      if (!transfer || !closing || closing.status !== 'aberto') return false;
+      if (transfer.fechamentoId === closing.id) return false;
+      if (normalizeStoreId(transfer.lojaOrigemId) !== normalizeStoreId(closing.lojaOrigemId)) return false;
+      if (normalizeStoreId(transfer.lojaDestinoId) !== normalizeStoreId(closing.lojaDestinoId)) return false;
+      if (['cancelado', 'cancelada', 'pagamento_confirmado'].includes(transfer.status)) return false;
+      const currentClosing = transfer.fechamentoId ? fechamentos.find((item) => item.id === transfer.fechamentoId) : null;
+      const currentClosingStatus = currentClosing?.status || transfer.fechamentoStatus;
+      if (transfer.fechamentoId && currentClosingStatus && currentClosingStatus !== 'aberto' && user?.role !== ROLE_OWNER) return false;
+      if (user?.role === ROLE_ATTENDANT) return false;
+      return canViewTransfer(transfer) && canViewClosing(closing);
+    };
+
+    const getTransfersForClosing = (closing) => {
+      if (!closing) return [];
+      const closingId = closing.id;
+      const remessaIds = new Set((closing.remessaIds || []).filter(Boolean));
+      return (transferencias || [])
+        .filter((transfer) => transfer.fechamentoId === closingId || remessaIds.has(transfer.id))
+        .sort((a, b) => {
+          const dateA = getJSDate(a.dataRemessa || a.dataCriacao)?.getTime() || 0;
+          const dateB = getJSDate(b.dataRemessa || b.dataCriacao)?.getTime() || 0;
+          return dateA - dateB;
+        });
+    };
+
+    const validateClosingForm = () => {
+      const origemId = normalizeStoreId(closingFormData.lojaOrigemId);
+      const destinoId = normalizeStoreId(closingFormData.lojaDestinoId);
+      if (!closingFormData.nome || !origemId || !destinoId || !closingFormData.periodoInicio || !closingFormData.periodoFim) {
+        return 'Informe nome, origem, destino e período do fechamento.';
+      }
+      if (origemId === destinoId) return 'A loja destino deve ser diferente da loja origem.';
+      const start = parseLocalDate(closingFormData.periodoInicio);
+      const end = parseLocalDate(closingFormData.periodoFim);
+      if (!start || !end || start > end) return 'Informe um período válido para o fechamento.';
+      if (isEditingClosing) {
+        if (!canEditClosing(editingClosing)) return 'Você não tem permissão para editar este fechamento.';
+      } else if (!canCreateClosing()) {
+        return 'Você não tem permissão para criar fechamentos.';
+      }
+      if (!canAccessAllTransfers && !isStoreAllowedForUser(origemId) && !isStoreAllowedForUser(destinoId)) {
+        return 'Você não tem permissão para criar fechamento para estas lojas.';
+      }
+      return '';
+    };
+
+    const saveClosing = async () => {
+      const validationError = validateClosingForm();
+      if (validationError) {
+        setClosingFormError(validationError);
+        return;
+      }
+
+      const origemId = normalizeStoreId(closingFormData.lojaOrigemId);
+      const destinoId = normalizeStoreId(closingFormData.lojaDestinoId);
+      setIsSavingClosing(true);
+      setClosingFormError('');
+      setClosingSyncNotice('');
+
+      try {
+        const [origemSnap, destinoSnap] = await Promise.all([
+          readStoreSnapshotOrThrow(origemId, 'origem'),
+          readStoreSnapshotOrThrow(destinoId, 'destino')
+        ]);
+        const start = parseLocalDate(closingFormData.periodoInicio);
+        const origemNome = storeInfoMap[origemId]?.nome || origemSnap.data()?.nome || origemId;
+        const destinoNome = storeInfoMap[destinoId]?.nome || destinoSnap.data()?.nome || destinoId;
+
+        if (isEditingClosing && editingClosing?.id) {
+          const closingRef = doc(db, 'fechamentosEntreLojas', editingClosing.id);
+          const closingSnap = await getDoc(closingRef);
+          if (!closingSnap.exists()) throw new Error('Este fechamento não existe mais.');
+
+          const latestClosing = { id: closingSnap.id, ...closingSnap.data() };
+          if (!canEditClosing(latestClosing)) throw new Error('Este fechamento não está aberto para edição.');
+          const hasLinkedTransfers = (latestClosing.remessaIds || []).length > 0;
+          if (hasLinkedTransfers && (latestClosing.lojaOrigemId !== origemId || latestClosing.lojaDestinoId !== destinoId)) {
+            throw new Error('Não é possível trocar origem ou destino de um fechamento que já possui remessas.');
+          }
+
+          const batch = writeBatch(db);
+          batch.update(closingRef, {
+            nome: closingFormData.nome,
+            competenciaAno: start.getFullYear(),
+            competenciaMes: start.getMonth() + 1,
+            semanaMes: computeWeekOfMonth(start),
+            periodoInicio: closingFormData.periodoInicio,
+            periodoFim: closingFormData.periodoFim,
+            lojaOrigemId: origemId,
+            lojaOrigemNome: origemNome,
+            lojaDestinoId: destinoId,
+            lojaDestinoNome: destinoNome,
+            observacaoOrigem: closingFormData.observacaoOrigem || '',
+            observacaoDestino: closingFormData.observacaoDestino || '',
+            storeVisibility: Array.from(new Set([origemId, destinoId])),
+            dataAtualizacao: serverTimestamp(),
+            historico: arrayUnion(buildClosingHistoryEntry('fechamento_atualizado', latestClosing.status || 'aberto', 'Fechamento atualizado'))
+          });
+
+          (latestClosing.remessaIds || []).filter(Boolean).forEach((transferId) => {
+            batch.update(doc(db, 'transferenciasEntreLojas', transferId), {
+              fechamentoNome: closingFormData.nome,
+              fechamentoStatus: latestClosing.status || 'aberto',
+              dataAtualizacao: serverTimestamp()
+            });
+          });
+
+          await batch.commit();
+          setShowClosingModal(false);
+          resetClosingForm();
+          setModuleTab('fechamentos');
+          return;
+        }
+
+        const numero = Date.now();
+        const payload = {
+          numero,
+          nome: closingFormData.nome,
+          competenciaAno: start.getFullYear(),
+          competenciaMes: start.getMonth() + 1,
+          semanaMes: computeWeekOfMonth(start),
+          periodoInicio: closingFormData.periodoInicio,
+          periodoFim: closingFormData.periodoFim,
+          lojaOrigemId: origemId,
+          lojaOrigemNome: origemNome,
+          lojaDestinoId: destinoId,
+          lojaDestinoNome: destinoNome,
+          status: 'aberto',
+          remessaIds: [],
+          quantidadeRemessas: 0,
+          quantidadeRemessasPagas: 0,
+          quantidadeTotalItens: 0,
+          totalRepasse: 0,
+          totalRevenda: 0,
+          totalPagoRepasse: 0,
+          totalPagoRevenda: 0,
+          totalRestanteRepasse: 0,
+          totalRestanteRevenda: 0,
+          criadoPorUid: user?.auth?.uid || '',
+          criadoPorNome: user?.name || user?.email || '',
+          dataCriacao: serverTimestamp(),
+          fechadoPorUid: null,
+          fechadoPorNome: null,
+          dataFechamento: null,
+          pagamentoInformadoPorUid: null,
+          pagamentoInformadoPorNome: null,
+          dataPagamentoInformado: null,
+          formaPagamento: '',
+          observacaoPagamento: '',
+          dataPagamento: null,
+          pagamentoConfirmadoPorUid: null,
+          pagamentoConfirmadoPorNome: null,
+          dataPagamentoConfirmado: null,
+          observacaoOrigem: closingFormData.observacaoOrigem || '',
+          observacaoDestino: closingFormData.observacaoDestino || '',
+          financeiroContaPagarId: null,
+          financeiroContaReceberId: null,
+          financeiroIntegrado: false,
+          storeVisibility: Array.from(new Set([origemId, destinoId])),
+          historico: [buildClosingHistoryEntry('fechamento_criado', 'aberto', 'Fechamento criado')]
+        };
+
+        await addDoc(collection(db, 'fechamentosEntreLojas'), payload);
+        setShowClosingModal(false);
+        resetClosingForm();
+        setModuleTab('fechamentos');
+      } catch (error) {
+        console.error('[EntreLojas] Erro ao salvar fechamento:', error);
+        setClosingFormError(error?.message || 'Não foi possível salvar o fechamento.');
+      } finally {
+        setIsSavingClosing(false);
+      }
+    };
+
+    const deleteClosing = async (closing) => {
+      if (!canDeleteClosing(closing)) {
+        alert('Você não tem permissão para excluir este fechamento.');
+        return;
+      }
+
+      try {
+        await runTransaction(db, async (transaction) => {
+          const closingRef = doc(db, 'fechamentosEntreLojas', closing.id);
+          const closingSnap = await transaction.get(closingRef);
+          if (!closingSnap.exists()) return;
+
+          const latestClosing = { id: closingSnap.id, ...closingSnap.data() };
+          if (!canDeleteClosing(latestClosing)) {
+            throw new Error('Este fechamento não pode mais ser excluído.');
+          }
+
+          const transferRefs = Array.from(new Set((latestClosing.remessaIds || []).filter(Boolean)))
+            .map((transferId) => doc(db, 'transferenciasEntreLojas', transferId));
+          const transferSnaps = [];
+          for (const transferRef of transferRefs) {
+            transferSnaps.push(await transaction.get(transferRef));
+          }
+
+          transferSnaps.filter((transferSnap) => transferSnap.exists()).forEach((transferSnap) => {
+            transaction.update(transferSnap.ref, {
+              fechamentoId: null,
+              fechamentoNome: '',
+              fechamentoStatus: '',
+              dataAtualizacao: serverTimestamp(),
+              historico: arrayUnion({
+                acao: 'fechamento_excluido',
+                status: transferSnap.data().status || '',
+                data: Timestamp.now(),
+                usuarioUid: user?.auth?.uid || '',
+                usuarioNome: user?.name || user?.email || '',
+                comentario: `Fechamento ${latestClosing.nome || latestClosing.id} excluído`
+              })
+            });
+          });
+
+          transaction.delete(closingRef);
+        });
+
+        if (viewingClosing?.id === closing.id) {
+          setViewingClosing(null);
+        }
+      } catch (error) {
+        console.error('[EntreLojas] Erro ao excluir fechamento:', error);
+        alert(error?.message || 'Não foi possível excluir o fechamento.');
+      }
+    };
+
+    const confirmDeleteClosing = (closing) => {
+      if (!canDeleteClosing(closing)) return;
+      setConfirmDelete({
+        isOpen: true,
+        onConfirm: () => deleteClosing(closing)
+      });
+    };
+
+    const moveTransferToClosing = async (transfer, closing) => {
+      if (!canMoveTransferToClosing(transfer, closing)) {
+        throw new Error('Esta remessa não pode ser movida para o fechamento selecionado.');
+      }
+
+      const previousClosingId = transfer.fechamentoId && transfer.fechamentoId !== closing.id ? transfer.fechamentoId : null;
+      await runTransaction(db, async (transaction) => {
+        const transferRef = doc(db, 'transferenciasEntreLojas', transfer.id);
+        const targetClosingRef = doc(db, 'fechamentosEntreLojas', closing.id);
+        const previousClosingRef = previousClosingId ? doc(db, 'fechamentosEntreLojas', previousClosingId) : null;
+
+        const transferSnap = await transaction.get(transferRef);
+        const targetClosingSnap = await transaction.get(targetClosingRef);
+        const previousClosingSnap = previousClosingRef ? await transaction.get(previousClosingRef) : null;
+
+        if (!transferSnap.exists()) throw new Error('A remessa não existe mais.');
+        if (!targetClosingSnap.exists()) throw new Error('O fechamento selecionado não existe mais.');
+
+        const latestTransfer = { id: transferSnap.id, ...transferSnap.data() };
+        const latestClosing = { id: targetClosingSnap.id, ...targetClosingSnap.data() };
+        const previousClosing = previousClosingSnap?.exists() ? { id: previousClosingSnap.id, ...previousClosingSnap.data() } : null;
+
+        if (!canMoveTransferToClosing(latestTransfer, latestClosing)) {
+          throw new Error('A remessa não atende mais às regras deste fechamento.');
+        }
+        if (previousClosing && previousClosing.status !== 'aberto' && user?.role !== ROLE_OWNER) {
+          throw new Error('A remessa está em um fechamento que não está aberto.');
+        }
+
+        const targetRemessaIds = Array.from(new Set([...(latestClosing.remessaIds || []), latestTransfer.id]));
+        transaction.update(transferRef, {
+          fechamentoId: latestClosing.id,
+          fechamentoNome: latestClosing.nome || '',
+          fechamentoStatus: latestClosing.status || '',
+          dataAtualizacao: serverTimestamp(),
+          historico: arrayUnion(buildClosingHistoryEntry('remessa_movida_para_fechamento', latestTransfer.status, `Remessa movida para ${latestClosing.nome || 'fechamento'}`))
+        });
+        transaction.update(targetClosingRef, {
+          remessaIds: targetRemessaIds,
+          dataAtualizacao: serverTimestamp(),
+          historico: arrayUnion(buildClosingHistoryEntry('remessa_adicionada', latestClosing.status, `Remessa #${latestTransfer.numero || latestTransfer.id} adicionada ao fechamento`))
+        });
+        if (previousClosingRef && previousClosing) {
+          transaction.update(previousClosingRef, {
+            remessaIds: (previousClosing.remessaIds || []).filter((id) => id !== latestTransfer.id),
+            dataAtualizacao: serverTimestamp(),
+            historico: arrayUnion(buildClosingHistoryEntry('remessa_removida', previousClosing.status, `Remessa #${latestTransfer.numero || latestTransfer.id} movida para outro fechamento`))
+          });
+        }
+      });
+
+      await Promise.all([
+        recalculateClosingTotals(closing.id),
+        previousClosingId ? recalculateClosingTotals(previousClosingId) : Promise.resolve()
+      ]);
+    };
+
+    const handleMoveTransferToClosing = async () => {
+      const closing = fechamentos.find((item) => item.id === moveTargetClosingId);
+      if (!transferToMove || !closing) return;
+      try {
+        await moveTransferToClosing(transferToMove, closing);
+        setTransferToMove(null);
+        setMoveTargetClosingId('');
+      } catch (error) {
+        console.error('[EntreLojas] Erro ao mover remessa para fechamento:', error);
+        alert(error?.message || 'Não foi possível mover a remessa.');
+      }
+    };
+
+    const removeTransferFromClosing = async (closing, transfer) => {
+      if (!canEditClosing(closing)) {
+        alert('Este fechamento não está aberto para remover remessas.');
+        return;
+      }
+
+      try {
+        await runTransaction(db, async (transaction) => {
+          const closingRef = doc(db, 'fechamentosEntreLojas', closing.id);
+          const transferRef = doc(db, 'transferenciasEntreLojas', transfer.id);
+          const closingSnap = await transaction.get(closingRef);
+          const transferSnap = await transaction.get(transferRef);
+
+          if (!closingSnap.exists()) throw new Error('O fechamento não existe mais.');
+          if (!transferSnap.exists()) throw new Error('A remessa não existe mais.');
+
+          const latestClosing = { id: closingSnap.id, ...closingSnap.data() };
+          const latestTransfer = { id: transferSnap.id, ...transferSnap.data() };
+          if (latestClosing.status !== 'aberto') throw new Error('Este fechamento não está aberto.');
+          if (latestTransfer.fechamentoId !== latestClosing.id) throw new Error('A remessa não está vinculada a este fechamento.');
+
+          transaction.update(transferRef, {
+            fechamentoId: null,
+            fechamentoNome: '',
+            fechamentoStatus: '',
+            dataAtualizacao: serverTimestamp(),
+            historico: arrayUnion(buildClosingHistoryEntry('remessa_removida_do_fechamento', latestTransfer.status, `Remessa removida de ${latestClosing.nome || 'fechamento'}`))
+          });
+          transaction.update(closingRef, {
+            remessaIds: (latestClosing.remessaIds || []).filter((id) => id !== latestTransfer.id),
+            dataAtualizacao: serverTimestamp(),
+            historico: arrayUnion(buildClosingHistoryEntry('remessa_removida', latestClosing.status, `Remessa #${latestTransfer.numero || latestTransfer.id} removida do fechamento`))
+          });
+        });
+        await recalculateClosingTotals(closing.id);
+      } catch (error) {
+        console.error('[EntreLojas] Erro ao remover remessa do fechamento:', error);
+        alert(error?.message || 'Não foi possível remover a remessa do fechamento.');
+      }
+    };
+
+    const addSelectedTransfersToClosing = async () => {
+      if (!viewingClosing || !closingTransferSelection.length) return;
+      try {
+        for (const transferId of closingTransferSelection) {
+          const transfer = transferencias.find((item) => item.id === transferId);
+          if (transfer) {
+            await moveTransferToClosing(transfer, viewingClosing);
+          }
+        }
+        setClosingTransferSelection([]);
+        setShowAddTransfersModal(false);
+      } catch (error) {
+        console.error('[EntreLojas] Erro ao adicionar remessas ao fechamento:', error);
+        alert(error?.message || 'Não foi possível adicionar as remessas selecionadas.');
+      }
+    };
+
+    const handleClosingAction = async (closing, action) => {
+      try {
+        await runTransaction(db, async (transaction) => {
+          const closingRef = doc(db, 'fechamentosEntreLojas', closing.id);
+          const closingSnap = await transaction.get(closingRef);
+          if (!closingSnap.exists()) throw new Error('O fechamento não existe mais.');
+
+          const latestClosing = { id: closingSnap.id, ...closingSnap.data() };
+          const transferRefs = Array.from(new Set((latestClosing.remessaIds || []).filter(Boolean)))
+            .map((transferId) => doc(db, 'transferenciasEntreLojas', transferId));
+          const transferSnaps = [];
+          for (const transferRef of transferRefs) {
+            transferSnaps.push(await transaction.get(transferRef));
+          }
+          const linkedTransferDocs = transferSnaps
+            .filter((transferSnap) => transferSnap.exists())
+            .map((transferSnap) => ({
+              ref: transferSnap.ref,
+              transfer: { id: transferSnap.id, ...transferSnap.data() }
+            }))
+            .filter(({ transfer }) => transfer.fechamentoId === latestClosing.id);
+          const linkedTransfers = linkedTransferDocs.map(({ transfer }) => transfer);
+          const totals = computeClosingTotals(linkedTransfers);
+
+          let nextStatus = latestClosing.status;
+          let updatePayload = {};
+          let historyEntry = null;
+          let transferStatusPayload = null;
+          let transferHistoryEntry = null;
+
+          if (action === 'fechar') {
+            if (!canCloseClosing(latestClosing)) throw new Error('Você não tem permissão para fechar este agrupamento.');
+            if (latestClosing.status !== 'aberto') throw new Error('Somente fechamentos abertos podem ser fechados.');
+            if (!linkedTransfers.length) throw new Error('Não é possível fechar agrupamento sem remessas.');
+            const totalPagoRepasse = totals.totalPagoRepasse;
+            const totalPagoRevenda = totals.totalPagoRevenda;
+            nextStatus = 'fechado';
+            updatePayload = {
+              status: nextStatus,
+              remessaIds: linkedTransfers.map((transfer) => transfer.id),
+              quantidadeRemessas: totals.quantidadeRemessas,
+              quantidadeRemessasPagas: totals.quantidadeRemessasPagas,
+              quantidadeTotalItens: totals.quantidadeTotalItens,
+              totalRepasse: Number(totals.totalRepasse.toFixed(2)),
+              totalRevenda: Number(totals.totalRevenda.toFixed(2)),
+              totalPagoRepasse: Number(totalPagoRepasse.toFixed(2)),
+              totalPagoRevenda: Number(totalPagoRevenda.toFixed(2)),
+              totalRestanteRepasse: Number(Math.max(0, totals.totalRepasse - totalPagoRepasse).toFixed(2)),
+              totalRestanteRevenda: Number(Math.max(0, totals.totalRevenda - totalPagoRevenda).toFixed(2)),
+              fechadoPorUid: user?.auth?.uid || '',
+              fechadoPorNome: user?.name || user?.email || '',
+              dataFechamento: serverTimestamp(),
+              financeiroIntegrado: false,
+              financeiroContaPagarId: latestClosing.financeiroContaPagarId || null,
+              financeiroContaReceberId: latestClosing.financeiroContaReceberId || null
+            };
+            historyEntry = buildClosingHistoryEntry('fechamento_fechado', nextStatus, closingActionComment || 'Agrupamento fechado');
+          }
+
+          if (action === 'marcar_pago') {
+            if (!canPayClosing(latestClosing)) throw new Error('Você não tem permissão para informar pagamento deste fechamento.');
+            if (!closingPaymentForm.formaPagamento) throw new Error('Informe a forma de pagamento.');
+            nextStatus = 'pagamento_informado';
+            updatePayload = {
+              status: nextStatus,
+              quantidadeRemessasPagas: totals.quantidadeRemessas,
+              totalPagoRepasse: Number(totals.totalRepasse.toFixed(2)),
+              totalPagoRevenda: Number(totals.totalRevenda.toFixed(2)),
+              totalRestanteRepasse: 0,
+              totalRestanteRevenda: 0,
+              pagamentoInformadoPorUid: user?.auth?.uid || '',
+              pagamentoInformadoPorNome: user?.name || user?.email || '',
+              dataPagamentoInformado: serverTimestamp(),
+              formaPagamento: closingPaymentForm.formaPagamento,
+              dataPagamento: closingPaymentForm.dataPagamento || formatInputDate(new Date()),
+              observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
+            };
+            historyEntry = buildClosingHistoryEntry('pagamento_informado', nextStatus, closingActionComment || 'Pagamento informado pela loja destino');
+            transferStatusPayload = {
+              status: 'pagamento_informado',
+              dataPagamentoInformado: serverTimestamp(),
+              pagamentoInformadoPorUid: user?.auth?.uid || '',
+              pagamentoInformadoPorNome: user?.name || user?.email || '',
+              formaPagamento: closingPaymentForm.formaPagamento,
+              dataPagamento: closingPaymentForm.dataPagamento || formatInputDate(new Date()),
+              observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
+            };
+            transferHistoryEntry = buildClosingHistoryEntry('pagamento_informado_por_fechamento', 'pagamento_informado', closingActionComment || `Pagamento informado no fechamento ${latestClosing.nome || latestClosing.numero || latestClosing.id}`);
+          }
+
+          if (action === 'confirmar_pagamento') {
+            if (!canConfirmClosingPayment(latestClosing)) throw new Error('Você não tem permissão para confirmar este pagamento.');
+            nextStatus = 'pagamento_confirmado';
+            updatePayload = {
+              status: nextStatus,
+              quantidadeRemessasPagas: totals.quantidadeRemessas,
+              totalPagoRepasse: Number(totals.totalRepasse.toFixed(2)),
+              totalPagoRevenda: Number(totals.totalRevenda.toFixed(2)),
+              totalRestanteRepasse: 0,
+              totalRestanteRevenda: 0,
+              pagamentoConfirmadoPorUid: user?.auth?.uid || '',
+              pagamentoConfirmadoPorNome: user?.name || user?.email || '',
+              dataPagamentoConfirmado: serverTimestamp(),
+              observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
+            };
+            historyEntry = buildClosingHistoryEntry('pagamento_confirmado', nextStatus, closingActionComment || 'Pagamento confirmado pela loja origem');
+            transferStatusPayload = {
+              status: 'pagamento_confirmado',
+              dataPagamentoConfirmado: serverTimestamp(),
+              pagamentoConfirmadoPorUid: user?.auth?.uid || '',
+              pagamentoConfirmadoPorNome: user?.name || user?.email || '',
+              observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
+            };
+            transferHistoryEntry = buildClosingHistoryEntry('pagamento_confirmado_por_fechamento', 'pagamento_confirmado', closingActionComment || `Pagamento confirmado no fechamento ${latestClosing.nome || latestClosing.numero || latestClosing.id}`);
+          }
+
+          if (action === 'contestar_pagamento') {
+            if (!canContestClosingPayment(latestClosing)) throw new Error('Você não tem permissão para contestar este pagamento.');
+            nextStatus = 'pagamento_contestado';
+            updatePayload = {
+              status: nextStatus,
+              observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
+            };
+            historyEntry = buildClosingHistoryEntry('pagamento_contestado', nextStatus, closingActionComment || 'Pagamento contestado pela loja origem');
+          }
+
+          if (action === 'cancelar') {
+            if (!canCancelClosing(latestClosing)) throw new Error('Você não tem permissão para cancelar este fechamento.');
+            nextStatus = 'cancelado';
+            updatePayload = {
+              status: nextStatus,
+              dataCancelamento: serverTimestamp(),
+              canceladoPorUid: user?.auth?.uid || '',
+              canceladoPorNome: user?.name || user?.email || '',
+              observacaoCancelamento: closingActionComment || ''
+            };
+            historyEntry = buildClosingHistoryEntry('fechamento_cancelado', nextStatus, closingActionComment || 'Fechamento cancelado');
+          }
+
+          if (!historyEntry) return;
+
+          transaction.update(closingRef, {
+            ...updatePayload,
+            dataAtualizacao: serverTimestamp(),
+            historico: arrayUnion(historyEntry)
+          });
+          linkedTransferDocs.forEach(({ ref, transfer }) => {
+            const shouldApplyPaymentStatus = transferStatusPayload
+              && !['cancelado', 'cancelada'].includes(transfer.status)
+              && !(action === 'marcar_pago' && transfer.status === 'pagamento_confirmado');
+            transaction.update(ref, {
+              ...(shouldApplyPaymentStatus ? transferStatusPayload : {}),
+              fechamentoStatus: nextStatus,
+              dataAtualizacao: serverTimestamp(),
+              ...(shouldApplyPaymentStatus && transferHistoryEntry ? { historico: arrayUnion(transferHistoryEntry) } : {})
+            });
+          });
+        });
+
+        setClosingActionComment('');
+        setClosingPaymentForm({ formaPagamento: '', dataPagamento: new Date().toISOString().slice(0, 10) });
+      } catch (error) {
+        console.error('[EntreLojas] Erro ao executar ação do fechamento:', error);
+        alert(error?.message || 'Não foi possível executar a ação do fechamento.');
       }
     };
 
@@ -10043,6 +11369,48 @@ const handleSubmit = async (e) => {
       return originId === selectedStoreIdForView || destinationId === selectedStoreIdForView;
     }, [selectedStoreIdForView]);
 
+    const matchesSelectedStoreClosingView = useCallback((closing) => {
+      if (!selectedStoreIdForView) return true;
+      const originId = normalizeStoreId(closing?.lojaOrigemId);
+      const destinationId = normalizeStoreId(closing?.lojaDestinoId);
+      return originId === selectedStoreIdForView || destinationId === selectedStoreIdForView;
+    }, [selectedStoreIdForView]);
+
+    useEffect(() => {
+      if (!viewingClosing?.id) return;
+      const latestClosing = (fechamentos || []).find((item) => item.id === viewingClosing.id);
+      if (!latestClosing) {
+        setViewingClosing(null);
+        setClosingActionComment('');
+        return;
+      }
+      if (latestClosing !== viewingClosing) {
+        setViewingClosing(latestClosing);
+      }
+    }, [fechamentos, viewingClosing]);
+
+    const filteredClosings = useMemo(() => {
+      return (fechamentos || []).filter((closing) => {
+        if (!canViewClosing(closing)) {
+          entreLojasLog('Fechamento removido por canViewClosing', { id: closing.id, lojaOrigemId: closing.lojaOrigemId, lojaDestinoId: closing.lojaDestinoId });
+          return false;
+        }
+        if (!matchesSelectedStoreClosingView(closing)) return false;
+        if (closingStatusFilter !== 'todos' && closing.status !== closingStatusFilter) return false;
+        if (closingOrigemFilter !== 'todos' && closing.lojaOrigemId !== closingOrigemFilter) return false;
+        if (closingDestinoFilter !== 'todos' && closing.lojaDestinoId !== closingDestinoFilter) return false;
+        if (closingMonthFilter) {
+          const [year, month] = closingMonthFilter.split('-').map((part) => Number(part));
+          if (Number(closing.competenciaAno) !== year || Number(closing.competenciaMes) !== month) return false;
+        }
+        const start = parseLocalDate(closing.periodoInicio);
+        const end = parseLocalDate(closing.periodoFim);
+        if (closingStartDateFilter && end && end < new Date(`${closingStartDateFilter}T00:00:00`)) return false;
+        if (closingEndDateFilter && start && start > new Date(`${closingEndDateFilter}T23:59:59`)) return false;
+        return true;
+      });
+    }, [canViewClosing, closingDestinoFilter, closingEndDateFilter, closingMonthFilter, closingOrigemFilter, closingStartDateFilter, closingStatusFilter, fechamentos, matchesSelectedStoreClosingView]);
+
     const filteredTransfers = useMemo(() => {
       return (transferencias || []).filter((item) => {
         const originId = normalizeStoreId(item.lojaOrigemId);
@@ -10058,10 +11426,24 @@ const handleSubmit = async (e) => {
           return false;
         }
 
-        if (activeTab === 'enviadas' && !(originId && (canAccessAllTransfers || allowedStoreIds.includes(originId)))) return false;
-        if (activeTab === 'recebidas' && !(destinationId && (canAccessAllTransfers || allowedStoreIds.includes(destinationId)))) return false;
+        const sentInCurrentView = selectedStoreIdForView
+          ? originId === selectedStoreIdForView
+          : Boolean(originId && (canAccessAllTransfers || allowedStoreIds.includes(originId)));
+        const receivedInCurrentView = selectedStoreIdForView
+          ? destinationId === selectedStoreIdForView
+          : Boolean(destinationId && (canAccessAllTransfers || allowedStoreIds.includes(destinationId)));
+
+        if (activeTab === 'enviadas' && !sentInCurrentView) {
+          entreLojasLog('Remessa removida por aba enviadas', { id: item.id, originId, selectedStoreIdForView });
+          return false;
+        }
+        if (activeTab === 'recebidas' && !receivedInCurrentView) {
+          entreLojasLog('Remessa removida por aba recebidas', { id: item.id, destinationId, selectedStoreIdForView });
+          return false;
+        }
         if (activeTab === 'aguardando_conferencia' && item.status !== 'aguardando_conferencia') return false;
         if (activeTab === 'aguardando_pagamento' && !['pagamento_informado', 'conferencia_com_divergencia', 'conferencia_sem_divergencia'].includes(item.status)) return false;
+        if (activeTab === 'historico' && !['pagamento_confirmado', 'pagamento_contestado', 'cancelado', 'cancelada'].includes(item.status)) return false;
         if (statusFilter !== 'todos' && item.status !== statusFilter) return false;
         if (origemFilter !== 'todos' && item.lojaOrigemId !== origemFilter) return false;
         if (destinoFilter !== 'todos' && item.lojaDestinoId !== destinoFilter) return false;
@@ -10072,6 +11454,18 @@ const handleSubmit = async (e) => {
       });
     }, [activeTab, allowedStoreIds, canAccessAllTransfers, canViewTransfer, destinoFilter, endDateFilter, matchesSelectedStoreView, origemFilter, selectedStoreIdForView, startDateFilter, statusFilter, transferencias]);
 
+    useEffect(() => {
+      entreLojasLog('Resultado após filtros', {
+        activeTab,
+        selectedStoreIdForView,
+        quantidadeBase: transferencias.length,
+        quantidadeFiltrada: filteredTransfers.length,
+        statusFilter,
+        origemFilter,
+        destinoFilter
+      });
+    }, [activeTab, destinoFilter, filteredTransfers.length, origemFilter, selectedStoreIdForView, statusFilter, transferencias.length]);
+
     const summary = useMemo(() => filteredTransfers.reduce((acc, item) => {
       acc.total += 1;
       acc.totalRepasse += Number(item.totalRepasse) || 0;
@@ -10081,19 +11475,62 @@ const handleSubmit = async (e) => {
       return acc;
     }, { total: 0, totalRepasse: 0, totalRevenda: 0, aguardandoConferencia: 0, aguardandoConfirmacao: 0 }), [filteredTransfers]);
 
+    const closingSummary = useMemo(() => filteredClosings.reduce((acc, closing) => {
+      acc.total += 1;
+      acc.totalRepasse += Number(closing.totalRepasse) || 0;
+      if (closing.status === 'aberto') acc.abertos += 1;
+      if (closing.status === 'fechado') acc.fechados += 1;
+      if (['fechado', 'pagamento_contestado'].includes(closing.status)) acc.aguardandoPagamento += 1;
+      return acc;
+    }, { total: 0, abertos: 0, fechados: 0, aguardandoPagamento: 0, totalRepasse: 0 }), [filteredClosings]);
+
+    const compatibleOpenClosingsForTransfer = useMemo(() => {
+      if (!transferToMove) return [];
+      return (fechamentos || []).filter((closing) => canMoveTransferToClosing(transferToMove, closing));
+    }, [fechamentos, transferToMove]);
+
+    const eligibleTransfersForViewingClosing = useMemo(() => {
+      if (!viewingClosing) return [];
+      const periodStart = parseLocalDate(viewingClosing.periodoInicio);
+      const periodEnd = parseLocalDate(viewingClosing.periodoFim);
+      return (transferencias || [])
+        .filter((transfer) => canMoveTransferToClosing(transfer, viewingClosing))
+        .sort((a, b) => {
+          const aDate = parseLocalDate(a.dataRemessa || a.dataCriacao);
+          const bDate = parseLocalDate(b.dataRemessa || b.dataCriacao);
+          const aInside = aDate && periodStart && periodEnd && aDate >= periodStart && aDate <= periodEnd ? 0 : 1;
+          const bInside = bDate && periodStart && periodEnd && bDate >= periodStart && bDate <= periodEnd ? 0 : 1;
+          if (aInside !== bInside) return aInside - bInside;
+          return (aDate?.getTime() || 0) - (bDate?.getTime() || 0);
+        });
+    }, [transferencias, viewingClosing]);
+
+    const viewingClosingTransfers = useMemo(() => getTransfersForClosing(viewingClosing), [transferencias, viewingClosing]);
+
     const columns = [
-      { header: 'Nº', render: (row) => <span className="font-semibold text-pink-600">#{row.numero || '-'}</span> },
-      { header: 'Origem', render: (row) => row.lojaOrigemNome || row.lojaOrigemId || '-' },
-      { header: 'Destino', render: (row) => row.lojaDestinoNome || row.lojaDestinoId || '-' },
-      { header: 'Itens', key: 'quantidadeTotalItens' },
-      { header: 'Repasse', render: (row) => <span className="font-semibold">{formatMoney(row.totalRepasse)}</span> },
-      { header: 'Revenda', render: (row) => <span className="font-semibold">{formatMoney(row.totalRevenda)}</span> },
-      { header: 'Status', render: (row) => <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClassName(row.status)}`}>{statusLabelMap[row.status] || row.status}</span> },
-      { header: 'Criada em', render: (row) => getJSDate(row.dataCriacao)?.toLocaleString('pt-BR') || '-' }
+      { id: 'numero', header: 'Nº', render: (row) => <span className="font-semibold text-pink-600">#{row.numero || '-'}</span> },
+      { id: 'origem', header: 'Origem', render: (row) => row.lojaOrigemNome || row.lojaOrigemId || '-' },
+      { id: 'destino', header: 'Destino', render: (row) => row.lojaDestinoNome || row.lojaDestinoId || '-' },
+      { id: 'itens', header: 'Itens', key: 'quantidadeTotalItens' },
+      { id: 'repasse', header: 'Repasse', render: (row) => <span className="font-semibold">{formatMoney(row.totalRepasse)}</span> },
+      { id: 'revenda', header: 'Revenda', render: (row) => <span className="font-semibold">{formatMoney(row.totalRevenda)}</span> },
+      { id: 'status', header: 'Status', render: (row) => <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClassName(row.status)}`}>{statusLabelMap[row.status] || row.status}</span> },
+      { id: 'fechamento', header: 'Fechamento', render: (row) => row.fechamentoNome ? <span className="text-xs font-semibold text-purple-700">{row.fechamentoNome}</span> : '-' },
+      { id: 'criadaEm', header: 'Criada em', render: (row) => getJSDate(row.dataCriacao)?.toLocaleString('pt-BR') || '-' }
     ];
+    const visibleTransferTableColumns = columns.filter((column) => visibleTransferColumnSet.has(column.id));
 
     const actions = [
       { icon: Eye, label: 'Visualizar', onClick: (row) => setViewingTransfer(row) },
+      {
+        icon: ArrowLeftRight,
+        label: 'Mover para fechamento',
+        onClick: (row) => {
+          setTransferToMove(row);
+          setMoveTargetClosingId('');
+        },
+        isVisible: (row) => (fechamentos || []).some((closing) => canMoveTransferToClosing(row, closing))
+      },
       {
         icon: Edit,
         label: (row) => (row.status === 'rascunho' ? 'Editar rascunho' : 'Editar remessa'),
@@ -10108,7 +11545,46 @@ const handleSubmit = async (e) => {
       }
     ];
 
+    const closingColumns = [
+      { header: 'Nº', render: (row) => <span className="font-semibold text-pink-600">#{row.numero || '-'}</span> },
+      { header: 'Nome', render: (row) => <span className="font-semibold">{row.nome || '-'}</span> },
+      { header: 'Origem', render: (row) => row.lojaOrigemNome || row.lojaOrigemId || '-' },
+      { header: 'Destino', render: (row) => row.lojaDestinoNome || row.lojaDestinoId || '-' },
+      { header: 'Período', render: (row) => `${formatDate(row.periodoInicio)} a ${formatDate(row.periodoFim)}` },
+      { header: 'Remessas', key: 'quantidadeRemessas' },
+      { header: 'Total repasse', render: (row) => <span className="font-semibold">{formatMoney(row.totalRepasse)}</span> },
+      { header: 'Pago', render: (row) => <span className="font-semibold text-green-700">{formatMoney(row.totalPagoRepasse)}</span> },
+      { header: 'Restante', render: (row) => <span className="font-semibold text-orange-700">{formatMoney(row.totalRestanteRepasse ?? Math.max(0, (Number(row.totalRepasse) || 0) - (Number(row.totalPagoRepasse) || 0)))}</span> },
+      { header: 'Status', render: (row) => <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getClosingStatusClassName(row.status)}`}>{closingStatusLabelMap[row.status] || row.status}</span> }
+    ];
+
+    const closingActions = [
+      { icon: Eye, label: 'Visualizar', onClick: (row) => setViewingClosing(row) },
+      {
+        icon: Edit,
+        label: 'Editar fechamento',
+        onClick: (row) => startEditingClosing(row),
+        isVisible: (row) => canEditClosing(row)
+      },
+      {
+        icon: Trash2,
+        label: 'Excluir fechamento',
+        onClick: (row) => confirmDeleteClosing(row),
+        isVisible: (row) => canDeleteClosing(row)
+      }
+    ];
+
     const transferTotals = computeTotals(formData.itens);
+    const zeroRepasseItems = (formData.itens || [])
+      .map((item, index) => {
+        const hasProduct = Boolean(item.produtoId || item.nome || item.produtoBusca);
+        const repasseValue = Number(String(item.valorUnitarioRepasse ?? '').replace(',', '.'));
+        return hasProduct && Number.isFinite(repasseValue) && repasseValue === 0
+          ? (item.nome || item.produtoBusca || `Item ${index + 1}`)
+          : null;
+      })
+      .filter(Boolean);
+    const editingClosingHasTransfers = isEditingClosing && (editingClosing?.remessaIds || []).length > 0;
 
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
@@ -10117,11 +11593,33 @@ const handleSubmit = async (e) => {
             <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Entre Lojas</h1>
             <p className="text-gray-600 mt-1">Controle de remessas e conferências entre unidades.</p>
           </div>
-          <Button onClick={openNewTransferModal} className="w-full md:w-auto">
-            <Plus className="w-4 h-4" /> Nova Remessa
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+            {moduleTab === 'remessas' && (
+              <Button onClick={openNewTransferModal} className="w-full md:w-auto">
+                <Plus className="w-4 h-4" /> Nova Remessa
+              </Button>
+            )}
+            {moduleTab === 'fechamentos' && (
+              <Button onClick={openNewClosingModal} disabled={!canCreateClosing()} className="w-full md:w-auto">
+                <Plus className="w-4 h-4" /> Novo Fechamento
+              </Button>
+            )}
+          </div>
         </div>
 
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2 flex flex-wrap gap-2">
+          {[
+            { id: 'remessas', label: 'Remessas' },
+            { id: 'fechamentos', label: 'Fechamentos' }
+          ].map((tab) => (
+            <button key={tab.id} onClick={() => setModuleTab(tab.id)} className={`px-4 py-2 text-sm rounded-xl font-medium ${moduleTab === tab.id ? 'bg-pink-100 text-pink-700' : 'text-gray-600 hover:bg-gray-50'}`}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {moduleTab === 'remessas' && (
+          <>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Remessas</p><p className="text-xl font-bold">{summary.total}</p></div>
           <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Aguardando conferência</p><p className="text-xl font-bold">{summary.aguardandoConferencia}</p></div>
@@ -10131,17 +11629,67 @@ const handleSubmit = async (e) => {
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'todas', label: 'Todas' },
-              { id: 'enviadas', label: 'Enviadas' },
-              { id: 'recebidas', label: 'Recebidas' },
-              { id: 'aguardando_conferencia', label: 'Aguardando Conferência' },
-              { id: 'aguardando_pagamento', label: 'Aguardando Pagamento' },
-              { id: 'historico', label: 'Histórico' }
-            ].map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-3 py-2 text-sm rounded-lg ${activeTab === tab.id ? 'bg-pink-100 text-pink-700' : 'bg-gray-50 text-gray-600'}`}>{tab.label}</button>
-            ))}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'todas', label: 'Todas' },
+                { id: 'enviadas', label: 'Enviadas' },
+                { id: 'recebidas', label: 'Recebidas' },
+                { id: 'aguardando_conferencia', label: 'Aguardando Conferência' },
+                { id: 'aguardando_pagamento', label: 'Aguardando Pagamento' },
+                { id: 'historico', label: 'Histórico' }
+              ].map((tab) => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-3 py-2 text-sm rounded-lg ${activeTab === tab.id ? 'bg-pink-100 text-pink-700' : 'bg-gray-50 text-gray-600'}`}>{tab.label}</button>
+              ))}
+            </div>
+            <div className="relative">
+              <button
+                ref={transferColumnsButtonRef}
+                type="button"
+                onClick={() => setShowTransferColumnsMenu((previous) => !previous)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-pink-50 hover:text-pink-700 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                title="Selecionar colunas"
+                aria-label="Selecionar colunas"
+                aria-haspopup="dialog"
+                aria-controls="transfer-columns-menu"
+                aria-expanded={showTransferColumnsMenu}
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+              {showTransferColumnsMenu && (
+                <div
+                  id="transfer-columns-menu"
+                  ref={transferColumnsMenuRef}
+                  role="dialog"
+                  aria-label="Colunas visíveis"
+                  className="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-gray-200 bg-white p-3 shadow-xl"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-gray-800">Colunas visíveis</p>
+                    <button
+                      type="button"
+                      onClick={() => setVisibleTransferColumns(DEFAULT_VISIBLE_TRANSFER_COLUMNS)}
+                      className="text-xs font-semibold text-pink-600 hover:text-pink-700"
+                    >
+                      Todas
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {TRANSFER_TABLE_COLUMN_OPTIONS.map((column) => (
+                      <label key={column.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-sm text-gray-700 hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          checked={visibleTransferColumnSet.has(column.id)}
+                          onChange={() => toggleTransferColumnVisibility(column.id)}
+                          className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                        />
+                        <span>{column.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <Select value={origemFilter} onChange={(e) => setOrigemFilter(e.target.value)}>
@@ -10161,7 +11709,43 @@ const handleSubmit = async (e) => {
           </div>
         </div>
 
-        <Table columns={columns} data={filteredTransfers} actions={actions} />
+        <Table columns={visibleTransferTableColumns} data={filteredTransfers} actions={actions} />
+          </>
+        )}
+
+        {moduleTab === 'fechamentos' && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Fechamentos</p><p className="text-xl font-bold">{closingSummary.total}</p></div>
+              <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Abertos</p><p className="text-xl font-bold">{closingSummary.abertos}</p></div>
+              <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Fechados</p><p className="text-xl font-bold">{closingSummary.fechados}</p></div>
+              <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Aguardando pagamento</p><p className="text-xl font-bold">{closingSummary.aguardandoPagamento}</p></div>
+              <div className="bg-white rounded-xl p-4 shadow border border-gray-100"><p className="text-xs text-gray-500">Total repasse</p><p className="text-xl font-bold">{formatMoney(closingSummary.totalRepasse)}</p></div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                <Select value={closingOrigemFilter} onChange={(e) => setClosingOrigemFilter(e.target.value)}>
+                  <option value="todos">Todas origens</option>
+                  {storesForSelect.map((store) => <option key={store.id} value={store.id}>{store.nome}</option>)}
+                </Select>
+                <Select value={closingDestinoFilter} onChange={(e) => setClosingDestinoFilter(e.target.value)}>
+                  <option value="todos">Todos destinos</option>
+                  {storesForSelect.map((store) => <option key={store.id} value={store.id}>{store.nome}</option>)}
+                </Select>
+                <Select value={closingStatusFilter} onChange={(e) => setClosingStatusFilter(e.target.value)}>
+                  <option value="todos">Todos status</option>
+                  {Object.keys(closingStatusLabelMap).map((status) => <option key={status} value={status}>{closingStatusLabelMap[status]}</option>)}
+                </Select>
+                <Input type="month" value={closingMonthFilter} onChange={(e) => setClosingMonthFilter(e.target.value)} />
+                <Input type="date" value={closingStartDateFilter} onChange={(e) => setClosingStartDateFilter(e.target.value)} />
+                <Input type="date" value={closingEndDateFilter} onChange={(e) => setClosingEndDateFilter(e.target.value)} />
+              </div>
+            </div>
+
+            <Table columns={closingColumns} data={filteredClosings} actions={closingActions} />
+          </>
+        )}
 
         <Modal
           isOpen={showModal}
@@ -10170,19 +11754,33 @@ const handleSubmit = async (e) => {
           size="xl"
         >
           <div className="space-y-4">
+            {formData.fechamentoId && (
+              <div className="text-sm text-purple-700 bg-purple-50 border border-purple-200 rounded-lg p-3">
+                Remessa vinculada ao fechamento: <strong>{formData.fechamentoNome}</strong>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Select
                 label="Loja origem"
                 value={formData.lojaOrigemId}
-                disabled={!canChangeOriginStore}
-                onChange={(e) => setFormData((prev) => ({ ...prev, lojaOrigemId: e.target.value }))}
+                disabled={Boolean(formData.fechamentoId) || !canChangeOriginStore}
+                onChange={(e) => {
+                  const nextOriginId = e.target.value;
+                  setTransferSyncNotice('');
+                  setFormData((prev) => ({
+                    ...prev,
+                    lojaOrigemId: nextOriginId,
+                    lojaDestinoId: prev.lojaDestinoId === nextOriginId ? '' : prev.lojaDestinoId,
+                    itens: []
+                  }));
+                }}
               >
                 <option value="">Selecione</option>
                 {storesForSelect.filter((store) => allowedOriginStoreIds.includes(store.id)).map((store) => (
                   <option key={store.id} value={store.id}>{store.nome}</option>
                 ))}
               </Select>
-              <Select label="Loja destino" disabled={isEditingTransfer && editingTransfer?.status !== 'rascunho'} value={formData.lojaDestinoId} onChange={(e) => setFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
+              <Select label="Loja destino" disabled={Boolean(formData.fechamentoId) || (isEditingTransfer && editingTransfer?.status !== 'rascunho')} value={formData.lojaDestinoId} onChange={(e) => setFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
                 <option value="">Selecione</option>
                 {storesForSelect.filter((store) => store.id !== formData.lojaOrigemId).map((store) => (
                   <option key={store.id} value={store.id}>{store.nome}</option>
@@ -10200,6 +11798,8 @@ const handleSubmit = async (e) => {
               {formData.itens.map((item, index) => {
                 const totalRepasse = (Number(item.quantidade) || 0) * (Number(item.valorUnitarioRepasse) || 0);
                 const totalRevenda = (Number(item.quantidade) || 0) * (Number(item.valorUnitarioRevenda) || 0);
+                const hasZeroRepasse = Boolean(item.produtoId || item.nome || item.produtoBusca)
+                  && Number(String(item.valorUnitarioRepasse ?? '').replace(',', '.')) === 0;
                 return (
                   <div key={`item-${index}`} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border rounded-lg p-3">
                     <div className="md:col-span-4">
@@ -10215,7 +11815,7 @@ const handleSubmit = async (e) => {
                       </datalist>
                     </div>
                     <div className="md:col-span-2"><Input label="Qtd." type="number" min="1" value={item.quantidade} onChange={(e) => updateItemField(index, 'quantidade', e.target.value)} /></div>
-                    <div className="md:col-span-2"><Input label="Repasse (R$)" type="number" min="0" step="0.01" value={item.valorUnitarioRepasse} onChange={(e) => updateItemField(index, 'valorUnitarioRepasse', e.target.value)} /></div>
+                    <div className="md:col-span-2"><Input label="Repasse (R$)" type="number" min="0" step="0.01" value={item.valorUnitarioRepasse} error={hasZeroRepasse ? 'Repasse R$ 0,00.' : ''} onChange={(e) => updateItemField(index, 'valorUnitarioRepasse', e.target.value)} /></div>
                     <div className="md:col-span-2"><Input label="Revenda (R$)" type="number" min="0" step="0.01" value={item.valorUnitarioRevenda} onChange={(e) => updateItemField(index, 'valorUnitarioRevenda', e.target.value)} /></div>
                     <div className="md:col-span-1 text-xs text-gray-700">
                       <p>Repasse</p>
@@ -10237,8 +11837,16 @@ const handleSubmit = async (e) => {
                 <p>Total repasse: <strong>{formatMoney(transferTotals.totalRepasse)}</strong></p>
                 <p>Total revenda: <strong>{formatMoney(transferTotals.totalRevenda)}</strong></p>
               </div>
+              {zeroRepasseItems.length > 0 && (
+                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                  Atenção: existem itens com repasse R$ 0,00: <strong>{zeroRepasseItems.join(', ')}</strong>. A remessa pode ser salva, mas revise o cadastro de custo/repasse.
+                </div>
+              )}
             </div>
 
+            {transferSyncNotice && (
+              <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{transferSyncNotice}</div>
+            )}
             {formError && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{formError}</div>}
 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -10261,6 +11869,235 @@ const handleSubmit = async (e) => {
           </div>
         </Modal>
 
+        <Modal
+          isOpen={showClosingModal}
+          onClose={() => { setShowClosingModal(false); resetClosingForm(); }}
+          title={isEditingClosing ? 'Editar Fechamento entre Lojas' : 'Novo Fechamento entre Lojas'}
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select
+                label="Loja origem"
+                value={closingFormData.lojaOrigemId}
+                disabled={editingClosingHasTransfers}
+                onChange={(e) => {
+                  const nextOriginId = e.target.value;
+                  setClosingFormData((prev) => ({
+                    ...prev,
+                    lojaOrigemId: nextOriginId,
+                    lojaDestinoId: prev.lojaDestinoId === nextOriginId ? '' : prev.lojaDestinoId
+                  }));
+                }}
+              >
+                <option value="">Selecione</option>
+                {storesForSelect.filter((store) => canAccessAllTransfers || allowedStoreIds.includes(store.id)).map((store) => (
+                  <option key={store.id} value={store.id}>{store.nome}</option>
+                ))}
+              </Select>
+              <Select label="Loja destino" disabled={editingClosingHasTransfers} value={closingFormData.lojaDestinoId} onChange={(e) => setClosingFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
+                <option value="">Selecione</option>
+                {storesForSelect.filter((store) => store.id !== closingFormData.lojaOrigemId).map((store) => (
+                  <option key={store.id} value={store.id}>{store.nome}</option>
+                ))}
+              </Select>
+              <Input
+                label="Início"
+                type="date"
+                value={closingFormData.periodoInicio}
+                onChange={(e) => {
+                  const nextStart = e.target.value;
+                  setClosingFormData((prev) => {
+                    const oldDefault = buildDefaultClosingName(prev.periodoInicio, prev.periodoFim);
+                    const nextName = !prev.nome || prev.nome === oldDefault ? buildDefaultClosingName(nextStart, prev.periodoFim) : prev.nome;
+                    return { ...prev, periodoInicio: nextStart, nome: nextName };
+                  });
+                }}
+              />
+              <Input
+                label="Fim"
+                type="date"
+                value={closingFormData.periodoFim}
+                onChange={(e) => {
+                  const nextEnd = e.target.value;
+                  setClosingFormData((prev) => {
+                    const oldDefault = buildDefaultClosingName(prev.periodoInicio, prev.periodoFim);
+                    const nextName = !prev.nome || prev.nome === oldDefault ? buildDefaultClosingName(prev.periodoInicio, nextEnd) : prev.nome;
+                    return { ...prev, periodoFim: nextEnd, nome: nextName };
+                  });
+                }}
+              />
+              <div className="md:col-span-2">
+                <Input label="Nome do fechamento" value={closingFormData.nome} onChange={(e) => setClosingFormData((prev) => ({ ...prev, nome: e.target.value }))} />
+              </div>
+            </div>
+            <Textarea label="Observação da origem" value={closingFormData.observacaoOrigem} onChange={(e) => setClosingFormData((prev) => ({ ...prev, observacaoOrigem: e.target.value }))} rows={2} />
+            <Textarea label="Observação do destino" value={closingFormData.observacaoDestino} onChange={(e) => setClosingFormData((prev) => ({ ...prev, observacaoDestino: e.target.value }))} rows={2} />
+            {closingSyncNotice && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{closingSyncNotice}</div>}
+            {closingFormError && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{closingFormError}</div>}
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => { setShowClosingModal(false); resetClosingForm(); }}>Cancelar</Button>
+              <Button disabled={isSavingClosing} onClick={saveClosing}>{isSavingClosing ? 'Salvando...' : (isEditingClosing ? 'Salvar alterações' : 'Criar fechamento')}</Button>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal isOpen={!!transferToMove} onClose={() => { setTransferToMove(null); setMoveTargetClosingId(''); }} title="Mover para fechamento" size="md">
+          <div className="space-y-4">
+            {transferToMove && (
+              <div className="text-sm bg-gray-50 border rounded-xl p-3">
+                <p><strong>Remessa:</strong> #{transferToMove.numero || transferToMove.id}</p>
+                <p><strong>Origem:</strong> {transferToMove.lojaOrigemNome || transferToMove.lojaOrigemId}</p>
+                <p><strong>Destino:</strong> {transferToMove.lojaDestinoNome || transferToMove.lojaDestinoId}</p>
+              </div>
+            )}
+            <Select label="Fechamento aberto compatível" value={moveTargetClosingId} onChange={(e) => setMoveTargetClosingId(e.target.value)}>
+              <option value="">Selecione</option>
+              {compatibleOpenClosingsForTransfer.map((closing) => (
+                <option key={closing.id} value={closing.id}>{closing.nome} - {formatMoney(closing.totalRepasse)}</option>
+              ))}
+            </Select>
+            {!compatibleOpenClosingsForTransfer.length && <p className="text-sm text-gray-500">Nenhum fechamento aberto compatível para esta origem e destino.</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => { setTransferToMove(null); setMoveTargetClosingId(''); }}>Cancelar</Button>
+              <Button disabled={!moveTargetClosingId} onClick={handleMoveTransferToClosing}>Mover</Button>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal isOpen={!!viewingClosing} onClose={() => { setViewingClosing(null); setClosingActionComment(''); setShowAddTransfersModal(false); setClosingTransferSelection([]); }} title="Detalhe do Fechamento" size="xl">
+          {viewingClosing && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-gray-50 rounded-xl p-4 text-sm">
+                <p><strong>Número:</strong> #{viewingClosing.numero}</p>
+                <p><strong>Nome:</strong> {viewingClosing.nome}</p>
+                <p><strong>Status:</strong> {closingStatusLabelMap[viewingClosing.status] || viewingClosing.status}</p>
+                <p><strong>Origem:</strong> {viewingClosing.lojaOrigemNome}</p>
+                <p><strong>Destino:</strong> {viewingClosing.lojaDestinoNome}</p>
+                <p><strong>Período:</strong> {formatDate(viewingClosing.periodoInicio)} a {formatDate(viewingClosing.periodoFim)}</p>
+                <p><strong>Remessas:</strong> {viewingClosing.quantidadeRemessas || 0}</p>
+                <p><strong>Total repasse:</strong> {formatMoney(viewingClosing.totalRepasse)}</p>
+                <p><strong>Total revenda:</strong> {formatMoney(viewingClosing.totalRevenda)}</p>
+                <p><strong>Valor pago:</strong> {formatMoney(viewingClosing.totalPagoRepasse)}</p>
+                <p><strong>Valor restante:</strong> {formatMoney(viewingClosing.totalRestanteRepasse ?? Math.max(0, (Number(viewingClosing.totalRepasse) || 0) - (Number(viewingClosing.totalPagoRepasse) || 0)))}</p>
+                <p><strong>Remessas pagas:</strong> {viewingClosing.quantidadeRemessasPagas || 0}</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {canEditClosing(viewingClosing) && (
+                  <>
+                    <Button variant="outline" onClick={() => { setShowAddTransfersModal(true); setClosingTransferSelection([]); }}><PackagePlus className="w-4 h-4" /> Adicionar remessas</Button>
+                    <Button onClick={() => handleClosingAction(viewingClosing, 'fechar')}>Fechar agrupamento</Button>
+                  </>
+                )}
+                {canCreateTransferInClosing(viewingClosing) && (
+                  <Button variant="secondary" onClick={() => openNewTransferForClosing(viewingClosing)}><Plus className="w-4 h-4" /> Nova remessa neste fechamento</Button>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="font-semibold">Remessas vinculadas</h3>
+                {!viewingClosingTransfers.length && <p className="text-sm text-gray-500">Nenhuma remessa vinculada.</p>}
+                {viewingClosingTransfers.map((transfer) => (
+                  <div key={transfer.id} className="bg-white border rounded-lg p-3 text-sm space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-center">
+                      <p className="font-semibold text-pink-600">#{transfer.numero || '-'}</p>
+                      <p>{formatDate(transfer.dataRemessa || transfer.dataCriacao)}</p>
+                      <p>{statusLabelMap[transfer.status] || transfer.status}</p>
+                      <p>Itens: {transfer.quantidadeTotalItens || 0}</p>
+                      <p className="font-semibold">{formatMoney(transfer.totalRepasse)}</p>
+                      {canEditClosing(viewingClosing) && (
+                        <Button size="sm" variant="danger" onClick={() => removeTransferFromClosing(viewingClosing, transfer)}>Remover</Button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {transfer.status === 'aguardando_conferencia' && canActOnTransfer(transfer, 'conferir') && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => handleTransferAction(transfer, 'conferir_sem_divergencia', closingActionComment)}>Conferir sem divergência</Button>
+                          <Button size="sm" variant="secondary" onClick={() => handleTransferAction(transfer, 'conferir_com_divergencia', closingActionComment)}>Conferir com divergência</Button>
+                        </>
+                      )}
+                      {['conferencia_sem_divergencia', 'conferencia_com_divergencia', 'aguardando_conferencia'].includes(transfer.status) && canActOnTransfer(transfer, 'marcar_pago') && (
+                        <Button size="sm" onClick={() => handleTransferAction(transfer, 'marcar_pago', closingActionComment)}>Marcar como pago</Button>
+                      )}
+                      {canActOnTransfer(transfer, 'cancelar') && (
+                        <Button size="sm" variant="danger" onClick={() => handleTransferAction(transfer, 'cancelar', closingActionComment)}>Cancelar remessa</Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {showAddTransfersModal && (
+                <div className="border rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-semibold">Adicionar remessas elegíveis</h3>
+                    <Button size="sm" variant="secondary" onClick={() => { setShowAddTransfersModal(false); setClosingTransferSelection([]); }}>Fechar</Button>
+                  </div>
+                  {!eligibleTransfersForViewingClosing.length && <p className="text-sm text-gray-500">Nenhuma remessa elegível encontrada para esta origem e destino.</p>}
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {eligibleTransfersForViewingClosing.map((transfer) => (
+                      <label key={transfer.id} className="flex items-center gap-3 border rounded-lg p-3 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={closingTransferSelection.includes(transfer.id)}
+                          onChange={(e) => setClosingTransferSelection((prev) => (
+                            e.target.checked ? [...prev, transfer.id] : prev.filter((id) => id !== transfer.id)
+                          ))}
+                        />
+                        <span className="font-semibold text-pink-600">#{transfer.numero || '-'}</span>
+                        <span>{formatDate(transfer.dataRemessa || transfer.dataCriacao)}</span>
+                        <span>{statusLabelMap[transfer.status] || transfer.status}</span>
+                        <span className="ml-auto font-semibold">{formatMoney(transfer.totalRepasse)}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex justify-end">
+                    <Button disabled={!closingTransferSelection.length} onClick={addSelectedTransfersToClosing}>Adicionar selecionadas</Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="border rounded-xl p-4 space-y-3">
+                <Textarea
+                  label="Comentário / observação para ação"
+                  value={closingActionComment}
+                  onChange={(e) => setClosingActionComment(e.target.value)}
+                  rows={3}
+                  placeholder="Descreva pagamento, confirmação, contestação ou cancelamento."
+                />
+                {canPayClosing(viewingClosing) && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                    <Input label="Forma de pagamento" value={closingPaymentForm.formaPagamento} onChange={(e) => setClosingPaymentForm((prev) => ({ ...prev, formaPagamento: e.target.value }))} />
+                    <Input label="Data do pagamento" type="date" value={closingPaymentForm.dataPagamento} onChange={(e) => setClosingPaymentForm((prev) => ({ ...prev, dataPagamento: e.target.value }))} />
+                    <Button onClick={() => handleClosingAction(viewingClosing, 'marcar_pago')}>Marcar como pago</Button>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {canConfirmClosingPayment(viewingClosing) && <Button onClick={() => handleClosingAction(viewingClosing, 'confirmar_pagamento')}>Confirmar pagamento</Button>}
+                  {canContestClosingPayment(viewingClosing) && <Button variant="danger" onClick={() => handleClosingAction(viewingClosing, 'contestar_pagamento')}>Contestar pagamento</Button>}
+                  {canCancelClosing(viewingClosing) && <Button variant="danger" onClick={() => handleClosingAction(viewingClosing, 'cancelar')}>Cancelar fechamento</Button>}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="font-semibold">Histórico</h3>
+                <div className="max-h-56 overflow-y-auto border rounded-lg p-2 space-y-2">
+                  {(viewingClosing.historico || []).length === 0 && <p className="text-sm text-gray-500">Sem histórico registrado.</p>}
+                  {(viewingClosing.historico || []).map((evt, idx) => (
+                    <div key={`closing-hist-${idx}`} className="text-sm bg-gray-50 rounded p-2">
+                      <p className="font-medium">{evt.acao}</p>
+                      <p className="text-xs text-gray-500">{getJSDate(evt.data)?.toLocaleString('pt-BR') || '-'}</p>
+                      <p className="text-xs text-gray-500">{evt.usuarioNome || '-'}</p>
+                      {evt.comentario && <p>{evt.comentario}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </Modal>
+
         <Modal isOpen={!!viewingTransfer} onClose={() => { setViewingTransfer(null); setActionComment(''); }} title="Detalhe da Remessa" size="xl">
           {viewingTransfer && (
             <div className="space-y-4">
@@ -10271,6 +12108,7 @@ const handleSubmit = async (e) => {
                 <p><strong>Status:</strong> {statusLabelMap[viewingTransfer.status] || viewingTransfer.status}</p>
                 <p><strong>Total repasse:</strong> {formatMoney(viewingTransfer.totalRepasse)}</p>
                 <p><strong>Total revenda:</strong> {formatMoney(viewingTransfer.totalRevenda)}</p>
+                <p><strong>Fechamento:</strong> {viewingTransfer.fechamentoNome || 'Sem fechamento'}</p>
               </div>
               <div className="bg-white border rounded-xl p-4 text-sm">
                 <p className="font-semibold text-gray-800 mb-1">Observação da origem</p>
@@ -10310,6 +12148,9 @@ const handleSubmit = async (e) => {
                 )}
                 {viewingTransfer.status === 'pagamento_informado' && canActOnTransfer(viewingTransfer, 'contestar_pagamento') && (
                   <Button variant="danger" onClick={() => handleTransferAction(viewingTransfer, 'contestar_pagamento')}>Contestar pagamento</Button>
+                )}
+                {canActOnTransfer(viewingTransfer, 'cancelar') && (
+                  <Button variant="danger" onClick={() => handleTransferAction(viewingTransfer, 'cancelar')}>Cancelar remessa</Button>
                 )}
               </div>
               <div className="space-y-2">
