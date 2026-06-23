@@ -5565,7 +5565,8 @@ function App() {
         drawLine(62);
 
         let y = drawPointTable(65) + 5;
-        if (y > pageHeight - 38) {
+        const finalBlockHeight = 64;
+        if (y > pageHeight - finalBlockHeight) {
           doc.addPage();
           y = margin;
         }
@@ -5590,18 +5591,29 @@ function App() {
           setFont(10, 'bold');
           doc.text(value, x + 2, y + 10);
         });
-        y += 22;
+        y += 20;
 
         setFont(8);
         doc.text('CONFIRMO A FREQUÊNCIA ACIMA', margin, y);
-        y += 19;
-        doc.line(margin, y, margin + 95, y);
-        doc.line(pageWidth - margin - 95, y, pageWidth - margin, y);
+        y += 22;
+        const signatureWidth = 78;
+        const leftSignatureX = margin;
+        const rightSignatureX = pageWidth - margin - signatureWidth;
+        const responsibleName = companyInfo.gestorResponsavel || '';
+        const employeeName = employee.name || '';
+        doc.setDrawColor(120, 120, 120);
+        doc.setLineWidth(0.18);
+        doc.line(leftSignatureX, y, leftSignatureX + signatureWidth, y);
+        doc.line(rightSignatureX, y, rightSignatureX + signatureWidth, y);
         setFont(7);
-        doc.text(companyInfo.gestorResponsavel || 'Chefe/Gerente', margin + 47.5, y + 5, { align: 'center' });
-        doc.text(employee.name || 'Funcionário', pageWidth - margin - 47.5, y + 5, { align: 'center' });
-        doc.text('Assinatura do responsável', margin + 47.5, y + 10, { align: 'center' });
-        doc.text('Assinatura do funcionário', pageWidth - margin - 47.5, y + 10, { align: 'center' });
+        if (responsibleName) {
+          doc.text(doc.splitTextToSize(responsibleName, signatureWidth), leftSignatureX + (signatureWidth / 2), y + 5, { align: 'center' });
+        }
+        if (employeeName) {
+          doc.text(doc.splitTextToSize(employeeName, signatureWidth), rightSignatureX + (signatureWidth / 2), y + 5, { align: 'center' });
+        }
+        doc.text('Assinatura do responsável', leftSignatureX + (signatureWidth / 2), y + 11, { align: 'center' });
+        doc.text('Assinatura do funcionário', rightSignatureX + (signatureWidth / 2), y + 11, { align: 'center' });
 
         const pageCount = doc.internal.getNumberOfPages();
         for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
