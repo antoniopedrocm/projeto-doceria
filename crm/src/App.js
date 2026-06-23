@@ -5458,7 +5458,7 @@ function App() {
         const contentWidth = pageWidth - (margin * 2);
         const emittedAt = new Date().toLocaleString('pt-BR');
         const monthLabel = getPointSheetMonthLabel();
-        const companyName = companyInfo.nome || storeName || 'Empresa';
+        const companyName = companyInfo.nome || currentStoreIdForDisplay || 'Empresa';
         const companyAddress = formatCompanyAddressForPointSheet(companyInfo.endereco);
 
         const setFont = (size = 8, style = 'normal') => {
