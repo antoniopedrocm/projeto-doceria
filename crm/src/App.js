@@ -10156,9 +10156,10 @@ const handleSubmit = async (e) => {
     ), [canAccessAllTransfers, user]);
     const allowedTransferStatusSet = useMemo(() => new Set(allowedTransferStatuses), [allowedTransferStatuses]);
     const canViewTransferStatus = useCallback((transfer) => {
+      if (user?.role === ROLE_OWNER) return true;
       const status = String(transfer?.status || '').trim();
       return Boolean(status && allowedTransferStatusSet.has(status));
-    }, [allowedTransferStatusSet]);
+    }, [allowedTransferStatusSet, user?.role]);
 
     const selectedStoreIdForView = useMemo(() => {
       if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) return null;
@@ -10678,10 +10679,20 @@ const handleSubmit = async (e) => {
     const formatMoney = (value) => `R$ ${(Number(value) || 0).toFixed(2)}`;
     const formatDate = (value) => parseLocalDate(value)?.toLocaleDateString('pt-BR') || '-';
     const statusLabelMap = ENTRE_LOJAS_TRANSFER_STATUS_LABELS;
-    const visibleTransferStatusOptions = useMemo(
-      () => ENTRE_LOJAS_TRANSFER_STATUS_OPTIONS.filter((status) => allowedTransferStatusSet.has(status.value)),
-      [allowedTransferStatusSet]
-    );
+    const visibleTransferStatusOptions = useMemo(() => {
+      if (user?.role !== ROLE_OWNER) {
+        return ENTRE_LOJAS_TRANSFER_STATUS_OPTIONS.filter((status) => allowedTransferStatusSet.has(status.value));
+      }
+
+      const knownStatusValues = new Set(ENTRE_LOJAS_TRANSFER_STATUS_VALUES);
+      const dynamicStatusOptions = Array.from(new Set(
+        (transferencias || [])
+          .map((transfer) => String(transfer?.status || '').trim())
+          .filter((status) => status && !knownStatusValues.has(status))
+      )).map((status) => ({ value: status, label: status }));
+
+      return [...ENTRE_LOJAS_TRANSFER_STATUS_OPTIONS, ...dynamicStatusOptions];
+    }, [allowedTransferStatusSet, transferencias, user?.role]);
     const transferTabOptions = useMemo(() => ([
       { id: 'todas', label: 'Todas' },
       { id: 'enviadas', label: 'Enviadas' },
@@ -10702,10 +10713,11 @@ const handleSubmit = async (e) => {
       }
     }, [activeTab, transferTabOptions]);
     useEffect(() => {
+      if (user?.role === ROLE_OWNER) return;
       if (statusFilter !== 'todos' && !allowedTransferStatusSet.has(statusFilter)) {
         setStatusFilter('todos');
       }
-    }, [allowedTransferStatusSet, statusFilter]);
+    }, [allowedTransferStatusSet, statusFilter, user?.role]);
     const statusClassMap = {
       pagamento_confirmado: 'bg-green-100 text-green-700',
       pagamento_informado: 'bg-orange-100 text-orange-700',
