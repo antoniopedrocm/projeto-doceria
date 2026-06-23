@@ -5343,6 +5343,47 @@ function App() {
       return label.charAt(0).toUpperCase() + label.slice(1);
     };
 
+    const getBrazilNationalHolidays = (year) => {
+      return new Set([
+        `${year}-01-01`,
+        `${year}-04-21`,
+        `${year}-05-01`,
+        `${year}-09-07`,
+        `${year}-10-12`,
+        `${year}-11-02`,
+        `${year}-11-15`,
+        `${year}-11-20`,
+        `${year}-12-25`,
+      ]);
+    };
+
+    const hasAnyPointTime = (record = {}) => Boolean(
+      record.horaEntrada
+      || record.horaAlmocoSaida
+      || record.horaAlmocoRetorno
+      || record.horaSaida
+    );
+
+    const getPointSheetJustification = ({ record, date, dayKey, summary, nationalHolidays }) => {
+      const weekday = date.getDay();
+      const isWeekday = weekday >= 1 && weekday <= 5;
+      const isHoliday = nationalHolidays.has(dayKey);
+      const hasPoint = hasAnyPointTime(record);
+
+      if (isWeekday && isHoliday) {
+        return hasPoint ? 'Hora Extra' : 'Feriado';
+      }
+      if (isWeekday && !isHoliday && !hasPoint) {
+        return 'Falta';
+      }
+      if (record?.justificativa) return record.justificativa;
+      if (summary?.irregularidade && summary.irregularidade !== '-') return summary.irregularidade;
+      if (!record) {
+        return weekday === 0 ? 'FOLGA' : weekday === 6 ? 'FOLGA COMPENSADA' : 'Sem registro';
+      }
+      return '-';
+    };
+
     const handleExportPointSheet = () => {
       const employeeId = getSelectedEmployeeIdForExport();
       if (!employeeId) {
@@ -5363,11 +5404,6 @@ function App() {
             return (dateA?.getTime() || 0) - (dateB?.getTime() || 0);
           });
 
-        if (employeeMonthlyRecords.length === 0) {
-          setRegisterMessage({ type: 'error', text: 'Não existem registros para gerar a folha de ponto deste colaborador na competência selecionada.' });
-          return;
-        }
-
         const [year, month] = recordsQueryMonth.split('-').map(Number);
         if (!year || !month) {
           setRegisterMessage({ type: 'error', text: 'Competência inválida para gerar a folha de ponto.' });
@@ -5386,6 +5422,7 @@ function App() {
         const rows = [];
         let creditMinutes = 0;
         let debitMinutes = 0;
+        const nationalHolidays = getBrazilNationalHolidays(year);
 
         for (let day = 1; day <= daysInMonth; day += 1) {
           const date = new Date(year, month - 1, day);
@@ -5396,7 +5433,7 @@ function App() {
           if (irregularityMinutes > 0) creditMinutes += irregularityMinutes;
           if (irregularityMinutes < 0) debitMinutes += Math.abs(irregularityMinutes);
           const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
-          const fallbackJustification = date.getDay() === 0 ? 'FOLGA' : date.getDay() === 6 ? 'FOLGA COMPENSADA' : 'Sem registro';
+          const justification = getPointSheetJustification({ record, date, dayKey, summary, nationalHolidays });
 
           rows.push([
             dayOfWeek,
@@ -5407,15 +5444,14 @@ function App() {
             formatTime(record?.horaSaida),
             summary.irregularidade || '-',
             summary.workedLabel || '-',
-            record?.justificativa || (!record ? fallbackJustification : '-'),
-            record?.adicionalNoturno || record?.adicNoturno || '-'
+            justification
           ]);
         }
 
         const balanceMinutes = creditMinutes - debitMinutes;
         const overtimeToPay = Math.max(balanceMinutes, 0);
         const { jsPDF } = window.jspdf;
-        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         if (typeof doc.autoTable !== 'function') {
           throw new Error('Não foi possível carregar o layout de tabela do PDF. Atualize a página e tente novamente.');
         }
@@ -5453,17 +5489,17 @@ function App() {
         drawLine(22);
 
         labelValue('Empresa', companyName, margin, 28, 145);
-        labelValue('Mês/Ano Competência', monthLabel, margin + 170, 28, 105);
-        labelValue('Endereço', companyAddress, margin, 34, 170);
-        labelValue('CNPJ', companyInfo.cnpj || '-', margin + 170, 34, 105);
-        labelValue('Hor. de Trab.', companyInfo.horarioTrabalho || '-', margin, 40, 180);
-        labelValue('Atividade Econômica', companyInfo.atividade || '-', margin + 170, 40, 105);
+        labelValue('Mês/Ano Competência', monthLabel, margin + 108, 28, 86);
+        labelValue('Endereço', companyAddress, margin, 34, 100);
+        labelValue('CNPJ', companyInfo.cnpj || '-', margin + 108, 34, 86);
+        labelValue('Hor. de Trab.', companyInfo.horarioTrabalho || '-', margin, 40, 100);
+        labelValue('Atividade Econômica', companyInfo.atividade || '-', margin + 108, 40, 86);
         drawLine(45);
 
         labelValue('Funcionário', employee.name, margin, 51, 150);
-        labelValue('Categoria de Ponto', employee.category, margin + 170, 51, 105);
+        labelValue('Categoria de Ponto', employee.category, margin + 108, 51, 86);
         labelValue('Matrícula', employee.registration, margin, 57, 95);
-        if (employee.email) labelValue('E-mail', employee.email, margin + 70, 57, 105);
+        if (employee.email) labelValue('E-mail', employee.email, margin + 70, 57, 120);
         drawLine(62);
 
         doc.autoTable({
@@ -5477,25 +5513,23 @@ function App() {
             'Saída',
             'Irregularidade',
             'Qtde',
-            'Justificativa',
-            'Adic. Noturno'
+            'Justificativa'
           ]],
           body: rows,
           margin: { left: margin, right: margin },
-          styles: { fontSize: 6.2, cellPadding: 1, lineColor: [190, 190, 190], lineWidth: 0.1, textColor: [20, 20, 20], overflow: 'linebreak' },
+          styles: { fontSize: 5.8, cellPadding: 0.8, lineColor: [190, 190, 190], lineWidth: 0.1, textColor: [20, 20, 20], overflow: 'linebreak' },
           headStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: 'bold' },
           alternateRowStyles: { fillColor: [252, 252, 252] },
           columnStyles: {
-            0: { cellWidth: 16 },
-            1: { cellWidth: 20 },
-            2: { cellWidth: 18 },
-            3: { cellWidth: 22 },
-            4: { cellWidth: 24 },
-            5: { cellWidth: 18 },
-            6: { cellWidth: 26 },
-            7: { cellWidth: 18 },
-            8: { cellWidth: 79 },
-            9: { cellWidth: 20 }
+            0: { cellWidth: 12 },
+            1: { cellWidth: 18 },
+            2: { cellWidth: 16 },
+            3: { cellWidth: 18 },
+            4: { cellWidth: 20 },
+            5: { cellWidth: 16 },
+            6: { cellWidth: 22 },
+            7: { cellWidth: 14 },
+            8: { cellWidth: contentWidth - 136 }
           }
         });
 
