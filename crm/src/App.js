@@ -487,6 +487,24 @@ const MENU_PERMISSION_KEYS = [
   'configuracoes'
 ];
 const ACCOUNTANT_RESTRICTED_MODULES = new Set(['ifood', 'food99', 'configuracoes']);
+const ENTRE_LOJAS_TRANSFER_STATUS_OPTIONS = [
+  { value: 'rascunho', label: 'Rascunho' },
+  { value: 'aguardando_conferencia', label: 'Aguardando conferência' },
+  { value: 'conferencia_sem_divergencia', label: 'Conferida sem divergência' },
+  { value: 'conferencia_com_divergencia', label: 'Conferida com divergência' },
+  { value: 'pagamento_informado', label: 'Pagamento informado' },
+  { value: 'pagamento_confirmado', label: 'Pagamento confirmado' },
+  { value: 'pagamento_contestado', label: 'Pagamento contestado' },
+  { value: 'cancelado', label: 'Cancelado' },
+  { value: 'cancelada', label: 'Cancelada' }
+];
+const ENTRE_LOJAS_TRANSFER_STATUS_VALUES = ENTRE_LOJAS_TRANSFER_STATUS_OPTIONS.map((status) => status.value);
+const ENTRE_LOJAS_PAYMENT_TAB_STATUS_VALUES = ['pagamento_informado', 'conferencia_com_divergencia', 'conferencia_sem_divergencia'];
+const ENTRE_LOJAS_HISTORY_STATUS_VALUES = ['pagamento_confirmado', 'pagamento_contestado', 'cancelado', 'cancelada'];
+const ENTRE_LOJAS_TRANSFER_STATUS_LABELS = ENTRE_LOJAS_TRANSFER_STATUS_OPTIONS.reduce((acc, status) => {
+  acc[status.value] = status.label;
+  return acc;
+}, {});
 
 const buildStoreCollectionPath = (storeId, collectionName, useLegacyPath = false) => {
   const shouldUseConfigPath = CONFIG_COLLECTIONS.has(collectionName) && !useLegacyPath;
@@ -756,6 +774,55 @@ const sanitizePermissions = (permissions, role) => {
     }
     return acc;
   }, {});
+};
+
+const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
+  const permissions = permissionsInput || getDefaultPermissionsForRole(role);
+  return {
+    'entre-lojas': {
+      statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : []
+    }
+  };
+};
+
+const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = null) => {
+  const permissions = permissionsInput || getDefaultPermissionsForRole(role);
+
+  if (!permissions?.['entre-lojas']) {
+    return { 'entre-lojas': { statuses: [] } };
+  }
+
+  const details = permissionDetails && typeof permissionDetails === 'object' ? permissionDetails : null;
+  const entreLojasDetails = details?.['entre-lojas'] || details?.entreLojas || null;
+
+  if (!entreLojasDetails) {
+    return getDefaultPermissionDetailsForRole(role, permissions);
+  }
+
+  const rawStatuses = Array.isArray(entreLojasDetails.statuses)
+    ? entreLojasDetails.statuses
+    : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []);
+
+  const validStatuses = rawStatuses
+    .map((status) => String(status || '').trim())
+    .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status));
+
+  return {
+    'entre-lojas': {
+      statuses: Array.from(new Set(validStatuses))
+    }
+  };
+};
+
+const getEntreLojasAllowedStatusesFromProfile = (profile) => {
+  if (!profile) return [];
+  const role = normalizeRole(profile.role);
+  const permissionsSource = profile.customPermissions || profile.permissions;
+  const permissions = sanitizePermissions(permissionsSource, role);
+  if (!permissions['entre-lojas']) return [];
+  const detailsSource = profile.customPermissionDetails || profile.permissionDetails;
+  const details = sanitizePermissionDetails(detailsSource, role, permissions);
+  return details['entre-lojas']?.statuses || [];
 };
 
 const ACCOUNTANT_COLLECTION_PERMISSIONS = {
@@ -4473,12 +4540,17 @@ function App() {
                                           ? sanitizePermissions(customProfileData.permissions, role)
                                           : null;
                                         const permissions = customPermissions || permissionsDefaults;
+                                        const customPermissionDetails = customProfileData
+                                          ? sanitizePermissionDetails(customProfileData.permissionDetails, role, permissions)
+                                          : null;
+                                        const permissionDetails = customPermissionDetails || getDefaultPermissionDetailsForRole(role, permissions);
 
                                         if (!customProfileSnap.exists() && role !== ROLE_ACCOUNTANT) {
                                           await setDoc(customProfileRef, {
                                             uid: authUser.uid,
                                             role,
                                             permissions: permissionsDefaults,
+                                            permissionDetails: getDefaultPermissionDetailsForRole(role, permissionsDefaults),
                                           }, { merge: true });
                                         }
                                         const userData = {
@@ -4489,6 +4561,8 @@ function App() {
                                           canAccessAllStores: role === ROLE_OWNER && lojaIds.length === 0,
                                           permissions,
                                           customPermissions,
+                                          permissionDetails,
+                                          customPermissionDetails,
                                           hasCustomProfile: Boolean(customProfileData),
                                         };
                                         setUser(userData);
@@ -7520,7 +7594,12 @@ const effectiveStoreName = useMemo(() => {
                                 role: normalizedRole,
                                 lojaIds: lojas,
                                 lojaId: lojas[0] || null,
-                                permissions: sanitizePermissions(u.permissions, normalizedRole)
+                                permissions: sanitizePermissions(u.permissions, normalizedRole),
+                                permissionDetails: sanitizePermissionDetails(
+                                    u.permissionDetails,
+                                    normalizedRole,
+                                    sanitizePermissions(u.permissions, normalizedRole)
+                                )
                             };
                         });
 
@@ -7724,17 +7803,21 @@ const effectiveStoreName = useMemo(() => {
     const getCustomPermissionsForUser = useCallback(async (userProfile) => {
         const normalizedRole = normalizeRole(userProfile?.role || ROLE_ATTENDANT);
         const fallbackPermissions = sanitizePermissions(userProfile?.permissions, normalizedRole);
+        const fallbackPermissionDetails = sanitizePermissionDetails(userProfile?.permissionDetails, normalizedRole, fallbackPermissions);
         const uid = userProfile?.uid || userProfile?.id;
 
         if (!uid) {
-            return { permissions: fallbackPermissions, hasCustomProfile: false, normalizedRole };
+            return { permissions: fallbackPermissions, permissionDetails: fallbackPermissionDetails, hasCustomProfile: false, normalizedRole };
         }
 
         try {
             const customProfileSnap = await getDoc(doc(db, 'customProfiles', uid));
             if (customProfileSnap.exists()) {
+                const customProfileData = customProfileSnap.data() || {};
+                const customPermissions = sanitizePermissions(customProfileData.permissions, normalizedRole);
                 return {
-                    permissions: sanitizePermissions(customProfileSnap.data()?.permissions, normalizedRole),
+                    permissions: customPermissions,
+                    permissionDetails: sanitizePermissionDetails(customProfileData.permissionDetails, normalizedRole, customPermissions),
                     hasCustomProfile: true,
                     normalizedRole,
                 };
@@ -7743,7 +7826,7 @@ const effectiveStoreName = useMemo(() => {
             console.error('Erro ao carregar perfil personalizado:', err);
         }
 
-        return { permissions: fallbackPermissions, hasCustomProfile: false, normalizedRole };
+        return { permissions: fallbackPermissions, permissionDetails: fallbackPermissionDetails, hasCustomProfile: false, normalizedRole };
     }, []);
 
     const buildUserFormState = useCallback(async (userToEdit = null) => {
@@ -7758,6 +7841,7 @@ const effectiveStoreName = useMemo(() => {
                 lojaId: effectiveStoreId || '',
                 lojaIds: effectiveStoreId ? [effectiveStoreId] : [],
                 permissions: getDefaultPermissionsForRole(ROLE_ATTENDANT),
+                permissionDetails: getDefaultPermissionDetailsForRole(ROLE_ATTENDANT),
                 applyCustomProfile: true,
                 uid: ''
             });
@@ -7768,7 +7852,7 @@ const effectiveStoreName = useMemo(() => {
             ? userToEdit.lojaIds
             : (userToEdit.lojaId ? [userToEdit.lojaId] : []);
 
-        const { permissions, hasCustomProfile, normalizedRole } = await getCustomPermissionsForUser(userToEdit);
+        const { permissions, permissionDetails, hasCustomProfile, normalizedRole } = await getCustomPermissionsForUser(userToEdit);
         setEditingUser(userToEdit);
         setSelectedExistingUserId(userToEdit.uid || userToEdit.id || '');
         setUserFormData({
@@ -7779,6 +7863,7 @@ const effectiveStoreName = useMemo(() => {
             lojaId: lojas[0] || '',
             lojaIds: lojas,
             permissions,
+            permissionDetails,
             applyCustomProfile: hasCustomProfile,
             uid: userToEdit.uid || userToEdit.id || ''
         });
@@ -7853,10 +7938,14 @@ const effectiveStoreName = useMemo(() => {
                 }
 
                 const sanitizedPermissions = sanitizePermissions(userFormData.permissions, selectedRole);
+                const sanitizedPermissionDetails = sanitizePermissionDetails(userFormData.permissionDetails, selectedRole, sanitizedPermissions);
                 const applyCustomProfile = Boolean(userFormData.applyCustomProfile);
                 const permissionsToPersist = applyCustomProfile
                     ? sanitizedPermissions
                     : getDefaultPermissionsForRole(selectedRole);
+                const permissionDetailsToPersist = applyCustomProfile
+                    ? sanitizedPermissionDetails
+                    : getDefaultPermissionDetailsForRole(selectedRole, permissionsToPersist);
 
                 let updatedUserId = editingUser?.uid || editingUser?.id;
 
@@ -7869,7 +7958,8 @@ const effectiveStoreName = useMemo(() => {
                         email: userFormData.email,
                         lojaId: singleStoreId || null,
                         lojaIds: lojasSelecionadas,
-                        permissions: permissionsToPersist
+                        permissions: permissionsToPersist,
+                        permissionDetails: permissionDetailsToPersist
                   });
                   updatedUserId = editingUser.uid;
                   alert('Usuário atualizado com sucesso!');
@@ -7882,7 +7972,8 @@ const effectiveStoreName = useMemo(() => {
                         role: selectedRole,
                         lojaId: singleStoreId || null,
                         lojaIds: lojasSelecionadas,
-                        permissions: permissionsToPersist
+                        permissions: permissionsToPersist,
+                        permissionDetails: permissionDetailsToPersist
                   });
                   updatedUserId = result?.data?.uid || updatedUserId;
                   alert('Usuário criado com sucesso!');
@@ -7901,6 +7992,8 @@ const effectiveStoreName = useMemo(() => {
                         ...prev,
                         permissions: permissionsToPersist,
                         customPermissions: applyCustomProfile ? permissionsToPersist : null,
+                        permissionDetails: permissionDetailsToPersist,
+                        customPermissionDetails: applyCustomProfile ? permissionDetailsToPersist : null,
                         hasCustomProfile: applyCustomProfile,
                     } : prev);
                 }
@@ -7921,7 +8014,12 @@ const effectiveStoreName = useMemo(() => {
                             role: normalizedRole,
                             lojaIds: lojas,
                             lojaId: lojas[0] || null,
-                            permissions: sanitizePermissions(u.permissions, normalizedRole)
+                            permissions: sanitizePermissions(u.permissions, normalizedRole),
+                            permissionDetails: sanitizePermissionDetails(
+                                u.permissionDetails,
+                                normalizedRole,
+                                sanitizePermissions(u.permissions, normalizedRole)
+                            )
                         };
                     });
 
@@ -8880,23 +8978,27 @@ const effectiveStoreName = useMemo(() => {
                         onChange={(e) => {
                             const newRole = normalizeRole(e.target.value);
                             if (newRole === ROLE_OWNER) {
+                                const nextPermissions = getDefaultPermissionsForRole(newRole);
                                 setUserFormData({
                                     ...userFormData,
                                     role: newRole,
                                     lojaId: '',
                                     lojaIds: userFormData.lojaIds || [],
-                                    permissions: getDefaultPermissionsForRole(newRole)
+                                    permissions: nextPermissions,
+                                    permissionDetails: getDefaultPermissionDetailsForRole(newRole, nextPermissions)
                                 });
                             } else {
                                 const roleStores = userFormData.lojaIds && userFormData.lojaIds.length
                                     ? userFormData.lojaIds
                                     : (userFormData.lojaId ? [userFormData.lojaId] : (effectiveStoreId ? [effectiveStoreId] : []));
+                                const nextPermissions = getDefaultPermissionsForRole(newRole);
                                 setUserFormData({
                                     ...userFormData,
                                     role: newRole,
                                     lojaId: roleStores[0] || '',
                                     lojaIds: roleStores,
-                                    permissions: getDefaultPermissionsForRole(newRole)
+                                    permissions: nextPermissions,
+                                    permissionDetails: getDefaultPermissionDetailsForRole(newRole, nextPermissions)
                                 });
                             }
                         }}
@@ -8972,11 +9074,18 @@ const effectiveStoreName = useMemo(() => {
                                         checked={Boolean(userFormData.applyCustomProfile)}
                                         onChange={(e) => {
                                             const useCustom = e.target.checked;
-                                            setUserFormData((prev) => ({
-                                                ...prev,
-                                                applyCustomProfile: useCustom,
-                                                permissions: useCustom ? prev.permissions : getDefaultPermissionsForRole(prev.role)
-                                            }));
+                                            setUserFormData((prev) => {
+                                                const defaultPermissions = getDefaultPermissionsForRole(prev.role);
+                                                const nextPermissions = useCustom ? prev.permissions : defaultPermissions;
+                                                return {
+                                                    ...prev,
+                                                    applyCustomProfile: useCustom,
+                                                    permissions: nextPermissions,
+                                                    permissionDetails: useCustom
+                                                        ? sanitizePermissionDetails(prev.permissionDetails, prev.role, nextPermissions)
+                                                        : getDefaultPermissionDetailsForRole(prev.role, nextPermissions)
+                                                };
+                                            });
                                         }}
                                     />
                                     Ativar perfil personalizado
@@ -8986,11 +9095,15 @@ const effectiveStoreName = useMemo(() => {
                                     variant="secondary"
                                     size="sm"
                                     title="Voltar para o padrão do papel selecionado"
-                                    onClick={() => setUserFormData({
-                                        ...userFormData,
-                                        permissions: getDefaultPermissionsForRole(userFormData.role),
-                                        applyCustomProfile: false,
-                                    })}
+                                    onClick={() => {
+                                        const nextPermissions = getDefaultPermissionsForRole(userFormData.role);
+                                        setUserFormData({
+                                            ...userFormData,
+                                            permissions: nextPermissions,
+                                            permissionDetails: getDefaultPermissionDetailsForRole(userFormData.role, nextPermissions),
+                                            applyCustomProfile: false,
+                                        });
+                                    }}
                                 >
                                     Usar padrão do papel
                                 </Button>
@@ -8999,43 +9112,136 @@ const effectiveStoreName = useMemo(() => {
                                     variant="secondary"
                                     size="sm"
                                     title="Recarrega a checklist com o padrão do papel, mantendo o perfil personalizado ativo"
-                                    onClick={() => setUserFormData({
-                                        ...userFormData,
-                                        permissions: getDefaultPermissionsForRole(userFormData.role),
-                                        applyCustomProfile: true,
-                                    })}
+                                    onClick={() => {
+                                        const nextPermissions = getDefaultPermissionsForRole(userFormData.role);
+                                        setUserFormData({
+                                            ...userFormData,
+                                            permissions: nextPermissions,
+                                            permissionDetails: getDefaultPermissionDetailsForRole(userFormData.role, nextPermissions),
+                                            applyCustomProfile: true,
+                                        });
+                                    }}
                                 >
                                     Restaurar checklist
                                 </Button>
                             </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {allMenuItems.map((item) => (
-                                <label
-                                    key={item.id}
-                                    className={`flex items-center gap-2 text-sm text-gray-700 ${!userFormData.applyCustomProfile ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                    title={`Permitir acesso ao menu "${item.label}"`}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={Boolean(userFormData.permissions?.[item.id])}
-                                        disabled={!userFormData.applyCustomProfile || (normalizeRole(userFormData.role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id))}
-                                        onChange={(e) => {
-                                            setUserFormData({
-                                                ...userFormData,
-                                                permissions: {
-                                                    ...sanitizePermissions(userFormData.permissions, userFormData.role),
-                                                    [item.id]: e.target.checked
-                                                }
-                                            });
-                                        }}
-                                    />
-                                    {item.label}
-                                    {normalizeRole(userFormData.role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id) && (
-                                        <span className="text-xs text-gray-400">(indisponível para leitura)</span>
-                                    )}
-                                </label>
-                            ))}
+                            {allMenuItems.map((item) => {
+                                const normalizedFormRole = normalizeRole(userFormData.role);
+                                const isRestrictedAccountantModule = normalizedFormRole === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id);
+                                const isEntreLojas = item.id === 'entre-lojas';
+                                const moduleChecked = Boolean(userFormData.permissions?.[item.id]);
+                                const selectedEntreLojasStatuses = sanitizePermissionDetails(
+                                    userFormData.permissionDetails,
+                                    userFormData.role,
+                                    sanitizePermissions(userFormData.permissions, userFormData.role)
+                                )['entre-lojas']?.statuses || [];
+
+                                return (
+                                    <div key={item.id} className={isEntreLojas && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
+                                        <label
+                                            className={`flex items-center gap-2 text-sm text-gray-700 ${!userFormData.applyCustomProfile ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            title={`Permitir acesso ao menu "${item.label}"`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={moduleChecked}
+                                                disabled={!userFormData.applyCustomProfile || isRestrictedAccountantModule}
+                                                onChange={(e) => {
+                                                    const nextPermissions = {
+                                                        ...sanitizePermissions(userFormData.permissions, userFormData.role),
+                                                        [item.id]: e.target.checked
+                                                    };
+                                                    setUserFormData({
+                                                        ...userFormData,
+                                                        permissions: nextPermissions,
+                                                        permissionDetails: isEntreLojas
+                                                            ? sanitizePermissionDetails(userFormData.permissionDetails, userFormData.role, nextPermissions)
+                                                            : userFormData.permissionDetails
+                                                    });
+                                                }}
+                                            />
+                                            {item.label}
+                                            {isRestrictedAccountantModule && (
+                                                <span className="text-xs text-gray-400">(indisponível para leitura)</span>
+                                            )}
+                                        </label>
+
+                                        {isEntreLojas && moduleChecked && userFormData.applyCustomProfile && (
+                                            <div className="ml-6 rounded-xl border border-pink-100 bg-white p-3 space-y-3">
+                                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-gray-800">Permissões do módulo Entre Lojas</p>
+                                                        <p className="text-xs text-gray-500">Selecione quais status de remessa este usuário pode visualizar.</p>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-lg border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                                                            onClick={() => setUserFormData((prev) => ({
+                                                                ...prev,
+                                                                permissionDetails: {
+                                                                    ...sanitizePermissionDetails(prev.permissionDetails, prev.role, prev.permissions),
+                                                                    'entre-lojas': { statuses: [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] }
+                                                                }
+                                                            }))}
+                                                        >
+                                                            Marcar todos
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="rounded-lg border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                                                            onClick={() => setUserFormData((prev) => ({
+                                                                ...prev,
+                                                                permissionDetails: {
+                                                                    ...sanitizePermissionDetails(prev.permissionDetails, prev.role, prev.permissions),
+                                                                    'entre-lojas': { statuses: [] }
+                                                                }
+                                                            }))}
+                                                        >
+                                                            Desmarcar todos
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                    {ENTRE_LOJAS_TRANSFER_STATUS_OPTIONS.map((status) => (
+                                                        <label key={status.value} className="flex items-center gap-2 text-xs text-gray-700">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedEntreLojasStatuses.includes(status.value)}
+                                                                onChange={(e) => {
+                                                                    setUserFormData((prev) => {
+                                                                        const currentPermissions = sanitizePermissions(prev.permissions, prev.role);
+                                                                        const currentDetails = sanitizePermissionDetails(prev.permissionDetails, prev.role, currentPermissions);
+                                                                        const currentStatuses = currentDetails['entre-lojas']?.statuses || [];
+                                                                        const nextStatuses = e.target.checked
+                                                                            ? Array.from(new Set([...currentStatuses, status.value]))
+                                                                            : currentStatuses.filter((itemStatus) => itemStatus !== status.value);
+                                                                        return {
+                                                                            ...prev,
+                                                                            permissionDetails: {
+                                                                                ...currentDetails,
+                                                                                'entre-lojas': { statuses: nextStatuses }
+                                                                            }
+                                                                        };
+                                                                    });
+                                                                }}
+                                                            />
+                                                            {status.label}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                {!selectedEntreLojasStatuses.length && (
+                                                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
+                                                        O usuário acessará o menu, mas não verá remessas até que pelo menos um status seja marcado.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -9943,6 +10149,16 @@ const handleSubmit = async (e) => {
     };
 
     const allowedStoreIds = useMemo(() => Array.from(new Set(userStoreIds.map(normalizeStoreId).filter(Boolean))), [userStoreIds]);
+    const allowedTransferStatuses = useMemo(() => (
+      canAccessAllTransfers
+        ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES]
+        : getEntreLojasAllowedStatusesFromProfile(user)
+    ), [canAccessAllTransfers, user]);
+    const allowedTransferStatusSet = useMemo(() => new Set(allowedTransferStatuses), [allowedTransferStatuses]);
+    const canViewTransferStatus = useCallback((transfer) => {
+      const status = String(transfer?.status || '').trim();
+      return Boolean(status && allowedTransferStatusSet.has(status));
+    }, [allowedTransferStatusSet]);
 
     const selectedStoreIdForView = useMemo(() => {
       if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) return null;
@@ -9974,12 +10190,13 @@ const handleSubmit = async (e) => {
 
     const canReadTransferForCurrentViewer = useCallback((transfer) => {
       if (!transfer) return false;
+      if (!canViewTransferStatus(transfer)) return false;
       if (isDraftHiddenForCurrentViewer(transfer)) return false;
       if (canAccessAllTransfers) return true;
       const originId = normalizeStoreId(transfer.lojaOrigemId);
       const destinationId = normalizeStoreId(transfer.lojaDestinoId);
       return allowedStoreIds.includes(originId) || allowedStoreIds.includes(destinationId);
-    }, [allowedStoreIds, canAccessAllTransfers, isDraftHiddenForCurrentViewer]);
+    }, [allowedStoreIds, canAccessAllTransfers, canViewTransferStatus, isDraftHiddenForCurrentViewer]);
 
     const parseLocalDate = (value) => {
       if (!value) return null;
@@ -10069,21 +10286,26 @@ const handleSubmit = async (e) => {
         };
       }
 
-      if (!allowedStoreIds.length) {
-        console.warn('[EntreLojas] Usuário sem lojas permitidas para Entre Lojas', { role: user?.role, userStoreIds });
+      const statusValuesForQuery = Array.from(new Set(allowedTransferStatuses.filter(Boolean)));
+
+      if (!allowedStoreIds.length || !statusValuesForQuery.length) {
+        console.warn('[EntreLojas] Usuário sem lojas ou status permitidos para Entre Lojas', {
+          role: user?.role,
+          userStoreIds,
+          allowedTransferStatuses: statusValuesForQuery
+        });
         setTransferencias([]);
         return undefined;
       }
 
-      const originDocsByChunk = new Map();
-      const destinationDocsByChunk = new Map();
-      const allowedStoreChunks = chunkArray(allowedStoreIds, 10);
+      const originDocsByQuery = new Map();
+      const destinationDocsByQuery = new Map();
 
       const mergeTransfers = () => {
         if (!isActive) return;
 
-        const originDocs = Array.from(originDocsByChunk.values()).flat();
-        const destinationDocs = Array.from(destinationDocsByChunk.values()).flat();
+        const originDocs = Array.from(originDocsByQuery.values()).flat();
+        const destinationDocs = Array.from(destinationDocsByQuery.values()).flat();
         const merged = new Map();
 
         [...originDocs, ...destinationDocs].forEach((docSnap) => {
@@ -10103,7 +10325,7 @@ const handleSubmit = async (e) => {
           quantidadeOrigem: originDocs.length,
           quantidadeDestino: destinationDocs.length,
           quantidadeFinal: limitedRows.length,
-          chunks: allowedStoreChunks.length,
+          consultas: originDocsByQuery.size + destinationDocsByQuery.size,
           transferencias: limitedRows.map((item) => ({
             id: item.id,
             numero: item.numero,
@@ -10116,44 +10338,63 @@ const handleSubmit = async (e) => {
         setTransferencias(limitedRows);
       };
 
-      allowedStoreChunks.forEach((storeChunk, chunkIndex) => {
-        const originQuery = query(transfersRef, where('lojaOrigemId', 'in', storeChunk), limit(250));
-        const destinationQuery = query(transfersRef, where('lojaDestinoId', 'in', storeChunk), limit(250));
+      allowedStoreIds.forEach((storeId) => {
+        statusValuesForQuery.forEach((status) => {
+          const originKey = `origem:${storeId}:${status}`;
+          const originQuery = query(
+            transfersRef,
+            where('lojaOrigemId', '==', storeId),
+            where('status', '==', status),
+            limit(250)
+          );
 
-        const unsubscribeOrigin = onSnapshot(originQuery, (snapshot) => {
-          originDocsByChunk.set(chunkIndex, snapshot.docs);
-          entreLojasLog('Resultado query origem', {
-            chunkIndex,
-            lojas: storeChunk,
-            quantidade: snapshot.docs.length,
-            ids: snapshot.docs.map((docSnap) => docSnap.id)
+          const unsubscribeOrigin = onSnapshot(originQuery, (snapshot) => {
+            originDocsByQuery.set(originKey, snapshot.docs);
+            entreLojasLog('Resultado query origem', {
+              loja: storeId,
+              status,
+              quantidade: snapshot.docs.length,
+              ids: snapshot.docs.map((docSnap) => docSnap.id)
+            });
+            mergeTransfers();
+          }, (error) => {
+            console.error('[EntreLojas] Erro ao carregar transferências por origem:', error);
           });
-          mergeTransfers();
-        }, (error) => {
-          console.error('[EntreLojas] Erro ao carregar transferências por origem:', error);
-        });
 
-        const unsubscribeDestination = onSnapshot(destinationQuery, (snapshot) => {
-          destinationDocsByChunk.set(chunkIndex, snapshot.docs);
-          entreLojasLog('Resultado query destino', {
-            chunkIndex,
-            lojas: storeChunk,
-            quantidade: snapshot.docs.length,
-            ids: snapshot.docs.map((docSnap) => docSnap.id)
+          unsubscribes.push(unsubscribeOrigin);
+
+          if (status === 'rascunho') return;
+
+          const destinationKey = `destino:${storeId}:${status}`;
+          const destinationQuery = query(
+            transfersRef,
+            where('lojaDestinoId', '==', storeId),
+            where('status', '==', status),
+            limit(250)
+          );
+
+          const unsubscribeDestination = onSnapshot(destinationQuery, (snapshot) => {
+            destinationDocsByQuery.set(destinationKey, snapshot.docs);
+            entreLojasLog('Resultado query destino', {
+              loja: storeId,
+              status,
+              quantidade: snapshot.docs.length,
+              ids: snapshot.docs.map((docSnap) => docSnap.id)
+            });
+            mergeTransfers();
+          }, (error) => {
+            console.error('[EntreLojas] Erro ao carregar transferências por destino:', error);
           });
-          mergeTransfers();
-        }, (error) => {
-          console.error('[EntreLojas] Erro ao carregar transferências por destino:', error);
-        });
 
-        unsubscribes.push(unsubscribeOrigin, unsubscribeDestination);
+          unsubscribes.push(unsubscribeDestination);
+        });
       });
 
       return () => {
         isActive = false;
         unsubscribes.forEach((unsubscribe) => unsubscribe());
       };
-    }, [allowedOriginStoreIds, allowedStoreIds, availableStores, canAccessAllTransfers, canReadTransferForCurrentViewer, currentStoreIdForDisplay, selectedStoreId, selectedStoreIdForView, storeInfoMap, user, userStoreIds]);
+    }, [allowedOriginStoreIds, allowedStoreIds, allowedTransferStatuses, availableStores, canAccessAllTransfers, canReadTransferForCurrentViewer, currentStoreIdForDisplay, selectedStoreId, selectedStoreIdForView, storeInfoMap, user, userStoreIds]);
 
     useEffect(() => {
       if (!user) {
@@ -10436,16 +10677,35 @@ const handleSubmit = async (e) => {
 
     const formatMoney = (value) => `R$ ${(Number(value) || 0).toFixed(2)}`;
     const formatDate = (value) => parseLocalDate(value)?.toLocaleDateString('pt-BR') || '-';
-    const statusLabelMap = {
-      rascunho: 'Rascunho',
-      aguardando_conferencia: 'Aguardando conferência',
-      conferencia_sem_divergencia: 'Conferida sem divergência',
-      conferencia_com_divergencia: 'Conferida com divergência',
-      pagamento_informado: 'Pagamento informado',
-      pagamento_confirmado: 'Pagamento confirmado',
-      pagamento_contestado: 'Pagamento contestado',
-      cancelado: 'Cancelado'
-    };
+    const statusLabelMap = ENTRE_LOJAS_TRANSFER_STATUS_LABELS;
+    const visibleTransferStatusOptions = useMemo(
+      () => ENTRE_LOJAS_TRANSFER_STATUS_OPTIONS.filter((status) => allowedTransferStatusSet.has(status.value)),
+      [allowedTransferStatusSet]
+    );
+    const transferTabOptions = useMemo(() => ([
+      { id: 'todas', label: 'Todas' },
+      { id: 'enviadas', label: 'Enviadas' },
+      { id: 'recebidas', label: 'Recebidas' },
+      allowedTransferStatusSet.has('aguardando_conferencia')
+        ? { id: 'aguardando_conferencia', label: 'Aguardando Conferência' }
+        : null,
+      ENTRE_LOJAS_PAYMENT_TAB_STATUS_VALUES.some((status) => allowedTransferStatusSet.has(status))
+        ? { id: 'aguardando_pagamento', label: 'Aguardando Pagamento' }
+        : null,
+      ENTRE_LOJAS_HISTORY_STATUS_VALUES.some((status) => allowedTransferStatusSet.has(status))
+        ? { id: 'historico', label: 'Histórico' }
+        : null
+    ].filter(Boolean)), [allowedTransferStatusSet]);
+    useEffect(() => {
+      if (!transferTabOptions.some((tab) => tab.id === activeTab)) {
+        setActiveTab('todas');
+      }
+    }, [activeTab, transferTabOptions]);
+    useEffect(() => {
+      if (statusFilter !== 'todos' && !allowedTransferStatusSet.has(statusFilter)) {
+        setStatusFilter('todos');
+      }
+    }, [allowedTransferStatusSet, statusFilter]);
     const statusClassMap = {
       pagamento_confirmado: 'bg-green-100 text-green-700',
       pagamento_informado: 'bg-orange-100 text-orange-700',
@@ -11796,8 +12056,8 @@ const handleSubmit = async (e) => {
           return false;
         }
         if (activeTab === 'aguardando_conferencia' && item.status !== 'aguardando_conferencia') return false;
-        if (activeTab === 'aguardando_pagamento' && !['pagamento_informado', 'conferencia_com_divergencia', 'conferencia_sem_divergencia'].includes(item.status)) return false;
-        if (activeTab === 'historico' && !['pagamento_confirmado', 'pagamento_contestado', 'cancelado', 'cancelada'].includes(item.status)) return false;
+        if (activeTab === 'aguardando_pagamento' && !ENTRE_LOJAS_PAYMENT_TAB_STATUS_VALUES.includes(item.status)) return false;
+        if (activeTab === 'historico' && !ENTRE_LOJAS_HISTORY_STATUS_VALUES.includes(item.status)) return false;
         if (statusFilter !== 'todos' && item.status !== statusFilter) return false;
         if (origemFilter !== 'todos' && item.lojaOrigemId !== origemFilter) return false;
         if (destinoFilter !== 'todos' && item.lojaDestinoId !== destinoFilter) return false;
@@ -11985,14 +12245,7 @@ const handleSubmit = async (e) => {
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex flex-wrap gap-2">
-              {[
-                { id: 'todas', label: 'Todas' },
-                { id: 'enviadas', label: 'Enviadas' },
-                { id: 'recebidas', label: 'Recebidas' },
-                { id: 'aguardando_conferencia', label: 'Aguardando Conferência' },
-                { id: 'aguardando_pagamento', label: 'Aguardando Pagamento' },
-                { id: 'historico', label: 'Histórico' }
-              ].map((tab) => (
+              {transferTabOptions.map((tab) => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-3 py-2 text-sm rounded-lg ${activeTab === tab.id ? 'bg-pink-100 text-pink-700' : 'bg-gray-50 text-gray-600'}`}>{tab.label}</button>
               ))}
             </div>
@@ -12056,7 +12309,7 @@ const handleSubmit = async (e) => {
             </Select>
             <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="todos">Todos status</option>
-              {Object.keys(statusLabelMap).map((status) => <option key={status} value={status}>{statusLabelMap[status]}</option>)}
+              {visibleTransferStatusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
             </Select>
             <Input type="date" value={startDateFilter} onChange={(e) => setStartDateFilter(e.target.value)} />
             <Input type="date" value={endDateFilter} onChange={(e) => setEndDateFilter(e.target.value)} />

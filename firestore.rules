@@ -53,9 +53,41 @@ function currentUserHasStore(lojaId) {
     || (currentUserData().keys().hasAny(['lojaIds']) && lojaId in currentUserData().lojaIds);
 }
 
+function validTransferenciaEntreLojasStatuses() {
+  return [
+    'rascunho',
+    'aguardando_conferencia',
+    'conferencia_sem_divergencia',
+    'conferencia_com_divergencia',
+    'pagamento_informado',
+    'pagamento_confirmado',
+    'pagamento_contestado',
+    'cancelado',
+    'cancelada'
+  ];
+}
+
+function currentUserHasEntreLojasModule() {
+  return isOwnerUser()
+    || currentUserData().get('permissions', {}).get('entre-lojas', true);
+}
+
+function currentUserHasTransferenciaStatus(status) {
+  return isOwnerUser()
+    || (
+      currentUserHasEntreLojasModule()
+      && (
+        !currentUserData().get('permissionDetails', {}).keys().hasAny(['entre-lojas'])
+        || status in currentUserData().get('permissionDetails', {}).get('entre-lojas', {}).get('statuses', validTransferenciaEntreLojasStatuses())
+      )
+    );
+}
+
 function canReadTransferenciaEntreLojasDoc() {
   return isSignedIn()
     && (!isReadOnlyAccountant() || accountantHasModule('entre-lojas'))
+    && currentUserHasEntreLojasModule()
+    && currentUserHasTransferenciaStatus(resource.data.status)
     && (
       isOwnerUser()
       || currentUserHasStore(resource.data.lojaOrigemId)
@@ -293,8 +325,7 @@ match /customProfiles/{userId} {
 
 match /transferenciasEntreLojas/{transferenciaId} {
   allow get: if canReadTransferenciaEntreLojasDoc();
-  allow list: if isSignedIn()
-    && (!isReadOnlyAccountant() || accountantHasModule('entre-lojas'));
+  allow list: if canReadTransferenciaEntreLojasDoc();
   allow create, update, delete: if canStaffWrite();
 }
 

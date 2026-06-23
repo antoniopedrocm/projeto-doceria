@@ -49,6 +49,17 @@ const MENU_PERMISSION_KEYS = [
   'configuracoes',
 ];
 const ACCOUNTANT_RESTRICTED_MODULES = new Set(['ifood', 'food99', 'configuracoes']);
+const ENTRE_LOJAS_TRANSFER_STATUS_VALUES = [
+  'rascunho',
+  'aguardando_conferencia',
+  'conferencia_sem_divergencia',
+  'conferencia_com_divergencia',
+  'pagamento_informado',
+  'pagamento_confirmado',
+  'pagamento_contestado',
+  'cancelado',
+  'cancelada',
+];
 
 const normalizeRole = (role) => {
   if (!role || typeof role !== 'string') return ROLE_ATTENDANT;
@@ -124,6 +135,7 @@ const getDefaultPermissionsForRole = (role) => {
     'pagina-inicial': true,
     clientes: true,
     pedidos: true,
+    'entre-lojas': true,
     agenda: true,
     'meu-espaco': true,
   };
@@ -149,15 +161,53 @@ const sanitizePermissions = (permissions, role) => {
   }, {});
 };
 
-const ensureCustomProfile = async (uid, role, permissionsInput = null) => {
+const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
+  const permissions = permissionsInput || getDefaultPermissionsForRole(role);
+  return {
+    'entre-lojas': {
+      statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : [],
+    },
+  };
+};
+
+const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = null) => {
+  const permissions = permissionsInput || getDefaultPermissionsForRole(role);
+
+  if (!permissions?.['entre-lojas']) {
+    return {'entre-lojas': {statuses: []}};
+  }
+
+  const details = permissionDetails && typeof permissionDetails === 'object' ? permissionDetails : null;
+  const entreLojasDetails = details?.['entre-lojas'] || details?.entreLojas || null;
+
+  if (!entreLojasDetails) {
+    return getDefaultPermissionDetailsForRole(role, permissions);
+  }
+
+  const rawStatuses = Array.isArray(entreLojasDetails.statuses)
+    ? entreLojasDetails.statuses
+    : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []);
+
+  const statuses = Array.from(new Set(
+      rawStatuses
+          .map((status) => String(status || '').trim())
+          .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status)),
+  ));
+
+  return {'entre-lojas': {statuses}};
+};
+
+const ensureCustomProfile = async (uid, role, permissionsInput = null, permissionDetailsInput = null) => {
   const permissions = sanitizePermissions(permissionsInput, role);
+  const permissionDetails = sanitizePermissionDetails(permissionDetailsInput, role, permissions);
   await db.collection('customProfiles').doc(uid).set({
     uid,
     permissions,
+    permissionDetails,
     role,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   }, {merge: true});
-  return permissions;
+  return {permissions, permissionDetails};
 };
 
 const getUserPermissions = async (uid, role) => {
@@ -165,11 +215,13 @@ const getUserPermissions = async (uid, role) => {
   if (snap.exists) {
     const data = snap.data() || {};
     const sanitized = sanitizePermissions(data.permissions, role);
-    await ensureCustomProfile(uid, role, sanitized);
+    const permissionDetails = sanitizePermissionDetails(data.permissionDetails, role, sanitized);
+    await ensureCustomProfile(uid, role, sanitized, permissionDetails);
     return sanitized;
   }
 
-  return ensureCustomProfile(uid, role);
+  const ensured = await ensureCustomProfile(uid, role);
+  return ensured.permissions;
 };
 
 const extractStoreIds = (profile) => {
@@ -1680,12 +1732,16 @@ exports.listAllUsers = onCall(async (request) => {
                 : (storedProfile?.role ? normalizeRole(storedProfile.role) : ROLE_CLIENT);
             const lojaIds = extractStoreIds(firestoreData);
             const lojaId = lojaIds[0] || null;
+            const ensuredProfile = storedProfile ? null : await ensureCustomProfile(userRecord.uid, role);
             const permissions = storedProfile
                 ? sanitizePermissions(storedProfile.permissions, role)
-                : await ensureCustomProfile(userRecord.uid, role);
+                : ensuredProfile.permissions;
+            const permissionDetails = storedProfile
+                ? sanitizePermissionDetails(storedProfile.permissionDetails || firestoreData.permissionDetails, role, permissions)
+                : ensuredProfile.permissionDetails;
 
             if (!storedProfile) {
-                customProfiles[userRecord.uid] = {permissions};
+                customProfiles[userRecord.uid] = {permissions, permissionDetails};
             }
 
             return {
@@ -1696,6 +1752,7 @@ exports.listAllUsers = onCall(async (request) => {
                 lojaId,
                 lojaIds,
                 permissions,
+                permissionDetails,
             };
         }));
 
@@ -1723,7 +1780,16 @@ exports.listAllUsers = onCall(async (request) => {
 // Cria um novo usuário
 exports.createUser = onCall(async (request) => {
     const requester = await verifyManagementAccess(request.auth?.uid);
-    const {email, senha, nome, role, lojaId, lojaIds = [], permissions: requestedPermissions = null} = request.data;
+    const {
+        email,
+        senha,
+        nome,
+        role,
+        lojaId,
+        lojaIds = [],
+        permissions: requestedPermissions = null,
+        permissionDetails: requestedPermissionDetails = null,
+    } = request.data;
     try {
 		if (!email || !senha || !nome) {
             throw new HttpsError("invalid-argument", "Email, senha e nome são obrigatórios.");
@@ -1759,7 +1825,12 @@ exports.createUser = onCall(async (request) => {
             password: senha,
             displayName: nome,
         });
-        const permissions = await ensureCustomProfile(userRecord.uid, normalizedRole, requestedPermissions);
+        const {permissions, permissionDetails} = await ensureCustomProfile(
+            userRecord.uid,
+            normalizedRole,
+            requestedPermissions,
+            requestedPermissionDetails,
+        );
 
         await db.collection("users").doc(userRecord.uid).set({
             email,
@@ -1768,6 +1839,7 @@ exports.createUser = onCall(async (request) => {
             lojaId: targetStores[0] || null,
             lojaIds: targetStores,
             permissions,
+            permissionDetails,
         });
         return {uid: userRecord.uid, message: "Usuário criado com sucesso!"};
     } catch (error) {
@@ -1780,7 +1852,16 @@ exports.createUser = onCall(async (request) => {
 exports.updateUser = onCall(async (request) => {
 
     const requester = await verifyManagementAccess(request.auth?.uid);
-    const { uid, nome, role, email, lojaId, lojaIds = [], permissions: requestedPermissions = null } = request.data;
+    const {
+        uid,
+        nome,
+        role,
+        email,
+        lojaId,
+        lojaIds = [],
+        permissions: requestedPermissions = null,
+        permissionDetails: requestedPermissionDetails = null,
+    } = request.data;
 
     if (!uid || !nome || !role || !email) {
         throw new HttpsError("invalid-argument", "Dados incompletos. UID, nome, role e email são obrigatórios.");
@@ -1836,7 +1917,12 @@ exports.updateUser = onCall(async (request) => {
         await auth.updateUser(uid, authUpdatePayload);
 
         const existingPermissions = await getUserPermissions(uid, existingRole);
-        const permissions = await ensureCustomProfile(uid, normalizedRole, requestedPermissions || existingPermissions);
+        const {permissions, permissionDetails} = await ensureCustomProfile(
+            uid,
+            normalizedRole,
+            requestedPermissions || existingPermissions,
+            requestedPermissionDetails,
+        );
 
         // **CORREÇÃO APLICADA AQUI**
         // Troca `update` por `set` com `merge: true` para evitar erros
@@ -1845,9 +1931,10 @@ exports.updateUser = onCall(async (request) => {
             nome: nome,
             role: normalizedRole,
             email: email,
-                        lojaId: targetStores[0] || null,
+            lojaId: targetStores[0] || null,
             lojaIds: targetStores,
             permissions,
+            permissionDetails,
         }, { merge: true });
 
         return { message: "Usuário atualizado com sucesso!" };
