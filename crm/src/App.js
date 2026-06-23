@@ -4915,7 +4915,7 @@ function App() {
     );
   };
 
-  const MeuEspaco = ({ user, resolveActiveStoreForWrite, currentStoreIdForDisplay }) => {
+  const MeuEspaco = ({ user, resolveActiveStoreForWrite, currentStoreIdForDisplay, storeInfoMap = {} }) => {
     const now = new Date();
     const initialDay = toDateInputValue(now);
     const initialMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -4960,6 +4960,7 @@ function App() {
     const isManager = user ? [ROLE_OWNER, ROLE_MANAGER].includes(user.role) : false;
     const userId = user?.auth?.uid || '';
     const userName = user?.auth?.displayName || user?.auth?.email || 'Gestor';
+    const activeStoreInfo = storeInfoMap[currentStoreIdForDisplay] || {};
     const todayKey = toDateInputValue(new Date());
     const activeDayFilter = recordFilterMode === 'today' ? todayKey : (recordFilterMode === 'day' ? selectedDay : '');
     const recordsQueryMonth = useMemo(() => {
@@ -5458,23 +5459,25 @@ function App() {
         const contentWidth = pageWidth - (margin * 2);
         const emittedAt = new Date().toLocaleString('pt-BR');
         const monthLabel = getPointSheetMonthLabel();
-        const companyName = companyInfo.nome || currentStoreIdForDisplay || 'Empresa';
-        const companyAddress = formatCompanyAddressForPointSheet(companyInfo.endereco);
+        const companyName = companyInfo.nome || activeStoreInfo.nome || activeStoreInfo.razaoSocial || activeStoreInfo.nomeFantasia || currentStoreIdForDisplay || 'Empresa';
+        const companyAddress = formatCompanyAddressForPointSheet(companyInfo.endereco || activeStoreInfo.endereco || activeStoreInfo.address || activeStoreInfo.enderecoCompleto);
+        const companyCnpj = companyInfo.cnpj || activeStoreInfo.cnpj || activeStoreInfo.documento || '';
+        const companyActivity = companyInfo.atividade || activeStoreInfo.atividade || activeStoreInfo.atividadeEconomica || '';
+        const companyWorkHours = companyInfo.horarioTrabalho || activeStoreInfo.horarioTrabalho || activeStoreInfo.horarioFuncionamento || '';
 
         const setFont = (size = 8, style = 'normal') => {
           doc.setFont('helvetica', style);
           doc.setFontSize(size);
+          doc.setTextColor(20, 20, 20);
         };
         const drawLine = (y) => {
           doc.setLineWidth(0.15);
+          doc.setDrawColor(80, 80, 80);
           doc.line(margin, y, pageWidth - margin, y);
         };
         const labelValue = (label, value, x, y, width) => {
-          setFont(7, 'bold');
-          doc.text(`${label}:`, x, y);
           setFont(7);
-          const labelWidth = doc.getTextWidth(`${label}: `);
-          doc.text(doc.splitTextToSize(String(value || '-'), width - labelWidth), x + labelWidth, y);
+          doc.text(doc.splitTextToSize(`${label}: ${String(value || '-')}`, width), x, y);
         };
         const pointTableColumns = [
           { label: 'Dia Sem', width: 12 },
@@ -5493,9 +5496,12 @@ function App() {
           setFont(5.6, 'bold');
           doc.setDrawColor(190, 190, 190);
           doc.setLineWidth(0.1);
-          doc.setFillColor(245, 245, 245);
           pointTableColumns.forEach((column) => {
-            doc.rect(x, startY, column.width, headerHeight, 'FD');
+            doc.setFillColor(245, 245, 245);
+            doc.rect(x, startY, column.width, headerHeight, 'F');
+            doc.setDrawColor(190, 190, 190);
+            doc.rect(x, startY, column.width, headerHeight, 'S');
+            doc.setTextColor(20, 20, 20);
             const headerLines = doc.splitTextToSize(column.label, column.width - 2);
             doc.text(headerLines, x + 1, startY + 2.6);
             x += column.width;
@@ -5520,14 +5526,13 @@ function App() {
             setFont(5.6);
             doc.setDrawColor(190, 190, 190);
             doc.setLineWidth(0.1);
-            if (rowIndex % 2 === 1) {
-              doc.setFillColor(252, 252, 252);
-            } else {
-              doc.setFillColor(255, 255, 255);
-            }
             cellLines.forEach((lines, index) => {
               const column = pointTableColumns[index];
-              doc.rect(x, y, column.width, rowHeight, 'FD');
+              doc.setFillColor(rowIndex % 2 === 1 ? 252 : 255, rowIndex % 2 === 1 ? 252 : 255, rowIndex % 2 === 1 ? 252 : 255);
+              doc.rect(x, y, column.width, rowHeight, 'F');
+              doc.setDrawColor(190, 190, 190);
+              doc.rect(x, y, column.width, rowHeight, 'S');
+              doc.setTextColor(20, 20, 20);
               doc.text(lines, x + 1, y + 3.4);
               x += column.width;
             });
@@ -5548,9 +5553,9 @@ function App() {
         labelValue('Empresa', companyName, margin, 28, 145);
         labelValue('Mês/Ano Competência', monthLabel, margin + 108, 28, 86);
         labelValue('Endereço', companyAddress, margin, 34, 100);
-        labelValue('CNPJ', companyInfo.cnpj || '-', margin + 108, 34, 86);
-        labelValue('Hor. de Trab.', companyInfo.horarioTrabalho || '-', margin, 40, 100);
-        labelValue('Atividade Econômica', companyInfo.atividade || '-', margin + 108, 40, 86);
+        labelValue('CNPJ', companyCnpj || '-', margin + 108, 34, 86);
+        labelValue('Hor. de Trab.', companyWorkHours || '-', margin, 40, 100);
+        labelValue('Atividade Econômica', companyActivity || '-', margin + 108, 40, 86);
         drawLine(45);
 
         labelValue('Funcionário', employee.name, margin, 51, 150);
@@ -16401,6 +16406,7 @@ const handleSubmit = async (e) => {
           user={user}
           resolveActiveStoreForWrite={resolveActiveStoreForWrite}
           currentStoreIdForDisplay={currentStoreIdForDisplay}
+          storeInfoMap={storeInfoMap}
         />
       ) : <PaginaInicial />;
       case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
