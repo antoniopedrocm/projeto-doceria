@@ -5452,9 +5452,6 @@ function App() {
         const overtimeToPay = Math.max(balanceMinutes, 0);
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-        if (typeof doc.autoTable !== 'function') {
-          throw new Error('Não foi possível carregar o layout de tabela do PDF. Atualize a página e tente novamente.');
-        }
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 8;
@@ -5479,6 +5476,66 @@ function App() {
           const labelWidth = doc.getTextWidth(`${label}: `);
           doc.text(doc.splitTextToSize(String(value || '-'), width - labelWidth), x + labelWidth, y);
         };
+        const pointTableColumns = [
+          { label: 'Dia Sem', width: 12 },
+          { label: 'Data', width: 18 },
+          { label: 'Entrada', width: 16 },
+          { label: 'Saída almoço', width: 18 },
+          { label: 'Retorno almoço', width: 20 },
+          { label: 'Saída', width: 16 },
+          { label: 'Irregularidade', width: 22 },
+          { label: 'Qtde', width: 14 },
+          { label: 'Justificativa', width: contentWidth - 136 },
+        ];
+        const drawPointTableHeader = (startY) => {
+          let x = margin;
+          const headerHeight = 6;
+          setFont(5.6, 'bold');
+          doc.setDrawColor(190, 190, 190);
+          doc.setLineWidth(0.1);
+          doc.setFillColor(245, 245, 245);
+          pointTableColumns.forEach((column) => {
+            doc.rect(x, startY, column.width, headerHeight, 'FD');
+            const headerLines = doc.splitTextToSize(column.label, column.width - 2);
+            doc.text(headerLines, x + 1, startY + 2.6);
+            x += column.width;
+          });
+          return startY + headerHeight;
+        };
+        const drawPointTable = (startY) => {
+          let y = drawPointTableHeader(startY);
+          const bottomLimit = pageHeight - 14;
+          const lineHeight = 2.7;
+          const minRowHeight = 5.6;
+
+          rows.forEach((row, rowIndex) => {
+            const cellLines = row.map((value, index) => doc.splitTextToSize(String(value || '-'), pointTableColumns[index].width - 2));
+            const rowHeight = Math.max(minRowHeight, ...cellLines.map((lines) => (lines.length * lineHeight) + 2));
+            if (y + rowHeight > bottomLimit) {
+              doc.addPage();
+              y = drawPointTableHeader(margin);
+            }
+
+            let x = margin;
+            setFont(5.6);
+            doc.setDrawColor(190, 190, 190);
+            doc.setLineWidth(0.1);
+            if (rowIndex % 2 === 1) {
+              doc.setFillColor(252, 252, 252);
+            } else {
+              doc.setFillColor(255, 255, 255);
+            }
+            cellLines.forEach((lines, index) => {
+              const column = pointTableColumns[index];
+              doc.rect(x, y, column.width, rowHeight, 'FD');
+              doc.text(lines, x + 1, y + 3.4);
+              x += column.width;
+            });
+            y += rowHeight;
+          });
+
+          return y;
+        };
 
         setFont(11, 'bold');
         doc.text('CARTÃO DE PONTO', pageWidth / 2, 10, { align: 'center' });
@@ -5502,38 +5559,7 @@ function App() {
         if (employee.email) labelValue('E-mail', employee.email, margin + 70, 57, 120);
         drawLine(62);
 
-        doc.autoTable({
-          startY: 65,
-          head: [[
-            'Dia Sem',
-            'Data',
-            'Entrada',
-            'Saída almoço',
-            'Retorno almoço',
-            'Saída',
-            'Irregularidade',
-            'Qtde',
-            'Justificativa'
-          ]],
-          body: rows,
-          margin: { left: margin, right: margin },
-          styles: { fontSize: 5.8, cellPadding: 0.8, lineColor: [190, 190, 190], lineWidth: 0.1, textColor: [20, 20, 20], overflow: 'linebreak' },
-          headStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: 'bold' },
-          alternateRowStyles: { fillColor: [252, 252, 252] },
-          columnStyles: {
-            0: { cellWidth: 12 },
-            1: { cellWidth: 18 },
-            2: { cellWidth: 16 },
-            3: { cellWidth: 18 },
-            4: { cellWidth: 20 },
-            5: { cellWidth: 16 },
-            6: { cellWidth: 22 },
-            7: { cellWidth: 14 },
-            8: { cellWidth: contentWidth - 136 }
-          }
-        });
-
-        let y = (doc.lastAutoTable?.finalY || 160) + 5;
+        let y = drawPointTable(65) + 5;
         if (y > pageHeight - 38) {
           doc.addPage();
           y = margin;
