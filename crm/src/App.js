@@ -4532,6 +4532,15 @@ function App() {
 
                                         const role = normalizeRole(profile.role);
                                         const lojaIds = extractStoreIdsFromProfile(profile);
+                                        if (role === ROLE_CLIENT) {
+                                          await signOut(auth);
+                                          setUser(null);
+                                          setLoginError('Perfil Cliente não pode acessar a aplicação administrativa.');
+                                          setShowLogin(true);
+                                          setCurrentPage('pagina-inicial');
+                                          return;
+                                        }
+
                                         const permissionsDefaults = getDefaultPermissionsForRole(role);
                                         const customProfileRef = doc(db, "customProfiles", authUser.uid);
                                         const customProfileSnap = await getDoc(customProfileRef);

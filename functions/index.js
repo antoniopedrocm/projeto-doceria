@@ -270,6 +270,32 @@ const verifyManagementAccess = async (uid) => {
   throw new HttpsError('permission-denied', 'Você não tem permissão para realizar esta ação.');
 };
 
+const assertNotManagingSelf = (requesterUid, targetUid) => {
+  if (targetUid && requesterUid === targetUid) {
+    throw new HttpsError('permission-denied', 'Você não pode alterar o próprio perfil ou permissões.');
+  }
+};
+
+const grantsOwnerEquivalentPermissions = (role, permissionsInput, targetStores = []) => {
+  if (normalizeRole(role) === ROLE_OWNER) return true;
+  if (!permissionsInput || typeof permissionsInput !== 'object') return false;
+  const sanitized = sanitizePermissions(permissionsInput, role);
+  return !targetStores.length && MENU_PERMISSION_KEYS.every((permission) => sanitized[permission] === true);
+};
+
+const assertManagerCannotGrantOwnerAccess = (requester, targetRole, permissionsInput, targetStores = []) => {
+  if (requester.role !== ROLE_MANAGER) return;
+  if (normalizeRole(targetRole) === ROLE_OWNER || grantsOwnerEquivalentPermissions(targetRole, permissionsInput, targetStores)) {
+    throw new HttpsError('permission-denied', 'Gerentes não podem conceder perfil ou permissões de dono.');
+  }
+};
+
+const rethrowHttpsError = (error) => {
+  if (error instanceof HttpsError) {
+    throw error;
+  }
+};
+
 const verifyStoreReadAccess = async (uid) => {
   if (!uid) {
     throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
@@ -1820,6 +1846,8 @@ exports.createUser = onCall(async (request) => {
                 throw new HttpsError("permission-denied", "Você não pode criar usuários para outras lojas.");
             }
         }
+        assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
+
         const userRecord = await auth.createUser({
             email,
             password: senha,
@@ -1843,6 +1871,7 @@ exports.createUser = onCall(async (request) => {
         });
         return {uid: userRecord.uid, message: "Usuário criado com sucesso!"};
     } catch (error) {
+        rethrowHttpsError(error);
         logger.error("Erro ao criar usuário:", error);
         throw new HttpsError("internal", `Erro ao criar usuário: ${error.message}`);
     }
@@ -1866,6 +1895,8 @@ exports.updateUser = onCall(async (request) => {
     if (!uid || !nome || !role || !email) {
         throw new HttpsError("invalid-argument", "Dados incompletos. UID, nome, role e email são obrigatórios.");
     }
+
+    assertNotManagingSelf(request.auth?.uid, uid);
 
     try {
 
@@ -1905,6 +1936,8 @@ exports.updateUser = onCall(async (request) => {
             }
         }
 
+        assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
+
         const authUpdatePayload = {
             displayName: nome,
         };
@@ -1939,6 +1972,7 @@ exports.updateUser = onCall(async (request) => {
 
         return { message: "Usuário atualizado com sucesso!" };
     } catch (error) {
+        rethrowHttpsError(error);
         logger.error("Erro detalhado ao atualizar usuário:", {
             code: error.code,
             message: error.message,
@@ -1959,6 +1993,8 @@ exports.updateUser = onCall(async (request) => {
 exports.deleteUser = onCall(async (request) => {
     const requester = await verifyManagementAccess(request.auth?.uid);
     const {uid} = request.data;
+    assertNotManagingSelf(request.auth?.uid, uid);
+
     try {
 		const targetProfile = await getUserProfile(uid);
         const targetStores = extractStoreIds(targetProfile);
@@ -1978,6 +2014,7 @@ exports.deleteUser = onCall(async (request) => {
         await db.collection('customProfiles').doc(uid).delete();
         return {message: "Usuário deletado com sucesso!"};
     } catch (error) {
+        rethrowHttpsError(error);
         logger.error("Erro ao deletar usuário:", error);
         throw new HttpsError("internal", "Não foi possível deletar o usuário.");
     }
@@ -1987,6 +2024,8 @@ exports.deleteUser = onCall(async (request) => {
 exports.updateUserPassword = onCall(async (request) => {
     const requester = await verifyManagementAccess(request.auth?.uid);
     const {uid, newPassword} = request.data;
+    assertNotManagingSelf(request.auth?.uid, uid);
+
     try {
 		const targetProfile = await getUserProfile(uid);
         const targetRole = normalizeRole(targetProfile.role);
@@ -2002,6 +2041,7 @@ exports.updateUserPassword = onCall(async (request) => {
         await auth.updateUser(uid, {password: newPassword});
         return {message: "Senha alterada com sucesso!"};
     } catch (error) {
+        rethrowHttpsError(error);
         logger.error("Erro ao alterar senha:", error);
         throw new HttpsError("internal", "Não foi possível alterar a senha.");
     }
