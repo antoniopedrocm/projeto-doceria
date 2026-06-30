@@ -36,6 +36,37 @@ function isOwnerUser() {
   return isSignedIn() && currentUserData().role == 'dono';
 }
 
+function isEntreLojasOwnerUser() {
+  return isOwnerUser()
+    || (
+      isSignedIn()
+      && currentUserData().role in [
+        'Dono',
+        'DONO',
+        'owner',
+        'Owner',
+        'admin',
+        'Admin',
+        'adm',
+        'Adm',
+        'administrador',
+        'Administrador',
+        'administradora',
+        'Administradora',
+        'administrador_master',
+        'Administrador Master',
+        'administradora_master',
+        'Administradora Master',
+        'admin_master',
+        'Admin Master',
+        'master',
+        'Master',
+        'superadmin',
+        'Superadmin'
+      ]
+    );
+}
+
 function canManageStorePoints(lojaId) {
   return isSignedIn()
     && !isReadOnlyAccountant()
@@ -68,12 +99,12 @@ function validTransferenciaEntreLojasStatuses() {
 }
 
 function currentUserHasEntreLojasModule() {
-  return isOwnerUser()
+  return isEntreLojasOwnerUser()
     || currentUserData().get('permissions', {}).get('entre-lojas', true);
 }
 
 function currentUserHasTransferenciaStatus(status) {
-  return isOwnerUser()
+  return isEntreLojasOwnerUser()
     || (
       currentUserHasEntreLojasModule()
       && (
@@ -89,7 +120,7 @@ function canReadTransferenciaEntreLojasDoc() {
     && currentUserHasEntreLojasModule()
     && currentUserHasTransferenciaStatus(resource.data.status)
     && (
-      isOwnerUser()
+      isEntreLojasOwnerUser()
       || currentUserHasStore(resource.data.lojaOrigemId)
       || (resource.data.status != 'rascunho' && currentUserHasStore(resource.data.lojaDestinoId))
     );
