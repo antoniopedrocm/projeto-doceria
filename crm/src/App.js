@@ -5241,6 +5241,15 @@ function App() {
       return `${hrs}:${String(mins).padStart(2, '0')}`;
     };
 
+    const formatSignedDurationLabel = (minutes) => {
+      const normalized = Number(minutes) || 0;
+      const sign = normalized < 0 ? '-' : normalized > 0 ? '+' : '';
+      const abs = Math.abs(normalized);
+      const hours = Math.floor(abs / 60);
+      const mins = abs % 60;
+      return `${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+    };
+
     const calculateWorkSummary = (registro) => {
       if (!registro?.horaEntrada || !registro?.horaSaida) {
         return { workedLabel: '-', irregularidade: '-', workedMinutes: null };
@@ -5282,9 +5291,9 @@ function App() {
         ? '-'
         : diff === 0
           ? '0:00'
-          : `${diff > 0 ? '+' : '-'}${formatMinutesToLabel(Math.abs(diff))}`;
+          : formatSignedDurationLabel(diff);
 
-      return { workedLabel, irregularidade, workedMinutes };
+      return { workedLabel, irregularidade, workedMinutes, irregularityMinutes: diff };
     };
 
     const getPointInconsistencies = (registro = {}) => {
@@ -5408,6 +5417,48 @@ function App() {
       return `${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
     };
 
+    const formatPointBalanceCell = (minutes) => {
+      const normalized = Number(minutes) || 0;
+      return normalized === 0 ? '-' : formatMinutesForPointSheet(normalized, { signed: true });
+    };
+
+    const hasWorkedFullDayPresence = (record = {}) => Boolean(record.horaEntrada && record.horaSaida);
+
+    const hasMissingLunchBreak = (record = {}, summary = null) => (
+      hasWorkedFullDayPresence(record)
+      && Boolean(summary?.workedMinutes)
+      && !record.horaAlmocoSaida
+      && !record.horaAlmocoRetorno
+    );
+
+    const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => {
+      const summary = summaryInput || calculateWorkSummary(record);
+      const irregularityMinutes = Number.isFinite(summary?.irregularityMinutes)
+        ? summary.irregularityMinutes
+        : parseIrregularityToMinutes(summary?.irregularidade || record.irregularidade);
+      let bancoHorasMinutes = 0;
+      let horaExtraMinutes = 0;
+
+      if (irregularityMinutes > 0) {
+        bancoHorasMinutes += Math.min(irregularityMinutes, 15);
+        horaExtraMinutes += Math.max(irregularityMinutes - 15, 0);
+      } else if (irregularityMinutes < 0) {
+        bancoHorasMinutes += irregularityMinutes;
+      }
+
+      if (hasMissingLunchBreak(record, summary)) {
+        bancoHorasMinutes += 60;
+      }
+
+      return {
+        bancoHorasMinutes,
+        horaExtraMinutes,
+        bancoHoras: formatPointBalanceCell(bancoHorasMinutes),
+        horaExtra: formatPointBalanceCell(horaExtraMinutes),
+        almocoNaoRegistradoBancoHoras: hasMissingLunchBreak(record, summary) ? 60 : 0
+      };
+    };
+
     const getPointSheetEmployee = (employeeId, employeeRecords = []) => {
       const employee = employees.find((item) => item.id === employeeId) || {};
       const firstRecord = employeeRecords[0] || {};
@@ -5506,6 +5557,8 @@ function App() {
         const rows = [];
         let creditMinutes = 0;
         let debitMinutes = 0;
+        let bankMinutes = 0;
+        let overtimePayMinutes = 0;
         const nationalHolidays = getBrazilNationalHolidays(year);
 
         for (let day = 1; day <= daysInMonth; day += 1) {
@@ -5513,9 +5566,14 @@ function App() {
           const dayKey = toDateInputValue(date);
           const record = recordsByDay.get(dayKey);
           const summary = record ? calculateWorkSummary(record) : { irregularidade: '-', workedLabel: '-' };
+          const balanceDistribution = record
+            ? calculatePointBalanceDistribution(record, summary)
+            : { bancoHorasMinutes: 0, horaExtraMinutes: 0, bancoHoras: '-', horaExtra: '-' };
           const irregularityMinutes = parseIrregularityToMinutes(summary.irregularidade);
           if (irregularityMinutes > 0) creditMinutes += irregularityMinutes;
           if (irregularityMinutes < 0) debitMinutes += Math.abs(irregularityMinutes);
+          bankMinutes += balanceDistribution.bancoHorasMinutes;
+          overtimePayMinutes += balanceDistribution.horaExtraMinutes;
           const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
           const justification = getPointSheetJustification({ record, date, dayKey, summary, nationalHolidays });
 
@@ -5528,12 +5586,13 @@ function App() {
             formatTime(record?.horaSaida),
             summary.irregularidade || '-',
             summary.workedLabel || '-',
+            balanceDistribution.bancoHoras,
+            balanceDistribution.horaExtra,
             justification
           ]);
         }
 
         const balanceMinutes = creditMinutes - debitMinutes;
-        const overtimeToPay = Math.max(balanceMinutes, 0);
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -5563,15 +5622,17 @@ function App() {
           doc.text(doc.splitTextToSize(`${label}: ${String(value || '-')}`, width), x, y);
         };
         const pointTableColumns = [
-          { label: 'Dia Sem', width: 12 },
-          { label: 'Data', width: 18 },
-          { label: 'Entrada', width: 16 },
-          { label: 'Saída almoço', width: 18 },
-          { label: 'Retorno almoço', width: 20 },
-          { label: 'Saída', width: 16 },
-          { label: 'Irregularidade', width: 22 },
-          { label: 'Qtde', width: 14 },
-          { label: 'Justificativa', width: contentWidth - 136 },
+          { label: 'Dia Sem', width: 11 },
+          { label: 'Data', width: 17 },
+          { label: 'Entrada', width: 14 },
+          { label: 'Saída almoço', width: 16 },
+          { label: 'Retorno almoço', width: 18 },
+          { label: 'Saída', width: 14 },
+          { label: 'Irregularidade', width: 19 },
+          { label: 'Qtde', width: 12 },
+          { label: 'Banco de horas', width: 18 },
+          { label: 'Hora extra', width: 17 },
+          { label: 'Justificativa', width: contentWidth - 156 },
         ];
         const drawPointTableHeader = (startY) => {
           let x = margin;
@@ -5663,7 +5724,8 @@ function App() {
           ['Créditos Mês', formatMinutesForPointSheet(creditMinutes)],
           ['Débitos Mês', formatMinutesForPointSheet(debitMinutes)],
           ['Saldo do Mês', formatMinutesForPointSheet(balanceMinutes, { signed: balanceMinutes !== 0 })],
-          ['Total de Horas Extras a Pagar', formatMinutesForPointSheet(overtimeToPay)]
+          ['Banco de Horas', formatMinutesForPointSheet(bankMinutes, { signed: bankMinutes !== 0 })],
+          ['Total de Horas Extras a Pagar', formatMinutesForPointSheet(overtimePayMinutes)]
         ];
         const boxWidth = contentWidth / summaryBoxes.length;
         summaryBoxes.forEach(([label, value], index) => {
@@ -5941,6 +6003,7 @@ function App() {
         };
         const summary = calculateWorkSummary(recordDraft);
         const statusPatch = buildPointStatus(recordDraft);
+        const balanceDistribution = calculatePointBalanceDistribution(recordDraft, summary);
         const managerAudit = {
           data: new Date().toISOString(),
           tipo: 'manual_pelo_gestor',
@@ -5968,6 +6031,11 @@ function App() {
           atualizadoEm: serverTimestamp(),
           irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : (summary.irregularidade !== '-' ? summary.irregularidade : ''),
           qtde: statusPatch.inconsistente ? '' : (summary.workedLabel !== '-' ? summary.workedLabel : ''),
+          bancoHoras: statusPatch.inconsistente ? '' : balanceDistribution.bancoHoras,
+          bancoHorasMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.bancoHorasMinutes,
+          horaExtra: statusPatch.inconsistente ? '' : balanceDistribution.horaExtra,
+          horaExtraMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.horaExtraMinutes,
+          almocoNaoRegistradoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.almocoNaoRegistradoBancoHoras,
           justificativa: manualPointForm.justificativa.trim(),
           tipoLancamento: 'manual_pelo_gestor',
           lancamentoManualGestor: true,
@@ -6017,6 +6085,7 @@ function App() {
         const editedRecord = { ...editingRecord, ...editForm };
         const summary = calculateWorkSummary(editedRecord);
         const statusPatch = buildPointStatus(editedRecord);
+        const balanceDistribution = calculatePointBalanceDistribution(editedRecord, summary);
         const previousValues = {
           horaEntrada: editingRecord.horaEntrada || '',
           horaSaida: editingRecord.horaSaida || '',
@@ -6024,6 +6093,11 @@ function App() {
           horaAlmocoRetorno: editingRecord.horaAlmocoRetorno || '',
           irregularidade: editingRecord.irregularidade || '',
           qtde: editingRecord.qtde || '',
+          bancoHoras: editingRecord.bancoHoras || '',
+          bancoHorasMinutes: editingRecord.bancoHorasMinutes || 0,
+          horaExtra: editingRecord.horaExtra || '',
+          horaExtraMinutes: editingRecord.horaExtraMinutes || 0,
+          almocoNaoRegistradoBancoHoras: editingRecord.almocoNaoRegistradoBancoHoras || 0,
           justificativa: editingRecord.justificativa || '',
           statusPonto: editingRecord.statusPonto || ''
         };
@@ -6034,6 +6108,11 @@ function App() {
           horaAlmocoRetorno: editForm.horaAlmocoRetorno || '',
           irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : (summary.irregularidade !== '-' ? summary.irregularidade : ''),
           qtde: statusPatch.inconsistente ? '' : (summary.workedLabel !== '-' ? summary.workedLabel : ''),
+          bancoHoras: statusPatch.inconsistente ? '' : balanceDistribution.bancoHoras,
+          bancoHorasMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.bancoHorasMinutes,
+          horaExtra: statusPatch.inconsistente ? '' : balanceDistribution.horaExtra,
+          horaExtraMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.horaExtraMinutes,
+          almocoNaoRegistradoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.almocoNaoRegistradoBancoHoras,
           justificativa: editForm.justificativa || '',
           statusPonto: statusPatch.statusPonto
         };
@@ -6045,6 +6124,11 @@ function App() {
           ...statusPatch,
           irregularidade: nextValues.irregularidade,
           qtde: nextValues.qtde,
+          bancoHoras: nextValues.bancoHoras,
+          bancoHorasMinutes: nextValues.bancoHorasMinutes,
+          horaExtra: nextValues.horaExtra,
+          horaExtraMinutes: nextValues.horaExtraMinutes,
+          almocoNaoRegistradoBancoHoras: nextValues.almocoNaoRegistradoBancoHoras,
           justificativa: nextValues.justificativa,
           gestorId: userId,
           gestorNome: userName,
@@ -6297,8 +6381,10 @@ function App() {
                     <th className="py-3 px-4">Saída</th>
                     <th className="py-3 px-4">Irregularidade</th>
                     <th className="py-3 px-4">Qtde</th>
-                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Banco de horas</th>
+                    <th className="py-3 px-4">Hora extra</th>
                     <th className="py-3 px-4">Justificativa</th>
+                    <th className="py-3 px-4">Status</th>
                     {isManager && <th className="py-3 px-4">Localização</th>}
                     {isManager && <th className="py-3 px-4">Ações</th>}
                   </tr>
@@ -6309,6 +6395,7 @@ function App() {
                     const diaSemana = date ? date.toLocaleDateString('pt-BR', { weekday: 'long' }) : '-';
                     const diaMes = date ? String(date.getDate()).padStart(2, '0') : '-';
                     const workSummary = calculateWorkSummary(registro);
+                    const balanceDistribution = calculatePointBalanceDistribution(registro, workSummary);
                     const recordPointStatus = buildPointStatus(registro);
                     const statusLabel = registro.statusPonto || recordPointStatus.statusPonto;
                     const isPendingAdjustment = Boolean(registro.inconsistente || registro.necessitaAjuste || recordPointStatus.inconsistente);
@@ -6333,6 +6420,9 @@ function App() {
                         <td className="py-3 px-4 font-semibold">{formatTime(registro.horaSaida)}</td>
                         <td className="py-3 px-4">{workSummary.irregularidade}</td>
                         <td className="py-3 px-4">{workSummary.workedLabel}</td>
+                        <td className="py-3 px-4 font-semibold text-sky-700">{balanceDistribution.bancoHoras}</td>
+                        <td className="py-3 px-4 font-semibold text-emerald-700">{balanceDistribution.horaExtra}</td>
+                        <td className="py-3 px-4 max-w-xs">{registro.justificativa || '-'}</td>
                         <td className="py-3 px-4">
                           <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
                             isPendingAdjustment
@@ -6345,7 +6435,6 @@ function App() {
                             {statusLabel}
                           </span>
                         </td>
-                        <td className="py-3 px-4 max-w-xs">{registro.justificativa || '-'}</td>
                         {isManager && (
                           <td className="py-3 px-4">
                             <div className="space-y-3 text-xs">

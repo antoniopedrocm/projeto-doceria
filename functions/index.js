@@ -355,11 +355,20 @@ const formatPointMinutes = (minutes) => {
   return `${hrs}:${String(mins).padStart(2, '0')}`;
 };
 
+const formatSignedPointMinutes = (minutes) => {
+  const normalized = Number(minutes) || 0;
+  const sign = normalized < 0 ? '-' : normalized > 0 ? '+' : '';
+  const abs = Math.abs(normalized);
+  const hrs = Math.floor(abs / 60);
+  const mins = abs % 60;
+  return `${sign}${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
 const calculatePointSummary = (record = {}) => {
   const entrada = pointTimeToMinutes(record.horaEntrada);
   const saida = pointTimeToMinutes(record.horaSaida);
   if (entrada === null || saida === null) {
-    return {workedLabel: '', irregularidade: ''};
+    return {workedLabel: '', irregularidade: '', workedMinutes: null};
   }
 
   let workedMinutes = saida - entrada;
@@ -369,7 +378,7 @@ const calculatePointSummary = (record = {}) => {
     workedMinutes -= almocoRetorno - almocoSaida;
   }
   if (!Number.isFinite(workedMinutes) || workedMinutes <= 0) {
-    return {workedLabel: '', irregularidade: ''};
+    return {workedLabel: '', irregularidade: '', workedMinutes: null};
   }
 
   const workedLabel = formatPointMinutes(workedMinutes);
@@ -382,8 +391,48 @@ const calculatePointSummary = (record = {}) => {
     ? ''
     : diff === 0
       ? '0:00'
-      : `${diff > 0 ? '+' : '-'}${formatPointMinutes(Math.abs(diff))}`;
-  return {workedLabel, irregularidade};
+      : formatSignedPointMinutes(diff);
+  return {workedLabel, irregularidade, workedMinutes, irregularityMinutes: diff};
+};
+
+const formatPointBalanceCell = (minutes) => {
+  const normalized = Number(minutes) || 0;
+  return normalized === 0 ? '-' : formatSignedPointMinutes(normalized);
+};
+
+const hasMissingLunchBreak = (record = {}, summary = null) => (
+  Boolean(record.horaEntrada && record.horaSaida) &&
+  Boolean(summary?.workedMinutes) &&
+  !record.horaAlmocoSaida &&
+  !record.horaAlmocoRetorno
+);
+
+const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => {
+  const summary = summaryInput || calculatePointSummary(record);
+  const irregularityMinutes = Number.isFinite(summary?.irregularityMinutes) ?
+    summary.irregularityMinutes :
+    0;
+  let bancoHorasMinutes = 0;
+  let horaExtraMinutes = 0;
+
+  if (irregularityMinutes > 0) {
+    bancoHorasMinutes += Math.min(irregularityMinutes, 15);
+    horaExtraMinutes += Math.max(irregularityMinutes - 15, 0);
+  } else if (irregularityMinutes < 0) {
+    bancoHorasMinutes += irregularityMinutes;
+  }
+
+  if (hasMissingLunchBreak(record, summary)) {
+    bancoHorasMinutes += 60;
+  }
+
+  return {
+    bancoHorasMinutes,
+    horaExtraMinutes,
+    bancoHoras: formatPointBalanceCell(bancoHorasMinutes),
+    horaExtra: formatPointBalanceCell(horaExtraMinutes),
+    almocoNaoRegistradoBancoHoras: hasMissingLunchBreak(record, summary) ? 60 : 0,
+  };
 };
 
 const pointInconsistencies = (record = {}) => {
@@ -1558,6 +1607,11 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
       localizacaoSaidaEndereco: '',
       irregularidade: '',
       qtde: '',
+      bancoHoras: '',
+      bancoHorasMinutes: 0,
+      horaExtra: '',
+      horaExtraMinutes: 0,
+      almocoNaoRegistradoBancoHoras: 0,
       justificativa: '',
       competencia: competenciaKey,
       empresaId: lojaId,
@@ -1572,12 +1626,18 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
     };
     const statusPatch = pointStatusPatch(mergedRecord);
     const summary = calculatePointSummary(mergedRecord);
+    const balanceDistribution = calculatePointBalanceDistribution(mergedRecord, summary);
     const updateData = {
       ...(recordSnap.exists ? {} : baseData),
       ...payload,
       ...statusPatch,
       irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : summary.irregularidade,
       qtde: statusPatch.inconsistente ? '' : summary.workedLabel,
+      bancoHoras: statusPatch.inconsistente ? '' : balanceDistribution.bancoHoras,
+      bancoHorasMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.bancoHorasMinutes,
+      horaExtra: statusPatch.inconsistente ? '' : balanceDistribution.horaExtra,
+      horaExtraMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.horaExtraMinutes,
+      almocoNaoRegistradoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.almocoNaoRegistradoBancoHoras,
       updatedAt: timestamp,
       historicoRegistros: admin.firestore.FieldValue.arrayUnion({
         tipo: type,
@@ -1593,6 +1653,11 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
       ...statusPatch,
       irregularidade: updateData.irregularidade,
       qtde: updateData.qtde,
+      bancoHoras: updateData.bancoHoras,
+      bancoHorasMinutes: updateData.bancoHorasMinutes,
+      horaExtra: updateData.horaExtra,
+      horaExtraMinutes: updateData.horaExtraMinutes,
+      almocoNaoRegistradoBancoHoras: updateData.almocoNaoRegistradoBancoHoras,
       id: recordRef.id,
     };
   });
