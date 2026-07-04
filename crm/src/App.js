@@ -5028,6 +5028,7 @@ function App() {
     const [savingEdit, setSavingEdit] = useState(false);
     const [manualPointModalOpen, setManualPointModalOpen] = useState(false);
     const [manualPointForm, setManualPointForm] = useState({
+      tipoLancamento: 'manual',
       funcionarioId: '',
       dia: initialDay,
       horaEntrada: '',
@@ -5235,6 +5236,12 @@ function App() {
       || record.manualPeloGestor === true
     );
 
+    const isExcusedAbsenceRecord = (record = {}) => (
+      record.tipoLancamento === 'abono_falta'
+      || record.faltaAbonada === true
+      || record.abonoFalta === true
+    );
+
     const POINT_DEFAULT_EXPECTED_MINUTES = 8 * 60;
     const POINT_DAILY_BANK_LIMIT_MINUTES = 15;
     const POINT_MISSING_LUNCH_BANK_MINUTES = 60;
@@ -5308,6 +5315,10 @@ function App() {
     };
 
     const calculateWorkSummary = (registro = {}) => {
+      if (isExcusedAbsenceRecord(registro)) {
+        return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
+      }
+
       const entrada = parsePointTimeToMinutes(registro.horaEntrada);
       const saida = parsePointTimeToMinutes(registro.horaSaida);
       if (entrada === null || saida === null) {
@@ -5372,6 +5383,15 @@ function App() {
     };
 
     const buildPointStatus = (registro = {}) => {
+      if (isExcusedAbsenceRecord(registro)) {
+        return {
+          inconsistente: false,
+          necessitaAjuste: false,
+          statusPonto: 'Falta abonada',
+          inconsistencias: [],
+        };
+      }
+
       const issues = getPointInconsistencies(registro);
       if (issues.length) {
         return {
@@ -5482,7 +5502,7 @@ function App() {
       && !hasPointTimeValue(record.horaAlmocoRetorno)
     );
 
-    const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => {
+    const calculatePointBalanceDistribution = (record = {}, summaryInput = null, options = {}) => {
       const summary = summaryInput || calculateWorkSummary(record);
       const irregularityMinutes = summary?.calculable && Number.isFinite(summary?.irregularityMinutes)
         ? summary.irregularityMinutes
@@ -5490,7 +5510,22 @@ function App() {
       let bancoHorasMinutes = 0;
       let horaExtraMinutes = 0;
 
-      if (irregularityMinutes > 0) {
+      if (isExcusedAbsenceRecord(record)) {
+        return {
+          bancoHorasMinutes: 0,
+          horaExtraMinutes: 0,
+          bancoHoras: '-',
+          horaExtra: '-',
+          almocoNaoRegistradoBancoHoras: 0,
+          faltaSemAbonoBancoHoras: 0,
+          calculable: false
+        };
+      }
+
+      const absenceDebitMinutes = Number(options.absenceDebitMinutes) || 0;
+      if (absenceDebitMinutes > 0 && !hasAnyPointTime(record)) {
+        bancoHorasMinutes -= absenceDebitMinutes;
+      } else if (irregularityMinutes > 0) {
         bancoHorasMinutes += Math.min(irregularityMinutes, POINT_DAILY_BANK_LIMIT_MINUTES);
         horaExtraMinutes += Math.max(irregularityMinutes - POINT_DAILY_BANK_LIMIT_MINUTES, 0);
       } else if (irregularityMinutes < 0) {
@@ -5507,6 +5542,7 @@ function App() {
         bancoHoras: formatPointBalanceCell(bancoHorasMinutes),
         horaExtra: formatPointBalanceCell(horaExtraMinutes),
         almocoNaoRegistradoBancoHoras: hasMissingLunchBreak(record, summary) ? POINT_MISSING_LUNCH_BANK_MINUTES : 0,
+        faltaSemAbonoBancoHoras: absenceDebitMinutes,
         calculable: summary?.calculable === true
       };
     };
@@ -5551,12 +5587,37 @@ function App() {
       || record.horaSaida
     );
 
+    const isExpectedPointWorkday = ({ date, dayKey, nationalHolidays }) => {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return false;
+      const weekday = date.getDay();
+      const isWeekday = weekday >= 1 && weekday <= 5;
+      const isHoliday = nationalHolidays?.has(dayKey);
+      return isWeekday && !isHoliday;
+    };
+
+    const getPointAbsenceDebitMinutes = ({ record = {}, date, dayKey, nationalHolidays }) => {
+      if (isExcusedAbsenceRecord(record)) return 0;
+      if (hasAnyPointTime(record)) return 0;
+      if (!isExpectedPointWorkday({ date, dayKey, nationalHolidays })) return 0;
+      return POINT_DEFAULT_EXPECTED_MINUTES;
+    };
+
+    const formatExcusedAbsenceJustification = (record = {}) => {
+      const rawJustification = String(record.justificativa || '').trim();
+      if (!rawJustification) return 'Falta abonada';
+      if (/^falta abonada/i.test(rawJustification)) return rawJustification;
+      return `Falta abonada - ${rawJustification}`;
+    };
+
     const getPointSheetJustification = ({ record, date, dayKey, summary, nationalHolidays }) => {
       const weekday = date.getDay();
       const isWeekday = weekday >= 1 && weekday <= 5;
       const isHoliday = nationalHolidays.has(dayKey);
       const hasPoint = hasAnyPointTime(record);
 
+      if (isExcusedAbsenceRecord(record)) {
+        return formatExcusedAbsenceJustification(record);
+      }
       if (isWeekday && isHoliday) {
         return hasPoint ? 'Hora Extra' : 'Feriado';
       }
@@ -5572,7 +5633,7 @@ function App() {
       ) {
         return summary.irregularidade;
       }
-      if (!record) {
+      if (!hasPoint) {
         return weekday === 0 ? 'FOLGA' : weekday === 6 ? 'FOLGA COMPENSADA' : 'Sem registro';
       }
       return '-';
@@ -5624,12 +5685,15 @@ function App() {
           const date = new Date(year, month - 1, day);
           const dayKey = toDateInputValue(date);
           const record = recordsByDay.get(dayKey);
-          const summary = record
-            ? calculateWorkSummary(record)
-            : { irregularidade: '-', workedLabel: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
-          const balanceDistribution = record
-            ? calculatePointBalanceDistribution(record, summary)
-            : { bancoHorasMinutes: 0, horaExtraMinutes: 0, bancoHoras: '-', horaExtra: '-', calculable: false };
+          const dayRecord = record || { dia: dayKey, competencia: recordsQueryMonth };
+          const summary = calculateWorkSummary(dayRecord);
+          const absenceDebitMinutes = getPointAbsenceDebitMinutes({
+            record: dayRecord,
+            date,
+            dayKey,
+            nationalHolidays
+          });
+          const balanceDistribution = calculatePointBalanceDistribution(dayRecord, summary, { absenceDebitMinutes });
           const irregularityMinutes = summary.calculable && Number.isFinite(summary.irregularityMinutes)
             ? summary.irregularityMinutes
             : 0;
@@ -5638,15 +5702,15 @@ function App() {
           bankMinutes += balanceDistribution.bancoHorasMinutes;
           overtimePayMinutes += balanceDistribution.horaExtraMinutes;
           const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
-          const justification = getPointSheetJustification({ record, date, dayKey, summary, nationalHolidays });
+          const justification = getPointSheetJustification({ record: dayRecord, date, dayKey, summary, nationalHolidays });
 
           rows.push([
             dayOfWeek,
             date.toLocaleDateString('pt-BR'),
-            formatTime(record?.horaEntrada),
-            formatTime(record?.horaAlmocoSaida),
-            formatTime(record?.horaAlmocoRetorno),
-            formatTime(record?.horaSaida),
+            formatTime(dayRecord.horaEntrada),
+            formatTime(dayRecord.horaAlmocoSaida),
+            formatTime(dayRecord.horaAlmocoRetorno),
+            formatTime(dayRecord.horaSaida),
             summary.irregularidade || '-',
             summary.workedLabel || '-',
             balanceDistribution.bancoHoras,
@@ -5840,7 +5904,7 @@ function App() {
     };
 
     const filteredRecords = useMemo(() => {
-      const sorted = [...records].sort((a, b) => {
+      const sortPointRecords = (items) => [...items].sort((a, b) => {
         const dateA = getRecordDateTime(a);
         const dateB = getRecordDateTime(b);
         if (dateA && dateB) {
@@ -5856,15 +5920,55 @@ function App() {
         if (createdA && !createdB) return 1;
         return 0;
       });
+      const sorted = sortPointRecords(records);
       const dateFiltered = activeDayFilter
         ? sorted.filter(item => getRecordDayKey(item) === activeDayFilter)
         : sorted;
+      const appendVirtualAbsences = (baseRecords, employeeId) => {
+        if (!employeeId) return baseRecords;
+        const [year, month] = recordsQueryMonth.split('-').map(Number);
+        if (!year || !month) return baseRecords;
+        const employee = employees.find((item) => item.id === employeeId) || {};
+        const nationalHolidays = getBrazilNationalHolidays(year);
+        const existingDays = new Set(baseRecords.map((item) => getRecordDayKey(item)).filter(Boolean));
+        const dayKeys = activeDayFilter
+          ? [activeDayFilter]
+          : Array.from({ length: new Date(year, month, 0).getDate() }, (_, index) => {
+            const date = new Date(year, month - 1, index + 1);
+            return toDateInputValue(date);
+          });
+        const virtualAbsences = dayKeys.reduce((acc, dayKey) => {
+          if (!dayKey || existingDays.has(dayKey)) return acc;
+          const [dayYear, dayMonth, day] = dayKey.split('-').map(Number);
+          const date = new Date(dayYear, dayMonth - 1, day);
+          if (!isExpectedPointWorkday({ date, dayKey, nationalHolidays })) return acc;
+          acc.push({
+            id: `falta-sem-abono-${employeeId}-${dayKey}`,
+            virtualAbsence: true,
+            faltaSemAbono: true,
+            funcionarioId: employeeId,
+            funcionarioNome: employee.id
+              ? getEmployeeDisplayName(employee)
+              : (user?.auth?.displayName || user?.auth?.email || employeeId),
+            funcionarioEmail: employee.email || '',
+            dia: dayKey,
+            competencia: dayKey.slice(0, 7),
+            statusPonto: 'Falta',
+            expectedAbsenceMinutes: POINT_DEFAULT_EXPECTED_MINUTES,
+          });
+          return acc;
+        }, []);
+        return virtualAbsences.length ? sortPointRecords([...baseRecords, ...virtualAbsences]) : baseRecords;
+      };
       if (isManager) {
         if (selectedEmployee === 'all') return dateFiltered;
-        return dateFiltered.filter(item => item.funcionarioId === selectedEmployee);
+        return appendVirtualAbsences(
+          dateFiltered.filter(item => item.funcionarioId === selectedEmployee),
+          selectedEmployee
+        );
       }
-      return dateFiltered.filter(item => item.funcionarioId === userId);
-    }, [records, activeDayFilter, isManager, selectedEmployee, userId]);
+      return appendVirtualAbsences(dateFiltered.filter(item => item.funcionarioId === userId), userId);
+    }, [records, activeDayFilter, isManager, selectedEmployee, userId, recordsQueryMonth, employees, user?.auth?.displayName, user?.auth?.email]);
 
     const todayRecord = todayRecordData;
     const todayPointStatus = buildPointStatus(todayRecord || {});
@@ -5880,6 +5984,7 @@ function App() {
       saida: !registerLoading && !hasTodayExit && !isTodayAtLunch,
     };
     const canExportPointSheet = !isManager || (selectedEmployee && selectedEmployee !== 'all');
+    const manualPointIsAbsenceExcuse = manualPointForm.tipoLancamento === 'abono_falta';
 
     const requestLocation = () => requestCompatibleGeolocation({ source: 'meu-espaco-registro-ponto' });
 
@@ -5992,11 +6097,12 @@ function App() {
       }
     };
 
-    const openManualPointModal = () => {
+    const openManualPointModal = (defaults = {}) => {
       if (!isManager) return;
-      const baseDay = activeDayFilter || selectedDay || todayKey;
+      const baseDay = defaults.dia || activeDayFilter || selectedDay || todayKey;
       setManualPointForm({
-        funcionarioId: selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : '',
+        tipoLancamento: defaults.tipoLancamento || 'manual',
+        funcionarioId: defaults.funcionarioId || (selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : ''),
         dia: baseDay,
         horaEntrada: '',
         horaAlmocoSaida: '',
@@ -6013,6 +6119,7 @@ function App() {
 
       const employee = employees.find((item) => item.id === manualPointForm.funcionarioId);
       const dayKey = manualPointForm.dia;
+      const isAbsenceExcuse = manualPointForm.tipoLancamento === 'abono_falta';
       const hasAnyTime = [
         manualPointForm.horaEntrada,
         manualPointForm.horaAlmocoSaida,
@@ -6028,7 +6135,7 @@ function App() {
         setManualPointError('Informe a data do ponto.');
         return;
       }
-      if (!hasAnyTime) {
+      if (!isAbsenceExcuse && !hasAnyTime) {
         setManualPointError('Informe pelo menos um horário para lançar o ponto.');
         return;
       }
@@ -6057,19 +6164,24 @@ function App() {
         }
 
         const recordDraft = {
-          horaEntrada: manualPointForm.horaEntrada || '',
-          horaAlmocoSaida: manualPointForm.horaAlmocoSaida || '',
-          horaAlmocoRetorno: manualPointForm.horaAlmocoRetorno || '',
-          horaSaida: manualPointForm.horaSaida || '',
+          horaEntrada: isAbsenceExcuse ? '' : (manualPointForm.horaEntrada || ''),
+          horaAlmocoSaida: isAbsenceExcuse ? '' : (manualPointForm.horaAlmocoSaida || ''),
+          horaAlmocoRetorno: isAbsenceExcuse ? '' : (manualPointForm.horaAlmocoRetorno || ''),
+          horaSaida: isAbsenceExcuse ? '' : (manualPointForm.horaSaida || ''),
           dia: dayKey,
           competencia: competenciaKey,
+          tipoLancamento: isAbsenceExcuse ? 'abono_falta' : 'manual_pelo_gestor',
+          faltaAbonada: isAbsenceExcuse,
+          abonoFalta: isAbsenceExcuse,
         };
         const summary = calculateWorkSummary(recordDraft);
-        const statusPatch = buildPointStatus(recordDraft);
+        const statusPatch = isAbsenceExcuse
+          ? { inconsistente: false, necessitaAjuste: false, statusPonto: 'Falta abonada', inconsistencias: [] }
+          : buildPointStatus(recordDraft);
         const balanceDistribution = calculatePointBalanceDistribution(recordDraft, summary);
         const managerAudit = {
           data: new Date().toISOString(),
-          tipo: 'manual_pelo_gestor',
+          tipo: isAbsenceExcuse ? 'falta_abonada_pelo_gestor' : 'manual_pelo_gestor',
           gestorId: userId,
           gestor: userName,
           funcionarioId: employee.id,
@@ -6099,22 +6211,33 @@ function App() {
           horaExtra: statusPatch.inconsistente ? '' : balanceDistribution.horaExtra,
           horaExtraMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.horaExtraMinutes,
           almocoNaoRegistradoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.almocoNaoRegistradoBancoHoras,
+          faltaSemAbonoBancoHoras: 0,
           justificativa: manualPointForm.justificativa.trim(),
-          tipoLancamento: 'manual_pelo_gestor',
-          lancamentoManualGestor: true,
-          manualPeloGestor: true,
+          tipoLancamento: recordDraft.tipoLancamento,
+          faltaAbonada: isAbsenceExcuse,
+          abonoFalta: isAbsenceExcuse,
+          lancamentoManualGestor: !isAbsenceExcuse,
+          manualPeloGestor: !isAbsenceExcuse,
           semLocalizacaoManual: true,
-          localizacaoObservacao: 'Sem localização — lançamento manual pelo gestor',
+          localizacaoObservacao: isAbsenceExcuse
+            ? 'Sem localização — falta abonada pelo gestor'
+            : 'Sem localização — lançamento manual pelo gestor',
           gestorId: userId,
           gestorNome: userName,
           dataLancamentoManual: serverTimestamp(),
+          dataAbonoFalta: isAbsenceExcuse ? serverTimestamp() : null,
           historicoAlteracoes: arrayUnion(managerAudit)
         });
 
         setSelectedDay(dayKey);
         setSelectedMonth(competenciaKey);
         setRecordFilterMode('day');
-        setRegisterMessage({ type: 'success', text: 'Ponto manual lançado com auditoria do gestor.' });
+        setRegisterMessage({
+          type: 'success',
+          text: isAbsenceExcuse
+            ? 'Falta abonada com auditoria do gestor.'
+            : 'Ponto manual lançado com auditoria do gestor.'
+        });
         setManualPointModalOpen(false);
       } catch (error) {
         console.error('Erro ao lançar ponto manual', error);
@@ -6415,7 +6538,7 @@ function App() {
                 <div className="flex items-end">
                   <button
                     type="button"
-                    onClick={openManualPointModal}
+                    onClick={() => openManualPointModal()}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-pink-700"
                   >
                     <Plus className="h-4 w-4" />
@@ -6458,11 +6581,20 @@ function App() {
                     const diaSemana = date ? date.toLocaleDateString('pt-BR', { weekday: 'long' }) : '-';
                     const diaMes = date ? String(date.getDate()).padStart(2, '0') : '-';
                     const workSummary = calculateWorkSummary(registro);
-                    const balanceDistribution = calculatePointBalanceDistribution(registro, workSummary);
+                    const dayKey = getRecordDayKey(registro);
+                    const nationalHolidays = date ? getBrazilNationalHolidays(date.getFullYear()) : new Set();
+                    const absenceDebitMinutes = date
+                      ? getPointAbsenceDebitMinutes({ record: registro, date, dayKey, nationalHolidays })
+                      : 0;
+                    const balanceDistribution = calculatePointBalanceDistribution(registro, workSummary, { absenceDebitMinutes });
+                    const justificationLabel = date
+                      ? getPointSheetJustification({ record: registro, date, dayKey, summary: workSummary, nationalHolidays })
+                      : (registro.justificativa || '-');
                     const recordPointStatus = buildPointStatus(registro);
                     const statusLabel = registro.statusPonto || recordPointStatus.statusPonto;
                     const isPendingAdjustment = Boolean(registro.inconsistente || registro.necessitaAjuste || recordPointStatus.inconsistente);
                     const manualManagerRecord = isManualManagerRecord(registro);
+                    const excusedAbsenceRecord = isExcusedAbsenceRecord(registro);
                     return (
                       <tr key={registro.id} className="hover:bg-gray-50">
                         <td className="py-3 px-4">
@@ -6471,6 +6603,11 @@ function App() {
                             {manualManagerRecord && (
                               <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                                 Lançado pelo gestor
+                              </span>
+                            )}
+                            {excusedAbsenceRecord && (
+                              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                Falta abonada
                               </span>
                             )}
                           </div>
@@ -6485,7 +6622,7 @@ function App() {
                         <td className="py-3 px-4">{workSummary.workedLabel}</td>
                         <td className="py-3 px-4 font-semibold text-sky-700">{balanceDistribution.bancoHoras}</td>
                         <td className="py-3 px-4 font-semibold text-emerald-700">{balanceDistribution.horaExtra}</td>
-                        <td className="py-3 px-4 max-w-xs">{registro.justificativa || '-'}</td>
+                        <td className="py-3 px-4 max-w-xs">{justificationLabel}</td>
                         <td className="py-3 px-4">
                           <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
                             isPendingAdjustment
@@ -6501,9 +6638,13 @@ function App() {
                         {isManager && (
                           <td className="py-3 px-4">
                             <div className="space-y-3 text-xs">
-                              {manualManagerRecord && (
+                              {(manualManagerRecord || excusedAbsenceRecord || registro.virtualAbsence) && (
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-700">
-                                  Sem localização — lançamento manual pelo gestor
+                                  {excusedAbsenceRecord
+                                    ? 'Sem localização — falta abonada pelo gestor'
+                                    : registro.virtualAbsence
+                                      ? 'Sem localização — falta sem registro'
+                                      : 'Sem localização — lançamento manual pelo gestor'}
                                 </div>
                               )}
                               {registro.localizacaoEntrada && (
@@ -6542,7 +6683,7 @@ function App() {
                                   </a>
                                 </div>
                               )}
-                              {!manualManagerRecord && !registro.localizacaoEntrada && !registro.localizacaoSaida && (
+                              {!manualManagerRecord && !excusedAbsenceRecord && !registro.virtualAbsence && !registro.localizacaoEntrada && !registro.localizacaoSaida && (
                                 <span className="text-gray-400">-</span>
                               )}
                             </div>
@@ -6550,7 +6691,21 @@ function App() {
                         )}
                         {isManager && (
                           <td className="py-3 px-4">
-                            <Button size="sm" variant="secondary" onClick={() => openEditModal(registro)}>Editar</Button>
+                            {registro.virtualAbsence ? (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => openManualPointModal({
+                                  funcionarioId: registro.funcionarioId,
+                                  dia: registro.dia,
+                                  tipoLancamento: 'abono_falta'
+                                })}
+                              >
+                                Abonar
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="secondary" onClick={() => openEditModal(registro)}>Editar</Button>
+                            )}
                           </td>
                         )}
                       </tr>
@@ -6565,7 +6720,9 @@ function App() {
         <Modal isOpen={manualPointModalOpen} onClose={() => setManualPointModalOpen(false)} title="Lançar ponto manual" size="lg">
           <div className="space-y-4">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              Este registro será marcado como lançamento manual pelo gestor e ficará sem localização real da colaboradora.
+              {manualPointIsAbsenceExcuse
+                ? 'Este registro será marcado como falta abonada pelo gestor e não descontará banco de horas.'
+                : 'Este registro será marcado como lançamento manual pelo gestor e ficará sem localização real da colaboradora.'}
             </div>
             {manualPointError && (
               <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
@@ -6573,6 +6730,22 @@ function App() {
               </div>
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select
+                label="Tipo de lançamento"
+                value={manualPointForm.tipoLancamento}
+                onChange={(e) => setManualPointForm({
+                  ...manualPointForm,
+                  tipoLancamento: e.target.value,
+                  horaEntrada: e.target.value === 'abono_falta' ? '' : manualPointForm.horaEntrada,
+                  horaAlmocoSaida: e.target.value === 'abono_falta' ? '' : manualPointForm.horaAlmocoSaida,
+                  horaAlmocoRetorno: e.target.value === 'abono_falta' ? '' : manualPointForm.horaAlmocoRetorno,
+                  horaSaida: e.target.value === 'abono_falta' ? '' : manualPointForm.horaSaida
+                })}
+                required
+              >
+                <option value="manual">Lançamento manual de ponto</option>
+                <option value="abono_falta">Abono de falta</option>
+              </Select>
               <Select
                 label="Colaboradora"
                 value={manualPointForm.funcionarioId}
@@ -6592,21 +6765,29 @@ function App() {
                 onChange={(e) => setManualPointForm({ ...manualPointForm, dia: e.target.value })}
                 required
               />
-              <Input label="Entrada" type="time" value={manualPointForm.horaEntrada} onChange={(e) => setManualPointForm({ ...manualPointForm, horaEntrada: e.target.value })} />
-              <Input label="Saída para almoço" type="time" value={manualPointForm.horaAlmocoSaida} onChange={(e) => setManualPointForm({ ...manualPointForm, horaAlmocoSaida: e.target.value })} />
-              <Input label="Retorno do almoço" type="time" value={manualPointForm.horaAlmocoRetorno} onChange={(e) => setManualPointForm({ ...manualPointForm, horaAlmocoRetorno: e.target.value })} />
-              <Input label="Saída final" type="time" value={manualPointForm.horaSaida} onChange={(e) => setManualPointForm({ ...manualPointForm, horaSaida: e.target.value })} />
+              {!manualPointIsAbsenceExcuse && (
+                <>
+                  <Input label="Entrada" type="time" value={manualPointForm.horaEntrada} onChange={(e) => setManualPointForm({ ...manualPointForm, horaEntrada: e.target.value })} />
+                  <Input label="Saída para almoço" type="time" value={manualPointForm.horaAlmocoSaida} onChange={(e) => setManualPointForm({ ...manualPointForm, horaAlmocoSaida: e.target.value })} />
+                  <Input label="Retorno do almoço" type="time" value={manualPointForm.horaAlmocoRetorno} onChange={(e) => setManualPointForm({ ...manualPointForm, horaAlmocoRetorno: e.target.value })} />
+                  <Input label="Saída final" type="time" value={manualPointForm.horaSaida} onChange={(e) => setManualPointForm({ ...manualPointForm, horaSaida: e.target.value })} />
+                </>
+              )}
             </div>
             <Textarea
               label="Justificativa obrigatória"
               value={manualPointForm.justificativa}
               onChange={(e) => setManualPointForm({ ...manualPointForm, justificativa: e.target.value })}
-              placeholder="Ex.: Colaboradora compareceu ao trabalho, porém esqueceu de registrar o ponto no sistema."
+              placeholder={manualPointIsAbsenceExcuse
+                ? 'Ex.: Falta abonada por liberação da chefia.'
+                : 'Ex.: Colaboradora compareceu ao trabalho, porém esqueceu de registrar o ponto no sistema.'}
               required
             />
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setManualPointModalOpen(false)}>Cancelar</Button>
-              <Button onClick={handleSaveManualPoint} disabled={savingManualPoint}>{savingManualPoint ? 'Salvando...' : 'Salvar lançamento manual'}</Button>
+              <Button onClick={handleSaveManualPoint} disabled={savingManualPoint}>
+                {savingManualPoint ? 'Salvando...' : manualPointIsAbsenceExcuse ? 'Salvar abono de falta' : 'Salvar lançamento manual'}
+              </Button>
             </div>
           </div>
         </Modal>

@@ -371,6 +371,12 @@ const formatSignedPointMinutes = (minutes) => {
 
 const hasPointTimeValue = (value) => pointTimeToMinutes(value) !== null;
 
+const isExcusedAbsenceRecord = (record = {}) => (
+  record.tipoLancamento === 'abono_falta' ||
+  record.faltaAbonada === true ||
+  record.abonoFalta === true
+);
+
 const parseExpectedPointMinutes = (...values) => {
   for (const value of values) {
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) return Math.round(value);
@@ -413,6 +419,10 @@ const getExpectedPointMinutesForDay = (record = {}) => {
 };
 
 const calculatePointSummary = (record = {}) => {
+  if (isExcusedAbsenceRecord(record)) {
+    return {workedLabel: '', irregularidade: '', workedMinutes: null, irregularityMinutes: null, calculable: false};
+  }
+
   const entrada = pointTimeToMinutes(record.horaEntrada);
   const saida = pointTimeToMinutes(record.horaSaida);
   if (entrada === null || saida === null) {
@@ -476,6 +486,17 @@ const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => 
   let bancoHorasMinutes = 0;
   let horaExtraMinutes = 0;
 
+  if (isExcusedAbsenceRecord(record)) {
+    return {
+      bancoHorasMinutes: 0,
+      horaExtraMinutes: 0,
+      bancoHoras: '-',
+      horaExtra: '-',
+      almocoNaoRegistradoBancoHoras: 0,
+      calculable: false,
+    };
+  }
+
   if (irregularityMinutes > 0) {
     bancoHorasMinutes += Math.min(irregularityMinutes, POINT_DAILY_BANK_LIMIT_MINUTES);
     horaExtraMinutes += Math.max(irregularityMinutes - POINT_DAILY_BANK_LIMIT_MINUTES, 0);
@@ -515,6 +536,15 @@ const pointInconsistencies = (record = {}) => {
 };
 
 const pointStatusPatch = (record = {}) => {
+  if (isExcusedAbsenceRecord(record)) {
+    return {
+      inconsistente: false,
+      necessitaAjuste: false,
+      statusPonto: 'Falta abonada',
+      inconsistencias: [],
+    };
+  }
+
   const issues = pointInconsistencies(record);
   if (issues.length) {
     return {
