@@ -5235,10 +5235,15 @@ function App() {
       || record.manualPeloGestor === true
     );
 
+    const POINT_DEFAULT_EXPECTED_MINUTES = 8 * 60;
+    const POINT_DAILY_BANK_LIMIT_MINUTES = 15;
+    const POINT_MISSING_LUNCH_BANK_MINUTES = 60;
+
     const formatMinutesToLabel = (minutes) => {
-      const hrs = Math.floor(minutes / 60);
-      const mins = minutes % 60;
-      return `${hrs}:${String(mins).padStart(2, '0')}`;
+      const normalized = Number(minutes) || 0;
+      const hrs = Math.floor(Math.abs(normalized) / 60);
+      const mins = Math.abs(normalized) % 60;
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
     };
 
     const formatSignedDurationLabel = (minutes) => {
@@ -5250,50 +5255,103 @@ function App() {
       return `${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
     };
 
-    const calculateWorkSummary = (registro) => {
-      if (!registro?.horaEntrada || !registro?.horaSaida) {
-        return { workedLabel: '-', irregularidade: '-', workedMinutes: null };
+    const parsePointTimeToMinutes = (time) => {
+      if (typeof time !== 'string') return null;
+      const match = time.trim().match(/^(\d{1,2}):(\d{2})$/);
+      if (!match) return null;
+      const hours = Number(match[1]);
+      const minutes = Number(match[2]);
+      if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours > 23 || minutes > 59) return null;
+      return (hours * 60) + minutes;
+    };
+
+    const hasPointTimeValue = (value) => parsePointTimeToMinutes(value) !== null;
+
+    const parseExpectedPointMinutes = (...values) => {
+      for (const value of values) {
+        if (typeof value === 'number' && Number.isFinite(value) && value > 0) return Math.round(value);
+        if (typeof value !== 'string') continue;
+        const text = value.trim();
+        if (!text) continue;
+        const timeMatch = text.match(/(\d{1,3}):(\d{2})/);
+        if (timeMatch) {
+          const hours = Number(timeMatch[1]);
+          const minutes = Number(timeMatch[2]);
+          if (Number.isFinite(hours) && Number.isFinite(minutes)) return (hours * 60) + minutes;
+        }
+        const numberMatch = text.replace(',', '.').match(/(\d+(?:\.\d+)?)/);
+        if (numberMatch) {
+          const hours = Number(numberMatch[1]);
+          if (Number.isFinite(hours) && hours > 0) return Math.round(hours * 60);
+        }
       }
+      return POINT_DEFAULT_EXPECTED_MINUTES;
+    };
 
-      const parseTime = (time) => {
-        const [hours, minutes] = (time || '').split(':').map(Number);
-        if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-        return hours * 60 + minutes;
-      };
-
-      const entrada = parseTime(registro.horaEntrada);
-      const saida = parseTime(registro.horaSaida);
-
-      if (entrada === null || saida === null) {
-        return { workedLabel: '-', irregularidade: '-', workedMinutes: null };
-      }
-
-      let workedMinutes = saida - entrada;
-
-      const almocoSaida = parseTime(registro.horaAlmocoSaida);
-      const almocoRetorno = parseTime(registro.horaAlmocoRetorno);
-      if (almocoSaida !== null && almocoRetorno !== null) {
-        workedMinutes -= almocoRetorno - almocoSaida;
-      }
-
-      if (Number.isNaN(workedMinutes) || workedMinutes <= 0) {
-        return { workedLabel: '-', irregularidade: '-', workedMinutes: null };
-      }
-
-      const workedLabel = formatMinutesToLabel(workedMinutes);
-
+    const getExpectedPointMinutesForDay = (registro = {}) => {
       const date = getDayInfo(registro);
-      const dayOfWeek = date ? date.getDay() : null; // 0 = domingo
-      const expectedMinutes = dayOfWeek !== null && dayOfWeek >= 1 && dayOfWeek <= 5 ? 8 * 60 : 0;
+      const dayOfWeek = date ? date.getDay() : null;
+      const expectedMinutes = parseExpectedPointMinutes(
+        registro.jornadaEsperadaMinutos,
+        registro.jornadaDiariaMinutos,
+        registro.cargaHorariaDiariaMinutos,
+        registro.jornadaEsperada,
+        registro.jornadaDiaria,
+        registro.cargaHorariaDiaria,
+        registro.horasDiarias
+      );
+
+      return {
+        expectedMinutes: dayOfWeek !== null && dayOfWeek >= 1 && dayOfWeek <= 5 ? expectedMinutes : 0,
+        hasDate: dayOfWeek !== null
+      };
+    };
+
+    const calculateWorkSummary = (registro = {}) => {
+      const entrada = parsePointTimeToMinutes(registro.horaEntrada);
+      const saida = parsePointTimeToMinutes(registro.horaSaida);
+      if (entrada === null || saida === null) {
+        return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
+      }
+
+      const almocoSaida = parsePointTimeToMinutes(registro.horaAlmocoSaida);
+      const almocoRetorno = parsePointTimeToMinutes(registro.horaAlmocoRetorno);
+      const hasLunchStart = hasPointTimeValue(registro.horaAlmocoSaida);
+      const hasLunchReturn = hasPointTimeValue(registro.horaAlmocoRetorno);
+      const hasCompleteLunch = hasLunchStart && hasLunchReturn;
+      const hasNoLunch = !hasLunchStart && !hasLunchReturn;
+
+      if (!hasCompleteLunch && !hasNoLunch) {
+        return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
+      }
+
+      let workedMinutes = hasCompleteLunch
+        ? (almocoSaida - entrada) + (saida - almocoRetorno)
+        : saida - entrada;
+
+      if (!Number.isFinite(workedMinutes) || workedMinutes <= 0) {
+        return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
+      }
+
+      const { expectedMinutes, hasDate } = getExpectedPointMinutesForDay(registro);
+      if (!hasDate) {
+        return {
+          workedLabel: formatMinutesToLabel(workedMinutes),
+          irregularidade: '-',
+          workedMinutes,
+          irregularityMinutes: null,
+          calculable: false
+        };
+      }
 
       const diff = workedMinutes - expectedMinutes;
-      const irregularidade = dayOfWeek === null
-        ? '-'
-        : diff === 0
-          ? '0:00'
-          : formatSignedDurationLabel(diff);
-
-      return { workedLabel, irregularidade, workedMinutes, irregularityMinutes: diff };
+      return {
+        workedLabel: formatMinutesToLabel(workedMinutes),
+        irregularidade: diff === 0 ? '00:00' : formatSignedDurationLabel(diff),
+        workedMinutes,
+        irregularityMinutes: diff,
+        calculable: true
+      };
     };
 
     const getPointInconsistencies = (registro = {}) => {
@@ -5306,6 +5364,9 @@ function App() {
       }
       if (registro.horaAlmocoRetorno && !registro.horaAlmocoSaida) {
         issues.push('Retorno do almoço registrado sem início de almoço correspondente.');
+      }
+      if (registro.horaAlmocoSaida && !registro.horaAlmocoRetorno && registro.horaSaida) {
+        issues.push('Saída final registrada sem retorno do almoço.');
       }
       return issues;
     };
@@ -5396,18 +5457,6 @@ function App() {
       return String(value);
     };
 
-    const parseIrregularityToMinutes = (value) => {
-      const text = String(value || '').trim();
-      if (!text || text === '-') return 0;
-      const match = text.match(/([+-])?\s*(\d{1,4}):(\d{2})/);
-      if (!match) return 0;
-      const sign = match[1] === '-' ? -1 : 1;
-      const hours = Number(match[2]);
-      const minutes = Number(match[3]);
-      if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0;
-      return sign * ((hours * 60) + minutes);
-    };
-
     const formatMinutesForPointSheet = (minutes, { signed = false } = {}) => {
       const normalized = Number(minutes) || 0;
       const sign = normalized < 0 ? '-' : signed && normalized > 0 ? '+' : '';
@@ -5422,32 +5471,34 @@ function App() {
       return normalized === 0 ? '-' : formatMinutesForPointSheet(normalized, { signed: true });
     };
 
-    const hasWorkedFullDayPresence = (record = {}) => Boolean(record.horaEntrada && record.horaSaida);
+    const hasWorkedFullDayPresence = (record = {}) => (
+      hasPointTimeValue(record.horaEntrada) && hasPointTimeValue(record.horaSaida)
+    );
 
     const hasMissingLunchBreak = (record = {}, summary = null) => (
       hasWorkedFullDayPresence(record)
-      && Boolean(summary?.workedMinutes)
-      && !record.horaAlmocoSaida
-      && !record.horaAlmocoRetorno
+      && summary?.calculable === true
+      && !hasPointTimeValue(record.horaAlmocoSaida)
+      && !hasPointTimeValue(record.horaAlmocoRetorno)
     );
 
     const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => {
       const summary = summaryInput || calculateWorkSummary(record);
-      const irregularityMinutes = Number.isFinite(summary?.irregularityMinutes)
+      const irregularityMinutes = summary?.calculable && Number.isFinite(summary?.irregularityMinutes)
         ? summary.irregularityMinutes
-        : parseIrregularityToMinutes(summary?.irregularidade || record.irregularidade);
+        : null;
       let bancoHorasMinutes = 0;
       let horaExtraMinutes = 0;
 
       if (irregularityMinutes > 0) {
-        bancoHorasMinutes += Math.min(irregularityMinutes, 15);
-        horaExtraMinutes += Math.max(irregularityMinutes - 15, 0);
+        bancoHorasMinutes += Math.min(irregularityMinutes, POINT_DAILY_BANK_LIMIT_MINUTES);
+        horaExtraMinutes += Math.max(irregularityMinutes - POINT_DAILY_BANK_LIMIT_MINUTES, 0);
       } else if (irregularityMinutes < 0) {
         bancoHorasMinutes += irregularityMinutes;
       }
 
       if (hasMissingLunchBreak(record, summary)) {
-        bancoHorasMinutes += 60;
+        bancoHorasMinutes += POINT_MISSING_LUNCH_BANK_MINUTES;
       }
 
       return {
@@ -5455,7 +5506,8 @@ function App() {
         horaExtraMinutes,
         bancoHoras: formatPointBalanceCell(bancoHorasMinutes),
         horaExtra: formatPointBalanceCell(horaExtraMinutes),
-        almocoNaoRegistradoBancoHoras: hasMissingLunchBreak(record, summary) ? 60 : 0
+        almocoNaoRegistradoBancoHoras: hasMissingLunchBreak(record, summary) ? POINT_MISSING_LUNCH_BANK_MINUTES : 0,
+        calculable: summary?.calculable === true
       };
     };
 
@@ -5512,7 +5564,14 @@ function App() {
         return 'Falta';
       }
       if (record?.justificativa) return record.justificativa;
-      if (summary?.irregularidade && summary.irregularidade !== '-') return summary.irregularidade;
+      if (
+        summary?.irregularidade
+        && summary.irregularidade !== '-'
+        && Number.isFinite(summary.irregularityMinutes)
+        && summary.irregularityMinutes !== 0
+      ) {
+        return summary.irregularidade;
+      }
       if (!record) {
         return weekday === 0 ? 'FOLGA' : weekday === 6 ? 'FOLGA COMPENSADA' : 'Sem registro';
       }
@@ -5565,11 +5624,15 @@ function App() {
           const date = new Date(year, month - 1, day);
           const dayKey = toDateInputValue(date);
           const record = recordsByDay.get(dayKey);
-          const summary = record ? calculateWorkSummary(record) : { irregularidade: '-', workedLabel: '-' };
+          const summary = record
+            ? calculateWorkSummary(record)
+            : { irregularidade: '-', workedLabel: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
           const balanceDistribution = record
             ? calculatePointBalanceDistribution(record, summary)
-            : { bancoHorasMinutes: 0, horaExtraMinutes: 0, bancoHoras: '-', horaExtra: '-' };
-          const irregularityMinutes = parseIrregularityToMinutes(summary.irregularidade);
+            : { bancoHorasMinutes: 0, horaExtraMinutes: 0, bancoHoras: '-', horaExtra: '-', calculable: false };
+          const irregularityMinutes = summary.calculable && Number.isFinite(summary.irregularityMinutes)
+            ? summary.irregularityMinutes
+            : 0;
           if (irregularityMinutes > 0) creditMinutes += irregularityMinutes;
           if (irregularityMinutes < 0) debitMinutes += Math.abs(irregularityMinutes);
           bankMinutes += balanceDistribution.bancoHorasMinutes;
