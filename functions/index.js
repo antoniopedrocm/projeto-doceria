@@ -343,6 +343,121 @@ const POINT_DEFAULT_EXPECTED_MINUTES = 8 * 60;
 const POINT_DAILY_BANK_LIMIT_MINUTES = 15;
 const POINT_SATURDAY_BANK_LIMIT_MINUTES = 5 * 60;
 const POINT_MISSING_LUNCH_BANK_MINUTES = 60;
+const POINT_WEEK_DAY_VALUES = ['0', '1', '2', '3', '4', '5', '6'];
+const POINT_WORK_SCHEDULE_TYPE_VALUES = ['seg-sex', 'seg-sab-folga', 'personalizada'];
+const DEFAULT_POINT_DAILY_LOADS = {
+  0: '00:00',
+  1: '08:00',
+  2: '08:00',
+  3: '08:00',
+  4: '08:00',
+  5: '08:00',
+  6: '05:00',
+};
+const DEFAULT_POINT_WORK_SCHEDULE = {
+  tipoEscala: 'seg-sex',
+  diasTrabalho: ['1', '2', '3', '4', '5'],
+  cargaHorariaPorDia: DEFAULT_POINT_DAILY_LOADS,
+  folgaSemanal: '',
+  folgaVariavel: false,
+  horarioPadrao: {
+    entrada: '09:30',
+    almocoSaida: '12:00',
+    almocoRetorno: '13:00',
+    saida: '18:30',
+    intervaloMinutos: 60,
+  },
+};
+
+const parsePointDurationToMinutes = (value, fallback = 0) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.round(value));
+  }
+  if (typeof value !== 'string') return fallback;
+  const text = value.trim();
+  if (!text) return fallback;
+  const timeMatch = text.match(/^(\d{1,3}):(\d{2})$/);
+  if (timeMatch) {
+    const hours = Number(timeMatch[1]);
+    const minutes = Number(timeMatch[2]);
+    if (Number.isFinite(hours) && Number.isFinite(minutes)) return (hours * 60) + minutes;
+  }
+  const numberMatch = text.replace(',', '.').match(/^(\d+(?:\.\d+)?)$/);
+  if (numberMatch) {
+    const hours = Number(numberMatch[1]);
+    if (Number.isFinite(hours)) return Math.round(hours * 60);
+  }
+  return fallback;
+};
+
+const formatPointDurationInput = (minutes) => {
+  const normalized = Math.max(0, Number(minutes) || 0);
+  const hours = Math.floor(normalized / 60);
+  const mins = normalized % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const sanitizePointTimeInput = (value, fallback = '') => {
+  if (typeof value !== 'string') return fallback;
+  const text = value.trim();
+  return /^\d{1,2}:\d{2}$/.test(text) ? text : fallback;
+};
+
+const sanitizeEmployeeWorkSchedule = (input = null) => {
+  const source = input && typeof input === 'object' ? input : {};
+  const type = POINT_WORK_SCHEDULE_TYPE_VALUES.includes(source.tipoEscala) ?
+    source.tipoEscala :
+    DEFAULT_POINT_WORK_SCHEDULE.tipoEscala;
+  const defaultWorkdays = type === 'seg-sab-folga' ?
+    ['1', '2', '3', '4', '5', '6'] :
+    [...DEFAULT_POINT_WORK_SCHEDULE.diasTrabalho];
+  const rawWorkdays = Array.isArray(source.diasTrabalho) && source.diasTrabalho.length ?
+    source.diasTrabalho :
+    defaultWorkdays;
+  const diasTrabalho = Array.from(new Set(
+      rawWorkdays
+          .map((day) => String(day))
+          .filter((day) => POINT_WEEK_DAY_VALUES.includes(day)),
+  ));
+  const rawLoads = source.cargaHorariaPorDia && typeof source.cargaHorariaPorDia === 'object' ?
+    source.cargaHorariaPorDia :
+    {};
+  const cargaHorariaPorDia = POINT_WEEK_DAY_VALUES.reduce((acc, day) => {
+    const fallbackMinutes = parsePointDurationToMinutes(DEFAULT_POINT_DAILY_LOADS[day], 0);
+    acc[day] = formatPointDurationInput(parsePointDurationToMinutes(rawLoads[day], fallbackMinutes));
+    return acc;
+  }, {});
+  const rawBreak = source.horarioPadrao?.intervaloMinutos;
+
+  return {
+    tipoEscala: type,
+    diasTrabalho,
+    cargaHorariaPorDia,
+    folgaSemanal: POINT_WEEK_DAY_VALUES.includes(String(source.folgaSemanal)) ?
+      String(source.folgaSemanal) :
+      '',
+    folgaVariavel: Boolean(source.folgaVariavel),
+    horarioPadrao: {
+      entrada: sanitizePointTimeInput(source.horarioPadrao?.entrada, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.entrada),
+      almocoSaida: sanitizePointTimeInput(source.horarioPadrao?.almocoSaida, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.almocoSaida),
+      almocoRetorno: sanitizePointTimeInput(source.horarioPadrao?.almocoRetorno, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.almocoRetorno),
+      saida: sanitizePointTimeInput(source.horarioPadrao?.saida, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.saida),
+      intervaloMinutos: Math.max(0, Math.round(Number(rawBreak) || DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.intervaloMinutos)),
+    },
+  };
+};
+
+const getPointScheduleDayInfo = (scheduleInput, date) => {
+  const schedule = sanitizeEmployeeWorkSchedule(scheduleInput);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return {isWorkday: false, expectedMinutes: 0, isWeeklyDayOff: false, schedule};
+  }
+  const dayKey = String(date.getDay());
+  const isWeeklyDayOff = !schedule.folgaVariavel && schedule.folgaSemanal === dayKey;
+  const isWorkday = schedule.diasTrabalho.includes(dayKey) && !isWeeklyDayOff;
+  const expectedMinutes = isWorkday ? parsePointDurationToMinutes(schedule.cargaHorariaPorDia[dayKey], 0) : 0;
+  return {isWorkday, expectedMinutes, isWeeklyDayOff, schedule};
+};
 
 const pointTimeToMinutes = (value) => {
   if (typeof value !== 'string') return null;
@@ -407,6 +522,7 @@ const getPointRecordDate = (record = {}) => {
 const getExpectedPointMinutesForDay = (record = {}) => {
   const date = getPointRecordDate(record);
   const dayOfWeek = date ? date.getDay() : null;
+  const scheduleDay = getPointScheduleDayInfo(record.jornadaTrabalho, date);
   const expectedMinutes = parseExpectedPointMinutes(
     record.jornadaEsperadaMinutos,
     record.jornadaDiariaMinutos,
@@ -418,7 +534,9 @@ const getExpectedPointMinutesForDay = (record = {}) => {
   );
 
   return {
-    expectedMinutes: dayOfWeek !== null && dayOfWeek >= 1 && dayOfWeek <= 5 ? expectedMinutes : 0,
+    expectedMinutes: dayOfWeek !== null && scheduleDay.isWorkday ?
+      (scheduleDay.expectedMinutes || expectedMinutes) :
+      0,
     hasDate: dayOfWeek !== null,
   };
 };
@@ -1680,6 +1798,7 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
   const lojaId = String(request.data?.lojaId || '').trim();
   const type = String(request.data?.type || '').trim();
   const {profile} = await verifyPointStoreAccess(uid, lojaId);
+  const employeeSchedule = sanitizeEmployeeWorkSchedule(profile.jornadaTrabalho || profile.escalaTrabalho || profile.workSchedule);
   const {now, dayKey, competenciaKey, timeLabel} = getSaoPauloPointNow();
   const pontosRef = db.collection('lojas').doc(lojaId).collection('pontos');
   const fallbackRecordRef = pontosRef.doc(`${uid}_${dayKey}`);
@@ -1732,12 +1851,14 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
       justificativa: '',
       competencia: competenciaKey,
       empresaId: lojaId,
+      jornadaTrabalho: employeeSchedule,
       historicoAlteracoes: [],
       createdAt: timestamp,
     };
     const mergedRecord = {
       ...(recordSnap.exists ? {} : baseData),
       ...existingData,
+      jornadaTrabalho: existingData.jornadaTrabalho || employeeSchedule,
       ...payload,
       updatedAt: timestamp,
     };
@@ -1755,6 +1876,7 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
       horaExtra: statusPatch.inconsistente ? '' : balanceDistribution.horaExtra,
       horaExtraMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.horaExtraMinutes,
       almocoNaoRegistradoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.almocoNaoRegistradoBancoHoras,
+      jornadaTrabalho: mergedRecord.jornadaTrabalho,
       updatedAt: timestamp,
       historicoRegistros: admin.firestore.FieldValue.arrayUnion({
         tipo: type,
@@ -1961,6 +2083,7 @@ exports.listAllUsers = onCall(async (request) => {
                 lojaIds,
                 permissions,
                 permissionDetails,
+                jornadaTrabalho: sanitizeEmployeeWorkSchedule(firestoreData.jornadaTrabalho),
             };
         }));
 
@@ -1997,6 +2120,7 @@ exports.createUser = onCall(async (request) => {
         lojaIds = [],
         permissions: requestedPermissions = null,
         permissionDetails: requestedPermissionDetails = null,
+        jornadaTrabalho = null,
     } = request.data;
     try {
 		if (!email || !senha || !nome) {
@@ -2029,6 +2153,7 @@ exports.createUser = onCall(async (request) => {
             }
         }
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
+        const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho);
 
         const userRecord = await auth.createUser({
             email,
@@ -2050,6 +2175,7 @@ exports.createUser = onCall(async (request) => {
             lojaIds: targetStores,
             permissions,
             permissionDetails,
+            jornadaTrabalho: sanitizedWorkSchedule,
         });
         return {uid: userRecord.uid, message: "Usuário criado com sucesso!"};
     } catch (error) {
@@ -2072,6 +2198,7 @@ exports.updateUser = onCall(async (request) => {
         lojaIds = [],
         permissions: requestedPermissions = null,
         permissionDetails: requestedPermissionDetails = null,
+        jornadaTrabalho = null,
     } = request.data;
 
     if (!uid || !nome || !role || !email) {
@@ -2119,6 +2246,7 @@ exports.updateUser = onCall(async (request) => {
         }
 
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
+        const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
 
         const authUpdatePayload = {
             displayName: nome,
@@ -2150,6 +2278,7 @@ exports.updateUser = onCall(async (request) => {
             lojaIds: targetStores,
             permissions,
             permissionDetails,
+            jornadaTrabalho: sanitizedWorkSchedule,
         }, { merge: true });
 
         return { message: "Usuário atualizado com sucesso!" };

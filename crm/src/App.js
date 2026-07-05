@@ -814,6 +814,133 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
   };
 };
 
+const POINT_WORK_SCHEDULE_TYPES = [
+  { value: 'seg-sex', label: 'Segunda a sexta' },
+  { value: 'seg-sab-folga', label: 'Segunda a sábado com uma folga semanal' },
+  { value: 'personalizada', label: 'Personalizada' },
+];
+
+const POINT_WEEK_DAYS = [
+  { value: '1', label: 'Segunda' },
+  { value: '2', label: 'Terça' },
+  { value: '3', label: 'Quarta' },
+  { value: '4', label: 'Quinta' },
+  { value: '5', label: 'Sexta' },
+  { value: '6', label: 'Sábado' },
+  { value: '0', label: 'Domingo' },
+];
+
+const DEFAULT_POINT_DAILY_LOADS = {
+  0: '00:00',
+  1: '08:00',
+  2: '08:00',
+  3: '08:00',
+  4: '08:00',
+  5: '08:00',
+  6: '05:00',
+};
+
+const DEFAULT_POINT_WORK_SCHEDULE = {
+  tipoEscala: 'seg-sex',
+  diasTrabalho: ['1', '2', '3', '4', '5'],
+  cargaHorariaPorDia: DEFAULT_POINT_DAILY_LOADS,
+  folgaSemanal: '',
+  folgaVariavel: false,
+  horarioPadrao: {
+    entrada: '09:30',
+    almocoSaida: '12:00',
+    almocoRetorno: '13:00',
+    saida: '18:30',
+    intervaloMinutos: 60,
+  },
+};
+
+const parsePointDurationToMinutes = (value, fallback = 0) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.round(value));
+  if (typeof value !== 'string') return fallback;
+  const text = value.trim();
+  if (!text) return fallback;
+  const timeMatch = text.match(/^(\d{1,3}):(\d{2})$/);
+  if (timeMatch) {
+    const hours = Number(timeMatch[1]);
+    const minutes = Number(timeMatch[2]);
+    if (Number.isFinite(hours) && Number.isFinite(minutes)) return (hours * 60) + minutes;
+  }
+  const numberMatch = text.replace(',', '.').match(/^(\d+(?:\.\d+)?)$/);
+  if (numberMatch) {
+    const hours = Number(numberMatch[1]);
+    if (Number.isFinite(hours)) return Math.round(hours * 60);
+  }
+  return fallback;
+};
+
+const formatPointDurationInput = (minutes) => {
+  const normalized = Math.max(0, Number(minutes) || 0);
+  const hours = Math.floor(normalized / 60);
+  const mins = normalized % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const sanitizePointTimeInput = (value, fallback = '') => {
+  if (typeof value !== 'string') return fallback;
+  const text = value.trim();
+  return /^\d{1,2}:\d{2}$/.test(text) ? text : fallback;
+};
+
+const sanitizeEmployeeWorkSchedule = (input = null) => {
+  const source = input && typeof input === 'object' ? input : {};
+  const type = POINT_WORK_SCHEDULE_TYPES.some((item) => item.value === source.tipoEscala)
+    ? source.tipoEscala
+    : DEFAULT_POINT_WORK_SCHEDULE.tipoEscala;
+  const defaultWorkdays = type === 'seg-sab-folga'
+    ? ['1', '2', '3', '4', '5', '6']
+    : [...DEFAULT_POINT_WORK_SCHEDULE.diasTrabalho];
+  const rawWorkdays = Array.isArray(source.diasTrabalho) && source.diasTrabalho.length
+    ? source.diasTrabalho
+    : defaultWorkdays;
+  const diasTrabalho = Array.from(new Set(
+    rawWorkdays
+      .map((day) => String(day))
+      .filter((day) => POINT_WEEK_DAYS.some((option) => option.value === day))
+  ));
+  const rawLoads = source.cargaHorariaPorDia && typeof source.cargaHorariaPorDia === 'object'
+    ? source.cargaHorariaPorDia
+    : {};
+  const cargaHorariaPorDia = POINT_WEEK_DAYS.reduce((acc, day) => {
+    const fallbackMinutes = parsePointDurationToMinutes(DEFAULT_POINT_DAILY_LOADS[day.value], 0);
+    acc[day.value] = formatPointDurationInput(parsePointDurationToMinutes(rawLoads[day.value], fallbackMinutes));
+    return acc;
+  }, {});
+  const rawBreak = source.horarioPadrao?.intervaloMinutos;
+
+  return {
+    tipoEscala: type,
+    diasTrabalho,
+    cargaHorariaPorDia,
+    folgaSemanal: POINT_WEEK_DAYS.some((day) => day.value === String(source.folgaSemanal)) ? String(source.folgaSemanal) : '',
+    folgaVariavel: Boolean(source.folgaVariavel),
+    horarioPadrao: {
+      entrada: sanitizePointTimeInput(source.horarioPadrao?.entrada, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.entrada),
+      almocoSaida: sanitizePointTimeInput(source.horarioPadrao?.almocoSaida, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.almocoSaida),
+      almocoRetorno: sanitizePointTimeInput(source.horarioPadrao?.almocoRetorno, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.almocoRetorno),
+      saida: sanitizePointTimeInput(source.horarioPadrao?.saida, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.saida),
+      intervaloMinutos: Math.max(0, Math.round(Number(rawBreak) || DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.intervaloMinutos)),
+    },
+  };
+};
+
+const getPointScheduleDayInfo = (scheduleInput, date) => {
+  const schedule = sanitizeEmployeeWorkSchedule(scheduleInput);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return { isWorkday: false, expectedMinutes: 0, isWeeklyDayOff: false, schedule };
+  }
+  const dayKey = String(date.getDay());
+  const isWeeklyDayOff = !schedule.folgaVariavel && schedule.folgaSemanal === dayKey;
+  const isWorkday = schedule.diasTrabalho.includes(dayKey) && !isWeeklyDayOff;
+  const expectedMinutes = isWorkday ? parsePointDurationToMinutes(schedule.cargaHorariaPorDia[dayKey], 0) : 0;
+  return { isWorkday, expectedMinutes, isWeeklyDayOff, schedule };
+};
+
 const getEntreLojasAllowedStatusesFromProfile = (profile) => {
   if (!profile) return [];
   const role = normalizeRole(profile.role);
@@ -5230,6 +5357,21 @@ function App() {
       employee.nome || employee.displayName || employee.name || employee.email || employee.id || 'Colaboradora'
     );
 
+    const getEmployeeWorkSchedule = (employee = {}) => sanitizeEmployeeWorkSchedule(
+      employee.jornadaTrabalho || employee.escalaTrabalho || employee.workSchedule || null
+    );
+
+    const getEmployeeById = (employeeId) => employees.find((item) => item.id === employeeId) || {};
+
+    const getScheduleForEmployeeId = (employeeId) => getEmployeeWorkSchedule(getEmployeeById(employeeId));
+
+    const getRecordWorkSchedule = (record = {}) => {
+      if (record.jornadaTrabalho || record.escalaTrabalho || record.workSchedule) {
+        return sanitizeEmployeeWorkSchedule(record.jornadaTrabalho || record.escalaTrabalho || record.workSchedule);
+      }
+      return getScheduleForEmployeeId(record.funcionarioId);
+    };
+
     const isManualManagerRecord = (record = {}) => (
       record.tipoLancamento === 'manual_pelo_gestor'
       || record.lancamentoManualGestor === true
@@ -5296,10 +5438,11 @@ function App() {
       return POINT_DEFAULT_EXPECTED_MINUTES;
     };
 
-    const getExpectedPointMinutesForDay = (registro = {}) => {
+    const getExpectedPointMinutesForDay = (registro = {}, scheduleInput = null) => {
       const date = getDayInfo(registro);
       const dayOfWeek = date ? date.getDay() : null;
-      const expectedMinutes = parseExpectedPointMinutes(
+      const scheduleDay = getPointScheduleDayInfo(scheduleInput || registro.jornadaTrabalho, date);
+      const fallbackExpectedMinutes = parseExpectedPointMinutes(
         registro.jornadaEsperadaMinutos,
         registro.jornadaDiariaMinutos,
         registro.cargaHorariaDiariaMinutos,
@@ -5308,14 +5451,17 @@ function App() {
         registro.cargaHorariaDiaria,
         registro.horasDiarias
       );
+      const expectedMinutes = scheduleDay.isWorkday ? scheduleDay.expectedMinutes : fallbackExpectedMinutes;
 
       return {
-        expectedMinutes: dayOfWeek !== null && dayOfWeek >= 1 && dayOfWeek <= 5 ? expectedMinutes : 0,
-        hasDate: dayOfWeek !== null
+        expectedMinutes: dayOfWeek !== null && scheduleDay.isWorkday ? expectedMinutes : 0,
+        hasDate: dayOfWeek !== null,
+        isWorkday: scheduleDay.isWorkday,
+        isWeeklyDayOff: scheduleDay.isWeeklyDayOff
       };
     };
 
-    const calculateWorkSummary = (registro = {}) => {
+    const calculateWorkSummary = (registro = {}, scheduleInput = null) => {
       if (isExcusedAbsenceRecord(registro)) {
         return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
       }
@@ -5345,7 +5491,7 @@ function App() {
         return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
       }
 
-      const { expectedMinutes, hasDate } = getExpectedPointMinutesForDay(registro);
+      const { expectedMinutes, hasDate } = getExpectedPointMinutesForDay(registro, scheduleInput);
       if (!hasDate) {
         return {
           workedLabel: formatMinutesToLabel(workedMinutes),
@@ -5410,7 +5556,7 @@ function App() {
       };
     };
 
-    const getWorkedTime = (registro) => calculateWorkSummary(registro).workedLabel;
+    const getWorkedTime = (registro) => calculateWorkSummary(registro, getRecordWorkSchedule(registro)).workedLabel;
 
     const getRecordDateTime = (record) => {
       if (record?.data && typeof record.data.toDate === 'function') {
@@ -5509,7 +5655,7 @@ function App() {
     );
 
     const calculatePointBalanceDistribution = (record = {}, summaryInput = null, options = {}) => {
-      const summary = summaryInput || calculateWorkSummary(record);
+      const summary = summaryInput || calculateWorkSummary(record, options.schedule || getRecordWorkSchedule(record));
       const irregularityMinutes = summary?.calculable && Number.isFinite(summary?.irregularityMinutes)
         ? summary.irregularityMinutes
         : null;
@@ -5597,6 +5743,23 @@ function App() {
       ]);
     };
 
+    const getPreviousCompetenceKey = (competenceKey) => {
+      const [year, month] = String(competenceKey || '').split('-').map(Number);
+      if (!year || !month) return '';
+      const previous = new Date(year, month - 2, 1);
+      return `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, '0')}`;
+    };
+
+    const getPriorCompetenceKeys = (competenceKey, maxMonths = 12) => {
+      const keys = [];
+      let cursor = getPreviousCompetenceKey(competenceKey);
+      while (cursor && keys.length < maxMonths) {
+        keys.unshift(cursor);
+        cursor = getPreviousCompetenceKey(cursor);
+      }
+      return keys;
+    };
+
     const hasAnyPointTime = (record = {}) => Boolean(
       record.horaEntrada
       || record.horaAlmocoSaida
@@ -5604,19 +5767,19 @@ function App() {
       || record.horaSaida
     );
 
-    const isExpectedPointWorkday = ({ date, dayKey, nationalHolidays }) => {
+    const isExpectedPointWorkday = ({ date, dayKey, nationalHolidays, schedule }) => {
       if (!(date instanceof Date) || Number.isNaN(date.getTime())) return false;
-      const weekday = date.getDay();
-      const isWeekday = weekday >= 1 && weekday <= 5;
       const isHoliday = nationalHolidays?.has(dayKey);
-      return isWeekday && !isHoliday;
+      const scheduleDay = getPointScheduleDayInfo(schedule, date);
+      return scheduleDay.isWorkday && !isHoliday;
     };
 
-    const getPointAbsenceDebitMinutes = ({ record = {}, date, dayKey, nationalHolidays }) => {
+    const getPointAbsenceDebitMinutes = ({ record = {}, date, dayKey, nationalHolidays, schedule }) => {
       if (isExcusedAbsenceRecord(record)) return 0;
       if (hasAnyPointTime(record)) return 0;
-      if (!isExpectedPointWorkday({ date, dayKey, nationalHolidays })) return 0;
-      return POINT_DEFAULT_EXPECTED_MINUTES;
+      if (nationalHolidays?.has(dayKey)) return 0;
+      const scheduleDay = getPointScheduleDayInfo(schedule || record.jornadaTrabalho, date);
+      return scheduleDay.isWorkday ? scheduleDay.expectedMinutes : 0;
     };
 
     const formatExcusedAbsenceJustification = (record = {}) => {
@@ -5626,11 +5789,12 @@ function App() {
       return `Falta abonada - ${rawJustification}`;
     };
 
-    const getPointSheetJustification = ({ record, date, dayKey, summary, nationalHolidays }) => {
+    const getPointSheetJustification = ({ record, date, dayKey, summary, nationalHolidays, schedule }) => {
       const weekday = date.getDay();
       const isWeekday = weekday >= 1 && weekday <= 5;
       const isHoliday = nationalHolidays.has(dayKey);
       const hasPoint = hasAnyPointTime(record);
+      const scheduleDay = getPointScheduleDayInfo(schedule || record.jornadaTrabalho, date);
 
       if (isExcusedAbsenceRecord(record)) {
         return formatExcusedAbsenceJustification(record);
@@ -5638,7 +5802,7 @@ function App() {
       if (isWeekday && isHoliday) {
         return hasPoint ? 'Hora Extra' : 'Feriado';
       }
-      if (isWeekday && !isHoliday && !hasPoint) {
+      if (scheduleDay.isWorkday && !isHoliday && !hasPoint) {
         return 'Falta';
       }
       if (record?.justificativa) return record.justificativa;
@@ -5652,12 +5816,114 @@ function App() {
         return summary.irregularidade;
       }
       if (!hasPoint) {
+        if (scheduleDay.isWeeklyDayOff) return 'FOLGA SEMANAL';
         return weekday === 0 ? 'FOLGA' : weekday === 6 ? 'FOLGA COMPENSADA' : 'Sem registro';
       }
       return '-';
     };
 
-    const handleExportPointSheet = () => {
+    const calculatePointBankMovementForMonth = ({ employeeId, competencia, employeeSchedule, employeeRecords = [] }) => {
+      const [year, month] = String(competencia || '').split('-').map(Number);
+      if (!employeeId || !year || !month || !employeeRecords.length) return 0;
+      const recordsByDay = new Map();
+      employeeRecords.forEach((record) => {
+        const dayKey = getRecordDayKey(record);
+        if (!dayKey || recordsByDay.has(dayKey)) return;
+        recordsByDay.set(dayKey, record);
+      });
+
+      const nationalHolidays = getBrazilNationalHolidays(year);
+      const daysInMonth = new Date(year, month, 0).getDate();
+      let movementMinutes = 0;
+
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const date = new Date(year, month - 1, day);
+        const dayKey = toDateInputValue(date);
+        const storedRecord = recordsByDay.get(dayKey);
+        const recordSchedule = storedRecord ? getRecordWorkSchedule(storedRecord) : employeeSchedule;
+        const dayRecord = storedRecord || {
+          dia: dayKey,
+          competencia,
+          funcionarioId: employeeId,
+          jornadaTrabalho: recordSchedule,
+        };
+        const summary = calculateWorkSummary(dayRecord, recordSchedule);
+        const absenceDebitMinutes = getPointAbsenceDebitMinutes({
+          record: dayRecord,
+          date,
+          dayKey,
+          nationalHolidays,
+          schedule: recordSchedule
+        });
+        const balanceDistribution = calculatePointBalanceDistribution(dayRecord, summary, {
+          absenceDebitMinutes,
+          schedule: recordSchedule
+        });
+        movementMinutes += balanceDistribution.bancoHorasMinutes;
+      }
+
+      return movementMinutes;
+    };
+
+    const getStoredPointBankBalance = async (employeeId, competencia) => {
+      if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY || !employeeId || !competencia) {
+        return null;
+      }
+      const balanceRef = doc(db, 'lojas', currentStoreIdForDisplay, 'pointBankBalances', `${employeeId}_${competencia}`);
+      const balanceSnap = await getDoc(balanceRef);
+      if (!balanceSnap.exists()) return null;
+      const data = balanceSnap.data() || {};
+      const value = Number(
+        data.saldoBancoHorasFinalMinutes
+        ?? data.saldoBancoHorasFinal
+        ?? data.bancoHorasFinalMinutes
+        ?? data.bancoHorasMinutes
+      );
+      return Number.isFinite(value) ? Math.round(value) : null;
+    };
+
+    const fetchEmployeePointRecordsForMonth = async (employeeId, competencia) => {
+      if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY || !employeeId || !competencia) {
+        return [];
+      }
+      if (competencia === recordsQueryMonth) {
+        return records.filter((item) => item.funcionarioId === employeeId);
+      }
+      const pontosRef = collection(db, 'lojas', currentStoreIdForDisplay, 'pontos');
+      const pontosQuery = query(
+        pontosRef,
+        where('funcionarioId', '==', employeeId),
+        where('competencia', '==', competencia)
+      );
+      const snapshot = await getDocs(pontosQuery);
+      return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    };
+
+    const getPreviousBankHoursBalance = async (employeeId, competencia, employeeSchedule) => {
+      let rollingBalanceMinutes = 0;
+      const competenceKeys = getPriorCompetenceKeys(competencia, 12);
+
+      for (const competenceKey of competenceKeys) {
+        const storedBalance = await getStoredPointBankBalance(employeeId, competenceKey);
+        if (storedBalance !== null) {
+          rollingBalanceMinutes = storedBalance;
+          continue;
+        }
+
+        const monthRecords = await fetchEmployeePointRecordsForMonth(employeeId, competenceKey);
+        if (!monthRecords.length) continue;
+        rollingBalanceMinutes += calculatePointBankMovementForMonth({
+          employeeId,
+          competencia: competenceKey,
+          employeeSchedule,
+          employeeRecords: monthRecords,
+        });
+      }
+
+      return rollingBalanceMinutes;
+    };
+
+    const handleExportPointSheet = async () => {
       const employeeId = getSelectedEmployeeIdForExport();
       if (!employeeId) {
         setRegisterMessage({ type: 'error', text: 'Selecione um colaborador para gerar a folha de ponto.' });
@@ -5691,11 +5957,12 @@ function App() {
         });
 
         const employee = getPointSheetEmployee(employeeId, employeeMonthlyRecords);
+        const employeeSchedule = getScheduleForEmployeeId(employeeId);
         const daysInMonth = new Date(year, month, 0).getDate();
         const rows = [];
         let creditMinutes = 0;
         let debitMinutes = 0;
-        let bankMinutes = 0;
+        let bankMovementMinutes = 0;
         let overtimePayMinutes = 0;
         const nationalHolidays = getBrazilNationalHolidays(year);
 
@@ -5703,24 +5970,29 @@ function App() {
           const date = new Date(year, month - 1, day);
           const dayKey = toDateInputValue(date);
           const record = recordsByDay.get(dayKey);
-          const dayRecord = record || { dia: dayKey, competencia: recordsQueryMonth };
-          const summary = calculateWorkSummary(dayRecord);
+          const recordSchedule = record ? getRecordWorkSchedule(record) : employeeSchedule;
+          const dayRecord = record || { dia: dayKey, competencia: recordsQueryMonth, funcionarioId: employeeId, jornadaTrabalho: recordSchedule };
+          const summary = calculateWorkSummary(dayRecord, recordSchedule);
           const absenceDebitMinutes = getPointAbsenceDebitMinutes({
             record: dayRecord,
             date,
             dayKey,
-            nationalHolidays
+            nationalHolidays,
+            schedule: recordSchedule
           });
-          const balanceDistribution = calculatePointBalanceDistribution(dayRecord, summary, { absenceDebitMinutes });
+          const balanceDistribution = calculatePointBalanceDistribution(dayRecord, summary, {
+            absenceDebitMinutes,
+            schedule: recordSchedule
+          });
           const irregularityMinutes = summary.calculable && Number.isFinite(summary.irregularityMinutes)
             ? summary.irregularityMinutes
             : 0;
           if (irregularityMinutes > 0) creditMinutes += irregularityMinutes;
           if (irregularityMinutes < 0) debitMinutes += Math.abs(irregularityMinutes);
-          bankMinutes += balanceDistribution.bancoHorasMinutes;
+          bankMovementMinutes += balanceDistribution.bancoHorasMinutes;
           overtimePayMinutes += balanceDistribution.horaExtraMinutes;
           const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
-          const justification = getPointSheetJustification({ record: dayRecord, date, dayKey, summary, nationalHolidays });
+          const justification = getPointSheetJustification({ record: dayRecord, date, dayKey, summary, nationalHolidays, schedule: recordSchedule });
 
           rows.push([
             dayOfWeek,
@@ -5738,6 +6010,8 @@ function App() {
         }
 
         const balanceMinutes = creditMinutes - debitMinutes;
+        const previousBankMinutes = await getPreviousBankHoursBalance(employeeId, recordsQueryMonth, employeeSchedule);
+        const finalBankMinutes = previousBankMinutes + bankMovementMinutes;
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -5869,17 +6143,18 @@ function App() {
           ['Créditos Mês', formatMinutesForPointSheet(creditMinutes)],
           ['Débitos Mês', formatMinutesForPointSheet(debitMinutes)],
           ['Saldo do Mês', formatMinutesForPointSheet(balanceMinutes, { signed: balanceMinutes !== 0 })],
-          ['Banco de Horas', formatMinutesForPointSheet(bankMinutes, { signed: bankMinutes !== 0 })],
+          ['Saldo B. H. Mês Anterior', formatMinutesForPointSheet(previousBankMinutes, { signed: previousBankMinutes !== 0 })],
+          ['Banco de Horas', formatMinutesForPointSheet(finalBankMinutes, { signed: finalBankMinutes !== 0 })],
           ['Total de Horas Extras a Pagar', formatMinutesForPointSheet(overtimePayMinutes)]
         ];
         const boxWidth = contentWidth / summaryBoxes.length;
         summaryBoxes.forEach(([label, value], index) => {
           const x = margin + (index * boxWidth);
           doc.rect(x, y, boxWidth, 10);
-          setFont(3.9, 'bold');
-          doc.text(label.toUpperCase(), x + 1.5, y + 3);
+          setFont(3.5, 'bold');
+          doc.text(doc.splitTextToSize(label.toUpperCase(), boxWidth - 3), x + 1.5, y + 2.8, { lineHeightFactor: 0.85 });
           setFont(7.2, 'bold');
-          doc.text(value, x + 1.5, y + 8);
+          doc.text(value, x + 1.5, y + 8.5);
         });
         y += 15;
 
@@ -5947,6 +6222,7 @@ function App() {
         const [year, month] = recordsQueryMonth.split('-').map(Number);
         if (!year || !month) return baseRecords;
         const employee = employees.find((item) => item.id === employeeId) || {};
+        const employeeSchedule = getEmployeeWorkSchedule(employee);
         const nationalHolidays = getBrazilNationalHolidays(year);
         const existingDays = new Set(baseRecords.map((item) => getRecordDayKey(item)).filter(Boolean));
         const dayKeys = activeDayFilter
@@ -5959,7 +6235,8 @@ function App() {
           if (!dayKey || existingDays.has(dayKey)) return acc;
           const [dayYear, dayMonth, day] = dayKey.split('-').map(Number);
           const date = new Date(dayYear, dayMonth - 1, day);
-          if (!isExpectedPointWorkday({ date, dayKey, nationalHolidays })) return acc;
+          const scheduleDay = getPointScheduleDayInfo(employeeSchedule, date);
+          if (!isExpectedPointWorkday({ date, dayKey, nationalHolidays, schedule: employeeSchedule })) return acc;
           acc.push({
             id: `falta-sem-abono-${employeeId}-${dayKey}`,
             virtualAbsence: true,
@@ -5972,7 +6249,8 @@ function App() {
             dia: dayKey,
             competencia: dayKey.slice(0, 7),
             statusPonto: 'Falta',
-            expectedAbsenceMinutes: POINT_DEFAULT_EXPECTED_MINUTES,
+            expectedAbsenceMinutes: scheduleDay.expectedMinutes || POINT_DEFAULT_EXPECTED_MINUTES,
+            jornadaTrabalho: employeeSchedule,
           });
           return acc;
         }, []);
@@ -6167,6 +6445,7 @@ function App() {
         setManualPointError('');
         const storeId = resolveActiveStoreForWrite();
         const competenciaKey = dayKey.slice(0, 7);
+        const employeeSchedule = getEmployeeWorkSchedule(employee);
         const pontosRef = collection(db, 'lojas', storeId, 'pontos');
         const duplicateQuery = query(
           pontosRef,
@@ -6191,12 +6470,13 @@ function App() {
           tipoLancamento: isAbsenceExcuse ? 'abono_falta' : 'manual_pelo_gestor',
           faltaAbonada: isAbsenceExcuse,
           abonoFalta: isAbsenceExcuse,
+          jornadaTrabalho: employeeSchedule,
         };
-        const summary = calculateWorkSummary(recordDraft);
+        const summary = calculateWorkSummary(recordDraft, employeeSchedule);
         const statusPatch = isAbsenceExcuse
           ? { inconsistente: false, necessitaAjuste: false, statusPonto: 'Falta abonada', inconsistencias: [] }
           : buildPointStatus(recordDraft);
-        const balanceDistribution = calculatePointBalanceDistribution(recordDraft, summary);
+        const balanceDistribution = calculatePointBalanceDistribution(recordDraft, summary, { schedule: employeeSchedule });
         const managerAudit = {
           data: new Date().toISOString(),
           tipo: isAbsenceExcuse ? 'falta_abonada_pelo_gestor' : 'manual_pelo_gestor',
@@ -6266,7 +6546,8 @@ function App() {
     };
 
     const openEditModal = (record) => {
-      const summary = calculateWorkSummary(record);
+      const recordSchedule = getRecordWorkSchedule(record);
+      const summary = calculateWorkSummary(record, recordSchedule);
       setEditingRecord(record);
       setEditForm({
         horaEntrada: record.horaEntrada || '',
@@ -6286,10 +6567,11 @@ function App() {
         const storeId = resolveActiveStoreForWrite();
         const recordRef = doc(db, 'lojas', storeId, 'pontos', editingRecord.id);
         const nowDate = new Date();
-        const editedRecord = { ...editingRecord, ...editForm };
-        const summary = calculateWorkSummary(editedRecord);
+        const recordSchedule = getRecordWorkSchedule(editingRecord);
+        const editedRecord = { ...editingRecord, ...editForm, jornadaTrabalho: recordSchedule };
+        const summary = calculateWorkSummary(editedRecord, recordSchedule);
         const statusPatch = buildPointStatus(editedRecord);
-        const balanceDistribution = calculatePointBalanceDistribution(editedRecord, summary);
+        const balanceDistribution = calculatePointBalanceDistribution(editedRecord, summary, { schedule: recordSchedule });
         const previousValues = {
           horaEntrada: editingRecord.horaEntrada || '',
           horaSaida: editingRecord.horaSaida || '',
@@ -6325,6 +6607,7 @@ function App() {
           horaSaida: nextValues.horaSaida,
           horaAlmocoSaida: nextValues.horaAlmocoSaida,
           horaAlmocoRetorno: nextValues.horaAlmocoRetorno,
+          jornadaTrabalho: recordSchedule,
           ...statusPatch,
           irregularidade: nextValues.irregularidade,
           qtde: nextValues.qtde,
@@ -6598,15 +6881,16 @@ function App() {
                     const date = getDayInfo(registro);
                     const diaSemana = date ? date.toLocaleDateString('pt-BR', { weekday: 'long' }) : '-';
                     const diaMes = date ? String(date.getDate()).padStart(2, '0') : '-';
-                    const workSummary = calculateWorkSummary(registro);
+                    const recordSchedule = getRecordWorkSchedule(registro);
+                    const workSummary = calculateWorkSummary(registro, recordSchedule);
                     const dayKey = getRecordDayKey(registro);
                     const nationalHolidays = date ? getBrazilNationalHolidays(date.getFullYear()) : new Set();
                     const absenceDebitMinutes = date
-                      ? getPointAbsenceDebitMinutes({ record: registro, date, dayKey, nationalHolidays })
+                      ? getPointAbsenceDebitMinutes({ record: registro, date, dayKey, nationalHolidays, schedule: recordSchedule })
                       : 0;
-                    const balanceDistribution = calculatePointBalanceDistribution(registro, workSummary, { absenceDebitMinutes });
+                    const balanceDistribution = calculatePointBalanceDistribution(registro, workSummary, { absenceDebitMinutes, schedule: recordSchedule });
                     const justificationLabel = date
-                      ? getPointSheetJustification({ record: registro, date, dayKey, summary: workSummary, nationalHolidays })
+                      ? getPointSheetJustification({ record: registro, date, dayKey, summary: workSummary, nationalHolidays, schedule: recordSchedule })
                       : (registro.justificativa || '-');
                     const recordPointStatus = buildPointStatus(registro);
                     const statusLabel = registro.statusPonto || recordPointStatus.statusPonto;
@@ -7814,6 +8098,7 @@ function App() {
         lojaIds: [],
         permissions: getDefaultPermissionsForRole(ROLE_ATTENDANT),
         applyCustomProfile: true,
+        jornadaTrabalho: sanitizeEmployeeWorkSchedule(),
         uid: ''
     });
     const [newPassword, setNewPassword] = useState("");
@@ -7955,6 +8240,7 @@ const effectiveStoreName = useMemo(() => {
                                 lojaIds: lojas,
                                 lojaId: lojas[0] || null,
                                 permissions: sanitizePermissions(u.permissions, normalizedRole),
+                                jornadaTrabalho: sanitizeEmployeeWorkSchedule(u.jornadaTrabalho || u.escalaTrabalho || u.workSchedule),
                                 permissionDetails: sanitizePermissionDetails(
                                     u.permissionDetails,
                                     normalizedRole,
@@ -8203,6 +8489,7 @@ const effectiveStoreName = useMemo(() => {
                 permissions: getDefaultPermissionsForRole(ROLE_ATTENDANT),
                 permissionDetails: getDefaultPermissionDetailsForRole(ROLE_ATTENDANT),
                 applyCustomProfile: true,
+                jornadaTrabalho: sanitizeEmployeeWorkSchedule(),
                 uid: ''
             });
             return;
@@ -8225,6 +8512,7 @@ const effectiveStoreName = useMemo(() => {
             permissions,
             permissionDetails,
             applyCustomProfile: hasCustomProfile,
+            jornadaTrabalho: sanitizeEmployeeWorkSchedule(userToEdit.jornadaTrabalho || userToEdit.escalaTrabalho || userToEdit.workSchedule),
             uid: userToEdit.uid || userToEdit.id || ''
         });
     }, [effectiveStoreId, getCustomPermissionsForUser]);
@@ -8271,6 +8559,19 @@ const effectiveStoreName = useMemo(() => {
         });
     }, []);
 
+    const updateUserWorkSchedule = useCallback((updater) => {
+        setUserFormData((prev) => {
+            const currentSchedule = sanitizeEmployeeWorkSchedule(prev.jornadaTrabalho);
+            const nextSchedule = typeof updater === 'function'
+                ? updater(currentSchedule)
+                : { ...currentSchedule, ...updater };
+            return {
+                ...prev,
+                jornadaTrabalho: sanitizeEmployeeWorkSchedule(nextSchedule)
+            };
+        });
+    }, []);
+
 	const handleUserSubmit = async (e) => {
 	  e.preventDefault();
 	  
@@ -8306,6 +8607,7 @@ const effectiveStoreName = useMemo(() => {
                 const permissionDetailsToPersist = applyCustomProfile
                     ? sanitizedPermissionDetails
                     : getDefaultPermissionDetailsForRole(selectedRole, permissionsToPersist);
+                const jornadaTrabalhoToPersist = sanitizeEmployeeWorkSchedule(userFormData.jornadaTrabalho);
 
                 let updatedUserId = editingUser?.uid || editingUser?.id;
 
@@ -8319,7 +8621,8 @@ const effectiveStoreName = useMemo(() => {
                         lojaId: singleStoreId || null,
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
-                        permissionDetails: permissionDetailsToPersist
+                        permissionDetails: permissionDetailsToPersist,
+                        jornadaTrabalho: jornadaTrabalhoToPersist
                   });
                   updatedUserId = editingUser.uid;
                   alert('Usuário atualizado com sucesso!');
@@ -8333,7 +8636,8 @@ const effectiveStoreName = useMemo(() => {
                         lojaId: singleStoreId || null,
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
-                        permissionDetails: permissionDetailsToPersist
+                        permissionDetails: permissionDetailsToPersist,
+                        jornadaTrabalho: jornadaTrabalhoToPersist
                   });
                   updatedUserId = result?.data?.uid || updatedUserId;
                   alert('Usuário criado com sucesso!');
@@ -8354,6 +8658,7 @@ const effectiveStoreName = useMemo(() => {
                         customPermissions: applyCustomProfile ? permissionsToPersist : null,
                         permissionDetails: permissionDetailsToPersist,
                         customPermissionDetails: applyCustomProfile ? permissionDetailsToPersist : null,
+                        jornadaTrabalho: jornadaTrabalhoToPersist,
                         hasCustomProfile: applyCustomProfile,
                     } : prev);
                 }
@@ -8375,6 +8680,7 @@ const effectiveStoreName = useMemo(() => {
                             lojaIds: lojas,
                             lojaId: lojas[0] || null,
                             permissions: sanitizePermissions(u.permissions, normalizedRole),
+                            jornadaTrabalho: sanitizeEmployeeWorkSchedule(u.jornadaTrabalho || u.escalaTrabalho || u.workSchedule),
                             permissionDetails: sanitizePermissionDetails(
                                 u.permissionDetails,
                                 normalizedRole,
@@ -8806,6 +9112,8 @@ const effectiveStoreName = useMemo(() => {
         { header: "Ação", key: "action" },
         { header: "Detalhes", key: "formattedDetails" },
     ];
+
+    const currentWorkSchedule = sanitizeEmployeeWorkSchedule(userFormData.jornadaTrabalho);
     
     return (
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
@@ -9416,6 +9724,157 @@ const effectiveStoreName = useMemo(() => {
                             </div>
                         </div>
                     )}
+
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+                        <div>
+                            <p className="text-sm font-semibold text-gray-800">Jornada de trabalho</p>
+                            <p className="text-xs text-gray-500">Configure a escala usada na folha de ponto, faltas e banco de horas desta funcionária.</p>
+                        </div>
+                        <Select
+                            label="Tipo de escala"
+                            value={currentWorkSchedule.tipoEscala}
+                            onChange={(e) => {
+                                const nextType = e.target.value;
+                                updateUserWorkSchedule((schedule) => ({
+                                    ...schedule,
+                                    tipoEscala: nextType,
+                                    diasTrabalho: nextType === 'seg-sab-folga'
+                                        ? ['1', '2', '3', '4', '5', '6']
+                                        : nextType === 'seg-sex'
+                                            ? ['1', '2', '3', '4', '5']
+                                            : schedule.diasTrabalho,
+                                    folgaSemanal: nextType === 'seg-sab-folga' ? schedule.folgaSemanal : '',
+                                    folgaVariavel: nextType === 'seg-sab-folga' ? schedule.folgaVariavel : false,
+                                }));
+                            }}
+                        >
+                            {POINT_WORK_SCHEDULE_TYPES.map((type) => (
+                                <option key={type.value} value={type.value}>{type.label}</option>
+                            ))}
+                        </Select>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700">Dias trabalhados e carga horária</label>
+                                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+                                    {POINT_WEEK_DAYS.map((day) => {
+                                        const checked = currentWorkSchedule.diasTrabalho.includes(day.value);
+                                        return (
+                                            <div key={day.value} className="grid grid-cols-[1fr_110px] items-center gap-3">
+                                                <label className="flex items-center gap-2 text-sm text-gray-700">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={(e) => updateUserWorkSchedule((schedule) => {
+                                                            const currentDays = new Set(schedule.diasTrabalho);
+                                                            if (e.target.checked) {
+                                                                currentDays.add(day.value);
+                                                            } else {
+                                                                currentDays.delete(day.value);
+                                                            }
+                                                            return {
+                                                                ...schedule,
+                                                                diasTrabalho: Array.from(currentDays).sort((a, b) => Number(a) - Number(b))
+                                                            };
+                                                        })}
+                                                    />
+                                                    {day.label}
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={currentWorkSchedule.cargaHorariaPorDia[day.value] || DEFAULT_POINT_DAILY_LOADS[day.value] || '00:00'}
+                                                    onChange={(e) => updateUserWorkSchedule((schedule) => ({
+                                                        ...schedule,
+                                                        cargaHorariaPorDia: {
+                                                            ...schedule.cargaHorariaPorDia,
+                                                            [day.value]: e.target.value
+                                                        }
+                                                    }))}
+                                                    onBlur={(e) => updateUserWorkSchedule((schedule) => ({
+                                                        ...schedule,
+                                                        cargaHorariaPorDia: {
+                                                            ...schedule.cargaHorariaPorDia,
+                                                            [day.value]: formatPointDurationInput(parsePointDurationToMinutes(e.target.value, parsePointDurationToMinutes(DEFAULT_POINT_DAILY_LOADS[day.value], 0)))
+                                                        }
+                                                    }))}
+                                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-pink-500 focus:ring-2 focus:ring-pink-500"
+                                                    placeholder="08:00"
+                                                    disabled={!checked}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                {currentWorkSchedule.tipoEscala === 'seg-sab-folga' && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <Select
+                                            label="Folga semanal"
+                                            value={currentWorkSchedule.folgaSemanal}
+                                            onChange={(e) => updateUserWorkSchedule({ folgaSemanal: e.target.value, folgaVariavel: false })}
+                                        >
+                                            <option value="">Sem folga fixa</option>
+                                            {POINT_WEEK_DAYS.filter((day) => day.value !== '0').map((day) => (
+                                                <option key={day.value} value={day.value}>{day.label}</option>
+                                            ))}
+                                        </Select>
+                                        <label className="flex items-end gap-2 pb-3 text-sm text-gray-700">
+                                            <input
+                                                type="checkbox"
+                                                checked={Boolean(currentWorkSchedule.folgaVariavel)}
+                                                onChange={(e) => updateUserWorkSchedule({
+                                                    folgaVariavel: e.target.checked,
+                                                    folgaSemanal: e.target.checked ? '' : currentWorkSchedule.folgaSemanal
+                                                })}
+                                            />
+                                            Folga variável
+                                        </label>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <Input
+                                        label="Entrada padrão"
+                                        type="time"
+                                        value={currentWorkSchedule.horarioPadrao.entrada}
+                                        onChange={(e) => updateUserWorkSchedule((schedule) => ({
+                                            ...schedule,
+                                            horarioPadrao: { ...schedule.horarioPadrao, entrada: e.target.value }
+                                        }))}
+                                    />
+                                    <Input
+                                        label="Saída almoço padrão"
+                                        type="time"
+                                        value={currentWorkSchedule.horarioPadrao.almocoSaida}
+                                        onChange={(e) => updateUserWorkSchedule((schedule) => ({
+                                            ...schedule,
+                                            horarioPadrao: { ...schedule.horarioPadrao, almocoSaida: e.target.value }
+                                        }))}
+                                    />
+                                    <Input
+                                        label="Retorno almoço padrão"
+                                        type="time"
+                                        value={currentWorkSchedule.horarioPadrao.almocoRetorno}
+                                        onChange={(e) => updateUserWorkSchedule((schedule) => ({
+                                            ...schedule,
+                                            horarioPadrao: { ...schedule.horarioPadrao, almocoRetorno: e.target.value }
+                                        }))}
+                                    />
+                                    <Input
+                                        label="Saída final padrão"
+                                        type="time"
+                                        value={currentWorkSchedule.horarioPadrao.saida}
+                                        onChange={(e) => updateUserWorkSchedule((schedule) => ({
+                                            ...schedule,
+                                            horarioPadrao: { ...schedule.horarioPadrao, saida: e.target.value }
+                                        }))}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
                         <div className="flex items-center justify-between">
