@@ -5374,6 +5374,8 @@ function App() {
 
     const isManualManagerRecord = (record = {}) => (
       record.tipoLancamento === 'manual_pelo_gestor'
+      || record.tipoLancamento === 'folga_compensada'
+      || record.tipoLancamento === 'liberacao_chefia'
       || record.lancamentoManualGestor === true
       || record.manualPeloGestor === true
     );
@@ -5383,6 +5385,23 @@ function App() {
       || record.faltaAbonada === true
       || record.abonoFalta === true
     );
+
+    const isManualNonWorkingDayRecord = (record = {}) => (
+      record.tipoLancamento === 'folga_compensada'
+      || record.tipoLancamento === 'liberacao_chefia'
+      || record.folgaCompensada === true
+      || record.liberacaoChefia === true
+    );
+
+    const getManualNonWorkingDayJustification = (record = {}) => {
+      if (record.tipoLancamento === 'folga_compensada' || record.folgaCompensada === true) {
+        return 'FOLGA COMPENSADA';
+      }
+      if (record.tipoLancamento === 'liberacao_chefia' || record.liberacaoChefia === true) {
+        return 'Liberação Chefia';
+      }
+      return record.justificativa || '-';
+    };
 
     const POINT_DEFAULT_EXPECTED_MINUTES = 8 * 60;
     const POINT_DAILY_BANK_LIMIT_MINUTES = 15;
@@ -5462,7 +5481,7 @@ function App() {
     };
 
     const calculateWorkSummary = (registro = {}, scheduleInput = null) => {
-      if (isExcusedAbsenceRecord(registro)) {
+      if (isExcusedAbsenceRecord(registro) || isManualNonWorkingDayRecord(registro)) {
         return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
       }
 
@@ -5535,6 +5554,14 @@ function App() {
           inconsistente: false,
           necessitaAjuste: false,
           statusPonto: 'Falta abonada',
+          inconsistencias: [],
+        };
+      }
+      if (isManualNonWorkingDayRecord(registro)) {
+        return {
+          inconsistente: false,
+          necessitaAjuste: false,
+          statusPonto: getManualNonWorkingDayJustification(registro),
           inconsistencias: [],
         };
       }
@@ -5662,7 +5689,7 @@ function App() {
       let bancoHorasMinutes = 0;
       let horaExtraMinutes = 0;
 
-      if (isExcusedAbsenceRecord(record)) {
+      if (isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) {
         return {
           bancoHorasMinutes: 0,
           horaExtraMinutes: 0,
@@ -5775,7 +5802,7 @@ function App() {
     };
 
     const getPointAbsenceDebitMinutes = ({ record = {}, date, dayKey, nationalHolidays, schedule }) => {
-      if (isExcusedAbsenceRecord(record)) return 0;
+      if (isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) return 0;
       if (hasAnyPointTime(record)) return 0;
       if (nationalHolidays?.has(dayKey)) return 0;
       const scheduleDay = getPointScheduleDayInfo(schedule || record.jornadaTrabalho, date);
@@ -5796,6 +5823,9 @@ function App() {
       const hasPoint = hasAnyPointTime(record);
       const scheduleDay = getPointScheduleDayInfo(schedule || record.jornadaTrabalho, date);
 
+      if (isManualNonWorkingDayRecord(record)) {
+        return getManualNonWorkingDayJustification(record);
+      }
       if (isExcusedAbsenceRecord(record)) {
         return formatExcusedAbsenceJustification(record);
       }
@@ -6281,6 +6311,9 @@ function App() {
     };
     const canExportPointSheet = !isManager || (selectedEmployee && selectedEmployee !== 'all');
     const manualPointIsAbsenceExcuse = manualPointForm.tipoLancamento === 'abono_falta';
+    const manualPointIsCompensatedDayOff = manualPointForm.tipoLancamento === 'folga_compensada';
+    const manualPointIsManagerRelease = manualPointForm.tipoLancamento === 'liberacao_chefia';
+    const manualPointSkipsTimeFields = manualPointIsAbsenceExcuse || manualPointIsCompensatedDayOff || manualPointIsManagerRelease;
 
     const requestLocation = () => requestCompatibleGeolocation({ source: 'meu-espaco-registro-ponto' });
 
@@ -6416,6 +6449,9 @@ function App() {
       const employee = employees.find((item) => item.id === manualPointForm.funcionarioId);
       const dayKey = manualPointForm.dia;
       const isAbsenceExcuse = manualPointForm.tipoLancamento === 'abono_falta';
+      const isCompensatedDayOff = manualPointForm.tipoLancamento === 'folga_compensada';
+      const isManagerRelease = manualPointForm.tipoLancamento === 'liberacao_chefia';
+      const skipsTimeFields = isAbsenceExcuse || isCompensatedDayOff || isManagerRelease;
       const hasAnyTime = [
         manualPointForm.horaEntrada,
         manualPointForm.horaAlmocoSaida,
@@ -6431,7 +6467,7 @@ function App() {
         setManualPointError('Informe a data do ponto.');
         return;
       }
-      if (!isAbsenceExcuse && !hasAnyTime) {
+      if (!skipsTimeFields && !hasAnyTime) {
         setManualPointError('Informe pelo menos um horário para lançar o ponto.');
         return;
       }
@@ -6460,26 +6496,63 @@ function App() {
           return;
         }
 
+        const displayJustification = isCompensatedDayOff
+          ? 'FOLGA COMPENSADA'
+          : isManagerRelease
+            ? 'Liberação Chefia'
+            : manualPointForm.justificativa.trim();
+        const launchType = isAbsenceExcuse
+          ? 'abono_falta'
+          : isCompensatedDayOff
+            ? 'folga_compensada'
+            : isManagerRelease
+              ? 'liberacao_chefia'
+              : 'manual_pelo_gestor';
+        const managerAuditType = isAbsenceExcuse
+          ? 'falta_abonada_pelo_gestor'
+          : isCompensatedDayOff
+            ? 'folga_compensada_pelo_gestor'
+            : isManagerRelease
+              ? 'liberacao_chefia_pelo_gestor'
+              : 'manual_pelo_gestor';
+        const managerAuditLabel = isAbsenceExcuse
+          ? 'Abono de falta'
+          : isCompensatedDayOff
+            ? 'FOLGA COMPENSADA'
+            : isManagerRelease
+              ? 'Liberação Chefia'
+              : 'Lançamento manual de ponto';
+
         const recordDraft = {
-          horaEntrada: isAbsenceExcuse ? '' : (manualPointForm.horaEntrada || ''),
-          horaAlmocoSaida: isAbsenceExcuse ? '' : (manualPointForm.horaAlmocoSaida || ''),
-          horaAlmocoRetorno: isAbsenceExcuse ? '' : (manualPointForm.horaAlmocoRetorno || ''),
-          horaSaida: isAbsenceExcuse ? '' : (manualPointForm.horaSaida || ''),
+          horaEntrada: skipsTimeFields ? '' : (manualPointForm.horaEntrada || ''),
+          horaAlmocoSaida: skipsTimeFields ? '' : (manualPointForm.horaAlmocoSaida || ''),
+          horaAlmocoRetorno: skipsTimeFields ? '' : (manualPointForm.horaAlmocoRetorno || ''),
+          horaSaida: skipsTimeFields ? '' : (manualPointForm.horaSaida || ''),
           dia: dayKey,
           competencia: competenciaKey,
-          tipoLancamento: isAbsenceExcuse ? 'abono_falta' : 'manual_pelo_gestor',
+          tipoLancamento: launchType,
           faltaAbonada: isAbsenceExcuse,
           abonoFalta: isAbsenceExcuse,
+          folgaCompensada: isCompensatedDayOff,
+          liberacaoChefia: isManagerRelease,
+          justificativa: displayJustification,
+          justificativaGestor: manualPointForm.justificativa.trim(),
           jornadaTrabalho: employeeSchedule,
         };
         const summary = calculateWorkSummary(recordDraft, employeeSchedule);
         const statusPatch = isAbsenceExcuse
           ? { inconsistente: false, necessitaAjuste: false, statusPonto: 'Falta abonada', inconsistencias: [] }
-          : buildPointStatus(recordDraft);
+          : isCompensatedDayOff
+            ? { inconsistente: false, necessitaAjuste: false, statusPonto: 'Folga compensada', inconsistencias: [] }
+            : isManagerRelease
+              ? { inconsistente: false, necessitaAjuste: false, statusPonto: 'Liberação chefia', inconsistencias: [] }
+              : buildPointStatus(recordDraft);
         const balanceDistribution = calculatePointBalanceDistribution(recordDraft, summary, { schedule: employeeSchedule });
         const managerAudit = {
           data: new Date().toISOString(),
-          tipo: isAbsenceExcuse ? 'falta_abonada_pelo_gestor' : 'manual_pelo_gestor',
+          tipo: managerAuditType,
+          tipoLancamento: managerAuditLabel,
+          origem: 'lançamento manual pelo gestor',
           gestorId: userId,
           gestor: userName,
           funcionarioId: employee.id,
@@ -6510,20 +6583,29 @@ function App() {
           horaExtraMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.horaExtraMinutes,
           almocoNaoRegistradoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.almocoNaoRegistradoBancoHoras,
           faltaSemAbonoBancoHoras: 0,
-          justificativa: manualPointForm.justificativa.trim(),
+          justificativa: displayJustification,
+          justificativaGestor: manualPointForm.justificativa.trim(),
           tipoLancamento: recordDraft.tipoLancamento,
           faltaAbonada: isAbsenceExcuse,
           abonoFalta: isAbsenceExcuse,
-          lancamentoManualGestor: !isAbsenceExcuse,
+          folgaCompensada: isCompensatedDayOff,
+          liberacaoChefia: isManagerRelease,
+          lancamentoManualGestor: true,
           manualPeloGestor: !isAbsenceExcuse,
           semLocalizacaoManual: true,
           localizacaoObservacao: isAbsenceExcuse
             ? 'Sem localização — falta abonada pelo gestor'
-            : 'Sem localização — lançamento manual pelo gestor',
+            : isCompensatedDayOff
+              ? 'Sem localização — folga compensada lançada pelo gestor'
+              : isManagerRelease
+                ? 'Sem localização — liberação chefia pelo gestor'
+                : 'Sem localização — lançamento manual pelo gestor',
           gestorId: userId,
           gestorNome: userName,
           dataLancamentoManual: serverTimestamp(),
           dataAbonoFalta: isAbsenceExcuse ? serverTimestamp() : null,
+          dataFolgaCompensada: isCompensatedDayOff ? serverTimestamp() : null,
+          dataLiberacaoChefia: isManagerRelease ? serverTimestamp() : null,
           historicoAlteracoes: arrayUnion(managerAudit)
         });
 
@@ -6534,7 +6616,11 @@ function App() {
           type: 'success',
           text: isAbsenceExcuse
             ? 'Falta abonada com auditoria do gestor.'
-            : 'Ponto manual lançado com auditoria do gestor.'
+            : isCompensatedDayOff
+              ? 'Folga compensada lançada com auditoria do gestor.'
+              : isManagerRelease
+                ? 'Liberação chefia lançada com auditoria do gestor.'
+                : 'Ponto manual lançado com auditoria do gestor.'
         });
         setManualPointModalOpen(false);
       } catch (error) {
@@ -6897,6 +6983,7 @@ function App() {
                     const isPendingAdjustment = Boolean(registro.inconsistente || registro.necessitaAjuste || recordPointStatus.inconsistente);
                     const manualManagerRecord = isManualManagerRecord(registro);
                     const excusedAbsenceRecord = isExcusedAbsenceRecord(registro);
+                    const manualNonWorkingDayRecord = isManualNonWorkingDayRecord(registro);
                     return (
                       <tr key={registro.id} className="hover:bg-gray-50">
                         <td className="py-3 px-4">
@@ -6910,6 +6997,11 @@ function App() {
                             {excusedAbsenceRecord && (
                               <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
                                 Falta abonada
+                              </span>
+                            )}
+                            {manualNonWorkingDayRecord && (
+                              <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                                {getManualNonWorkingDayJustification(registro)}
                               </span>
                             )}
                           </div>
@@ -6944,9 +7036,11 @@ function App() {
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-700">
                                   {excusedAbsenceRecord
                                     ? 'Sem localização — falta abonada pelo gestor'
-                                    : registro.virtualAbsence
-                                      ? 'Sem localização — falta sem registro'
-                                      : 'Sem localização — lançamento manual pelo gestor'}
+                                    : manualNonWorkingDayRecord
+                                      ? registro.localizacaoObservacao || `Sem localização — ${getManualNonWorkingDayJustification(registro).toLowerCase()} lançada pelo gestor`
+                                      : registro.virtualAbsence
+                                        ? 'Sem localização — falta sem registro'
+                                        : 'Sem localização — lançamento manual pelo gestor'}
                                 </div>
                               )}
                               {registro.localizacaoEntrada && (
@@ -7024,7 +7118,11 @@ function App() {
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               {manualPointIsAbsenceExcuse
                 ? 'Este registro será marcado como falta abonada pelo gestor e não descontará banco de horas.'
-                : 'Este registro será marcado como lançamento manual pelo gestor e ficará sem localização real da colaboradora.'}
+                : manualPointIsCompensatedDayOff
+                  ? 'Este registro será marcado como folga compensada pelo gestor e não impactará banco de horas.'
+                  : manualPointIsManagerRelease
+                    ? 'Este registro será marcado como liberação pela chefia e não impactará banco de horas.'
+                    : 'Este registro será marcado como lançamento manual pelo gestor e ficará sem localização real da colaboradora.'}
             </div>
             {manualPointError && (
               <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
@@ -7038,15 +7136,17 @@ function App() {
                 onChange={(e) => setManualPointForm({
                   ...manualPointForm,
                   tipoLancamento: e.target.value,
-                  horaEntrada: e.target.value === 'abono_falta' ? '' : manualPointForm.horaEntrada,
-                  horaAlmocoSaida: e.target.value === 'abono_falta' ? '' : manualPointForm.horaAlmocoSaida,
-                  horaAlmocoRetorno: e.target.value === 'abono_falta' ? '' : manualPointForm.horaAlmocoRetorno,
-                  horaSaida: e.target.value === 'abono_falta' ? '' : manualPointForm.horaSaida
+                  horaEntrada: e.target.value === 'manual' ? manualPointForm.horaEntrada : '',
+                  horaAlmocoSaida: e.target.value === 'manual' ? manualPointForm.horaAlmocoSaida : '',
+                  horaAlmocoRetorno: e.target.value === 'manual' ? manualPointForm.horaAlmocoRetorno : '',
+                  horaSaida: e.target.value === 'manual' ? manualPointForm.horaSaida : ''
                 })}
                 required
               >
                 <option value="manual">Lançamento manual de ponto</option>
                 <option value="abono_falta">Abono de falta</option>
+                <option value="folga_compensada">FOLGA COMPENSADA</option>
+                <option value="liberacao_chefia">Liberação Chefia</option>
               </Select>
               <Select
                 label="Colaboradora"
@@ -7067,7 +7167,7 @@ function App() {
                 onChange={(e) => setManualPointForm({ ...manualPointForm, dia: e.target.value })}
                 required
               />
-              {!manualPointIsAbsenceExcuse && (
+              {!manualPointSkipsTimeFields && (
                 <>
                   <Input label="Entrada" type="time" value={manualPointForm.horaEntrada} onChange={(e) => setManualPointForm({ ...manualPointForm, horaEntrada: e.target.value })} />
                   <Input label="Saída para almoço" type="time" value={manualPointForm.horaAlmocoSaida} onChange={(e) => setManualPointForm({ ...manualPointForm, horaAlmocoSaida: e.target.value })} />
@@ -7082,13 +7182,25 @@ function App() {
               onChange={(e) => setManualPointForm({ ...manualPointForm, justificativa: e.target.value })}
               placeholder={manualPointIsAbsenceExcuse
                 ? 'Ex.: Falta abonada por liberação da chefia.'
-                : 'Ex.: Colaboradora compareceu ao trabalho, porém esqueceu de registrar o ponto no sistema.'}
+                : manualPointIsCompensatedDayOff
+                  ? 'Ex.: Folga compensada conforme escala da semana.'
+                  : manualPointIsManagerRelease
+                    ? 'Ex.: Colaboradora liberada pela chefia, sem desconto no mês.'
+                    : 'Ex.: Colaboradora compareceu ao trabalho, porém esqueceu de registrar o ponto no sistema.'}
               required
             />
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setManualPointModalOpen(false)}>Cancelar</Button>
               <Button onClick={handleSaveManualPoint} disabled={savingManualPoint}>
-                {savingManualPoint ? 'Salvando...' : manualPointIsAbsenceExcuse ? 'Salvar abono de falta' : 'Salvar lançamento manual'}
+                {savingManualPoint
+                  ? 'Salvando...'
+                  : manualPointIsAbsenceExcuse
+                    ? 'Salvar abono de falta'
+                    : manualPointIsCompensatedDayOff
+                      ? 'Salvar folga compensada'
+                      : manualPointIsManagerRelease
+                        ? 'Salvar liberação chefia'
+                        : 'Salvar lançamento manual'}
               </Button>
             </div>
           </div>
