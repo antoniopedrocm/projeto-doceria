@@ -7834,7 +7834,7 @@ function App() {
                 <div className="flex items-end">
                   <button
                     type="button"
-                    onClick={openManualPointModal}
+                    onClick={() => openManualPointModal()}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-pink-700"
                   >
                     <Plus className="h-4 w-4" />
@@ -7863,8 +7863,10 @@ function App() {
                     <th className="py-3 px-4">Saída</th>
                     <th className="py-3 px-4">Irregularidade</th>
                     <th className="py-3 px-4">Qtde</th>
-                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Banco de horas</th>
+                    <th className="py-3 px-4">Hora extra</th>
                     <th className="py-3 px-4">Justificativa</th>
+                    <th className="py-3 px-4">Status</th>
                     {isManager && <th className="py-3 px-4">Localização</th>}
                     {isManager && <th className="py-3 px-4">Ações</th>}
                   </tr>
@@ -7874,12 +7876,23 @@ function App() {
                     const date = getDayInfo(registro);
                     const diaSemana = date ? date.toLocaleDateString('pt-BR', { weekday: 'long' }) : '-';
                     const diaMes = date ? String(date.getDate()).padStart(2, '0') : '-';
-                    const workSummary = calculateWorkSummary(registro);
+                    const recordSchedule = getRecordWorkSchedule(registro);
+                    const workSummary = calculateWorkSummary(registro, recordSchedule);
+                    const dayKey = getRecordDayKey(registro);
+                    const nationalHolidays = date ? getBrazilNationalHolidays(date.getFullYear()) : new Set();
+                    const absenceDebitMinutes = date
+                      ? getPointAbsenceDebitMinutes({ record: registro, date, dayKey, nationalHolidays, schedule: recordSchedule })
+                      : 0;
+                    const balanceDistribution = calculatePointBalanceDistribution(registro, workSummary, { absenceDebitMinutes, schedule: recordSchedule });
+                    const justificationLabel = date
+                      ? getPointSheetJustification({ record: registro, date, dayKey, summary: workSummary, nationalHolidays, schedule: recordSchedule })
+                      : (registro.justificativa || '-');
                     const recordPointStatus = buildPointStatus(registro);
                     const statusLabel = registro.statusPonto || recordPointStatus.statusPonto;
                     const isPendingAdjustment = Boolean(registro.inconsistente || registro.necessitaAjuste || recordPointStatus.inconsistente);
                     const manualManagerRecord = isManualManagerRecord(registro);
                     const excusedAbsenceRecord = isExcusedAbsenceRecord(registro);
+                    const manualNonWorkingDayRecord = isManualNonWorkingDayRecord(registro);
                     return (
                       <tr key={registro.id} className="hover:bg-gray-50">
                         <td className="py-3 px-4">
@@ -7895,6 +7908,11 @@ function App() {
                                 Falta abonada
                               </span>
                             )}
+                            {manualNonWorkingDayRecord && (
+                              <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                                {getManualNonWorkingDayJustification(registro)}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="py-3 px-4 capitalize">{diaSemana}</td>
@@ -7905,6 +7923,9 @@ function App() {
                         <td className="py-3 px-4 font-semibold">{formatTime(registro.horaSaida)}</td>
                         <td className="py-3 px-4">{workSummary.irregularidade}</td>
                         <td className="py-3 px-4">{workSummary.workedLabel}</td>
+                        <td className="py-3 px-4 font-semibold text-sky-700">{balanceDistribution.bancoHoras}</td>
+                        <td className="py-3 px-4 font-semibold text-emerald-700">{balanceDistribution.horaExtra}</td>
+                        <td className="py-3 px-4 max-w-xs">{justificationLabel}</td>
                         <td className="py-3 px-4">
                           <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
                             isPendingAdjustment
@@ -7917,13 +7938,18 @@ function App() {
                             {statusLabel}
                           </span>
                         </td>
-                        <td className="py-3 px-4 max-w-xs">{registro.justificativa || '-'}</td>
                         {isManager && (
                           <td className="py-3 px-4">
                             <div className="space-y-3 text-xs">
-                              {manualManagerRecord && (
+                              {(manualManagerRecord || excusedAbsenceRecord || registro.virtualAbsence) && (
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-700">
-                                  Sem localização — lançamento manual pelo gestor
+                                  {excusedAbsenceRecord
+                                    ? 'Sem localização — falta abonada pelo gestor'
+                                    : manualNonWorkingDayRecord
+                                      ? registro.localizacaoObservacao || `Sem localização — ${getManualNonWorkingDayJustification(registro).toLowerCase()} lançada pelo gestor`
+                                      : registro.virtualAbsence
+                                        ? 'Sem localização — falta sem registro'
+                                        : 'Sem localização — lançamento manual pelo gestor'}
                                 </div>
                               )}
                               {registro.localizacaoEntrada && (
@@ -7962,7 +7988,7 @@ function App() {
                                   </a>
                                 </div>
                               )}
-                              {!manualManagerRecord && !registro.localizacaoEntrada && !registro.localizacaoSaida && (
+                              {!manualManagerRecord && !excusedAbsenceRecord && !registro.virtualAbsence && !registro.localizacaoEntrada && !registro.localizacaoSaida && (
                                 <span className="text-gray-400">-</span>
                               )}
                             </div>
@@ -7970,7 +7996,21 @@ function App() {
                         )}
                         {isManager && (
                           <td className="py-3 px-4">
-                            <Button size="sm" variant="secondary" onClick={() => openEditModal(registro)}>Editar</Button>
+                            {registro.virtualAbsence ? (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => openManualPointModal({
+                                  funcionarioId: registro.funcionarioId,
+                                  dia: registro.dia,
+                                  tipoLancamento: 'abono_falta'
+                                })}
+                              >
+                                Abonar
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="secondary" onClick={() => openEditModal(registro)}>Editar</Button>
+                            )}
                           </td>
                         )}
                       </tr>
@@ -7987,7 +8027,11 @@ function App() {
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               {manualPointIsAbsenceExcuse
                 ? 'Este registro será marcado como falta abonada pelo gestor e não descontará banco de horas.'
-                : 'Este registro será marcado como lançamento manual pelo gestor e ficará sem localização real da colaboradora.'}
+                : manualPointIsCompensatedDayOff
+                  ? 'Este registro será marcado como folga compensada pelo gestor e não impactará banco de horas.'
+                  : manualPointIsManagerRelease
+                    ? 'Este registro será marcado como liberação pela chefia e não impactará banco de horas.'
+                    : 'Este registro será marcado como lançamento manual pelo gestor e ficará sem localização real da colaboradora.'}
             </div>
             {manualPointError && (
               <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
@@ -8001,15 +8045,17 @@ function App() {
                 onChange={(e) => setManualPointForm({
                   ...manualPointForm,
                   tipoLancamento: e.target.value,
-                  horaEntrada: e.target.value === 'abono_falta' ? '' : manualPointForm.horaEntrada,
-                  horaAlmocoSaida: e.target.value === 'abono_falta' ? '' : manualPointForm.horaAlmocoSaida,
-                  horaAlmocoRetorno: e.target.value === 'abono_falta' ? '' : manualPointForm.horaAlmocoRetorno,
-                  horaSaida: e.target.value === 'abono_falta' ? '' : manualPointForm.horaSaida
+                  horaEntrada: e.target.value === 'manual' ? manualPointForm.horaEntrada : '',
+                  horaAlmocoSaida: e.target.value === 'manual' ? manualPointForm.horaAlmocoSaida : '',
+                  horaAlmocoRetorno: e.target.value === 'manual' ? manualPointForm.horaAlmocoRetorno : '',
+                  horaSaida: e.target.value === 'manual' ? manualPointForm.horaSaida : ''
                 })}
                 required
               >
                 <option value="manual">Lançamento manual de ponto</option>
                 <option value="abono_falta">Abono de falta</option>
+                <option value="folga_compensada">FOLGA COMPENSADA</option>
+                <option value="liberacao_chefia">Liberação Chefia</option>
               </Select>
               <Select
                 label="Colaboradora"
@@ -8030,7 +8076,7 @@ function App() {
                 onChange={(e) => setManualPointForm({ ...manualPointForm, dia: e.target.value })}
                 required
               />
-              {!manualPointIsAbsenceExcuse && (
+              {!manualPointSkipsTimeFields && (
                 <>
                   <Input label="Entrada" type="time" value={manualPointForm.horaEntrada} onChange={(e) => setManualPointForm({ ...manualPointForm, horaEntrada: e.target.value })} />
                   <Input label="Saída para almoço" type="time" value={manualPointForm.horaAlmocoSaida} onChange={(e) => setManualPointForm({ ...manualPointForm, horaAlmocoSaida: e.target.value })} />
@@ -8045,13 +8091,25 @@ function App() {
               onChange={(e) => setManualPointForm({ ...manualPointForm, justificativa: e.target.value })}
               placeholder={manualPointIsAbsenceExcuse
                 ? 'Ex.: Falta abonada por liberação da chefia.'
-                : 'Ex.: Colaboradora compareceu ao trabalho, porém esqueceu de registrar o ponto no sistema.'}
+                : manualPointIsCompensatedDayOff
+                  ? 'Ex.: Folga compensada conforme escala da semana.'
+                  : manualPointIsManagerRelease
+                    ? 'Ex.: Colaboradora liberada pela chefia, sem desconto no mês.'
+                    : 'Ex.: Colaboradora compareceu ao trabalho, porém esqueceu de registrar o ponto no sistema.'}
               required
             />
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setManualPointModalOpen(false)}>Cancelar</Button>
               <Button onClick={handleSaveManualPoint} disabled={savingManualPoint}>
-                {savingManualPoint ? 'Salvando...' : manualPointIsAbsenceExcuse ? 'Salvar abono de falta' : 'Salvar lançamento manual'}
+                {savingManualPoint
+                  ? 'Salvando...'
+                  : manualPointIsAbsenceExcuse
+                    ? 'Salvar abono de falta'
+                    : manualPointIsCompensatedDayOff
+                      ? 'Salvar folga compensada'
+                      : manualPointIsManagerRelease
+                        ? 'Salvar liberação chefia'
+                        : 'Salvar lançamento manual'}
               </Button>
             </div>
           </div>
