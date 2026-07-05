@@ -398,9 +398,13 @@ const parseExpectedPointMinutes = (...values) => {
   return POINT_DEFAULT_EXPECTED_MINUTES;
 };
 
-const getExpectedPointMinutesForDay = (record = {}) => {
+const getPointRecordDate = (record = {}) => {
   const [year, month, day] = String(record.dia || '').split('-').map(Number);
-  const date = year && month && day ? new Date(year, month - 1, day) : null;
+  return year && month && day ? new Date(year, month - 1, day) : null;
+};
+
+const getExpectedPointMinutesForDay = (record = {}) => {
+  const date = getPointRecordDate(record);
   const dayOfWeek = date ? date.getDay() : null;
   const expectedMinutes = parseExpectedPointMinutes(
     record.jornadaEsperadaMinutos,
@@ -416,6 +420,11 @@ const getExpectedPointMinutesForDay = (record = {}) => {
     expectedMinutes: dayOfWeek !== null && dayOfWeek >= 1 && dayOfWeek <= 5 ? expectedMinutes : 0,
     hasDate: dayOfWeek !== null,
   };
+};
+
+const isSaturdayPointRecord = (record = {}) => {
+  const date = getPointRecordDate(record);
+  return date instanceof Date && !Number.isNaN(date.getTime()) && date.getDay() === 6;
 };
 
 const calculatePointSummary = (record = {}) => {
@@ -497,15 +506,26 @@ const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => 
     };
   }
 
-  if (irregularityMinutes > 0) {
+  const isSaturdayWorked = isSaturdayPointRecord(record) &&
+    hasPointTimeValue(record.horaEntrada) &&
+    hasPointTimeValue(record.horaSaida) &&
+    summary?.calculable === true &&
+    Number.isFinite(summary?.workedMinutes);
+  const missingLunchBankMinutes = !isSaturdayWorked && hasMissingLunchBreak(record, summary) ?
+    POINT_MISSING_LUNCH_BANK_MINUTES :
+    0;
+
+  if (isSaturdayWorked) {
+    bancoHorasMinutes += summary.workedMinutes;
+  } else if (irregularityMinutes > 0) {
     bancoHorasMinutes += Math.min(irregularityMinutes, POINT_DAILY_BANK_LIMIT_MINUTES);
     horaExtraMinutes += Math.max(irregularityMinutes - POINT_DAILY_BANK_LIMIT_MINUTES, 0);
   } else if (irregularityMinutes < 0) {
     bancoHorasMinutes += irregularityMinutes;
   }
 
-  if (hasMissingLunchBreak(record, summary)) {
-    bancoHorasMinutes += POINT_MISSING_LUNCH_BANK_MINUTES;
+  if (missingLunchBankMinutes > 0) {
+    bancoHorasMinutes += missingLunchBankMinutes;
   }
 
   return {
@@ -513,7 +533,7 @@ const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => 
     horaExtraMinutes,
     bancoHoras: formatPointBalanceCell(bancoHorasMinutes),
     horaExtra: formatPointBalanceCell(horaExtraMinutes),
-    almocoNaoRegistradoBancoHoras: hasMissingLunchBreak(record, summary) ? POINT_MISSING_LUNCH_BANK_MINUTES : 0,
+    almocoNaoRegistradoBancoHoras: missingLunchBankMinutes,
     calculable: summary?.calculable === true,
   };
 };

@@ -5495,6 +5495,11 @@ function App() {
       hasPointTimeValue(record.horaEntrada) && hasPointTimeValue(record.horaSaida)
     );
 
+    const isSaturdayPointRecord = (record = {}) => {
+      const date = getDayInfo(record);
+      return date instanceof Date && !Number.isNaN(date.getTime()) && date.getDay() === 6;
+    };
+
     const hasMissingLunchBreak = (record = {}, summary = null) => (
       hasWorkedFullDayPresence(record)
       && summary?.calculable === true
@@ -5523,7 +5528,17 @@ function App() {
       }
 
       const absenceDebitMinutes = Number(options.absenceDebitMinutes) || 0;
-      if (absenceDebitMinutes > 0 && !hasAnyPointTime(record)) {
+      const isSaturdayWorked = isSaturdayPointRecord(record)
+        && hasWorkedFullDayPresence(record)
+        && summary?.calculable === true
+        && Number.isFinite(summary?.workedMinutes);
+      const missingLunchBankMinutes = !isSaturdayWorked && hasMissingLunchBreak(record, summary)
+        ? POINT_MISSING_LUNCH_BANK_MINUTES
+        : 0;
+
+      if (isSaturdayWorked) {
+        bancoHorasMinutes += summary.workedMinutes;
+      } else if (absenceDebitMinutes > 0 && !hasAnyPointTime(record)) {
         bancoHorasMinutes -= absenceDebitMinutes;
       } else if (irregularityMinutes > 0) {
         bancoHorasMinutes += Math.min(irregularityMinutes, POINT_DAILY_BANK_LIMIT_MINUTES);
@@ -5532,8 +5547,8 @@ function App() {
         bancoHorasMinutes += irregularityMinutes;
       }
 
-      if (hasMissingLunchBreak(record, summary)) {
-        bancoHorasMinutes += POINT_MISSING_LUNCH_BANK_MINUTES;
+      if (missingLunchBankMinutes > 0) {
+        bancoHorasMinutes += missingLunchBankMinutes;
       }
 
       return {
@@ -5541,7 +5556,7 @@ function App() {
         horaExtraMinutes,
         bancoHoras: formatPointBalanceCell(bancoHorasMinutes),
         horaExtra: formatPointBalanceCell(horaExtraMinutes),
-        almocoNaoRegistradoBancoHoras: hasMissingLunchBreak(record, summary) ? POINT_MISSING_LUNCH_BANK_MINUTES : 0,
+        almocoNaoRegistradoBancoHoras: missingLunchBankMinutes,
         faltaSemAbonoBancoHoras: absenceDebitMinutes,
         calculable: summary?.calculable === true
       };
@@ -5625,6 +5640,7 @@ function App() {
         return 'Falta';
       }
       if (record?.justificativa) return record.justificativa;
+      if (weekday === 6 && hasPoint) return 'Sábado trabalhado';
       if (
         summary?.irregularidade
         && summary.irregularidade !== '-'
@@ -5724,7 +5740,7 @@ function App() {
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 8;
+        const margin = 5;
         const contentWidth = pageWidth - (margin * 2);
         const emittedAt = new Date().toLocaleString('pt-BR');
         const monthLabel = getPointSheetMonthLabel();
@@ -5745,26 +5761,26 @@ function App() {
           doc.line(margin, y, pageWidth - margin, y);
         };
         const labelValue = (label, value, x, y, width) => {
-          setFont(7);
+          setFont(5.4);
           doc.text(doc.splitTextToSize(`${label}: ${String(value || '-')}`, width), x, y);
         };
         const pointTableColumns = [
-          { label: 'Dia Sem', width: 11 },
-          { label: 'Data', width: 17 },
-          { label: 'Entrada', width: 14 },
-          { label: 'Saída almoço', width: 16 },
-          { label: 'Retorno almoço', width: 18 },
-          { label: 'Saída', width: 14 },
-          { label: 'Irregularidade', width: 19 },
+          { label: 'Dia Sem', width: 9 },
+          { label: 'Data', width: 15 },
+          { label: 'Entrada', width: 13 },
+          { label: 'Saída almoço', width: 15 },
+          { label: 'Retorno almoço', width: 17 },
+          { label: 'Saída', width: 13 },
+          { label: 'Irregularidade', width: 17 },
           { label: 'Qtde', width: 12 },
           { label: 'Banco de horas', width: 18 },
-          { label: 'Hora extra', width: 17 },
-          { label: 'Justificativa', width: contentWidth - 156 },
+          { label: 'Hora extra', width: 16 },
+          { label: 'Justificativa', width: contentWidth - 145 },
         ];
         const drawPointTableHeader = (startY) => {
           let x = margin;
-          const headerHeight = 6;
-          setFont(5.6, 'bold');
+          const headerHeight = 4.6;
+          setFont(4.8, 'bold');
           doc.setDrawColor(190, 190, 190);
           doc.setLineWidth(0.1);
           pointTableColumns.forEach((column) => {
@@ -5774,27 +5790,27 @@ function App() {
             doc.rect(x, startY, column.width, headerHeight, 'S');
             doc.setTextColor(20, 20, 20);
             const headerLines = doc.splitTextToSize(column.label, column.width - 2);
-            doc.text(headerLines, x + 1, startY + 2.6);
+            doc.text(headerLines, x + 1, startY + 1.9);
             x += column.width;
           });
           return startY + headerHeight;
         };
         const drawPointTable = (startY) => {
           let y = drawPointTableHeader(startY);
-          const bottomLimit = pageHeight - 14;
-          const lineHeight = 2.7;
-          const minRowHeight = 5.6;
+          const bottomLimit = pageHeight - 48;
+          const lineHeight = 1.8;
+          const minRowHeight = 3.8;
 
           rows.forEach((row, rowIndex) => {
             const cellLines = row.map((value, index) => doc.splitTextToSize(String(value || '-'), pointTableColumns[index].width - 2));
-            const rowHeight = Math.max(minRowHeight, ...cellLines.map((lines) => (lines.length * lineHeight) + 2));
+            const rowHeight = Math.max(minRowHeight, ...cellLines.map((lines) => (lines.length * lineHeight) + 1.2));
             if (y + rowHeight > bottomLimit) {
               doc.addPage();
               y = drawPointTableHeader(margin);
             }
 
             let x = margin;
-            setFont(5.6);
+            setFont(4.6);
             doc.setDrawColor(190, 190, 190);
             doc.setLineWidth(0.1);
             cellLines.forEach((lines, index) => {
@@ -5804,7 +5820,7 @@ function App() {
               doc.setDrawColor(190, 190, 190);
               doc.rect(x, y, column.width, rowHeight, 'S');
               doc.setTextColor(20, 20, 20);
-              doc.text(lines, x + 1, y + 3.4);
+              doc.text(lines, x + 1, y + 2.6);
               x += column.width;
             });
             y += rowHeight;
@@ -5813,40 +5829,40 @@ function App() {
           return y;
         };
 
-        setFont(11, 'bold');
-        doc.text('CARTÃO DE PONTO', pageWidth / 2, 10, { align: 'center' });
-        drawLine(13);
-        setFont(7);
-        doc.text(`Emissão: ${emittedAt}`, margin, 18);
-        doc.text('Página: 0001', pageWidth - margin, 18, { align: 'right' });
-        drawLine(22);
+        setFont(10, 'bold');
+        doc.text('CARTÃO DE PONTO', pageWidth / 2, 8, { align: 'center' });
+        drawLine(10.5);
+        setFont(6);
+        doc.text(`Emissão: ${emittedAt}`, margin, 14.5);
+        doc.text('Página: 0001', pageWidth - margin, 14.5, { align: 'right' });
+        drawLine(17);
 
-        labelValue('Empresa', companyName, margin, 28, 145);
-        labelValue('Mês/Ano Competência', monthLabel, margin + 108, 28, 86);
-        labelValue('Endereço', companyAddress, margin, 34, 100);
-        labelValue('CNPJ', companyCnpj || '-', margin + 108, 34, 86);
-        labelValue('Hor. de Trab.', companyWorkHours || '-', margin, 40, 100);
-        labelValue('Atividade Econômica', companyActivity || '-', margin + 108, 40, 86);
-        drawLine(45);
+        labelValue('Empresa', companyName, margin, 22, 112);
+        labelValue('Mês/Ano Competência', monthLabel, margin + 108, 22, 92);
+        labelValue('Endereço', companyAddress, margin, 27.5, 100);
+        labelValue('CNPJ', companyCnpj || '-', margin + 108, 27.5, 92);
+        labelValue('Hor. de Trab.', companyWorkHours || '-', margin, 33, 100);
+        labelValue('Atividade Econômica', companyActivity || '-', margin + 108, 33, 92);
+        drawLine(36);
 
-        labelValue('Funcionário', employee.name, margin, 51, 150);
-        labelValue('Categoria de Ponto', employee.category, margin + 108, 51, 86);
-        labelValue('Matrícula', employee.registration, margin, 57, 95);
-        if (employee.email) labelValue('E-mail', employee.email, margin + 70, 57, 120);
-        drawLine(62);
+        labelValue('Funcionário', employee.name, margin, 41, 120);
+        labelValue('Categoria de Ponto', employee.category, margin + 108, 41, 92);
+        labelValue('Matrícula', employee.registration, margin, 46, 70);
+        if (employee.email) labelValue('E-mail', employee.email, margin + 62, 46, 130);
+        drawLine(49);
 
-        let y = drawPointTable(65) + 5;
-        const finalBlockHeight = 64;
+        let y = drawPointTable(51) + 3;
+        const finalBlockHeight = 45;
         if (y > pageHeight - finalBlockHeight) {
           doc.addPage();
           y = margin;
         }
 
         drawLine(y);
-        y += 6;
-        setFont(8, 'bold');
+        y += 4;
+        setFont(7, 'bold');
         doc.text('Resumo do mês', margin, y);
-        y += 5;
+        y += 3.5;
         const summaryBoxes = [
           ['Créditos Mês', formatMinutesForPointSheet(creditMinutes)],
           ['Débitos Mês', formatMinutesForPointSheet(debitMinutes)],
@@ -5857,17 +5873,17 @@ function App() {
         const boxWidth = contentWidth / summaryBoxes.length;
         summaryBoxes.forEach(([label, value], index) => {
           const x = margin + (index * boxWidth);
-          doc.rect(x, y, boxWidth, 13);
-          setFont(6, 'bold');
-          doc.text(label.toUpperCase(), x + 2, y + 4);
-          setFont(10, 'bold');
-          doc.text(value, x + 2, y + 10);
+          doc.rect(x, y, boxWidth, 10);
+          setFont(3.9, 'bold');
+          doc.text(label.toUpperCase(), x + 1.5, y + 3);
+          setFont(7.2, 'bold');
+          doc.text(value, x + 1.5, y + 8);
         });
-        y += 20;
+        y += 15;
 
-        setFont(8);
+        setFont(7);
         doc.text('CONFIRMO A FREQUÊNCIA ACIMA', margin, y);
-        y += 22;
+        y += 15;
         const signatureWidth = 78;
         const leftSignatureX = margin;
         const rightSignatureX = pageWidth - margin - signatureWidth;
@@ -5877,15 +5893,15 @@ function App() {
         doc.setLineWidth(0.18);
         doc.line(leftSignatureX, y, leftSignatureX + signatureWidth, y);
         doc.line(rightSignatureX, y, rightSignatureX + signatureWidth, y);
-        setFont(7);
+        setFont(5.8);
         if (responsibleName) {
-          doc.text(doc.splitTextToSize(responsibleName, signatureWidth), leftSignatureX + (signatureWidth / 2), y + 5, { align: 'center' });
+          doc.text(doc.splitTextToSize(responsibleName, signatureWidth), leftSignatureX + (signatureWidth / 2), y + 4, { align: 'center' });
         }
         if (employeeName) {
-          doc.text(doc.splitTextToSize(employeeName, signatureWidth), rightSignatureX + (signatureWidth / 2), y + 5, { align: 'center' });
+          doc.text(doc.splitTextToSize(employeeName, signatureWidth), rightSignatureX + (signatureWidth / 2), y + 4, { align: 'center' });
         }
-        doc.text('Assinatura do responsável', leftSignatureX + (signatureWidth / 2), y + 11, { align: 'center' });
-        doc.text('Assinatura do funcionário', rightSignatureX + (signatureWidth / 2), y + 11, { align: 'center' });
+        doc.text('Assinatura do responsável', leftSignatureX + (signatureWidth / 2), y + 8, { align: 'center' });
+        doc.text('Assinatura do funcionário', rightSignatureX + (signatureWidth / 2), y + 8, { align: 'center' });
 
         const pageCount = doc.internal.getNumberOfPages();
         for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
