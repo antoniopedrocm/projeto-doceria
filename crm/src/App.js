@@ -5244,6 +5244,7 @@ function App() {
 
     const POINT_DEFAULT_EXPECTED_MINUTES = 8 * 60;
     const POINT_DAILY_BANK_LIMIT_MINUTES = 15;
+    const POINT_SATURDAY_BANK_LIMIT_MINUTES = 5 * 60;
     const POINT_MISSING_LUNCH_BANK_MINUTES = 60;
 
     const formatMinutesToLabel = (minutes) => {
@@ -5537,7 +5538,8 @@ function App() {
         : 0;
 
       if (isSaturdayWorked) {
-        bancoHorasMinutes += summary.workedMinutes;
+        bancoHorasMinutes += Math.min(summary.workedMinutes, POINT_SATURDAY_BANK_LIMIT_MINUTES);
+        horaExtraMinutes += Math.max(summary.workedMinutes - POINT_SATURDAY_BANK_LIMIT_MINUTES, 0);
       } else if (absenceDebitMinutes > 0 && !hasAnyPointTime(record)) {
         bancoHorasMinutes -= absenceDebitMinutes;
       } else if (irregularityMinutes > 0) {
