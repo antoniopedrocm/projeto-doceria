@@ -511,6 +511,24 @@ const getPointRecordDate = (record = {}) => {
   return year && month && day ? new Date(year, month - 1, day) : null;
 };
 
+const normalizePointBankStartDate = (value) => {
+  if (!value) return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value?.toDate === "function") {
+    return value.toDate().toISOString().slice(0, 10);
+  }
+  if (typeof value !== "string") return "";
+  const text = value.trim();
+  if (!text) return "";
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const brMatch = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+  return "";
+};
+
 const getExpectedPointMinutesForDay = (record = {}) => {
   const date = getPointRecordDate(record);
   const dayOfWeek = date ? date.getDay() : null;
@@ -2181,6 +2199,11 @@ exports.listAllUsers = onCall(async (request) => {
                 permissions,
                 permissionDetails,
                 jornadaTrabalho: sanitizeEmployeeWorkSchedule(firestoreData.jornadaTrabalho),
+                dataInicioBancoHoras: normalizePointBankStartDate(
+                  firestoreData.dataInicioBancoHoras ||
+                  firestoreData.inicioBancoHoras ||
+                  firestoreData.jornadaTrabalho?.dataInicioBancoHoras
+                ),
             };
         }));
 
@@ -2218,6 +2241,7 @@ exports.createUser = onCall(async (request) => {
         permissions: requestedPermissions = null,
         permissionDetails: requestedPermissionDetails = null,
         jornadaTrabalho = null,
+        dataInicioBancoHoras = "",
     } = request.data;
     try {
 		if (!email || !senha || !nome) {
@@ -2251,6 +2275,7 @@ exports.createUser = onCall(async (request) => {
         }
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho);
+        const sanitizedBankStartDate = normalizePointBankStartDate(dataInicioBancoHoras);
 
         const userRecord = await auth.createUser({
             email,
@@ -2273,6 +2298,7 @@ exports.createUser = onCall(async (request) => {
             permissions,
             permissionDetails,
             jornadaTrabalho: sanitizedWorkSchedule,
+            dataInicioBancoHoras: sanitizedBankStartDate,
         });
         return {uid: userRecord.uid, message: "Usuário criado com sucesso!"};
     } catch (error) {
@@ -2296,6 +2322,7 @@ exports.updateUser = onCall(async (request) => {
         permissions: requestedPermissions = null,
         permissionDetails: requestedPermissionDetails = null,
         jornadaTrabalho = null,
+        dataInicioBancoHoras = "",
     } = request.data;
 
     if (!uid || !nome || !role || !email) {
@@ -2344,6 +2371,10 @@ exports.updateUser = onCall(async (request) => {
 
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
+        const hasBankStartDatePayload = Object.prototype.hasOwnProperty.call(request.data || {}, "dataInicioBancoHoras");
+        const sanitizedBankStartDate = hasBankStartDatePayload
+          ? normalizePointBankStartDate(dataInicioBancoHoras)
+          : normalizePointBankStartDate(existingProfile.dataInicioBancoHoras);
 
         const authUpdatePayload = {
             displayName: nome,
@@ -2371,11 +2402,12 @@ exports.updateUser = onCall(async (request) => {
             nome: nome,
             role: normalizedRole,
             email: email,
-                        lojaId: targetStores[0] || null,
+            lojaId: targetStores[0] || null,
             lojaIds: targetStores,
             permissions,
             permissionDetails,
             jornadaTrabalho: sanitizedWorkSchedule,
+            dataInicioBancoHoras: sanitizedBankStartDate,
         }, { merge: true });
 
         return { message: "Usuário atualizado com sucesso!" };
