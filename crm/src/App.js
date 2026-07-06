@@ -1615,6 +1615,24 @@ const toDateInputValue = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const normalizePointBankStartDate = (value) => {
+  if (!value) return '';
+  if (typeof value?.toDate === 'function') {
+    return toDateInputValue(value.toDate());
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return toDateInputValue(value);
+  }
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  if (!text) return '';
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const brMatch = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+  return '';
+};
+
 const getCurrentMonthDateRange = () => {
   const today = new Date();
   return {
@@ -5139,7 +5157,8 @@ function App() {
       atividade: '',
       horarioTrabalho: '',
       competencia: `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`,
-      gestorResponsavel: ''
+      gestorResponsavel: '',
+      dataInicioBancoHorasPadrao: ''
     });
     const [companyLoading, setCompanyLoading] = useState(false);
     const [companySaving, setCompanySaving] = useState(false);
@@ -5222,7 +5241,7 @@ function App() {
 
     useEffect(() => {
       if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) {
-        setCompanyInfo((prev) => ({ ...prev, nome: '', endereco: '', cnpj: '', atividade: '', horarioTrabalho: '', gestorResponsavel: '' }));
+        setCompanyInfo((prev) => ({ ...prev, nome: '', endereco: '', cnpj: '', atividade: '', horarioTrabalho: '', gestorResponsavel: '', dataInicioBancoHorasPadrao: '' }));
         return;
       }
 
@@ -5237,7 +5256,7 @@ function App() {
             competencia: competenciaLabel,
           }));
         } else {
-          setCompanyInfo((prev) => ({ ...prev, nome: '', endereco: '', cnpj: '', atividade: '', horarioTrabalho: '', gestorResponsavel: '' }));
+          setCompanyInfo((prev) => ({ ...prev, nome: '', endereco: '', cnpj: '', atividade: '', horarioTrabalho: '', gestorResponsavel: '', dataInicioBancoHorasPadrao: '' }));
         }
         setCompanyLoading(false);
       }, (error) => {
@@ -5353,6 +5372,36 @@ function App() {
 
     const formatTime = (value) => value || '--:--';
 
+    const normalizePointBankStartDate = (value) => {
+      if (!value) return '';
+      if (typeof value?.toDate === 'function') {
+        return toDateInputValue(value.toDate());
+      }
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return toDateInputValue(value);
+      }
+      if (typeof value !== 'string') return '';
+      const text = value.trim();
+      if (!text) return '';
+      const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+      const brMatch = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+      return '';
+    };
+
+    const formatPointBankStartDateLabel = (value) => {
+      const normalized = normalizePointBankStartDate(value);
+      if (!normalized) return '';
+      const [year, month, day] = normalized.split('-');
+      return `${day}/${month}/${year}`;
+    };
+
+    const isPointBankDateBeforeStart = (dayKey, startDateInput) => {
+      const startDate = normalizePointBankStartDate(startDateInput);
+      return Boolean(startDate && dayKey && dayKey < startDate);
+    };
+
     const getEmployeeDisplayName = (employee = {}) => (
       employee.nome || employee.displayName || employee.name || employee.email || employee.id || 'Colaboradora'
     );
@@ -5364,6 +5413,32 @@ function App() {
     const getEmployeeById = (employeeId) => employees.find((item) => item.id === employeeId) || {};
 
     const getScheduleForEmployeeId = (employeeId) => getEmployeeWorkSchedule(getEmployeeById(employeeId));
+
+    const getEmployeePointBankStartDate = (employee = {}) => {
+      const employeeDate = normalizePointBankStartDate(
+        employee.dataInicioBancoHoras
+        || employee.inicioBancoHoras
+        || employee.jornadaTrabalho?.dataInicioBancoHoras
+        || employee.escalaTrabalho?.dataInicioBancoHoras
+        || employee.workSchedule?.dataInicioBancoHoras
+      );
+      if (employeeDate) return employeeDate;
+      return normalizePointBankStartDate(companyInfo.dataInicioBancoHorasPadrao || companyInfo.dataInicioBancoHoras);
+    };
+
+    const getPointBankStartDateForEmployeeId = (employeeId) => getEmployeePointBankStartDate(getEmployeeById(employeeId));
+
+    const getPointBankStartDateForRecord = (record = {}) => {
+      const recordDate = normalizePointBankStartDate(
+        record.dataInicioBancoHoras
+        || record.inicioBancoHoras
+        || record.jornadaTrabalho?.dataInicioBancoHoras
+        || record.escalaTrabalho?.dataInicioBancoHoras
+        || record.workSchedule?.dataInicioBancoHoras
+      );
+      if (recordDate) return recordDate;
+      return getPointBankStartDateForEmployeeId(record.funcionarioId);
+    };
 
     const getRecordWorkSchedule = (record = {}) => {
       if (record.jornadaTrabalho || record.escalaTrabalho || record.workSchedule) {
@@ -5701,6 +5776,19 @@ function App() {
         };
       }
 
+      if (options.bankCalculationEnabled === false) {
+        return {
+          bancoHorasMinutes: 0,
+          horaExtraMinutes: 0,
+          bancoHoras: '-',
+          horaExtra: '-',
+          almocoNaoRegistradoBancoHoras: 0,
+          faltaSemAbonoBancoHoras: 0,
+          calculable: false,
+          bancoHorasIgnoradoPorDataInicio: true
+        };
+      }
+
       const absenceDebitMinutes = Number(options.absenceDebitMinutes) || 0;
       const isSaturdayWorked = isSaturdayPointRecord(record)
         && hasWorkedFullDayPresence(record)
@@ -5852,7 +5940,7 @@ function App() {
       return '-';
     };
 
-    const calculatePointBankMovementForMonth = ({ employeeId, competencia, employeeSchedule, employeeRecords = [] }) => {
+    const calculatePointBankMovementForMonth = ({ employeeId, competencia, employeeSchedule, employeeRecords = [], bankStartDate = '' }) => {
       const [year, month] = String(competencia || '').split('-').map(Number);
       if (!employeeId || !year || !month || !employeeRecords.length) return 0;
       const recordsByDay = new Map();
@@ -5869,6 +5957,7 @@ function App() {
       for (let day = 1; day <= daysInMonth; day += 1) {
         const date = new Date(year, month - 1, day);
         const dayKey = toDateInputValue(date);
+        if (isPointBankDateBeforeStart(dayKey, bankStartDate)) continue;
         const storedRecord = recordsByDay.get(dayKey);
         const recordSchedule = storedRecord ? getRecordWorkSchedule(storedRecord) : employeeSchedule;
         const dayRecord = storedRecord || {
@@ -5929,13 +6018,19 @@ function App() {
       return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
     };
 
-    const getPreviousBankHoursBalance = async (employeeId, competencia, employeeSchedule) => {
+    const getPreviousBankHoursBalance = async (employeeId, competencia, employeeSchedule, bankStartDateInput = '') => {
       let rollingBalanceMinutes = 0;
-      const competenceKeys = getPriorCompetenceKeys(competencia, 12);
+      const bankStartDate = normalizePointBankStartDate(bankStartDateInput);
+      const startCompetence = bankStartDate ? bankStartDate.slice(0, 7) : '';
+      if (startCompetence && competencia <= startCompetence) {
+        return 0;
+      }
+      const competenceKeys = getPriorCompetenceKeys(competencia, bankStartDate ? 48 : 12);
 
       for (const competenceKey of competenceKeys) {
-        const storedBalance = await getStoredPointBankBalance(employeeId, competenceKey);
-        if (storedBalance !== null) {
+        if (startCompetence && competenceKey < startCompetence) continue;
+        const storedBalance = bankStartDate ? null : await getStoredPointBankBalance(employeeId, competenceKey);
+        if (!bankStartDate && storedBalance !== null) {
           rollingBalanceMinutes = storedBalance;
           continue;
         }
@@ -5947,6 +6042,7 @@ function App() {
           competencia: competenceKey,
           employeeSchedule,
           employeeRecords: monthRecords,
+          bankStartDate,
         });
       }
 
@@ -5988,6 +6084,7 @@ function App() {
 
         const employee = getPointSheetEmployee(employeeId, employeeMonthlyRecords);
         const employeeSchedule = getScheduleForEmployeeId(employeeId);
+        const bankStartDate = getPointBankStartDateForEmployeeId(employeeId);
         const daysInMonth = new Date(year, month, 0).getDate();
         const rows = [];
         let creditMinutes = 0;
@@ -6003,16 +6100,20 @@ function App() {
           const recordSchedule = record ? getRecordWorkSchedule(record) : employeeSchedule;
           const dayRecord = record || { dia: dayKey, competencia: recordsQueryMonth, funcionarioId: employeeId, jornadaTrabalho: recordSchedule };
           const summary = calculateWorkSummary(dayRecord, recordSchedule);
-          const absenceDebitMinutes = getPointAbsenceDebitMinutes({
-            record: dayRecord,
-            date,
-            dayKey,
-            nationalHolidays,
-            schedule: recordSchedule
-          });
+          const bankCalculationEnabled = !isPointBankDateBeforeStart(dayKey, bankStartDate);
+          const absenceDebitMinutes = bankCalculationEnabled
+            ? getPointAbsenceDebitMinutes({
+                record: dayRecord,
+                date,
+                dayKey,
+                nationalHolidays,
+                schedule: recordSchedule
+              })
+            : 0;
           const balanceDistribution = calculatePointBalanceDistribution(dayRecord, summary, {
             absenceDebitMinutes,
-            schedule: recordSchedule
+            schedule: recordSchedule,
+            bankCalculationEnabled
           });
           const irregularityMinutes = summary.calculable && Number.isFinite(summary.irregularityMinutes)
             ? summary.irregularityMinutes
@@ -6040,7 +6141,7 @@ function App() {
         }
 
         const balanceMinutes = creditMinutes - debitMinutes;
-        const previousBankMinutes = await getPreviousBankHoursBalance(employeeId, recordsQueryMonth, employeeSchedule);
+        const previousBankMinutes = await getPreviousBankHoursBalance(employeeId, recordsQueryMonth, employeeSchedule, bankStartDate);
         const finalBankMinutes = previousBankMinutes + bankMovementMinutes;
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -6187,6 +6288,12 @@ function App() {
           doc.text(value, x + 1.5, y + 8.5);
         });
         y += 15;
+
+        const bankStartLabel = formatPointBankStartDateLabel(bankStartDate);
+        if (bankStartLabel) {
+          setFont(5.8);
+          doc.text(`Banco de horas calculado a partir de ${bankStartLabel}.`, margin, y - 2.5);
+        }
 
         setFont(7);
         doc.text('CONFIRMO A FREQUÊNCIA ACIMA', margin, y);
@@ -6414,6 +6521,7 @@ function App() {
           horarioTrabalho: companyInfo.horarioTrabalho || '',
           competencia: competenciaLabel,
           gestorResponsavel: companyInfo.gestorResponsavel || userName,
+          dataInicioBancoHorasPadrao: normalizePointBankStartDate(companyInfo.dataInicioBancoHorasPadrao || companyInfo.dataInicioBancoHoras),
           gestorId: userId,
           atualizadoEm: serverTimestamp()
         }, { merge: true });
@@ -6482,6 +6590,8 @@ function App() {
         const storeId = resolveActiveStoreForWrite();
         const competenciaKey = dayKey.slice(0, 7);
         const employeeSchedule = getEmployeeWorkSchedule(employee);
+        const employeeBankStartDate = getEmployeePointBankStartDate(employee);
+        const bankCalculationEnabled = !isPointBankDateBeforeStart(dayKey, employeeBankStartDate);
         const pontosRef = collection(db, 'lojas', storeId, 'pontos');
         const duplicateQuery = query(
           pontosRef,
@@ -6537,6 +6647,7 @@ function App() {
           liberacaoChefia: isManagerRelease,
           justificativa: displayJustification,
           justificativaGestor: manualPointForm.justificativa.trim(),
+          dataInicioBancoHoras: employeeBankStartDate || '',
           jornadaTrabalho: employeeSchedule,
         };
         const summary = calculateWorkSummary(recordDraft, employeeSchedule);
@@ -6547,7 +6658,7 @@ function App() {
             : isManagerRelease
               ? { inconsistente: false, necessitaAjuste: false, statusPonto: 'Liberação chefia', inconsistencias: [] }
               : buildPointStatus(recordDraft);
-        const balanceDistribution = calculatePointBalanceDistribution(recordDraft, summary, { schedule: employeeSchedule });
+        const balanceDistribution = calculatePointBalanceDistribution(recordDraft, summary, { schedule: employeeSchedule, bankCalculationEnabled });
         const managerAudit = {
           data: new Date().toISOString(),
           tipo: managerAuditType,
@@ -6654,10 +6765,13 @@ function App() {
         const recordRef = doc(db, 'lojas', storeId, 'pontos', editingRecord.id);
         const nowDate = new Date();
         const recordSchedule = getRecordWorkSchedule(editingRecord);
-        const editedRecord = { ...editingRecord, ...editForm, jornadaTrabalho: recordSchedule };
+        const recordBankStartDate = getPointBankStartDateForRecord(editingRecord);
+        const recordDayKey = getRecordDayKey(editingRecord);
+        const bankCalculationEnabled = !isPointBankDateBeforeStart(recordDayKey, recordBankStartDate);
+        const editedRecord = { ...editingRecord, ...editForm, dataInicioBancoHoras: recordBankStartDate || '', jornadaTrabalho: recordSchedule };
         const summary = calculateWorkSummary(editedRecord, recordSchedule);
         const statusPatch = buildPointStatus(editedRecord);
-        const balanceDistribution = calculatePointBalanceDistribution(editedRecord, summary, { schedule: recordSchedule });
+        const balanceDistribution = calculatePointBalanceDistribution(editedRecord, summary, { schedule: recordSchedule, bankCalculationEnabled });
         const previousValues = {
           horaEntrada: editingRecord.horaEntrada || '',
           horaSaida: editingRecord.horaSaida || '',
@@ -6847,6 +6961,13 @@ function App() {
               <Input label="Horário de trabalho" value={companyInfo.horarioTrabalho} onChange={(e) => setCompanyInfo({ ...companyInfo, horarioTrabalho: e.target.value })} disabled={!isManager} />
               <Input label="Competência" value={competenciaLabel} disabled readOnly />
               <Input label="Gestor responsável" value={companyInfo.gestorResponsavel || userName} onChange={(e) => setCompanyInfo({ ...companyInfo, gestorResponsavel: e.target.value })} disabled={!isManager} />
+              <Input
+                label="Data padrão de início do banco de horas"
+                type="date"
+                value={normalizePointBankStartDate(companyInfo.dataInicioBancoHorasPadrao || companyInfo.dataInicioBancoHoras)}
+                onChange={(e) => setCompanyInfo({ ...companyInfo, dataInicioBancoHorasPadrao: e.target.value })}
+                disabled={!isManager}
+              />
             </div>
             {isManager && (
               <div className="flex justify-end">
@@ -6971,10 +7092,12 @@ function App() {
                     const workSummary = calculateWorkSummary(registro, recordSchedule);
                     const dayKey = getRecordDayKey(registro);
                     const nationalHolidays = date ? getBrazilNationalHolidays(date.getFullYear()) : new Set();
-                    const absenceDebitMinutes = date
+                    const bankStartDate = getPointBankStartDateForRecord(registro);
+                    const bankCalculationEnabled = !isPointBankDateBeforeStart(dayKey, bankStartDate);
+                    const absenceDebitMinutes = date && bankCalculationEnabled
                       ? getPointAbsenceDebitMinutes({ record: registro, date, dayKey, nationalHolidays, schedule: recordSchedule })
                       : 0;
-                    const balanceDistribution = calculatePointBalanceDistribution(registro, workSummary, { absenceDebitMinutes, schedule: recordSchedule });
+                    const balanceDistribution = calculatePointBalanceDistribution(registro, workSummary, { absenceDebitMinutes, schedule: recordSchedule, bankCalculationEnabled });
                     const justificationLabel = date
                       ? getPointSheetJustification({ record: registro, date, dayKey, summary: workSummary, nationalHolidays, schedule: recordSchedule })
                       : (registro.justificativa || '-');
@@ -8211,6 +8334,7 @@ function App() {
         permissions: getDefaultPermissionsForRole(ROLE_ATTENDANT),
         applyCustomProfile: true,
         jornadaTrabalho: sanitizeEmployeeWorkSchedule(),
+        dataInicioBancoHoras: '',
         uid: ''
     });
     const [newPassword, setNewPassword] = useState("");
@@ -8353,6 +8477,7 @@ const effectiveStoreName = useMemo(() => {
                                 lojaId: lojas[0] || null,
                                 permissions: sanitizePermissions(u.permissions, normalizedRole),
                                 jornadaTrabalho: sanitizeEmployeeWorkSchedule(u.jornadaTrabalho || u.escalaTrabalho || u.workSchedule),
+                                dataInicioBancoHoras: normalizePointBankStartDate(u.dataInicioBancoHoras || u.inicioBancoHoras || u.jornadaTrabalho?.dataInicioBancoHoras),
                                 permissionDetails: sanitizePermissionDetails(
                                     u.permissionDetails,
                                     normalizedRole,
@@ -8602,6 +8727,7 @@ const effectiveStoreName = useMemo(() => {
                 permissionDetails: getDefaultPermissionDetailsForRole(ROLE_ATTENDANT),
                 applyCustomProfile: true,
                 jornadaTrabalho: sanitizeEmployeeWorkSchedule(),
+                dataInicioBancoHoras: '',
                 uid: ''
             });
             return;
@@ -8625,6 +8751,7 @@ const effectiveStoreName = useMemo(() => {
             permissionDetails,
             applyCustomProfile: hasCustomProfile,
             jornadaTrabalho: sanitizeEmployeeWorkSchedule(userToEdit.jornadaTrabalho || userToEdit.escalaTrabalho || userToEdit.workSchedule),
+            dataInicioBancoHoras: normalizePointBankStartDate(userToEdit.dataInicioBancoHoras || userToEdit.inicioBancoHoras || userToEdit.jornadaTrabalho?.dataInicioBancoHoras),
             uid: userToEdit.uid || userToEdit.id || ''
         });
     }, [effectiveStoreId, getCustomPermissionsForUser]);
@@ -8720,6 +8847,7 @@ const effectiveStoreName = useMemo(() => {
                     ? sanitizedPermissionDetails
                     : getDefaultPermissionDetailsForRole(selectedRole, permissionsToPersist);
                 const jornadaTrabalhoToPersist = sanitizeEmployeeWorkSchedule(userFormData.jornadaTrabalho);
+                const dataInicioBancoHorasToPersist = normalizePointBankStartDate(userFormData.dataInicioBancoHoras);
 
                 let updatedUserId = editingUser?.uid || editingUser?.id;
 
@@ -8734,7 +8862,8 @@ const effectiveStoreName = useMemo(() => {
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
                         permissionDetails: permissionDetailsToPersist,
-                        jornadaTrabalho: jornadaTrabalhoToPersist
+                        jornadaTrabalho: jornadaTrabalhoToPersist,
+                        dataInicioBancoHoras: dataInicioBancoHorasToPersist
                   });
                   updatedUserId = editingUser.uid;
                   alert('Usuário atualizado com sucesso!');
@@ -8749,7 +8878,8 @@ const effectiveStoreName = useMemo(() => {
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
                         permissionDetails: permissionDetailsToPersist,
-                        jornadaTrabalho: jornadaTrabalhoToPersist
+                        jornadaTrabalho: jornadaTrabalhoToPersist,
+                        dataInicioBancoHoras: dataInicioBancoHorasToPersist
                   });
                   updatedUserId = result?.data?.uid || updatedUserId;
                   alert('Usuário criado com sucesso!');
@@ -8771,6 +8901,7 @@ const effectiveStoreName = useMemo(() => {
                         permissionDetails: permissionDetailsToPersist,
                         customPermissionDetails: applyCustomProfile ? permissionDetailsToPersist : null,
                         jornadaTrabalho: jornadaTrabalhoToPersist,
+                        dataInicioBancoHoras: dataInicioBancoHorasToPersist,
                         hasCustomProfile: applyCustomProfile,
                     } : prev);
                 }
@@ -8793,6 +8924,7 @@ const effectiveStoreName = useMemo(() => {
                             lojaId: lojas[0] || null,
                             permissions: sanitizePermissions(u.permissions, normalizedRole),
                             jornadaTrabalho: sanitizeEmployeeWorkSchedule(u.jornadaTrabalho || u.escalaTrabalho || u.workSchedule),
+                            dataInicioBancoHoras: normalizePointBankStartDate(u.dataInicioBancoHoras || u.inicioBancoHoras || u.jornadaTrabalho?.dataInicioBancoHoras),
                             permissionDetails: sanitizePermissionDetails(
                                 u.permissionDetails,
                                 normalizedRole,
@@ -9842,6 +9974,15 @@ const effectiveStoreName = useMemo(() => {
                             <p className="text-sm font-semibold text-gray-800">Jornada de trabalho</p>
                             <p className="text-xs text-gray-500">Configure a escala usada na folha de ponto, faltas e banco de horas desta funcionária.</p>
                         </div>
+                        <Input
+                            label="Data de início do banco de horas"
+                            type="date"
+                            value={normalizePointBankStartDate(userFormData.dataInicioBancoHoras)}
+                            onChange={(e) => setUserFormData({ ...userFormData, dataInicioBancoHoras: e.target.value })}
+                        />
+                        <p className="text-xs text-gray-500 -mt-2">
+                            Se ficar vazio, o sistema usa a data padrão configurada em Meu Espaço &gt; Informações da empresa.
+                        </p>
                         <Select
                             label="Tipo de escala"
                             value={currentWorkSchedule.tipoEscala}
