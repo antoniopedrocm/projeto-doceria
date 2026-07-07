@@ -6658,6 +6658,13 @@ function App() {
       return date instanceof Date && !Number.isNaN(date.getTime()) && date.getDay() === 6;
     };
 
+    const isSegSabScheduledSaturdayWorkday = (record = {}, scheduleInput = null) => {
+      const date = getDayInfo(record);
+      if (!(date instanceof Date) || Number.isNaN(date.getTime()) || date.getDay() !== 6) return false;
+      const scheduleDay = getPointScheduleDayInfo(scheduleInput || record.jornadaTrabalho, date);
+      return scheduleDay.schedule?.tipoEscala === 'seg-sab-folga' && scheduleDay.isWorkday;
+    };
+
     const hasMissingLunchBreak = (record = {}, summary = null) => (
       hasWorkedFullDayPresence(record)
       && summary?.calculable === true
@@ -6699,11 +6706,19 @@ function App() {
       }
 
       const absenceDebitMinutes = Number(options.absenceDebitMinutes) || 0;
+      const isScheduledSegSabSaturday = isSegSabScheduledSaturdayWorkday(record, options.schedule);
       const isSaturdayWorked = isSaturdayPointRecord(record)
+        && !isScheduledSegSabSaturday
         && hasWorkedFullDayPresence(record)
         && summary?.calculable === true
         && Number.isFinite(summary?.workedMinutes);
-      const missingLunchBankMinutes = !isSaturdayWorked && hasMissingLunchBreak(record, summary)
+      const isScheduledSegSabSaturdayWorked = isScheduledSegSabSaturday
+        && hasWorkedFullDayPresence(record)
+        && summary?.calculable === true
+        && Number.isFinite(summary?.workedMinutes);
+      const missingLunchBankMinutes = !isSaturdayWorked
+        && !isScheduledSegSabSaturdayWorked
+        && hasMissingLunchBreak(record, summary)
         ? POINT_MISSING_LUNCH_BANK_MINUTES
         : 0;
 
@@ -6712,6 +6727,12 @@ function App() {
         horaExtraMinutes += Math.max(summary.workedMinutes - POINT_SATURDAY_BANK_LIMIT_MINUTES, 0);
       } else if (absenceDebitMinutes > 0 && !hasAnyPointTime(record)) {
         bancoHorasMinutes -= absenceDebitMinutes;
+      } else if (isScheduledSegSabSaturdayWorked) {
+        if (irregularityMinutes > 0) {
+          horaExtraMinutes += irregularityMinutes;
+        } else if (irregularityMinutes < 0) {
+          bancoHorasMinutes += irregularityMinutes;
+        }
       } else if (irregularityMinutes > 0) {
         bancoHorasMinutes += Math.min(irregularityMinutes, POINT_DAILY_BANK_LIMIT_MINUTES);
         horaExtraMinutes += Math.max(irregularityMinutes - POINT_DAILY_BANK_LIMIT_MINUTES, 0);
@@ -6833,7 +6854,13 @@ function App() {
         return 'Falta';
       }
       if (record?.justificativa) return record.justificativa;
-      if (weekday === 6 && hasPoint) return 'Sábado trabalhado';
+      if (
+        weekday === 6
+        && hasPoint
+        && !isSegSabScheduledSaturdayWorkday(record, schedule || record.jornadaTrabalho)
+      ) {
+        return 'Sábado trabalhado';
+      }
       if (
         summary?.irregularidade
         && summary.irregularidade !== '-'

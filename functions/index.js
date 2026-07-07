@@ -556,6 +556,13 @@ const isSaturdayPointRecord = (record = {}) => {
   return date instanceof Date && !Number.isNaN(date.getTime()) && date.getDay() === 6;
 };
 
+const isSegSabScheduledSaturdayWorkday = (record = {}) => {
+  const date = getPointRecordDate(record);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime()) || date.getDay() !== 6) return false;
+  const scheduleDay = getPointScheduleDayInfo(record.jornadaTrabalho, date);
+  return scheduleDay.schedule?.tipoEscala === 'seg-sab-folga' && scheduleDay.isWorkday;
+};
+
 const calculatePointSummary = (record = {}) => {
   if (isExcusedAbsenceRecord(record)) {
     return {workedLabel: '', irregularidade: '', workedMinutes: null, irregularityMinutes: null, calculable: false};
@@ -635,18 +642,33 @@ const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => 
     };
   }
 
+  const isScheduledSegSabSaturday = isSegSabScheduledSaturdayWorkday(record);
   const isSaturdayWorked = isSaturdayPointRecord(record) &&
+    !isScheduledSegSabSaturday &&
     hasPointTimeValue(record.horaEntrada) &&
     hasPointTimeValue(record.horaSaida) &&
     summary?.calculable === true &&
     Number.isFinite(summary?.workedMinutes);
-  const missingLunchBankMinutes = !isSaturdayWorked && hasMissingLunchBreak(record, summary) ?
+  const isScheduledSegSabSaturdayWorked = isScheduledSegSabSaturday &&
+    hasPointTimeValue(record.horaEntrada) &&
+    hasPointTimeValue(record.horaSaida) &&
+    summary?.calculable === true &&
+    Number.isFinite(summary?.workedMinutes);
+  const missingLunchBankMinutes = !isSaturdayWorked &&
+    !isScheduledSegSabSaturdayWorked &&
+    hasMissingLunchBreak(record, summary) ?
     POINT_MISSING_LUNCH_BANK_MINUTES :
     0;
 
   if (isSaturdayWorked) {
     bancoHorasMinutes += Math.min(summary.workedMinutes, POINT_SATURDAY_BANK_LIMIT_MINUTES);
     horaExtraMinutes += Math.max(summary.workedMinutes - POINT_SATURDAY_BANK_LIMIT_MINUTES, 0);
+  } else if (isScheduledSegSabSaturdayWorked) {
+    if (irregularityMinutes > 0) {
+      horaExtraMinutes += irregularityMinutes;
+    } else if (irregularityMinutes < 0) {
+      bancoHorasMinutes += irregularityMinutes;
+    }
   } else if (irregularityMinutes > 0) {
     bancoHorasMinutes += Math.min(irregularityMinutes, POINT_DAILY_BANK_LIMIT_MINUTES);
     horaExtraMinutes += Math.max(irregularityMinutes - POINT_DAILY_BANK_LIMIT_MINUTES, 0);
