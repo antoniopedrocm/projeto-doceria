@@ -493,6 +493,15 @@ const isExcusedAbsenceRecord = (record = {}) => (
   record.abonoFalta === true
 );
 
+const isVacationPointRecord = (record = {}) => (
+  record.tipoLancamento === 'ferias' ||
+  record.tipoLancamento === 'férias' ||
+  record.ferias === true ||
+  record.lancamentoFerias === true ||
+  String(record.justificativa || '').trim().toLowerCase() === 'férias' ||
+  String(record.justificativa || '').trim().toLowerCase() === 'ferias'
+);
+
 const parseExpectedPointMinutes = (...values) => {
   for (const value of values) {
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) return Math.round(value);
@@ -565,6 +574,9 @@ const isSaturdayPointRecord = (record = {}) => {
 };
 
 const calculatePointSummary = (record = {}) => {
+  if (isVacationPointRecord(record)) {
+    return {workedLabel: '', irregularidade: '', workedMinutes: null, irregularityMinutes: null, calculable: false};
+  }
   if (isExcusedAbsenceRecord(record)) {
     return {workedLabel: '', irregularidade: '', workedMinutes: null, irregularityMinutes: null, calculable: false};
   }
@@ -632,7 +644,7 @@ const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => 
   let bancoHorasMinutes = 0;
   let horaExtraMinutes = 0;
 
-  if (isExcusedAbsenceRecord(record)) {
+  if (isVacationPointRecord(record) || isExcusedAbsenceRecord(record)) {
     return {
       bancoHorasMinutes: 0,
       horaExtraMinutes: 0,
@@ -694,6 +706,14 @@ const pointInconsistencies = (record = {}) => {
 };
 
 const pointStatusPatch = (record = {}) => {
+  if (isVacationPointRecord(record)) {
+    return {
+      inconsistente: false,
+      necessitaAjuste: false,
+      statusPonto: 'Férias',
+      inconsistencias: [],
+    };
+  }
   if (isExcusedAbsenceRecord(record)) {
     return {
       inconsistente: false,
@@ -1844,6 +1864,9 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
     const recordRef = querySnap.empty ? fallbackRecordRef : querySnap.docs[0].ref;
     const recordSnap = querySnap.empty ? await transaction.get(recordRef) : querySnap.docs[0];
     const existingData = recordSnap.exists ? recordSnap.data() || {} : {};
+    if (isVacationPointRecord(existingData)) {
+      throw new HttpsError('failed-precondition', 'Este dia está lançado como férias. Solicite ajuste ao gestor se o registro for necessário.');
+    }
     validatePointTransition(type, existingData);
 
     const baseData = {

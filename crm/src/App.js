@@ -30,7 +30,7 @@ import { httpsCallable } from "firebase/functions";
 // ATUALIZADO: Adicionado fluxo com redirect para login Google e reset de senha
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence, getIdToken } from "firebase/auth";
 // CORRIGIDO: Adicionado 'getDocs' à importação
-import { collection, query, doc, setDoc, addDoc, updateDoc, where, limit, orderBy, Timestamp, serverTimestamp, arrayUnion, writeBatch, waitForPendingWrites, runTransaction } from "firebase/firestore";
+import { collection, query, doc, setDoc, addDoc, updateDoc, where, limit, orderBy, Timestamp, serverTimestamp, arrayUnion, writeBatch, waitForPendingWrites, runTransaction, deleteField } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // --- CORREÇÃO: Importa o novo AudioManager ---
@@ -5185,6 +5185,19 @@ function App() {
     });
     const [manualPointError, setManualPointError] = useState('');
     const [savingManualPoint, setSavingManualPoint] = useState(false);
+    const [vacationPeriods, setVacationPeriods] = useState([]);
+    const [vacationLoading, setVacationLoading] = useState(false);
+    const [vacationModalOpen, setVacationModalOpen] = useState(false);
+    const [editingVacationPeriod, setEditingVacationPeriod] = useState(null);
+    const [vacationForm, setVacationForm] = useState({
+      funcionarioId: '',
+      dataInicio: initialDay,
+      dataFim: initialDay,
+      observacao: '',
+      gestorNome: ''
+    });
+    const [vacationError, setVacationError] = useState('');
+    const [savingVacation, setSavingVacation] = useState(false);
     const [todayRecordData, setTodayRecordData] = useState(null);
 
     const isManager = user ? [ROLE_OWNER, ROLE_MANAGER].includes(user.role) : false;
@@ -5327,6 +5340,35 @@ function App() {
     }, [currentStoreIdForDisplay, recordsQueryMonth]);
 
     useEffect(() => {
+      if (!isManager || !currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) {
+        setVacationPeriods([]);
+        setVacationLoading(false);
+        return;
+      }
+
+      setVacationLoading(true);
+      const feriasRef = collection(db, 'lojas', currentStoreIdForDisplay, 'ferias');
+      const unsubscribe = onSnapshot(feriasRef, (snapshot) => {
+        const data = snapshot.docs
+          .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+          .sort((a, b) => String(b.dataInicio || '').localeCompare(String(a.dataInicio || '')));
+        setVacationPeriods(data);
+        setVacationLoading(false);
+      }, (error) => {
+        console.error('Erro ao carregar períodos de férias', error);
+        setVacationPeriods([]);
+        setVacationLoading(false);
+      }, {
+        __listenerOptions: true,
+        operation: 'meu-espaco-ferias',
+        route: 'meu-espaco',
+        uid: userId
+      });
+
+      return () => unsubscribe();
+    }, [isManager, currentStoreIdForDisplay, userId]);
+
+    useEffect(() => {
       if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY || !userId) {
         setTodayRecordData(null);
         return;
@@ -5447,6 +5489,21 @@ function App() {
       return getScheduleForEmployeeId(record.funcionarioId);
     };
 
+    const isVacationRecord = (record = {}) => (
+      record.tipoLancamento === 'ferias'
+      || record.tipoLancamento === 'férias'
+      || record.ferias === true
+      || record.lancamentoFerias === true
+      || String(record.justificativa || '').trim().toLowerCase() === 'férias'
+      || String(record.justificativa || '').trim().toLowerCase() === 'ferias'
+    );
+
+    const isVacationRecordForPeriod = (record = {}, periodId = '') => (
+      isVacationRecord(record)
+      && periodId
+      && (record.feriasId === periodId || record.periodoFeriasId === periodId)
+    );
+
     const isManualManagerRecord = (record = {}) => (
       record.tipoLancamento === 'manual_pelo_gestor'
       || record.tipoLancamento === 'folga_compensada'
@@ -5556,6 +5613,9 @@ function App() {
     };
 
     const calculateWorkSummary = (registro = {}, scheduleInput = null) => {
+      if (isVacationRecord(registro)) {
+        return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
+      }
       if (isExcusedAbsenceRecord(registro) || isManualNonWorkingDayRecord(registro)) {
         return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
       }
@@ -5624,6 +5684,14 @@ function App() {
     };
 
     const buildPointStatus = (registro = {}) => {
+      if (isVacationRecord(registro)) {
+        return {
+          inconsistente: false,
+          necessitaAjuste: false,
+          statusPonto: 'Férias',
+          inconsistencias: [],
+        };
+      }
       if (isExcusedAbsenceRecord(registro)) {
         return {
           inconsistente: false,
@@ -5680,6 +5748,164 @@ function App() {
       if (record?.dia) return record.dia;
       const date = getDayInfo(record);
       return date ? toDateInputValue(date) : '';
+    };
+
+    const parseDayKeyToDate = (dayKey) => {
+      const [year, month, day] = String(dayKey || '').split('-').map(Number);
+      if (!year || !month || !day) return null;
+      return new Date(year, month - 1, day);
+    };
+
+    const formatDayKeyLabel = (dayKey) => {
+      const date = parseDayKeyToDate(dayKey);
+      return date ? date.toLocaleDateString('pt-BR') : '-';
+    };
+
+    const getInclusiveDayKeys = (startDayKey, endDayKey) => {
+      const startDate = parseDayKeyToDate(startDayKey);
+      const endDate = parseDayKeyToDate(endDayKey);
+      if (!startDate || !endDate || startDayKey > endDayKey) return [];
+      const days = [];
+      const cursor = new Date(startDate);
+      while (cursor <= endDate) {
+        days.push(toDateInputValue(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return days;
+    };
+
+    const getCompetenceKeysBetween = (startDayKey, endDayKey) => {
+      const startDate = parseDayKeyToDate(startDayKey);
+      const endDate = parseDayKeyToDate(endDayKey);
+      if (!startDate || !endDate || startDayKey > endDayKey) return [];
+      const keys = [];
+      const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const endCursor = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+      while (cursor <= endCursor) {
+        keys.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+      return keys;
+    };
+
+    const vacationRangesOverlap = (startA, endA, startB, endB) => Boolean(
+      startA && endA && startB && endB && startA <= endB && endA >= startB
+    );
+
+    const isActiveVacationPeriod = (period = {}) => String(period.status || 'ativo').toLowerCase() !== 'cancelado';
+
+    const pointVacationBackupFields = [
+      'horaEntrada',
+      'horaSaida',
+      'horaAlmocoSaida',
+      'horaAlmocoRetorno',
+      'localizacaoEntrada',
+      'localizacaoEntradaEndereco',
+      'localizacaoSaida',
+      'localizacaoSaidaEndereco',
+      'irregularidade',
+      'qtde',
+      'bancoHoras',
+      'bancoHorasMinutes',
+      'horaExtra',
+      'horaExtraMinutes',
+      'almocoNaoRegistradoBancoHoras',
+      'faltaSemAbonoBancoHoras',
+      'justificativa',
+      'justificativaGestor',
+      'tipoLancamento',
+      'faltaAbonada',
+      'abonoFalta',
+      'folgaCompensada',
+      'liberacaoChefia',
+      'lancamentoManualGestor',
+      'manualPeloGestor',
+      'semLocalizacaoManual',
+      'localizacaoObservacao',
+      'gestorId',
+      'gestorNome',
+      'statusPonto',
+      'inconsistente',
+      'necessitaAjuste',
+      'inconsistencias',
+      'dataInicioBancoHoras',
+      'jornadaTrabalho',
+      'historicoRegistros',
+      'data',
+      'createdAt',
+      'updatedAt',
+      'atualizadoEm',
+      'dataAjuste',
+      'dataLancamentoManual',
+      'dataAbonoFalta',
+      'dataFolgaCompensada',
+      'dataLiberacaoChefia'
+    ];
+
+    const pointVacationOnlyFields = [
+      'ferias',
+      'lancamentoFerias',
+      'feriasId',
+      'periodoFeriasId',
+      'dataInicioFerias',
+      'dataFimFerias',
+      'observacaoFerias',
+      'statusFerias',
+      'registroAnteriorFerias',
+      'feriasSobrescreveuRegistro',
+      'feriasSobrescreveuPontoRegistrado',
+      'dataLancamentoFerias',
+      'dataAlteracaoFerias',
+      'dataCancelamentoFerias',
+      'feriasCanceladaPor',
+      'feriasCanceladaPorNome'
+    ];
+
+    const buildPointBackupForVacation = (record = {}) => pointVacationBackupFields.reduce((acc, field) => {
+      if (Object.prototype.hasOwnProperty.call(record, field) && record[field] !== undefined) {
+        acc[field] = record[field];
+      }
+      return acc;
+    }, {});
+
+    const buildRestorePatchFromVacationRecord = (record = {}, auditEntry = {}) => {
+      const backup = record.registroAnteriorFerias && typeof record.registroAnteriorFerias === 'object'
+        ? record.registroAnteriorFerias
+        : {};
+      const patch = {};
+      pointVacationBackupFields.forEach((field) => {
+        patch[field] = Object.prototype.hasOwnProperty.call(backup, field) ? backup[field] : deleteField();
+      });
+      pointVacationOnlyFields.forEach((field) => {
+        patch[field] = deleteField();
+      });
+      patch.historicoAlteracoes = arrayUnion(auditEntry);
+      patch.atualizadoEm = serverTimestamp();
+      patch.updatedAt = serverTimestamp();
+      return patch;
+    };
+
+    const fetchPointRecordsForEmployeeBetween = async (storeId, employeeId, startDayKey, endDayKey) => {
+      if (!storeId || !employeeId || !startDayKey || !endDayKey) return [];
+      const pontosRef = collection(db, 'lojas', storeId, 'pontos');
+      const results = [];
+      const competences = getCompetenceKeysBetween(startDayKey, endDayKey);
+      for (const competence of competences) {
+        const pontosQuery = query(
+          pontosRef,
+          where('funcionarioId', '==', employeeId),
+          where('competencia', '==', competence)
+        );
+        const snapshot = await getDocs(pontosQuery);
+        snapshot.docs.forEach((docSnap) => {
+          const record = { id: docSnap.id, ...docSnap.data() };
+          const dayKey = getRecordDayKey(record);
+          if (dayKey >= startDayKey && dayKey <= endDayKey) {
+            results.push(record);
+          }
+        });
+      }
+      return results;
     };
 
     const handleTodayFilter = () => {
@@ -5764,7 +5990,7 @@ function App() {
       let bancoHorasMinutes = 0;
       let horaExtraMinutes = 0;
 
-      if (isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) {
+      if (isVacationRecord(record) || isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) {
         return {
           bancoHorasMinutes: 0,
           horaExtraMinutes: 0,
@@ -5890,7 +6116,7 @@ function App() {
     };
 
     const getPointAbsenceDebitMinutes = ({ record = {}, date, dayKey, nationalHolidays, schedule }) => {
-      if (isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) return 0;
+      if (isVacationRecord(record) || isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) return 0;
       if (hasAnyPointTime(record)) return 0;
       if (nationalHolidays?.has(dayKey)) return 0;
       const scheduleDay = getPointScheduleDayInfo(schedule || record.jornadaTrabalho, date);
@@ -5911,6 +6137,9 @@ function App() {
       const hasPoint = hasAnyPointTime(record);
       const scheduleDay = getPointScheduleDayInfo(schedule || record.jornadaTrabalho, date);
 
+      if (isVacationRecord(record)) {
+        return 'Férias';
+      }
       if (isManualNonWorkingDayRecord(record)) {
         return getManualNonWorkingDayJustification(record);
       }
@@ -6403,6 +6632,23 @@ function App() {
       return appendVirtualAbsences(dateFiltered.filter(item => item.funcionarioId === userId), userId);
     }, [records, activeDayFilter, isManager, selectedEmployee, userId, recordsQueryMonth, employees, user?.auth?.displayName, user?.auth?.email]);
 
+    const vacationPeriodsById = useMemo(() => {
+      const map = new Map();
+      vacationPeriods.forEach((period) => {
+        if (period.id) map.set(period.id, period);
+      });
+      return map;
+    }, [vacationPeriods]);
+
+    const filteredVacationPeriods = useMemo(() => {
+      if (!isManager) return [];
+      const sorted = [...vacationPeriods].sort((a, b) => String(b.dataInicio || '').localeCompare(String(a.dataInicio || '')));
+      if (selectedEmployee && selectedEmployee !== 'all') {
+        return sorted.filter((period) => period.funcionarioId === selectedEmployee);
+      }
+      return sorted;
+    }, [isManager, selectedEmployee, vacationPeriods]);
+
     const todayRecord = todayRecordData;
     const todayPointStatus = buildPointStatus(todayRecord || {});
     const hasTodayEntry = Boolean(todayRecord?.horaEntrada);
@@ -6742,6 +6988,444 @@ function App() {
       }
     };
 
+    const buildVacationPeriodAuditEntry = ({ action, employee, previousValue = null, nextValue = null, observation = '', conflictRecords = [] }) => ({
+      data: new Date().toISOString(),
+      tipo: action,
+      tipoLancamento: 'Férias',
+      gestorId: userId,
+      gestor: userName,
+      funcionarioId: employee?.id || nextValue?.funcionarioId || previousValue?.funcionarioId || '',
+      funcionarioNome: employee ? getEmployeeDisplayName(employee) : (nextValue?.funcionarioNome || previousValue?.funcionarioNome || ''),
+      valorAnterior: previousValue,
+      valorNovo: nextValue,
+      observacao: observation || '',
+      conflitosComPonto: conflictRecords.map((record) => ({
+        dia: getRecordDayKey(record),
+        registroId: record.id,
+        possuiHorarios: hasAnyPointTime(record),
+        justificativa: record.justificativa || '',
+        statusPonto: record.statusPonto || ''
+      }))
+    });
+
+    const buildVacationPointAuditEntry = ({ action, periodId, employee, dayKey, previousRecord = null, observation = '' }) => ({
+      data: new Date().toISOString(),
+      tipo: action,
+      tipoLancamento: 'Férias',
+      origem: 'lançamento de férias pelo gestor',
+      feriasId: periodId,
+      gestorId: userId,
+      gestor: userName,
+      funcionarioId: employee?.id || '',
+      funcionarioNome: employee ? getEmployeeDisplayName(employee) : '',
+      dia: dayKey,
+      observacao: observation || '',
+      valorAnterior: previousRecord ? buildPointBackupForVacation(previousRecord) : null,
+      valorNovo: {
+        justificativa: 'Férias',
+        irregularidade: '-',
+        qtde: '-',
+        bancoHoras: '-',
+        horaExtra: '-'
+      }
+    });
+
+    const buildVacationPointPayload = ({ storeId, employee, dayKey, periodId, dataInicio, dataFim, observacao, existingRecord = null, action }) => {
+      const employeeSchedule = getEmployeeWorkSchedule(employee);
+      const employeeBankStartDate = getEmployeePointBankStartDate(employee);
+      const preservingSameVacation = existingRecord && isVacationRecordForPeriod(existingRecord, periodId);
+      const hadExistingRecord = Boolean(existingRecord && !existingRecord.virtualAbsence);
+      const previousBackup = preservingSameVacation
+        ? (existingRecord.registroAnteriorFerias || null)
+        : (hadExistingRecord ? buildPointBackupForVacation(existingRecord) : null);
+      const dayDate = parseDayKeyToDate(dayKey) || new Date(`${dayKey}T00:00:00`);
+      const pointAudit = buildVacationPointAuditEntry({
+        action,
+        periodId,
+        employee,
+        dayKey,
+        previousRecord: preservingSameVacation ? null : existingRecord,
+        observation: observacao
+      });
+
+      return {
+        horaEntrada: '',
+        horaAlmocoSaida: '',
+        horaAlmocoRetorno: '',
+        horaSaida: '',
+        dia: dayKey,
+        data: Timestamp.fromDate(dayDate),
+        competencia: dayKey.slice(0, 7),
+        empresaId: storeId,
+        funcionarioId: employee.id,
+        funcionarioNome: getEmployeeDisplayName(employee),
+        funcionarioEmail: employee.email || '',
+        tipoLancamento: 'ferias',
+        ferias: true,
+        lancamentoFerias: true,
+        feriasId: periodId,
+        periodoFeriasId: periodId,
+        dataInicioFerias: dataInicio,
+        dataFimFerias: dataFim,
+        observacaoFerias: observacao || '',
+        statusFerias: 'ativo',
+        justificativa: 'Férias',
+        justificativaGestor: observacao || 'Férias lançadas pelo gestor',
+        faltaAbonada: false,
+        abonoFalta: false,
+        folgaCompensada: false,
+        liberacaoChefia: false,
+        jornadaTrabalho: employeeSchedule,
+        dataInicioBancoHoras: employeeBankStartDate || '',
+        irregularidade: '',
+        qtde: '',
+        bancoHoras: '-',
+        bancoHorasMinutes: 0,
+        horaExtra: '-',
+        horaExtraMinutes: 0,
+        almocoNaoRegistradoBancoHoras: 0,
+        faltaSemAbonoBancoHoras: 0,
+        inconsistente: false,
+        necessitaAjuste: false,
+        statusPonto: 'Férias',
+        inconsistencias: [],
+        lancamentoManualGestor: true,
+        manualPeloGestor: true,
+        semLocalizacaoManual: true,
+        localizacaoObservacao: 'Sem localização — férias lançadas pelo gestor',
+        gestorId: userId,
+        gestorNome: userName,
+        registroAnteriorFerias: previousBackup,
+        feriasSobrescreveuRegistro: Boolean(previousBackup),
+        feriasSobrescreveuPontoRegistrado: Boolean(previousBackup && existingRecord && hasAnyPointTime(existingRecord)),
+        createdAt: existingRecord?.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        atualizadoEm: serverTimestamp(),
+        dataLancamentoFerias: existingRecord?.dataLancamentoFerias || serverTimestamp(),
+        dataAlteracaoFerias: action === 'ferias_alteradas' ? serverTimestamp() : null,
+        historicoAlteracoes: arrayUnion(pointAudit)
+      };
+    };
+
+    const restoreVacationPointRecordInBatch = ({ batch, storeId, record, auditEntry }) => {
+      if (!record?.id) return;
+      const recordRef = doc(db, 'lojas', storeId, 'pontos', record.id);
+      if (record.feriasSobrescreveuRegistro && record.registroAnteriorFerias) {
+        batch.set(recordRef, buildRestorePatchFromVacationRecord(record, auditEntry), { merge: true });
+      } else {
+        batch.delete(recordRef);
+      }
+    };
+
+    const openVacationPeriodModal = (period = null) => {
+      if (!isManager) return;
+      if (period) {
+        setEditingVacationPeriod(period);
+        setVacationForm({
+          funcionarioId: period.funcionarioId || '',
+          dataInicio: normalizePointBankStartDate(period.dataInicio),
+          dataFim: normalizePointBankStartDate(period.dataFim),
+          observacao: period.observacao || '',
+          gestorNome: period.gestorNome || userName
+        });
+      } else {
+        const baseDay = activeDayFilter || selectedDay || todayKey;
+        setEditingVacationPeriod(null);
+        setVacationForm({
+          funcionarioId: selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : '',
+          dataInicio: baseDay,
+          dataFim: baseDay,
+          observacao: '',
+          gestorNome: userName
+        });
+      }
+      setVacationError('');
+      setVacationModalOpen(true);
+    };
+
+    const closeVacationPeriodModal = () => {
+      setVacationModalOpen(false);
+      setEditingVacationPeriod(null);
+      setVacationError('');
+    };
+
+    const handleSaveVacationPeriod = async () => {
+      if (!isManager) return;
+      const employee = employees.find((item) => item.id === vacationForm.funcionarioId);
+      const dataInicio = normalizePointBankStartDate(vacationForm.dataInicio);
+      const dataFim = normalizePointBankStartDate(vacationForm.dataFim);
+      const observacao = String(vacationForm.observacao || '').trim();
+
+      if (!employee) {
+        setVacationError('Selecione a colaboradora.');
+        return;
+      }
+      if (!dataInicio || !dataFim) {
+        setVacationError('Informe a data inicial e a data final das férias.');
+        return;
+      }
+      if (dataInicio > dataFim) {
+        setVacationError('A data final das férias deve ser igual ou posterior à data inicial.');
+        return;
+      }
+
+      const overlappingVacation = vacationPeriods.find((period) => (
+        period.id !== editingVacationPeriod?.id
+        && period.funcionarioId === employee.id
+        && isActiveVacationPeriod(period)
+        && vacationRangesOverlap(
+          dataInicio,
+          dataFim,
+          normalizePointBankStartDate(period.dataInicio),
+          normalizePointBankStartDate(period.dataFim)
+        )
+      ));
+      if (overlappingVacation) {
+        setVacationError(`Já existe um período de férias ativo para esta colaboradora entre ${formatDayKeyLabel(overlappingVacation.dataInicio)} e ${formatDayKeyLabel(overlappingVacation.dataFim)}.`);
+        return;
+      }
+
+      try {
+        setSavingVacation(true);
+        setVacationError('');
+        const storeId = resolveActiveStoreForWrite();
+        const feriasRef = collection(db, 'lojas', storeId, 'ferias');
+        const vacationRef = editingVacationPeriod
+          ? doc(db, 'lojas', storeId, 'ferias', editingVacationPeriod.id)
+          : doc(feriasRef);
+        const periodId = vacationRef.id;
+        const newDayKeys = getInclusiveDayKeys(dataInicio, dataFim);
+        const oldStart = editingVacationPeriod ? normalizePointBankStartDate(editingVacationPeriod.dataInicio) : dataInicio;
+        const oldEnd = editingVacationPeriod ? normalizePointBankStartDate(editingVacationPeriod.dataFim) : dataFim;
+        const fetchStart = [dataInicio, oldStart].filter(Boolean).sort()[0];
+        const fetchEnd = [dataFim, oldEnd].filter(Boolean).sort().pop();
+        const existingPointRecords = await fetchPointRecordsForEmployeeBetween(storeId, employee.id, fetchStart, fetchEnd);
+        const recordsByDay = new Map();
+        existingPointRecords.forEach((record) => {
+          const dayKey = getRecordDayKey(record);
+          if (dayKey && !recordsByDay.has(dayKey)) recordsByDay.set(dayKey, record);
+        });
+
+        const conflictingRecords = newDayKeys
+          .map((dayKey) => recordsByDay.get(dayKey))
+          .filter((record) => record && !isVacationRecordForPeriod(record, periodId));
+        if (conflictingRecords.length) {
+          const conflictLabels = conflictingRecords
+            .map((record) => formatDayKeyLabel(getRecordDayKey(record)))
+            .slice(0, 8)
+            .join(', ');
+          const pointCount = conflictingRecords.filter((record) => hasAnyPointTime(record)).length;
+          const confirmed = typeof window === 'undefined' ? true : window.confirm(
+            `Existem ${conflictingRecords.length} registro(s) de ponto no período de férias (${conflictLabels}${conflictingRecords.length > 8 ? '...' : ''}). ${pointCount ? `${pointCount} registro(s) possuem horários lançados. ` : ''}Ao confirmar, os dias serão marcados como "Férias" e os valores anteriores ficarão salvos na auditoria para restauração. Deseja continuar?`
+          );
+          if (!confirmed) {
+            setVacationError('Lançamento de férias cancelado para preservar os registros existentes.');
+            return;
+          }
+        }
+
+        const action = editingVacationPeriod ? 'ferias_alteradas' : 'ferias_lancadas';
+        const oldDayKeys = editingVacationPeriod ? getInclusiveDayKeys(oldStart, oldEnd) : [];
+        const newDaySet = new Set(newDayKeys);
+        const daysToRestore = oldDayKeys.filter((dayKey) => !newDaySet.has(dayKey));
+        const previousValue = editingVacationPeriod ? {
+          funcionarioId: editingVacationPeriod.funcionarioId || '',
+          funcionarioNome: editingVacationPeriod.funcionarioNome || '',
+          dataInicio: oldStart,
+          dataFim: oldEnd,
+          observacao: editingVacationPeriod.observacao || '',
+          status: editingVacationPeriod.status || 'ativo'
+        } : null;
+        const nextValue = {
+          funcionarioId: employee.id,
+          funcionarioNome: getEmployeeDisplayName(employee),
+          funcionarioEmail: employee.email || '',
+          dataInicio,
+          dataFim,
+          observacao,
+          status: 'ativo',
+          tipoLancamento: 'Férias'
+        };
+        const periodAudit = buildVacationPeriodAuditEntry({
+          action,
+          employee,
+          previousValue,
+          nextValue,
+          observation: observacao,
+          conflictRecords: conflictingRecords
+        });
+
+        const batch = writeBatch(db);
+        const periodPayload = {
+          ...nextValue,
+          gestorId: editingVacationPeriod?.gestorId || userId,
+          gestorNome: editingVacationPeriod?.gestorNome || vacationForm.gestorNome || userName,
+          gestorAlteracaoId: editingVacationPeriod ? userId : '',
+          gestorAlteracaoNome: editingVacationPeriod ? userName : '',
+          atualizadoEm: serverTimestamp(),
+          historicoAlteracoes: arrayUnion(periodAudit)
+        };
+        if (!editingVacationPeriod) {
+          periodPayload.criadoEm = serverTimestamp();
+          periodPayload.dataLancamento = serverTimestamp();
+          periodPayload.lancadoPorId = userId;
+          periodPayload.lancadoPorNome = userName;
+        } else {
+          periodPayload.dataAlteracao = serverTimestamp();
+        }
+        batch.set(vacationRef, periodPayload, { merge: true });
+
+        const auditRef = doc(collection(db, 'lojas', storeId, 'feriasAuditoria'));
+        batch.set(auditRef, {
+          ...periodAudit,
+          feriasId: periodId,
+          lojaId: storeId,
+          criadoEm: serverTimestamp()
+        });
+
+        daysToRestore.forEach((dayKey) => {
+          const record = recordsByDay.get(dayKey);
+          if (!isVacationRecordForPeriod(record, periodId)) return;
+          const restoreAudit = {
+            data: new Date().toISOString(),
+            tipo: 'ferias_removidas_do_dia',
+            tipoLancamento: 'Férias',
+            feriasId: periodId,
+            gestorId: userId,
+            gestor: userName,
+            funcionarioId: employee.id,
+            funcionarioNome: getEmployeeDisplayName(employee),
+            dia: dayKey,
+            observacao
+          };
+          restoreVacationPointRecordInBatch({ batch, storeId, record, auditEntry: restoreAudit });
+        });
+
+        newDayKeys.forEach((dayKey) => {
+          const existingRecord = recordsByDay.get(dayKey);
+          const pointRef = existingRecord?.id
+            ? doc(db, 'lojas', storeId, 'pontos', existingRecord.id)
+            : doc(db, 'lojas', storeId, 'pontos', `${employee.id}_${dayKey}`);
+          batch.set(pointRef, buildVacationPointPayload({
+            storeId,
+            employee,
+            dayKey,
+            periodId,
+            dataInicio,
+            dataFim,
+            observacao,
+            existingRecord,
+            action
+          }), { merge: true });
+        });
+
+        await batch.commit();
+        setSelectedEmployee(employee.id);
+        setSelectedMonth(dataInicio.slice(0, 7));
+        setRecordFilterMode('month');
+        setRegisterMessage({
+          type: 'success',
+          text: editingVacationPeriod
+            ? 'Período de férias atualizado com auditoria.'
+            : 'Férias lançadas e folha de ponto preenchida com auditoria.'
+        });
+        closeVacationPeriodModal();
+      } catch (error) {
+        console.error('Erro ao salvar férias', error);
+        setVacationError(error.message || 'Não foi possível salvar o período de férias.');
+      } finally {
+        setSavingVacation(false);
+      }
+    };
+
+    const handleCancelVacationPeriod = async (period) => {
+      if (!isManager || !period || !isActiveVacationPeriod(period)) return;
+      const confirmed = typeof window === 'undefined' ? true : window.confirm(`Cancelar as férias de ${period.funcionarioNome || 'colaboradora'} entre ${formatDayKeyLabel(period.dataInicio)} e ${formatDayKeyLabel(period.dataFim)}?`);
+      if (!confirmed) return;
+      const cancelObservation = typeof window === 'undefined'
+        ? ''
+        : (window.prompt('Observação do cancelamento (opcional):', '') ?? null);
+      if (cancelObservation === null) return;
+
+      try {
+        setSavingVacation(true);
+        const storeId = resolveActiveStoreForWrite();
+        const dataInicio = normalizePointBankStartDate(period.dataInicio);
+        const dataFim = normalizePointBankStartDate(period.dataFim);
+        const employee = employees.find((item) => item.id === period.funcionarioId) || {
+          id: period.funcionarioId,
+          nome: period.funcionarioNome,
+          email: period.funcionarioEmail
+        };
+        const existingPointRecords = await fetchPointRecordsForEmployeeBetween(storeId, period.funcionarioId, dataInicio, dataFim);
+        const batch = writeBatch(db);
+        const periodRef = doc(db, 'lojas', storeId, 'ferias', period.id);
+        const previousValue = {
+          funcionarioId: period.funcionarioId || '',
+          funcionarioNome: period.funcionarioNome || '',
+          dataInicio,
+          dataFim,
+          observacao: period.observacao || '',
+          status: period.status || 'ativo'
+        };
+        const nextValue = {
+          ...previousValue,
+          status: 'cancelado',
+          observacaoCancelamento: cancelObservation || ''
+        };
+        const periodAudit = buildVacationPeriodAuditEntry({
+          action: 'ferias_canceladas',
+          employee,
+          previousValue,
+          nextValue,
+          observation: cancelObservation || ''
+        });
+
+        existingPointRecords.forEach((record) => {
+          if (!isVacationRecordForPeriod(record, period.id)) return;
+          const restoreAudit = {
+            data: new Date().toISOString(),
+            tipo: 'ferias_canceladas',
+            tipoLancamento: 'Férias',
+            feriasId: period.id,
+            gestorId: userId,
+            gestor: userName,
+            funcionarioId: period.funcionarioId,
+            funcionarioNome: period.funcionarioNome || getEmployeeDisplayName(employee),
+            dia: getRecordDayKey(record),
+            observacao: cancelObservation || ''
+          };
+          restoreVacationPointRecordInBatch({ batch, storeId, record, auditEntry: restoreAudit });
+        });
+
+        batch.set(periodRef, {
+          status: 'cancelado',
+          canceladoEm: serverTimestamp(),
+          canceladoPorId: userId,
+          canceladoPorNome: userName,
+          observacaoCancelamento: cancelObservation || '',
+          atualizadoEm: serverTimestamp(),
+          historicoAlteracoes: arrayUnion(periodAudit)
+        }, { merge: true });
+
+        const auditRef = doc(collection(db, 'lojas', storeId, 'feriasAuditoria'));
+        batch.set(auditRef, {
+          ...periodAudit,
+          feriasId: period.id,
+          lojaId: storeId,
+          criadoEm: serverTimestamp()
+        });
+
+        await batch.commit();
+        setRegisterMessage({ type: 'success', text: 'Período de férias cancelado com auditoria.' });
+      } catch (error) {
+        console.error('Erro ao cancelar férias', error);
+        setRegisterMessage({ type: 'error', text: error.message || 'Não foi possível cancelar o período de férias.' });
+      } finally {
+        setSavingVacation(false);
+      }
+    };
+
     const openEditModal = (record) => {
       const recordSchedule = getRecordWorkSchedule(record);
       const summary = calculateWorkSummary(record, recordSchedule);
@@ -6988,7 +7672,7 @@ function App() {
                 Registros ({filteredRecords.length})
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3 w-full md:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-3 w-full md:w-auto">
               <div className="flex items-end">
                 <button
                   type="button"
@@ -7054,6 +7738,18 @@ function App() {
                   </button>
                 </div>
               )}
+              {isManager && (
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() => openVacationPeriodModal()}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 shadow-sm transition-all hover:border-emerald-300 hover:bg-emerald-100"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    Registrar férias
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -7107,11 +7803,18 @@ function App() {
                     const manualManagerRecord = isManualManagerRecord(registro);
                     const excusedAbsenceRecord = isExcusedAbsenceRecord(registro);
                     const manualNonWorkingDayRecord = isManualNonWorkingDayRecord(registro);
+                    const vacationRecord = isVacationRecord(registro);
+                    const linkedVacationPeriod = vacationPeriodsById.get(registro.feriasId || registro.periodoFeriasId);
                     return (
                       <tr key={registro.id} className="hover:bg-gray-50">
                         <td className="py-3 px-4">
                           <div className="space-y-1">
                             <p>{registro.funcionarioNome || '-'}</p>
+                            {vacationRecord && (
+                              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                Férias
+                              </span>
+                            )}
                             {manualManagerRecord && (
                               <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                                 Lançado pelo gestor
@@ -7144,9 +7847,11 @@ function App() {
                           <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
                             isPendingAdjustment
                               ? 'bg-amber-50 text-amber-700'
-                              : registro.horaSaida
+                              : vacationRecord
                                 ? 'bg-emerald-50 text-emerald-700'
-                                : 'bg-sky-50 text-sky-700'
+                                : registro.horaSaida
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-sky-50 text-sky-700'
                           }`}>
                             {isPendingAdjustment && <AlertTriangle className="h-3 w-3" />}
                             {statusLabel}
@@ -7155,15 +7860,17 @@ function App() {
                         {isManager && (
                           <td className="py-3 px-4">
                             <div className="space-y-3 text-xs">
-                              {(manualManagerRecord || excusedAbsenceRecord || registro.virtualAbsence) && (
+                              {(vacationRecord || manualManagerRecord || excusedAbsenceRecord || registro.virtualAbsence) && (
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-700">
-                                  {excusedAbsenceRecord
-                                    ? 'Sem localização — falta abonada pelo gestor'
-                                    : manualNonWorkingDayRecord
-                                      ? registro.localizacaoObservacao || `Sem localização — ${getManualNonWorkingDayJustification(registro).toLowerCase()} lançada pelo gestor`
-                                      : registro.virtualAbsence
-                                        ? 'Sem localização — falta sem registro'
-                                        : 'Sem localização — lançamento manual pelo gestor'}
+                                  {vacationRecord
+                                    ? 'Sem localização — férias lançadas pelo gestor'
+                                    : excusedAbsenceRecord
+                                      ? 'Sem localização — falta abonada pelo gestor'
+                                      : manualNonWorkingDayRecord
+                                        ? registro.localizacaoObservacao || `Sem localização — ${getManualNonWorkingDayJustification(registro).toLowerCase()} lançada pelo gestor`
+                                        : registro.virtualAbsence
+                                          ? 'Sem localização — falta sem registro'
+                                          : 'Sem localização — lançamento manual pelo gestor'}
                                 </div>
                               )}
                               {registro.localizacaoEntrada && (
@@ -7202,7 +7909,7 @@ function App() {
                                   </a>
                                 </div>
                               )}
-                              {!manualManagerRecord && !excusedAbsenceRecord && !registro.virtualAbsence && !registro.localizacaoEntrada && !registro.localizacaoSaida && (
+                              {!vacationRecord && !manualManagerRecord && !excusedAbsenceRecord && !registro.virtualAbsence && !registro.localizacaoEntrada && !registro.localizacaoSaida && (
                                 <span className="text-gray-400">-</span>
                               )}
                             </div>
@@ -7210,7 +7917,13 @@ function App() {
                         )}
                         {isManager && (
                           <td className="py-3 px-4">
-                            {registro.virtualAbsence ? (
+                            {vacationRecord ? (
+                              linkedVacationPeriod && isActiveVacationPeriod(linkedVacationPeriod) ? (
+                                <Button size="sm" variant="secondary" onClick={() => openVacationPeriodModal(linkedVacationPeriod)}>Gerenciar</Button>
+                              ) : (
+                                <span className="text-gray-400 text-sm">-</span>
+                              )
+                            ) : registro.virtualAbsence ? (
                               <Button
                                 size="sm"
                                 variant="secondary"
@@ -7235,6 +7948,136 @@ function App() {
             </div>
           )}
         </div>
+
+        {isManager && (
+          <div className="bg-white rounded-2xl shadow p-6 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">Períodos de férias</h2>
+                <p className="text-gray-500 text-sm">Visualize, edite ou cancele lançamentos de férias com auditoria.</p>
+              </div>
+              <Button variant="secondary" onClick={() => openVacationPeriodModal()}>
+                <Calendar className="h-4 w-4" />
+                Registrar férias
+              </Button>
+            </div>
+            {vacationLoading ? (
+              <div className="py-8 text-center text-gray-500">Carregando períodos de férias...</div>
+            ) : filteredVacationPeriods.length === 0 ? (
+              <div className="py-8 text-center text-gray-500">Nenhum período de férias cadastrado para o filtro atual.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500">
+                      <th className="py-3 px-4">Funcionária</th>
+                      <th className="py-3 px-4">Data inicial</th>
+                      <th className="py-3 px-4">Data final</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Observação</th>
+                      <th className="py-3 px-4">Gestor responsável</th>
+                      <th className="py-3 px-4">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {filteredVacationPeriods.map((period) => {
+                      const activePeriod = isActiveVacationPeriod(period);
+                      return (
+                        <tr key={period.id} className="hover:bg-gray-50">
+                          <td className="py-3 px-4 font-semibold text-gray-800">{period.funcionarioNome || '-'}</td>
+                          <td className="py-3 px-4">{formatDayKeyLabel(period.dataInicio)}</td>
+                          <td className="py-3 px-4">{formatDayKeyLabel(period.dataFim)}</td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                              activePeriod ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {activePeriod ? 'Ativo' : 'Cancelado'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 max-w-xs">{period.observacao || period.observacaoCancelamento || '-'}</td>
+                          <td className="py-3 px-4">{period.gestorNome || period.lancadoPorNome || '-'}</td>
+                          <td className="py-3 px-4">
+                            {activePeriod ? (
+                              <div className="flex flex-wrap gap-2">
+                                <Button size="sm" variant="secondary" onClick={() => openVacationPeriodModal(period)}>Editar</Button>
+                                <Button size="sm" variant="danger" onClick={() => handleCancelVacationPeriod(period)} disabled={savingVacation}>
+                                  <Trash2 className="h-4 w-4" />
+                                  Cancelar
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Modal isOpen={vacationModalOpen} onClose={closeVacationPeriodModal} title={editingVacationPeriod ? 'Editar férias' : 'Registrar férias'} size="lg">
+          <div className="space-y-4">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              Os dias dentro do período serão exibidos como “Férias” na folha de ponto e não gerarão falta, banco de horas, irregularidade ou hora extra.
+            </div>
+            {vacationError && (
+              <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+                {vacationError}
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select
+                label="Colaboradora"
+                value={vacationForm.funcionarioId}
+                onChange={(e) => setVacationForm({ ...vacationForm, funcionarioId: e.target.value })}
+                disabled={employeesLoading || Boolean(editingVacationPeriod)}
+                required
+              >
+                <option value="">Selecione</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>{getEmployeeDisplayName(employee)}</option>
+                ))}
+              </Select>
+              <Input
+                label="Gestor responsável"
+                value={vacationForm.gestorNome || userName}
+                onChange={(e) => setVacationForm({ ...vacationForm, gestorNome: e.target.value })}
+                disabled
+                readOnly
+              />
+              <Input
+                label="Data de início das férias"
+                type="date"
+                value={vacationForm.dataInicio}
+                onChange={(e) => setVacationForm({ ...vacationForm, dataInicio: e.target.value })}
+                required
+              />
+              <Input
+                label="Data final das férias"
+                type="date"
+                value={vacationForm.dataFim}
+                onChange={(e) => setVacationForm({ ...vacationForm, dataFim: e.target.value })}
+                required
+              />
+            </div>
+            <Textarea
+              label={editingVacationPeriod ? 'Observação da alteração' : 'Observação opcional'}
+              value={vacationForm.observacao}
+              onChange={(e) => setVacationForm({ ...vacationForm, observacao: e.target.value })}
+              placeholder="Ex.: Férias acordadas com a funcionária"
+            />
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={closeVacationPeriodModal}>Cancelar</Button>
+              <Button onClick={handleSaveVacationPeriod} disabled={savingVacation}>
+                {savingVacation ? 'Salvando...' : editingVacationPeriod ? 'Salvar alteração' : 'Salvar férias'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         <Modal isOpen={manualPointModalOpen} onClose={() => setManualPointModalOpen(false)} title="Lançar ponto manual" size="lg">
           <div className="space-y-4">

@@ -149,7 +149,7 @@ function canReadStoreCollection(lojaId, collection) {
         || accountantHasModule('financeiro')
         || accountantHasModule('relatorios')
       ))
-      || (collection in ['meuEspaco', 'pontos'] && accountantHasModule('meu-espaco'))
+      || (collection in ['meuEspaco', 'pontos', 'ferias', 'feriasAuditoria'] && accountantHasModule('meu-espaco'))
     ))
   );
 }
@@ -279,6 +279,17 @@ match /lojas/{lojaId} {
     allow create, update, delete: if canManageStorePoints(lojaId);
   }
 
+  match /ferias/{feriasId} {
+    allow read: if canReadStoreCollection(lojaId, 'ferias');
+    allow create, update, delete: if canManageStorePoints(lojaId);
+  }
+
+  match /feriasAuditoria/{auditId} {
+    allow read: if canReadStoreCollection(lojaId, 'feriasAuditoria');
+    allow create: if canManageStorePoints(lojaId);
+    allow update, delete: if false;
+  }
+
   // Dados 99Food sao lidos pelo painel, mas toda mutacao passa pelas Functions.
   match /food99/{docId} {
     // Contem referencias a segredos e somente e carregado por callable autorizado.
@@ -322,6 +333,8 @@ match /lojas/{lojaId} {
       && collection != 'ifood'
       && collection != 'food99'
       && collection != 'fiscalConfig'
+      && collection != 'ferias'
+      && collection != 'feriasAuditoria'
       && collection != 'ifoodOrders'
       && collection != 'ifoodEvents'
       && collection != 'ifoodAlerts'
