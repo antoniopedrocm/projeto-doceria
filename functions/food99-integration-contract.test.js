@@ -293,7 +293,7 @@ test('authorization URL request follows the endpoint-specific app_id-only contra
   assert.doesNotMatch(authorization, /signFood99Params|JSON\.stringify\(\{[^}]*\b(?:timestamp|sign)\b/);
 });
 
-test('authorization check reconciles missed webhooks through the official signed bound-store list', () => {
+test('authorization check reconciles missed webhooks through the official signed list or token fallback', () => {
   const reconciliation = section(food99Source, 'const claimBoundShopsRateWindow =', 'const buildPlatformSettings =');
   assert.match(reconciliation, /BOUND_SHOPS_LIST_PATH/);
   assert.match(reconciliation, /authorizationSearchRef\(lojaId, config\.environment, config\.appKey\)/);
@@ -301,7 +301,10 @@ test('authorization check reconciles missed webhooks through the official signed
   assert.match(reconciliation, /page_size:\s*100/);
   assert.match(reconciliation, /sign:\s*signFood99Params\(unsignedBody, credentials\.clientSecret\)/);
   assert.match(reconciliation, /findBoundFood99Shop\(shops, config\.merchantId\)/);
-  assert.match(reconciliation, /authorizationSource:\s*'shop_list_reconciliation'/);
+  assert.match(reconciliation, /reconciliationAuthorizationSource\s*=\s*reconciliationMode === 'auth_token_fallback'/);
+  assert.match(reconciliation, /\? 'auth_token_reconciliation'\s*:\s*'shop_list_reconciliation'/);
+  assert.match(reconciliation, /Number\(error\.food99Errno\) === 10002/);
+  assert.match(reconciliation, /tokenPayload = await getTokenPayload\(config, credentials\)/);
   assert.match(reconciliation, /authorization\.reconciled/);
   assert.ok(
     reconciliation.indexOf('validateStoreToken(config, tokenData.auth_token)')

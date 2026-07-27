@@ -3193,7 +3193,46 @@ const createFood99Functions = ({
 
   const reconcileStoreAuthorization = async (lojaId, config, environment, uid) => {
     const wasAuthorized = config.authorizationStatus === 'authorized';
-    const lookup = await fetchBoundShopForConfig(lojaId, config);
+    let reconciliationMode = 'shop_list';
+    let lookup;
+    try {
+      lookup = await fetchBoundShopForConfig(lojaId, config);
+    } catch (error) {
+      const listRejectedParameters = Number(error.food99Errno) === 10002
+        && cleanText(error.food99Path).includes(BOUND_SHOPS_LIST_PATH);
+      if (!listRejectedParameters) throw error;
+      reconciliationMode = 'auth_token_fallback';
+      lookup = {
+        match: {appShopId: config.merchantId},
+        pageNo: 1,
+        nextPage: 1,
+        totalPages: 1,
+        searchComplete: true,
+        cursorInvalidated: false,
+      };
+      logger.warn('[99Food] bound-store list rejected parameters; using token verification fallback', sanitizeLogContext({
+        environment,
+        host: config.apiBaseUrl,
+        endpoint: error.food99Path || BOUND_SHOPS_LIST_PATH,
+        lojaId,
+        merchantId: config.merchantId,
+        errno: error.food99Errno,
+        requestId: error.food99RequestId || '',
+        attempt: 1,
+      }));
+    }
+    const reconciliationEndpoint = reconciliationMode === 'auth_token_fallback'
+      ? AUTH_TOKEN_GET_PATH
+      : BOUND_SHOPS_LIST_PATH;
+    const reconciliationSource = reconciliationMode === 'auth_token_fallback'
+      ? 'official_auth_token'
+      : 'official_bound_store_list';
+    const reconciliationAuthorizationSource = reconciliationMode === 'auth_token_fallback'
+      ? 'auth_token_reconciliation'
+      : 'shop_list_reconciliation';
+    const reconciliationMessage = reconciliationMode === 'auth_token_fallback'
+      ? 'Autorização confirmada pelo token oficial e pelos dados da loja na 99Food.'
+      : 'Vínculo confirmado pela lista oficial de lojas autorizadas da 99Food.';
     if (lookup.rateLimited) {
       return {
         authorized: wasAuthorized,
@@ -3297,9 +3336,9 @@ const createFood99Functions = ({
       await db.runTransaction(async (transaction) => {
         await assertReconciliationConfigUnchanged(transaction, lojaId, config, environment);
         transaction.set(authorizationRef(lojaId, environment, config.appKey), {
-          authorizationSource: 'shop_list_reconciliation',
+          authorizationSource: reconciliationAuthorizationSource,
           authorizationConfirmedAt: FieldValue.serverTimestamp(),
-          reconciliationEndpoint: BOUND_SHOPS_LIST_PATH,
+          reconciliationEndpoint,
           updatedAt: FieldValue.serverTimestamp(),
         }, {merge: true});
         transaction.set(healthRef(lojaId, environment), {
@@ -3325,9 +3364,9 @@ const createFood99Functions = ({
           details: {
             environment,
             uid,
-            endpoint: BOUND_SHOPS_LIST_PATH,
+            endpoint: reconciliationEndpoint,
             appShopId: lookup.match.appShopId,
-            source: 'official_bound_store_list',
+            source: reconciliationSource,
           },
           createdAt: FieldValue.serverTimestamp(),
         });
@@ -3335,16 +3374,92 @@ const createFood99Functions = ({
       return {
         authorized: true,
         authorizationStatus: 'authorized',
-        source: 'shop_list',
+        source: reconciliationMode,
         latencyMs,
-        message: 'Vínculo e token confirmados pela lista oficial da 99Food.',
+        message: reconciliationMessage,
       };
       }
     }
 
     const credentials = await credentialsForConfig(config);
-    const tokenPayload = await getTokenPayload(config, credentials);
+    let tokenPayload;
+    try {
+      tokenPayload = await getTokenPayload(config, credentials);
+    } catch (error) {
+      const errno = Number(error.food99Errno);
+      if (![10101, 14105, 14106].includes(errno)) throw error;
+      const status = errno === 10101 ? 'awaiting_authorization' : 'credentials_invalid';
+      const failureAuditRef = auditCollection(lojaId).doc(environmentDocId(
+        'authorization_verification_failed',
+        environment,
+        crypto.randomUUID()
+      ));
+      await db.runTransaction(async (transaction) => {
+        await assertReconciliationConfigUnchanged(transaction, lojaId, config, environment);
+        transaction.set(authorizationRef(lojaId, environment, config.appKey), {
+          provider: PROVIDER,
+          recordType: 'authorization',
+          lojaId,
+          environment,
+          appKey: config.appKey,
+          merchantId: config.merchantId,
+          status,
+          suspendReason: errno,
+          lastErrno: errno,
+          lastRequestId: error.food99RequestId || '',
+          tokenSecretVersion: FieldValue.delete(),
+          tokenExpiresAt: FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        transaction.set(healthRef(lojaId, environment), {
+          provider: PROVIDER,
+          lojaId,
+          environment,
+          status,
+          authorizationStatus: status,
+          lastErrno: errno,
+          lastRequestId: error.food99RequestId || '',
+          lastError: error.message,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        transaction.set(failureAuditRef, {
+          provider: PROVIDER,
+          environment,
+          lojaId,
+          action: 'authorization.verification_failed',
+          severity: 'warning',
+          details: {
+            environment,
+            uid,
+            endpoint: AUTH_TOKEN_GET_PATH,
+            errno,
+            requestId: error.food99RequestId || '',
+            source: reconciliationSource,
+          },
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      });
+      tokenCache.delete(tokenCacheKey({
+        environment,
+        lojaId,
+        appKey: config.appKey,
+        merchantId: config.merchantId,
+      }));
+      return {
+        authorized: false,
+        authorizationStatus: status,
+        source: reconciliationMode,
+        message: error.message,
+      };
+    }
     const tokenData = tokenPayload.data || {};
+    if (reconciliationMode === 'auth_token_fallback'
+      && cleanText(tokenData.app_shop_id) !== cleanText(config.merchantId)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'A 99Food retornou um token para outra loja; nenhuma autorização foi alterada.'
+      );
+    }
     const latencyMs = await validateStoreToken(config, tokenData.auth_token);
     const token = await persistAuthToken(lojaId, config, tokenData, {
       persistAuthorization: false,
@@ -3374,9 +3489,9 @@ const createFood99Functions = ({
         tokenRecoveryReason: FieldValue.delete(),
         tokenRecoveryRequestedAt: FieldValue.delete(),
         suspendReason: FieldValue.delete(),
-        authorizationSource: 'shop_list_reconciliation',
+        authorizationSource: reconciliationAuthorizationSource,
         authorizationConfirmedAt: FieldValue.serverTimestamp(),
-        reconciliationEndpoint: BOUND_SHOPS_LIST_PATH,
+        reconciliationEndpoint,
         authorizedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       }, {merge: true});
@@ -3403,9 +3518,9 @@ const createFood99Functions = ({
         details: {
           environment,
           uid,
-          endpoint: BOUND_SHOPS_LIST_PATH,
+          endpoint: reconciliationEndpoint,
           appShopId: lookup.match.appShopId,
-          source: 'official_bound_store_list',
+          source: reconciliationSource,
         },
         createdAt: FieldValue.serverTimestamp(),
         });
@@ -3449,9 +3564,9 @@ const createFood99Functions = ({
     return {
       authorized: true,
       authorizationStatus: 'authorized',
-      source: 'shop_list',
+      source: reconciliationMode,
       latencyMs,
-      message: 'Vínculo confirmado pela lista oficial de lojas autorizadas da 99Food.',
+      message: reconciliationMessage,
     };
   };
 

@@ -1033,6 +1033,165 @@ test('keeps authorization pending and rate-limits repeated official checks when 
   assert.deepEqual(harness.secretAdds, []);
 });
 
+test('falls back to official token verification when the bound-store list rejects its parameters', async () => {
+  const requestedPaths = [];
+  const harness = makeHarness({
+    appIdValue: '5764607601352902593',
+    withStore: true,
+    fetchHandler: async (url) => {
+      const path = new URL(url).pathname;
+      requestedPaths.push(path);
+      if (path === '/v1/shop/shop/list') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            errno: 10002,
+            errmsg: 'Parameter error.',
+            requestId: 'list-parameter-request',
+          }),
+        };
+      }
+      if (path === '/v1/auth/authtoken/get') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            errno: 0,
+            data: {
+              app_shop_id: '5764610361924520465',
+              auth_token: 'fallback-protected-token',
+              token_expiration_time: 2000000000,
+            },
+          }),
+        };
+      }
+      if (path === '/v1/shop/shop/detail') {
+        assert.equal(new URL(url).searchParams.get('auth_token'), 'fallback-protected-token');
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            errno: 0,
+            data: {app_shop_id: '5764610361924520465', name: 'Garavelo'},
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+  const previousProject = process.env.GCLOUD_PROJECT;
+  process.env.GCLOUD_PROJECT = 'test-project';
+  let result;
+  try {
+    result = await harness.functions.food99CheckAuthorization(harness.request('owner', {lojaId: 'store-1'}));
+  } finally {
+    if (previousProject === undefined) delete process.env.GCLOUD_PROJECT;
+    else process.env.GCLOUD_PROJECT = previousProject;
+  }
+
+  assert.equal(result.authorized, true);
+  assert.equal(result.authorizationStatus, 'authorized');
+  assert.equal(result.source, 'auth_token_fallback');
+  assert.match(result.message, /token oficial/);
+  assert.deepEqual(requestedPaths, [
+    '/v1/shop/shop/list',
+    '/v1/auth/authtoken/get',
+    '/v1/shop/shop/detail',
+  ]);
+  assert.equal(harness.documents.get(authorizationPath)?.status, 'authorized');
+  assert.equal(harness.documents.get(authorizationPath)?.authorizationSource, 'auth_token_reconciliation');
+  assert.equal(harness.documents.get(authorizationPath)?.reconciliationEndpoint, '/v1/auth/authtoken/get');
+  assert.equal(harness.documents.get(healthPath)?.status, 'authorized');
+  assert.equal(harness.secretAdds.length, 1);
+  assert.doesNotMatch(JSON.stringify(harness.writes), /fallback-protected-token/);
+  assert.doesNotMatch(JSON.stringify(harness.logs), /fallback-protected-token|real-app-secret/);
+});
+
+test('keeps authorization pending when token fallback confirms that the store has no token', async () => {
+  const requestedPaths = [];
+  const harness = makeHarness({
+    appIdValue: '5764607601352902593',
+    withStore: true,
+    fetchHandler: async (url) => {
+      const path = new URL(url).pathname;
+      requestedPaths.push(path);
+      if (path === '/v1/shop/shop/list') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({errno: 10002, errmsg: 'Parameter error.'}),
+        };
+      }
+      if (path === '/v1/auth/authtoken/get') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            errno: 10101,
+            errmsg: 'This shop does not have auth_token.',
+            requestId: 'missing-token-request',
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  const result = await harness.functions.food99CheckAuthorization(harness.request('owner', {lojaId: 'store-1'}));
+
+  assert.equal(result.authorized, false);
+  assert.equal(result.authorizationStatus, 'awaiting_authorization');
+  assert.equal(result.source, 'auth_token_fallback');
+  assert.match(result.message, /ainda não autorizou/);
+  assert.deepEqual(requestedPaths, ['/v1/shop/shop/list', '/v1/auth/authtoken/get']);
+  assert.equal(harness.documents.get(authorizationPath)?.status, 'awaiting_authorization');
+  assert.equal(harness.documents.get(authorizationPath)?.lastErrno, 10101);
+  assert.equal(harness.documents.get(healthPath)?.authorizationStatus, 'awaiting_authorization');
+  assert.deepEqual(harness.secretAdds, []);
+});
+
+test('rejects a token fallback response for a different app_shop_id', async () => {
+  const harness = makeHarness({
+    appIdValue: '5764607601352902593',
+    withStore: true,
+    fetchHandler: async (url) => {
+      const path = new URL(url).pathname;
+      if (path === '/v1/shop/shop/list') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({errno: 10002, errmsg: 'Parameter error.'}),
+        };
+      }
+      if (path === '/v1/auth/authtoken/get') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            errno: 0,
+            data: {
+              app_shop_id: '5764610361924599999',
+              auth_token: 'wrong-store-token',
+              token_expiration_time: 2000000000,
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  await assert.rejects(
+    () => harness.functions.food99CheckAuthorization(harness.request('owner', {lojaId: 'store-1'})),
+    (error) => error.code === 'failed-precondition' && /token para outra loja/.test(error.message)
+  );
+  assert.equal(harness.documents.has(authorizationPath), false);
+  assert.equal(harness.documents.has(healthPath), false);
+  assert.deepEqual(harness.secretAdds, []);
+  assert.doesNotMatch(JSON.stringify(harness.logs), /wrong-store-token|real-app-secret/);
+});
+
 test('provider failure during reconciliation preserves the previous authorization state', async () => {
   const harness = makeHarness({
     appIdValue: '5764607601352902593',
