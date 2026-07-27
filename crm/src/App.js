@@ -40,6 +40,22 @@ import { updateStock as updateStockService } from './services/stockService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
 import FinancialControlPanel from './components/financeiro/FinancialControlPanel';
+import {
+  buildPointAuditEntry,
+  buildSupplementalPeriodAuditEntry,
+  calculatePointDayCore,
+  canManagePointRecords,
+  getPointOpenPeriod,
+  getPointPunchEvents,
+  getPointRecordLogicalId,
+  getPointWorkIntervals,
+  parsePointTimeToMinutes,
+  POINT_SUPPLEMENTAL_TYPES,
+  resolvePointType,
+  validateSupplementalPeriod
+} from './meuEspaco/pointCalculationCore';
+import { buildPointPresentationRows } from './meuEspaco/pointPresentation';
+import { consolidatePointDayRecords, groupPointRecordsByDay } from './meuEspaco/pointDayConsolidation';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
@@ -6079,7 +6095,16 @@ function App() {
     const [employees, setEmployees] = useState([]);
     const [employeesLoading, setEmployeesLoading] = useState(false);
     const [editingRecord, setEditingRecord] = useState(null);
-    const [editForm, setEditForm] = useState({ horaEntrada: '', horaSaida: '', horaAlmocoSaida: '', horaAlmocoRetorno: '', irregularidade: '', qtde: '', justificativa: '' });
+    const [editForm, setEditForm] = useState({
+      tipoLancamento: 'manual',
+      horaEntrada: '',
+      horaSaida: '',
+      horaAlmocoSaida: '',
+      horaAlmocoRetorno: '',
+      justificativa: '',
+      observacoes: '',
+      motivoCorrecao: ''
+    });
     const [savingEdit, setSavingEdit] = useState(false);
     const [manualPointModalOpen, setManualPointModalOpen] = useState(false);
     const [manualPointForm, setManualPointForm] = useState({
@@ -6095,8 +6120,26 @@ function App() {
     const [manualPointError, setManualPointError] = useState('');
     const [savingManualPoint, setSavingManualPoint] = useState(false);
     const [todayRecordData, setTodayRecordData] = useState(null);
+    const [supplementalPeriodModalOpen, setSupplementalPeriodModalOpen] = useState(false);
+    const [editingSupplementalPeriod, setEditingSupplementalPeriod] = useState(null);
+    const [supplementalPeriodForm, setSupplementalPeriodForm] = useState({
+      tipo: 'abono_periodo',
+      horaInicio: '',
+      horaFim: '',
+      justificativa: '',
+      observacao: ''
+    });
+    const [supplementalPeriodError, setSupplementalPeriodError] = useState('');
+    const [savingSupplementalPeriod, setSavingSupplementalPeriod] = useState(false);
 
-    const isManager = user ? [ROLE_OWNER, ROLE_MANAGER].includes(user.role) : false;
+    const hasPointManagementPermission = user?.permissions?.['meu-espaco'] !== false
+      && user?.permissionDetails?.['meu-espaco']?.managePoint !== false;
+    const normalizedPointRole = String(user?.role || '').trim().toLowerCase();
+    const isPointOwner = ['dono', 'owner', 'admin', 'adm', 'administrador', 'administradora', 'administrador_master']
+      .includes(normalizedPointRole);
+    const isManager = user
+      ? canManagePointRecords(user.role) && (isPointOwner || hasPointManagementPermission)
+      : false;
     const userId = user?.auth?.uid || '';
     const userName = user?.auth?.displayName || user?.auth?.email || 'Gestor';
     const activeStoreInfo = storeInfoMap[currentStoreIdForDisplay] || {};
@@ -6248,12 +6291,14 @@ function App() {
         pontosRef,
         where('funcionarioId', '==', userId),
         where('dia', '==', dayKey),
-        where('competencia', '==', competenciaKey),
-        limit(1)
+        where('competencia', '==', competenciaKey)
       );
       const unsubscribe = onSnapshot(todayQuery, (snapshot) => {
         if (!snapshot.empty) {
-          setTodayRecordData({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+          setTodayRecordData(consolidatePointDayRecords(
+            snapshot.docs.map((document) => ({ id: document.id, ...document.data() })),
+            { storeId: currentStoreIdForDisplay }
+          ));
         } else {
           setTodayRecordData(null);
         }
@@ -6356,10 +6401,29 @@ function App() {
       return getScheduleForEmployeeId(record.funcionarioId);
     };
 
+    const isVacationRecord = (record = {}) => (
+      record.tipoLancamento === 'ferias'
+      || record.tipoLancamento === 'férias'
+      || record.ferias === true
+      || record.lancamentoFerias === true
+      || (!record.tipoLancamento && String(record.justificativa || '').trim().toLowerCase() === 'férias')
+      || (!record.tipoLancamento && String(record.justificativa || '').trim().toLowerCase() === 'ferias')
+    );
+
+    const isExplicitAbsenceRecord = (record = {}) => (
+      record.tipoLancamento === 'falta'
+      || record.faltaSemAbono === true
+      || record.virtualAbsence === true
+    );
+
     const isManualManagerRecord = (record = {}) => (
       record.tipoLancamento === 'manual_pelo_gestor'
       || record.tipoLancamento === 'folga_compensada'
       || record.tipoLancamento === 'liberacao_chefia'
+      || record.tipoLancamento === 'falta'
+      || record.tipoLancamento === 'folga'
+      || record.tipoLancamento === 'feriado'
+      || isVacationRecord(record)
       || record.lancamentoManualGestor === true
       || record.manualPeloGestor === true
     );
@@ -6373,8 +6437,12 @@ function App() {
     const isManualNonWorkingDayRecord = (record = {}) => (
       record.tipoLancamento === 'folga_compensada'
       || record.tipoLancamento === 'liberacao_chefia'
+      || record.tipoLancamento === 'folga'
+      || record.tipoLancamento === 'feriado'
       || record.folgaCompensada === true
       || record.liberacaoChefia === true
+      || record.folga === true
+      || record.feriado === true
     );
 
     const getManualNonWorkingDayJustification = (record = {}) => {
@@ -6382,7 +6450,16 @@ function App() {
         return 'FOLGA COMPENSADA';
       }
       if (record.tipoLancamento === 'liberacao_chefia' || record.liberacaoChefia === true) {
-        return 'Liberação Chefia';
+        const reason = String(record.justificativaGestor || '').trim();
+        return reason && !/^libera[cç][aã]o chefia$/i.test(reason)
+          ? `Liberação Chefia - ${reason}`
+          : 'Liberação Chefia';
+      }
+      if (record.tipoLancamento === 'folga' || record.folga === true) {
+        return 'Folga';
+      }
+      if (record.tipoLancamento === 'feriado' || record.feriado === true) {
+        return 'Feriado';
       }
       return record.justificativa || '-';
     };
@@ -6465,7 +6542,10 @@ function App() {
     };
 
     const calculateWorkSummary = (registro = {}, scheduleInput = null) => {
-      if (isExcusedAbsenceRecord(registro) || isManualNonWorkingDayRecord(registro)) {
+      if (isVacationRecord(registro)) {
+        return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
+      }
+      if (isExplicitAbsenceRecord(registro) || isExcusedAbsenceRecord(registro) || isManualNonWorkingDayRecord(registro)) {
         return { workedLabel: '-', irregularidade: '-', workedMinutes: null, irregularityMinutes: null, calculable: false };
       }
 
@@ -6538,6 +6618,14 @@ function App() {
           inconsistente: false,
           necessitaAjuste: false,
           statusPonto: 'Falta abonada',
+          inconsistencias: [],
+        };
+      }
+      if (isExplicitAbsenceRecord(registro)) {
+        return {
+          inconsistente: false,
+          necessitaAjuste: false,
+          statusPonto: 'Falta',
           inconsistencias: [],
         };
       }
@@ -6810,6 +6898,8 @@ function App() {
       || record.horaAlmocoSaida
       || record.horaAlmocoRetorno
       || record.horaSaida
+      || getPointPunchEvents(record).length
+      || getPointWorkIntervals(record).length
     );
 
     const isExpectedPointWorkday = ({ date, dayKey, nationalHolidays, schedule }) => {
@@ -6841,6 +6931,12 @@ function App() {
       const hasPoint = hasAnyPointTime(record);
       const scheduleDay = getPointScheduleDayInfo(schedule || record.jornadaTrabalho, date);
 
+      if (isVacationRecord(record)) {
+        return 'Férias';
+      }
+      if (isExplicitAbsenceRecord(record)) {
+        return 'Falta';
+      }
       if (isManualNonWorkingDayRecord(record)) {
         return getManualNonWorkingDayJustification(record);
       }
@@ -6876,13 +6972,36 @@ function App() {
       return '-';
     };
 
+    // Regra única do dia usada pela tela, lançamentos administrativos, resumo e PDF.
+    const calculatePointDay = (record = {}, options = {}) => {
+      const date = options.date || getDayInfo(record);
+      const dayKey = options.dayKey || getRecordDayKey(record);
+      const schedule = options.schedule || getRecordWorkSchedule(record);
+      const nationalHolidays = options.nationalHolidays
+        || (date ? getBrazilNationalHolidays(date.getFullYear()) : new Set());
+      const bankCalculationEnabled = options.bankCalculationEnabled !== false;
+      const scheduleDay = getPointScheduleDayInfo(schedule, date);
+      return {
+        date,
+        dayKey,
+        schedule,
+        ...calculatePointDayCore({
+          record,
+          date,
+          scheduleDay,
+          bankCalculationEnabled,
+          isHoliday: nationalHolidays.has(dayKey)
+        })
+      };
+    };
+
     const calculatePointBankMovementForMonth = ({ employeeId, competencia, employeeSchedule, employeeRecords = [], bankStartDate = '' }) => {
       const [year, month] = String(competencia || '').split('-').map(Number);
       if (!employeeId || !year || !month || !employeeRecords.length) return 0;
       const recordsByDay = new Map();
-      employeeRecords.forEach((record) => {
+      groupPointRecordsByDay(employeeRecords, { storeId: currentStoreIdForDisplay }).forEach((record) => {
         const dayKey = getRecordDayKey(record);
-        if (!dayKey || recordsByDay.has(dayKey)) return;
+        if (!dayKey) return;
         recordsByDay.set(dayKey, record);
       });
 
@@ -6902,19 +7021,13 @@ function App() {
           funcionarioId: employeeId,
           jornadaTrabalho: recordSchedule,
         };
-        const summary = calculateWorkSummary(dayRecord, recordSchedule);
-        const absenceDebitMinutes = getPointAbsenceDebitMinutes({
-          record: dayRecord,
+        const dayCalculation = calculatePointDay(dayRecord, {
           date,
           dayKey,
           nationalHolidays,
           schedule: recordSchedule
         });
-        const balanceDistribution = calculatePointBalanceDistribution(dayRecord, summary, {
-          absenceDebitMinutes,
-          schedule: recordSchedule
-        });
-        movementMinutes += balanceDistribution.bancoHorasMinutes;
+        movementMinutes += dayCalculation.balance.bancoHorasMinutes;
       }
 
       return movementMinutes;
@@ -6942,7 +7055,7 @@ function App() {
         return [];
       }
       if (competencia === recordsQueryMonth) {
-        return records.filter((item) => item.funcionarioId === employeeId);
+        return records.filter((item) => item.funcionarioId === employeeId && item.ativo !== false && item.duplicadoArquivado !== true);
       }
       const pontosRef = collection(db, 'lojas', currentStoreIdForDisplay, 'pontos');
       const pontosQuery = query(
@@ -6961,16 +7074,18 @@ function App() {
       if (startCompetence && competencia <= startCompetence) {
         return 0;
       }
-      const competenceKeys = getPriorCompetenceKeys(competencia, bankStartDate ? 48 : 12);
+      const competenceKeys = getPriorCompetenceKeys(competencia, bankStartDate ? 120 : 60);
+
+      // Um saldo armazenado só pode servir como marco anterior à janela recalculada.
+      // Dentro da janela, sempre reconstruímos o movimento a partir dos dias atuais.
+      if (!bankStartDate && competenceKeys.length) {
+        const baselineCompetence = getPreviousCompetenceKey(competenceKeys[0]);
+        const storedBaseline = await getStoredPointBankBalance(employeeId, baselineCompetence);
+        if (storedBaseline !== null) rollingBalanceMinutes = storedBaseline;
+      }
 
       for (const competenceKey of competenceKeys) {
         if (startCompetence && competenceKey < startCompetence) continue;
-        const storedBalance = bankStartDate ? null : await getStoredPointBankBalance(employeeId, competenceKey);
-        if (!bankStartDate && storedBalance !== null) {
-          rollingBalanceMinutes = storedBalance;
-          continue;
-        }
-
         const monthRecords = await fetchEmployeePointRecordsForMonth(employeeId, competenceKey);
         if (!monthRecords.length) continue;
         rollingBalanceMinutes += calculatePointBankMovementForMonth({
@@ -6997,8 +7112,10 @@ function App() {
       }
 
       try {
-        const employeeMonthlyRecords = records
-          .filter((item) => item.funcionarioId === employeeId)
+        const employeeMonthlyRecords = groupPointRecordsByDay(
+          records.filter((item) => item.funcionarioId === employeeId),
+          { storeId: currentStoreIdForDisplay }
+        )
           .sort((a, b) => {
             const dateA = getRecordDateTime(a);
             const dateB = getRecordDateTime(b);
@@ -7015,7 +7132,7 @@ function App() {
         employeeMonthlyRecords.forEach((record) => {
           const dayKey = getRecordDayKey(record);
           if (!dayKey) return;
-          if (!recordsByDay.has(dayKey)) recordsByDay.set(dayKey, record);
+          recordsByDay.set(dayKey, record);
         });
 
         const employee = getPointSheetEmployee(employeeId, employeeMonthlyRecords);
@@ -7035,22 +7152,15 @@ function App() {
           const record = recordsByDay.get(dayKey);
           const recordSchedule = record ? getRecordWorkSchedule(record) : employeeSchedule;
           const dayRecord = record || { dia: dayKey, competencia: recordsQueryMonth, funcionarioId: employeeId, jornadaTrabalho: recordSchedule };
-          const summary = calculateWorkSummary(dayRecord, recordSchedule);
           const bankCalculationEnabled = !isPointBankDateBeforeStart(dayKey, bankStartDate);
-          const absenceDebitMinutes = bankCalculationEnabled
-            ? getPointAbsenceDebitMinutes({
-                record: dayRecord,
-                date,
-                dayKey,
-                nationalHolidays,
-                schedule: recordSchedule
-              })
-            : 0;
-          const balanceDistribution = calculatePointBalanceDistribution(dayRecord, summary, {
-            absenceDebitMinutes,
+          const dayCalculation = calculatePointDay(dayRecord, {
+            date,
+            dayKey,
+            nationalHolidays,
             schedule: recordSchedule,
             bankCalculationEnabled
           });
+          const { summary, balance: balanceDistribution, baseJustification } = dayCalculation;
           const irregularityMinutes = summary.calculable && Number.isFinite(summary.irregularityMinutes)
             ? summary.irregularityMinutes
             : 0;
@@ -7059,21 +7169,27 @@ function App() {
           bankMovementMinutes += balanceDistribution.bancoHorasMinutes;
           overtimePayMinutes += balanceDistribution.horaExtraMinutes;
           const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
-          const justification = getPointSheetJustification({ record: dayRecord, date, dayKey, summary, nationalHolidays, schedule: recordSchedule });
-
-          rows.push([
-            dayOfWeek,
-            date.toLocaleDateString('pt-BR'),
-            formatTime(dayRecord.horaEntrada),
-            formatTime(dayRecord.horaAlmocoSaida),
-            formatTime(dayRecord.horaAlmocoRetorno),
-            formatTime(dayRecord.horaSaida),
-            summary.irregularidade || '-',
-            summary.workedLabel || '-',
-            balanceDistribution.bancoHoras,
-            balanceDistribution.horaExtra,
-            justification
-          ]);
+          const presentationRows = buildPointPresentationRows(dayRecord, { baseJustification });
+          presentationRows.forEach((presentationRow) => {
+            const presentationJustification = [
+              presentationRow.justification && presentationRow.justification !== '-' ? presentationRow.justification : presentationRow.typeLabel,
+              presentationRow.justificationDetail,
+              presentationRow.originLabel
+            ].filter(Boolean).join(' — ');
+            rows.push([
+              dayOfWeek,
+              date.toLocaleDateString('pt-BR'),
+              formatTime(presentationRow.horaEntrada),
+              formatTime(presentationRow.horaAlmocoSaida),
+              formatTime(presentationRow.horaAlmocoRetorno),
+              formatTime(presentationRow.horaSaida),
+              presentationRow.showDailyTotals ? (summary.irregularidade || '-') : '-',
+              presentationRow.showDailyTotals ? (summary.workedLabel || '-') : '-',
+              presentationRow.showDailyTotals ? balanceDistribution.bancoHoras : '-',
+              presentationRow.showDailyTotals ? balanceDistribution.horaExtra : '-',
+              presentationJustification || '-'
+            ]);
+          });
         }
 
         const balanceMinutes = creditMinutes - debitMinutes;
@@ -7141,19 +7257,25 @@ function App() {
         const drawPointTable = (startY) => {
           let y = drawPointTableHeader(startY);
           const bottomLimit = pageHeight - 48;
-          const lineHeight = 1.8;
-          const minRowHeight = 3.8;
-
-          rows.forEach((row, rowIndex) => {
+          const baseLineHeight = 1.8;
+          const baseMinRowHeight = 3.8;
+          setFont(4.6);
+          const preparedRows = rows.map((row) => {
             const cellLines = row.map((value, index) => doc.splitTextToSize(String(value || '-'), pointTableColumns[index].width - 2));
-            const rowHeight = Math.max(minRowHeight, ...cellLines.map((lines) => (lines.length * lineHeight) + 1.2));
-            if (y + rowHeight > bottomLimit) {
-              doc.addPage();
-              y = drawPointTableHeader(margin);
-            }
+            const naturalHeight = Math.max(baseMinRowHeight, ...cellLines.map((lines) => (lines.length * baseLineHeight) + 1.2));
+            return { cellLines, naturalHeight };
+          });
+          const availableHeight = Math.max(bottomLimit - y, 1);
+          const naturalHeight = preparedRows.reduce((total, row) => total + row.naturalHeight, 0);
+          const scale = naturalHeight > availableHeight ? availableHeight / naturalHeight : 1;
+          const lineHeight = baseLineHeight * scale;
+          const textSize = Math.max(2.8, 4.6 * scale);
+
+          preparedRows.forEach(({ cellLines, naturalHeight: naturalRowHeight }, rowIndex) => {
+            const rowHeight = naturalRowHeight * scale;
 
             let x = margin;
-            setFont(4.6);
+            setFont(textSize);
             doc.setDrawColor(190, 190, 190);
             doc.setLineWidth(0.1);
             cellLines.forEach((lines, index) => {
@@ -7163,7 +7285,9 @@ function App() {
               doc.setDrawColor(190, 190, 190);
               doc.rect(x, y, column.width, rowHeight, 'S');
               doc.setTextColor(20, 20, 20);
-              doc.text(lines, x + 1, y + 2.6);
+              doc.text(lines, x + 1, y + Math.min(2.6 * scale, rowHeight - 0.5), {
+                lineHeightFactor: Math.max(lineHeight / (textSize * 0.3528), 0.7)
+              });
               x += column.width;
             });
             y += rowHeight;
@@ -7286,7 +7410,7 @@ function App() {
         if (createdA && !createdB) return 1;
         return 0;
       });
-      const sorted = sortPointRecords(records);
+      const sorted = sortPointRecords(groupPointRecordsByDay(records, { storeId: currentStoreIdForDisplay }));
       const dateFiltered = activeDayFilter
         ? sorted.filter(item => getRecordDayKey(item) === activeDayFilter)
         : sorted;
@@ -7337,26 +7461,38 @@ function App() {
         );
       }
       return appendVirtualAbsences(dateFiltered.filter(item => item.funcionarioId === userId), userId);
-    }, [records, activeDayFilter, isManager, selectedEmployee, userId, recordsQueryMonth, employees, user?.auth?.displayName, user?.auth?.email]);
+    }, [records, activeDayFilter, isManager, selectedEmployee, userId, recordsQueryMonth, employees, user?.auth?.displayName, user?.auth?.email, currentStoreIdForDisplay]);
 
     const todayRecord = todayRecordData;
-    const todayPointStatus = buildPointStatus(todayRecord || {});
-    const hasTodayEntry = Boolean(todayRecord?.horaEntrada);
-    const hasTodayLunchStart = Boolean(todayRecord?.horaAlmocoSaida);
-    const hasTodayLunchReturn = Boolean(todayRecord?.horaAlmocoRetorno);
-    const hasTodayExit = Boolean(todayRecord?.horaSaida);
-    const isTodayAtLunch = hasTodayLunchStart && !hasTodayLunchReturn;
+    const todayPointStatus = todayRecord
+      ? calculatePointDay(todayRecord).status
+      : buildPointStatus({});
+    const todayPunchEvents = getPointPunchEvents(todayRecord || {});
+    const lastTodayPunch = todayPunchEvents[todayPunchEvents.length - 1] || null;
+    const hasTodayClosedPeriod = getPointWorkIntervals(todayRecord || {}).length > 0;
+    const hasTodayOpenPeriod = Boolean(getPointOpenPeriod(todayRecord || {}));
+    const isTodayAtLunch = lastTodayPunch?.tipo === 'almoco_inicio';
     const pointActionEnabled = {
-      entrada: !registerLoading && !hasTodayExit && !hasTodayEntry,
-      almoco_inicio: !registerLoading && hasTodayEntry && !hasTodayLunchStart && !hasTodayExit,
-      almoco_fim: !registerLoading && hasTodayLunchStart && !hasTodayLunchReturn && !hasTodayExit,
-      saida: !registerLoading && !hasTodayExit && !isTodayAtLunch,
+      entrada: !registerLoading && !hasTodayOpenPeriod && !isTodayAtLunch,
+      almoco_inicio: !registerLoading && hasTodayOpenPeriod,
+      almoco_fim: !registerLoading && isTodayAtLunch,
+      saida: !registerLoading && hasTodayOpenPeriod && !isTodayAtLunch,
     };
     const canExportPointSheet = !isManager || (selectedEmployee && selectedEmployee !== 'all');
     const manualPointIsAbsenceExcuse = manualPointForm.tipoLancamento === 'abono_falta';
+    const manualPointIsAbsence = manualPointForm.tipoLancamento === 'falta';
     const manualPointIsCompensatedDayOff = manualPointForm.tipoLancamento === 'folga_compensada';
     const manualPointIsManagerRelease = manualPointForm.tipoLancamento === 'liberacao_chefia';
-    const manualPointSkipsTimeFields = manualPointIsAbsenceExcuse || manualPointIsCompensatedDayOff || manualPointIsManagerRelease;
+    const manualPointIsVacation = manualPointForm.tipoLancamento === 'ferias';
+    const manualPointIsOtherExcusedDay = ['folga', 'feriado'].includes(manualPointForm.tipoLancamento);
+    const manualPointSkipsTimeFields = manualPointIsAbsence
+      || manualPointIsAbsenceExcuse
+      || manualPointIsCompensatedDayOff
+      || manualPointIsManagerRelease
+      || manualPointIsVacation
+      || manualPointIsOtherExcusedDay;
+    const editPointUsesTimeFields = editForm.tipoLancamento === 'manual';
+    const editPointRequiresJustification = ['manual', 'abono_falta', 'liberacao_chefia'].includes(editForm.tipoLancamento);
 
     const requestLocation = () => requestCompatibleGeolocation({ source: 'meu-espaco-registro-ponto' });
 
@@ -7492,10 +7628,15 @@ function App() {
 
       const employee = employees.find((item) => item.id === manualPointForm.funcionarioId);
       const dayKey = manualPointForm.dia;
+      const isAbsence = manualPointForm.tipoLancamento === 'falta';
       const isAbsenceExcuse = manualPointForm.tipoLancamento === 'abono_falta';
       const isCompensatedDayOff = manualPointForm.tipoLancamento === 'folga_compensada';
       const isManagerRelease = manualPointForm.tipoLancamento === 'liberacao_chefia';
-      const skipsTimeFields = isAbsenceExcuse || isCompensatedDayOff || isManagerRelease;
+      const isVacation = manualPointForm.tipoLancamento === 'ferias';
+      const isWeeklyDayOff = manualPointForm.tipoLancamento === 'folga';
+      const isHoliday = manualPointForm.tipoLancamento === 'feriado';
+      const skipsTimeFields = manualPointForm.tipoLancamento !== 'manual';
+      const requiresJustification = ['manual', 'abono_falta', 'liberacao_chefia'].includes(manualPointForm.tipoLancamento);
       const hasAnyTime = [
         manualPointForm.horaEntrada,
         manualPointForm.horaAlmocoSaida,
@@ -7515,7 +7656,7 @@ function App() {
         setManualPointError('Informe pelo menos um horário para lançar o ponto.');
         return;
       }
-      if (!manualPointForm.justificativa.trim()) {
+      if (requiresJustification && !manualPointForm.justificativa.trim()) {
         setManualPointError('Informe a justificativa do lançamento manual.');
         return;
       }
@@ -7533,41 +7674,30 @@ function App() {
           pontosRef,
           where('funcionarioId', '==', employee.id),
           where('dia', '==', dayKey),
-          where('competencia', '==', competenciaKey),
-          limit(1)
+          where('competencia', '==', competenciaKey)
         );
         const duplicateSnap = await getDocs(duplicateQuery);
-        if (!duplicateSnap.empty) {
+        const activeDuplicate = duplicateSnap.docs.find((item) => {
+          const data = item.data() || {};
+          return data.ativo !== false && data.duplicadoArquivado !== true;
+        });
+        if (activeDuplicate) {
           setManualPointError('Já existe registro para esta colaboradora nesta data. Use a opção Editar para ajustar.');
           return;
         }
 
-        const displayJustification = isCompensatedDayOff
-          ? 'FOLGA COMPENSADA'
-          : isManagerRelease
-            ? 'Liberação Chefia'
-            : manualPointForm.justificativa.trim();
-        const launchType = isAbsenceExcuse
-          ? 'abono_falta'
-          : isCompensatedDayOff
-            ? 'folga_compensada'
-            : isManagerRelease
-              ? 'liberacao_chefia'
-              : 'manual_pelo_gestor';
-        const managerAuditType = isAbsenceExcuse
-          ? 'falta_abonada_pelo_gestor'
-          : isCompensatedDayOff
-            ? 'folga_compensada_pelo_gestor'
-            : isManagerRelease
-              ? 'liberacao_chefia_pelo_gestor'
-              : 'manual_pelo_gestor';
-        const managerAuditLabel = isAbsenceExcuse
-          ? 'Abono de falta'
-          : isCompensatedDayOff
-            ? 'FOLGA COMPENSADA'
-            : isManagerRelease
-              ? 'Liberação Chefia'
-              : 'Lançamento manual de ponto';
+        const administrativeLabels = {
+          falta: 'Falta',
+          folga_compensada: 'FOLGA COMPENSADA',
+          liberacao_chefia: 'Liberação Chefia',
+          ferias: 'Férias',
+          folga: 'Folga',
+          feriado: 'Feriado'
+        };
+        const displayJustification = administrativeLabels[manualPointForm.tipoLancamento] || manualPointForm.justificativa.trim();
+        const launchType = manualPointForm.tipoLancamento === 'manual' ? 'manual_pelo_gestor' : manualPointForm.tipoLancamento;
+        const managerAuditType = `${launchType}_pelo_gestor`;
+        const managerAuditLabel = getEditablePointTypeLabel(manualPointForm.tipoLancamento);
 
         const recordDraft = {
           horaEntrada: skipsTimeFields ? '' : (manualPointForm.horaEntrada || ''),
@@ -7577,24 +7707,22 @@ function App() {
           dia: dayKey,
           competencia: competenciaKey,
           tipoLancamento: launchType,
+          faltaSemAbono: isAbsence,
           faltaAbonada: isAbsenceExcuse,
           abonoFalta: isAbsenceExcuse,
           folgaCompensada: isCompensatedDayOff,
           liberacaoChefia: isManagerRelease,
+          ferias: isVacation,
+          lancamentoFerias: isVacation,
+          folga: isWeeklyDayOff,
+          feriado: isHoliday,
           justificativa: displayJustification,
           justificativaGestor: manualPointForm.justificativa.trim(),
           dataInicioBancoHoras: employeeBankStartDate || '',
           jornadaTrabalho: employeeSchedule,
         };
-        const summary = calculateWorkSummary(recordDraft, employeeSchedule);
-        const statusPatch = isAbsenceExcuse
-          ? { inconsistente: false, necessitaAjuste: false, statusPonto: 'Falta abonada', inconsistencias: [] }
-          : isCompensatedDayOff
-            ? { inconsistente: false, necessitaAjuste: false, statusPonto: 'Folga compensada', inconsistencias: [] }
-            : isManagerRelease
-              ? { inconsistente: false, necessitaAjuste: false, statusPonto: 'Liberação chefia', inconsistencias: [] }
-              : buildPointStatus(recordDraft);
-        const balanceDistribution = calculatePointBalanceDistribution(recordDraft, summary, { schedule: employeeSchedule, bankCalculationEnabled });
+        const dayCalculation = calculatePointDay(recordDraft, { schedule: employeeSchedule, bankCalculationEnabled });
+        const { summary, status: statusPatch, balance: balanceDistribution } = dayCalculation;
         const managerAudit = {
           data: new Date().toISOString(),
           tipo: managerAuditType,
@@ -7613,7 +7741,8 @@ function App() {
           }
         };
 
-        await addDoc(pontosRef, {
+        const deterministicRecordRef = duplicateSnap.docs[0]?.ref || doc(pontosRef, getPointRecordLogicalId(employee.id, dayKey));
+        await setDoc(deterministicRecordRef, {
           ...recordDraft,
           ...statusPatch,
           funcionarioId: employee.id,
@@ -7633,28 +7762,43 @@ function App() {
           justificativa: displayJustification,
           justificativaGestor: manualPointForm.justificativa.trim(),
           tipoLancamento: recordDraft.tipoLancamento,
+          faltaSemAbono: isAbsence,
           faltaAbonada: isAbsenceExcuse,
           abonoFalta: isAbsenceExcuse,
           folgaCompensada: isCompensatedDayOff,
           liberacaoChefia: isManagerRelease,
+          ferias: isVacation,
+          lancamentoFerias: isVacation,
+          folga: isWeeklyDayOff,
+          feriado: isHoliday,
           lancamentoManualGestor: true,
-          manualPeloGestor: !isAbsenceExcuse,
+          manualPeloGestor: manualPointForm.tipoLancamento === 'manual',
           semLocalizacaoManual: true,
-          localizacaoObservacao: isAbsenceExcuse
+          localizacaoObservacao: isAbsence
+            ? 'Sem localização — falta lançada pelo gestor'
+            : isAbsenceExcuse
             ? 'Sem localização — falta abonada pelo gestor'
             : isCompensatedDayOff
               ? 'Sem localização — folga compensada lançada pelo gestor'
               : isManagerRelease
                 ? 'Sem localização — liberação chefia pelo gestor'
-                : 'Sem localização — lançamento manual pelo gestor',
+                : isVacation
+                  ? 'Sem localização — férias lançadas pelo gestor'
+                  : isWeeklyDayOff
+                    ? 'Sem localização — folga lançada pelo gestor'
+                    : isHoliday
+                      ? 'Sem localização — feriado lançado pelo gestor'
+                      : 'Sem localização — lançamento manual pelo gestor',
           gestorId: userId,
           gestorNome: userName,
           dataLancamentoManual: serverTimestamp(),
           dataAbonoFalta: isAbsenceExcuse ? serverTimestamp() : null,
           dataFolgaCompensada: isCompensatedDayOff ? serverTimestamp() : null,
           dataLiberacaoChefia: isManagerRelease ? serverTimestamp() : null,
-          historicoAlteracoes: arrayUnion(managerAudit)
-        });
+          historicoAlteracoes: arrayUnion(managerAudit),
+          ativo: true,
+          duplicadoArquivado: false
+        }, { merge: true });
 
         setSelectedDay(dayKey);
         setSelectedMonth(competenciaKey);
@@ -7678,56 +7822,492 @@ function App() {
       }
     };
 
+    const getEditablePointType = (record = {}) => {
+      const resolvedType = resolvePointType(record);
+      return ['falta', 'abono_falta', 'folga_compensada', 'liberacao_chefia', 'ferias', 'folga', 'feriado'].includes(resolvedType)
+        ? resolvedType
+        : 'manual';
+    };
+
+    const getEditablePointTypeLabel = (type) => ({
+      manual: 'Lançamento manual de ponto',
+      falta: 'Falta',
+      abono_falta: 'Abono de falta',
+      liberacao_chefia: 'Liberação Chefia',
+      folga_compensada: 'FOLGA COMPENSADA',
+      ferias: 'Férias',
+      folga: 'Folga',
+      feriado: 'Feriado'
+    }[type] || type || '-');
+
+    const getRecordAuditSnapshot = (record = {}, calculation = null) => ({
+      tipoLancamento: getEditablePointType(record),
+      tipoLancamentoLabel: getEditablePointTypeLabel(getEditablePointType(record)),
+      horarios: {
+        horaEntrada: record.horaEntrada || '',
+        horaAlmocoSaida: record.horaAlmocoSaida || '',
+        horaAlmocoRetorno: record.horaAlmocoRetorno || '',
+        horaSaida: record.horaSaida || ''
+      },
+      justificativa: record.justificativa || '',
+      justificativaGestor: record.justificativaGestor || '',
+      observacoes: record.observacoesGestor || record.observacoes || '',
+      registroAnteriorFerias: record.registroAnteriorFerias || null,
+      irregularidade: calculation?.summary?.irregularidade ?? record.irregularidade ?? '',
+      qtde: calculation?.summary?.workedLabel ?? record.qtde ?? '',
+      bancoHoras: calculation?.balance?.bancoHoras ?? record.bancoHoras ?? '',
+      bancoHorasMinutes: calculation?.balance?.bancoHorasMinutes ?? (Number(record.bancoHorasMinutes) || 0),
+      horaExtra: calculation?.balance?.horaExtra ?? record.horaExtra ?? '',
+      horaExtraMinutes: calculation?.balance?.horaExtraMinutes ?? (Number(record.horaExtraMinutes) || 0),
+      statusPonto: calculation?.status?.statusPonto ?? record.statusPonto ?? ''
+    });
+
+    const getActiveSupplementalPeriods = (record = {}) => (
+      Array.isArray(record.periodosComplementares)
+        ? record.periodosComplementares.filter((period) => period && period.ativo !== false)
+        : []
+    );
+
+    const getSupplementalPeriodDurationLabel = (period = {}) => {
+      const start = parsePointTimeToMinutes(period.horaInicio);
+      const end = parsePointTimeToMinutes(period.horaFim);
+      return start === null || end === null || end <= start ? '-' : formatMinutesToLabel(end - start);
+    };
+
+    const getPointCalculationPersistencePatch = (record = {}) => {
+      const schedule = getRecordWorkSchedule(record);
+      const bankStartDate = getPointBankStartDateForRecord(record);
+      const dayKey = getRecordDayKey(record);
+      const calculation = calculatePointDay(record, {
+        schedule,
+        bankCalculationEnabled: !isPointBankDateBeforeStart(dayKey, bankStartDate)
+      });
+      const { status, summary, balance } = calculation;
+      return {
+        calculation,
+        patch: {
+          ...status,
+          irregularidade: status.inconsistente ? 'Pendente de ajuste' : (summary.irregularidade !== '-' ? summary.irregularidade : ''),
+          qtde: status.inconsistente ? '' : (summary.workedLabel !== '-' ? summary.workedLabel : ''),
+          horasReaisMinutes: summary.realWorkedMinutes || 0,
+          trabalhoExternoMinutes: summary.externalWorkedMinutes || 0,
+          periodoParticularDescontadoMinutes: summary.privateDeductedMinutes || 0,
+          periodoJustificadoMinutes: summary.justifiedAppliedMinutes || 0,
+          horasConsideradasMinutes: summary.consideredMinutes || 0,
+          bancoHoras: status.inconsistente ? '' : balance.bancoHoras,
+          bancoHorasMinutes: status.inconsistente ? 0 : balance.bancoHorasMinutes,
+          horaExtra: status.inconsistente ? '' : balance.horaExtra,
+          horaExtraMinutes: status.inconsistente ? 0 : balance.horaExtraMinutes,
+          almocoNaoRegistradoBancoHoras: status.inconsistente ? 0 : balance.almocoNaoRegistradoBancoHoras,
+          faltaSemAbonoBancoHoras: status.inconsistente ? 0 : balance.faltaSemAbonoBancoHoras
+        }
+      };
+    };
+
+    const resolveSupplementalPointRecordRef = async (storeId, record = {}) => {
+      const dayKey = getRecordDayKey(record);
+      const employeeId = record.funcionarioId;
+      const pontosRef = collection(db, 'lojas', storeId, 'pontos');
+      const sameDayQuery = query(
+        pontosRef,
+        where('funcionarioId', '==', employeeId),
+        where('dia', '==', dayKey),
+        where('competencia', '==', dayKey.slice(0, 7))
+      );
+      const snapshot = await getDocs(sameDayQuery);
+      const activeDocument = snapshot.docs.find((item) => {
+        const data = item.data() || {};
+        return data.ativo !== false && data.duplicadoArquivado !== true;
+      });
+      return activeDocument?.ref || doc(pontosRef, getPointRecordLogicalId(employeeId, dayKey));
+    };
+
+    const openSupplementalPeriodModal = (period = null, targetRecord = editingRecord) => {
+      if (!isManager || !targetRecord) return;
+      if (targetRecord !== editingRecord) setEditingRecord(targetRecord);
+      setEditingSupplementalPeriod(period);
+      setSupplementalPeriodForm({
+        tipo: period?.tipo || 'abono_periodo',
+        horaInicio: period?.horaInicio || '',
+        horaFim: period?.horaFim || '',
+        justificativa: period?.justificativa || '',
+        observacao: period?.observacao || ''
+      });
+      setSupplementalPeriodError('');
+      setSupplementalPeriodModalOpen(true);
+    };
+
+    const openSupplementalPeriodForSelectedDay = () => {
+      if (!isManager) return;
+      const employeeId = selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : '';
+      const dayKey = activeDayFilter || selectedDay;
+      const employee = getEmployeeById(employeeId);
+      if (!employeeId || !employee.id) {
+        setRegisterMessage({ type: 'error', text: 'Selecione uma colaboradora para adicionar um período complementar.' });
+        return;
+      }
+      if (!dayKey) {
+        setRegisterMessage({ type: 'error', text: 'Selecione um dia específico para adicionar um período complementar.' });
+        return;
+      }
+      const existingRecord = records.find((record) => (
+        record.funcionarioId === employeeId
+        && getRecordDayKey(record) === dayKey
+        && record.ativo !== false
+        && record.duplicadoArquivado !== true
+      ));
+      const targetRecord = existingRecord || {
+        id: getPointRecordLogicalId(employeeId, dayKey),
+        funcionarioId: employeeId,
+        funcionarioNome: getEmployeeDisplayName(employee),
+        funcionarioEmail: employee.email || '',
+        dia: dayKey,
+        competencia: dayKey.slice(0, 7),
+        data: Timestamp.fromDate(new Date(`${dayKey}T00:00:00`)),
+        empresaId: currentStoreIdForDisplay,
+        jornadaTrabalho: getEmployeeWorkSchedule(employee),
+        tipoLancamento: 'normal',
+        periodosComplementares: [],
+        ativo: true
+      };
+      openEditModal(targetRecord);
+      openSupplementalPeriodModal(null, targetRecord);
+    };
+
+    const closeSupplementalPeriodModal = () => {
+      if (savingSupplementalPeriod) return;
+      setSupplementalPeriodModalOpen(false);
+      setEditingSupplementalPeriod(null);
+      setSupplementalPeriodError('');
+    };
+
+    const handleSaveSupplementalPeriod = async () => {
+      if (!isManager || !editingRecord) return;
+      const currentPeriods = Array.isArray(editingRecord.periodosComplementares)
+        ? editingRecord.periodosComplementares
+        : [];
+      const nowDate = new Date();
+      const periodId = editingSupplementalPeriod?.id
+        || `periodo_${nowDate.getTime()}_${Math.random().toString(36).slice(2, 8)}`;
+      const candidate = {
+        ...(editingSupplementalPeriod || {}),
+        id: periodId,
+        tipo: supplementalPeriodForm.tipo,
+        horaInicio: supplementalPeriodForm.horaInicio,
+        horaFim: supplementalPeriodForm.horaFim,
+        justificativa: supplementalPeriodForm.justificativa.trim(),
+        observacao: supplementalPeriodForm.observacao.trim(),
+        funcionarioId: editingRecord.funcionarioId,
+        funcionarioNome: editingRecord.funcionarioNome || getEmployeeDisplayName(getEmployeeById(editingRecord.funcionarioId)),
+        dia: getRecordDayKey(editingRecord),
+        gestorId: userId,
+        gestorNome: userName,
+        origem: 'gestor',
+        ativo: true,
+        criadoEm: editingSupplementalPeriod?.criadoEm || nowDate.toISOString(),
+        criadoPor: editingSupplementalPeriod?.criadoPor || userId,
+        atualizadoEm: nowDate.toISOString(),
+        atualizadoPor: userId
+      };
+      const validation = validateSupplementalPeriod({
+        period: candidate,
+        existingPeriods: currentPeriods,
+        record: editingRecord,
+        ignoreId: editingSupplementalPeriod?.id || ''
+      });
+      if (!validation.valid) {
+        setSupplementalPeriodError(validation.errors.join(' '));
+        return;
+      }
+      if (
+        editingSupplementalPeriod
+        && !window.confirm('Este período será substituído e o dia, o mês e o banco acumulado serão recalculados. Deseja continuar?')
+      ) return;
+
+      try {
+        setSavingSupplementalPeriod(true);
+        setSupplementalPeriodError('');
+        const nextPeriods = editingSupplementalPeriod
+          ? currentPeriods.map((period) => period.id === periodId ? candidate : period)
+          : [...currentPeriods, candidate];
+        const baseRecord = {
+          ...editingRecord,
+          virtualAbsence: false,
+          faltaSemAbono: editingRecord.virtualAbsence ? false : editingRecord.faltaSemAbono,
+          tipoLancamento: editingRecord.virtualAbsence ? 'normal' : editingRecord.tipoLancamento,
+          periodosComplementares: nextPeriods
+        };
+        const { calculation, patch } = getPointCalculationPersistencePatch(baseRecord);
+        const auditEntry = buildSupplementalPeriodAuditEntry({
+          now: nowDate,
+          action: editingSupplementalPeriod ? 'alterado' : 'criado',
+          employeeId: baseRecord.funcionarioId,
+          employeeName: baseRecord.funcionarioNome,
+          dayKey: getRecordDayKey(baseRecord),
+          previousPeriod: editingSupplementalPeriod,
+          nextPeriod: candidate,
+          reason: candidate.justificativa,
+          managerId: userId,
+          managerName: userName
+        });
+        const storeId = resolveActiveStoreForWrite();
+        const recordRef = await resolveSupplementalPointRecordRef(storeId, baseRecord);
+        const auditRef = doc(collection(db, 'lojas', storeId, 'pontosAuditoria'));
+        const employee = getEmployeeById(baseRecord.funcionarioId);
+        const dayKey = getRecordDayKey(baseRecord);
+        const persistencePayload = {
+          funcionarioId: baseRecord.funcionarioId,
+          funcionarioNome: baseRecord.funcionarioNome || getEmployeeDisplayName(employee),
+          funcionarioEmail: baseRecord.funcionarioEmail || employee.email || '',
+          dia: dayKey,
+          competencia: dayKey.slice(0, 7),
+          data: baseRecord.data || Timestamp.fromDate(new Date(`${dayKey}T00:00:00`)),
+          empresaId: baseRecord.empresaId || storeId,
+          createdAt: baseRecord.createdAt || serverTimestamp(),
+          tipoLancamento: baseRecord.tipoLancamento || 'normal',
+          virtualAbsence: false,
+          faltaSemAbono: baseRecord.faltaSemAbono === true,
+          jornadaTrabalho: getRecordWorkSchedule(baseRecord),
+          periodosComplementares: nextPeriods,
+          ...patch,
+          atualizadoEm: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          ativo: true,
+          duplicadoArquivado: false,
+          historicoAlteracoes: arrayUnion(auditEntry)
+        };
+        const batch = writeBatch(db);
+        batch.set(recordRef, persistencePayload, { merge: true });
+        batch.set(auditRef, {
+          ...auditEntry,
+          pontoId: recordRef.id,
+          lojaId: storeId,
+          criadoEm: serverTimestamp()
+        });
+        await batch.commit();
+        setEditingRecord({ ...baseRecord, id: recordRef.id, ...patch });
+        setSupplementalPeriodModalOpen(false);
+        setEditingSupplementalPeriod(null);
+        setRegisterMessage({
+          type: 'success',
+          text: editingSupplementalPeriod
+            ? 'Período complementar alterado e cálculos atualizados com auditoria.'
+            : 'Período complementar cadastrado e cálculos atualizados com auditoria.'
+        });
+        if (calculation.summary.justifiedRegisteredMinutes > calculation.summary.justifiedAppliedMinutes) {
+          setRegisterMessage({
+            type: 'warning',
+            text: 'Período salvo. O abono/liberação excedente foi mantido para auditoria, mas não gerou crédito, banco positivo ou hora extra.'
+          });
+        }
+      } catch (error) {
+        console.error('Erro ao salvar período complementar', error);
+        setSupplementalPeriodError(error.message || 'Não foi possível salvar o período complementar.');
+      } finally {
+        setSavingSupplementalPeriod(false);
+      }
+    };
+
+    const handleRemoveSupplementalPeriod = async (period) => {
+      if (!isManager || !editingRecord || !period) return;
+      const removalReason = window.prompt('Informe o motivo da exclusão para a auditoria:');
+      if (!String(removalReason || '').trim()) return;
+      if (!window.confirm('Remover este período e recalcular o dia, o mês e o banco acumulado?')) return;
+      try {
+        setSavingSupplementalPeriod(true);
+        const nowDate = new Date();
+        const currentPeriods = Array.isArray(editingRecord.periodosComplementares)
+          ? editingRecord.periodosComplementares
+          : [];
+        const removedPeriod = {
+          ...period,
+          ativo: false,
+          removidoEm: nowDate.toISOString(),
+          removidoPor: userId,
+          removidoPorNome: userName,
+          motivoRemocao: removalReason.trim()
+        };
+        const nextPeriods = currentPeriods.map((item) => item.id === period.id ? removedPeriod : item);
+        const nextRecord = { ...editingRecord, periodosComplementares: nextPeriods };
+        const { patch } = getPointCalculationPersistencePatch(nextRecord);
+        const auditEntry = buildSupplementalPeriodAuditEntry({
+          now: nowDate,
+          action: 'removido',
+          employeeId: nextRecord.funcionarioId,
+          employeeName: nextRecord.funcionarioNome,
+          dayKey: getRecordDayKey(nextRecord),
+          previousPeriod: period,
+          nextPeriod: null,
+          reason: removalReason,
+          managerId: userId,
+          managerName: userName
+        });
+        const storeId = resolveActiveStoreForWrite();
+        const recordRef = await resolveSupplementalPointRecordRef(storeId, nextRecord);
+        const auditRef = doc(collection(db, 'lojas', storeId, 'pontosAuditoria'));
+        const batch = writeBatch(db);
+        batch.set(recordRef, {
+          periodosComplementares: nextPeriods,
+          ...patch,
+          atualizadoEm: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          historicoAlteracoes: arrayUnion(auditEntry)
+        }, { merge: true });
+        batch.set(auditRef, {
+          ...auditEntry,
+          pontoId: recordRef.id,
+          lojaId: storeId,
+          criadoEm: serverTimestamp()
+        });
+        await batch.commit();
+        setEditingRecord({ ...nextRecord, ...patch });
+        setRegisterMessage({ type: 'success', text: 'Período removido, cálculos refeitos e histórico preservado.' });
+      } catch (error) {
+        console.error('Erro ao remover período complementar', error);
+        setRegisterMessage({ type: 'error', text: error.message || 'Não foi possível remover o período.' });
+      } finally {
+        setSavingSupplementalPeriod(false);
+      }
+    };
+
     const openEditModal = (record) => {
-      const recordSchedule = getRecordWorkSchedule(record);
-      const summary = calculateWorkSummary(record, recordSchedule);
+      if (!isManager) return;
+      const currentType = getEditablePointType(record);
       setEditingRecord(record);
       setEditForm({
+        tipoLancamento: currentType,
         horaEntrada: record.horaEntrada || '',
         horaSaida: record.horaSaida || '',
         horaAlmocoSaida: record.horaAlmocoSaida || '',
         horaAlmocoRetorno: record.horaAlmocoRetorno || '',
-        irregularidade: summary.irregularidade !== '-' ? summary.irregularidade : '',
-        qtde: summary.workedLabel !== '-' ? summary.workedLabel : '',
-        justificativa: record.justificativa || ''
+        justificativa: record.justificativaGestor || (
+          ['manual', 'abono_falta'].includes(currentType) ? (record.justificativa || '') : ''
+        ),
+        observacoes: record.observacoesGestor || record.observacoes || '',
+        motivoCorrecao: ''
       });
+      setRegisterMessage(null);
     };
 
     const handleSaveEdit = async () => {
-      if (!editingRecord) return;
+      if (!editingRecord || !isManager) return;
+      const isManualType = editForm.tipoLancamento === 'manual';
+      const requiresJustification = ['manual', 'abono_falta', 'liberacao_chefia'].includes(editForm.tipoLancamento);
+      const hasAnyEditedTime = [editForm.horaEntrada, editForm.horaAlmocoSaida, editForm.horaAlmocoRetorno, editForm.horaSaida].some(Boolean);
+      if (isManualType && !hasAnyEditedTime) {
+        setRegisterMessage({ type: 'error', text: 'Informe pelo menos um horário para o lançamento manual.' });
+        return;
+      }
+      if (requiresJustification && !editForm.justificativa.trim()) {
+        setRegisterMessage({ type: 'error', text: 'Informe a justificativa do lançamento.' });
+        return;
+      }
+      if (!editForm.motivoCorrecao.trim()) {
+        setRegisterMessage({ type: 'error', text: 'Informe o motivo da correção para a auditoria.' });
+        return;
+      }
+      const confirmed = window.confirm('Este dia já possui um registro. Ao salvar, os dados atuais serão substituídos e os cálculos da folha serão recalculados. Deseja continuar?');
+      if (!confirmed) return;
+
       try {
         setSavingEdit(true);
         const storeId = resolveActiveStoreForWrite();
-        const recordRef = doc(db, 'lojas', storeId, 'pontos', editingRecord.id);
         const nowDate = new Date();
+        const employee = getEmployeeById(editingRecord.funcionarioId);
         const recordSchedule = getRecordWorkSchedule(editingRecord);
         const recordBankStartDate = getPointBankStartDateForRecord(editingRecord);
         const recordDayKey = getRecordDayKey(editingRecord);
+        const competenciaKey = recordDayKey.slice(0, 7);
         const bankCalculationEnabled = !isPointBankDateBeforeStart(recordDayKey, recordBankStartDate);
-        const editedRecord = { ...editingRecord, ...editForm, dataInicioBancoHoras: recordBankStartDate || '', jornadaTrabalho: recordSchedule };
-        const summary = calculateWorkSummary(editedRecord, recordSchedule);
-        const statusPatch = buildPointStatus(editedRecord);
-        const balanceDistribution = calculatePointBalanceDistribution(editedRecord, summary, { schedule: recordSchedule, bankCalculationEnabled });
-        const previousValues = {
-          horaEntrada: editingRecord.horaEntrada || '',
-          horaSaida: editingRecord.horaSaida || '',
-          horaAlmocoSaida: editingRecord.horaAlmocoSaida || '',
-          horaAlmocoRetorno: editingRecord.horaAlmocoRetorno || '',
-          irregularidade: editingRecord.irregularidade || '',
-          qtde: editingRecord.qtde || '',
-          bancoHoras: editingRecord.bancoHoras || '',
-          bancoHorasMinutes: editingRecord.bancoHorasMinutes || 0,
-          horaExtra: editingRecord.horaExtra || '',
-          horaExtraMinutes: editingRecord.horaExtraMinutes || 0,
-          almocoNaoRegistradoBancoHoras: editingRecord.almocoNaoRegistradoBancoHoras || 0,
-          justificativa: editingRecord.justificativa || '',
-          statusPonto: editingRecord.statusPonto || ''
+        const launchType = editForm.tipoLancamento === 'manual' ? 'manual_pelo_gestor' : editForm.tipoLancamento;
+        const clearsTimes = !isManualType;
+        const rawJustification = editForm.justificativa.trim();
+        const displayJustification = ({
+          falta: 'Falta',
+          folga_compensada: 'FOLGA COMPENSADA',
+          liberacao_chefia: 'Liberação Chefia',
+          ferias: 'Férias',
+          folga: 'Folga',
+          feriado: 'Feriado'
+        }[editForm.tipoLancamento] || rawJustification);
+        const editedRecord = {
+          ...editingRecord,
+          virtualAbsence: false,
+          tipoLancamento: launchType,
+          horaEntrada: clearsTimes ? '' : (editForm.horaEntrada || ''),
+          horaAlmocoSaida: clearsTimes ? '' : (editForm.horaAlmocoSaida || ''),
+          horaAlmocoRetorno: clearsTimes ? '' : (editForm.horaAlmocoRetorno || ''),
+          horaSaida: clearsTimes ? '' : (editForm.horaSaida || ''),
+          justificativa: displayJustification,
+          justificativaGestor: rawJustification,
+          faltaSemAbono: editForm.tipoLancamento === 'falta',
+          faltaAbonada: editForm.tipoLancamento === 'abono_falta',
+          abonoFalta: editForm.tipoLancamento === 'abono_falta',
+          folgaCompensada: editForm.tipoLancamento === 'folga_compensada',
+          liberacaoChefia: editForm.tipoLancamento === 'liberacao_chefia',
+          ferias: editForm.tipoLancamento === 'ferias',
+          lancamentoFerias: editForm.tipoLancamento === 'ferias',
+          folga: editForm.tipoLancamento === 'folga',
+          feriado: editForm.tipoLancamento === 'feriado',
+          lancamentoManualGestor: true,
+          manualPeloGestor: isManualType,
+          dataInicioBancoHoras: recordBankStartDate || '',
+          jornadaTrabalho: recordSchedule
         };
-        const nextValues = {
-          horaEntrada: editForm.horaEntrada || '',
-          horaSaida: editForm.horaSaida || '',
-          horaAlmocoSaida: editForm.horaAlmocoSaida || '',
-          horaAlmocoRetorno: editForm.horaAlmocoRetorno || '',
+        const previousCalculation = calculatePointDay(editingRecord, { schedule: recordSchedule, bankCalculationEnabled });
+        const nextCalculation = calculatePointDay(editedRecord, { schedule: recordSchedule, bankCalculationEnabled });
+        const previousValues = getRecordAuditSnapshot(editingRecord, previousCalculation);
+        const nextValues = getRecordAuditSnapshot(editedRecord, nextCalculation);
+        const auditEntry = buildPointAuditEntry({
+          now: nowDate,
+          employeeId: editingRecord.funcionarioId,
+          employeeName: editingRecord.funcionarioNome || getEmployeeDisplayName(employee),
+          dayKey: recordDayKey,
+          previousValues,
+          nextValues,
+          correctionReason: editForm.motivoCorrecao,
+          observations: editForm.observacoes,
+          managerId: userId,
+          managerName: userName
+        });
+
+        const pontosRef = collection(db, 'lojas', storeId, 'pontos');
+        const sameDayQuery = query(
+          pontosRef,
+          where('funcionarioId', '==', editingRecord.funcionarioId),
+          where('dia', '==', recordDayKey),
+          where('competencia', '==', competenciaKey)
+        );
+        const sameDaySnap = await getDocs(sameDayQuery);
+        const existingTarget = sameDaySnap.docs.find((item) => item.id === editingRecord.id) || sameDaySnap.docs[0];
+        const recordRef = existingTarget?.ref || doc(pontosRef, getPointRecordLogicalId(editingRecord.funcionarioId, recordDayKey));
+        const batch = writeBatch(db);
+        const statusPatch = nextCalculation.status;
+        const balanceDistribution = nextCalculation.balance;
+        const summary = nextCalculation.summary;
+        const basePayload = {
+          funcionarioId: editingRecord.funcionarioId,
+          funcionarioNome: editingRecord.funcionarioNome || getEmployeeDisplayName(employee),
+          funcionarioEmail: editingRecord.funcionarioEmail || employee.email || '',
+          dia: recordDayKey,
+          competencia: competenciaKey,
+          data: editingRecord.data || Timestamp.fromDate(new Date(`${recordDayKey}T00:00:00`)),
+          createdAt: editingRecord.createdAt || serverTimestamp(),
+          empresaId: editingRecord.empresaId || storeId
+        };
+        const updatePayload = {
+          ...basePayload,
+          tipoLancamento: launchType,
+          horaEntrada: editedRecord.horaEntrada,
+          horaAlmocoSaida: editedRecord.horaAlmocoSaida,
+          horaAlmocoRetorno: editedRecord.horaAlmocoRetorno,
+          horaSaida: editedRecord.horaSaida,
+          justificativa: displayJustification,
+          justificativaGestor: rawJustification,
+          observacoesGestor: editForm.observacoes.trim(),
+          jornadaTrabalho: recordSchedule,
+          dataInicioBancoHoras: recordBankStartDate || '',
+          ...statusPatch,
           irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : (summary.irregularidade !== '-' ? summary.irregularidade : ''),
           qtde: statusPatch.inconsistente ? '' : (summary.workedLabel !== '-' ? summary.workedLabel : ''),
           bancoHoras: statusPatch.inconsistente ? '' : balanceDistribution.bancoHoras,
@@ -7735,43 +8315,66 @@ function App() {
           horaExtra: statusPatch.inconsistente ? '' : balanceDistribution.horaExtra,
           horaExtraMinutes: statusPatch.inconsistente ? 0 : balanceDistribution.horaExtraMinutes,
           almocoNaoRegistradoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.almocoNaoRegistradoBancoHoras,
-          justificativa: editForm.justificativa || '',
-          statusPonto: statusPatch.statusPonto
-        };
-        await updateDoc(recordRef, {
-          horaEntrada: nextValues.horaEntrada,
-          horaSaida: nextValues.horaSaida,
-          horaAlmocoSaida: nextValues.horaAlmocoSaida,
-          horaAlmocoRetorno: nextValues.horaAlmocoRetorno,
-          jornadaTrabalho: recordSchedule,
-          ...statusPatch,
-          irregularidade: nextValues.irregularidade,
-          qtde: nextValues.qtde,
-          bancoHoras: nextValues.bancoHoras,
-          bancoHorasMinutes: nextValues.bancoHorasMinutes,
-          horaExtra: nextValues.horaExtra,
-          horaExtraMinutes: nextValues.horaExtraMinutes,
-          almocoNaoRegistradoBancoHoras: nextValues.almocoNaoRegistradoBancoHoras,
-          justificativa: nextValues.justificativa,
+          faltaSemAbonoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.faltaSemAbonoBancoHoras,
+          faltaSemAbono: editForm.tipoLancamento === 'falta',
+          faltaAbonada: editForm.tipoLancamento === 'abono_falta',
+          abonoFalta: editForm.tipoLancamento === 'abono_falta',
+          folgaCompensada: editForm.tipoLancamento === 'folga_compensada',
+          liberacaoChefia: editForm.tipoLancamento === 'liberacao_chefia',
+          ferias: editForm.tipoLancamento === 'ferias',
+          lancamentoFerias: editForm.tipoLancamento === 'ferias',
+          folga: editForm.tipoLancamento === 'folga',
+          feriado: editForm.tipoLancamento === 'feriado',
+          lancamentoManualGestor: true,
+          manualPeloGestor: isManualType,
+          semLocalizacaoManual: true,
+          localizacaoObservacao: `Sem localização — ${getEditablePointTypeLabel(editForm.tipoLancamento).toLowerCase()} ajustado pelo gestor`,
+          localizacaoEntrada: clearsTimes ? null : (editingRecord.localizacaoEntrada || null),
+          localizacaoEntradaEndereco: clearsTimes ? '' : (editingRecord.localizacaoEntradaEndereco || ''),
+          localizacaoSaida: clearsTimes ? null : (editingRecord.localizacaoSaida || null),
+          localizacaoSaidaEndereco: clearsTimes ? '' : (editingRecord.localizacaoSaidaEndereco || ''),
           gestorId: userId,
           gestorNome: userName,
           dataAjuste: serverTimestamp(),
-          historicoAlteracoes: arrayUnion({
-            data: nowDate.toISOString(),
-            tipo: 'ajuste_ponto',
-            gestorId: userId,
-            gestor: userName,
-            justificativa: nextValues.justificativa,
-            valorAnterior: previousValues,
-            valorNovo: nextValues,
-            alteracoes: nextValues
-          })
+          atualizadoEm: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          ativo: true,
+          duplicadoArquivado: false,
+          historicoAlteracoes: arrayUnion(auditEntry)
+        };
+        batch.set(recordRef, updatePayload, { merge: true });
+
+        sameDaySnap.docs.forEach((duplicateDoc) => {
+          if (duplicateDoc.ref.path === recordRef.path) return;
+          batch.set(duplicateDoc.ref, {
+            ativo: false,
+            duplicadoArquivado: true,
+            substituidoPor: recordRef.id,
+            atualizadoEm: serverTimestamp(),
+            historicoAlteracoes: arrayUnion({
+              data: nowDate.toISOString(),
+              tipo: 'consolidacao_duplicidade',
+              registroMantido: recordRef.id,
+              gestorId: userId,
+              gestor: userName,
+              motivo: editForm.motivoCorrecao.trim()
+            })
+          }, { merge: true });
         });
-        setRegisterMessage({ type: 'success', text: 'Registro de ponto atualizado.' });
+
+        const auditRef = doc(collection(db, 'lojas', storeId, 'pontosAuditoria'));
+        batch.set(auditRef, {
+          ...auditEntry,
+          pontoId: recordRef.id,
+          lojaId: storeId,
+          criadoEm: serverTimestamp()
+        });
+        await batch.commit();
+        setRegisterMessage({ type: 'success', text: 'Registro atualizado, recalculado e salvo com auditoria.' });
         setEditingRecord(null);
       } catch (error) {
         console.error('Erro ao atualizar registro', error);
-        setRegisterMessage({ type: 'error', text: 'Não foi possível atualizar o registro.' });
+        setRegisterMessage({ type: 'error', text: error.message || 'Não foi possível atualizar o registro.' });
       } finally {
         setSavingEdit(false);
       }
@@ -7821,7 +8424,7 @@ function App() {
                 onClick={() => handleRegisterPoint('entrada')}
                 disabled={!pointActionEnabled.entrada}
               >
-                Registrar entrada
+                {hasTodayClosedPeriod ? 'Iniciar novo período' : 'Registrar entrada'}
               </Button>
               <Button
                 variant="outline"
@@ -7861,22 +8464,27 @@ function App() {
               </div>
             )}
             {todayRecord && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm bg-gray-50 rounded-xl p-4">
-                <div>
-                  <p className="text-gray-500">Entrada</p>
-                  <p className="font-semibold text-gray-800">{formatTime(todayRecord.horaEntrada)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Saída</p>
-                  <p className="font-semibold text-gray-800">{formatTime(todayRecord.horaSaida)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Início do almoço</p>
-                  <p className="font-semibold text-gray-800">{formatTime(todayRecord.horaAlmocoSaida)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Retorno do almoço</p>
-                  <p className="font-semibold text-gray-800">{formatTime(todayRecord.horaAlmocoRetorno)}</p>
+              <div className="space-y-3 rounded-xl bg-gray-50 p-4 text-sm">
+                <p className="font-semibold text-gray-800">Batidas registradas hoje</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {todayPunchEvents.map((event) => (
+                    <div key={event.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold capitalize text-gray-800">
+                          {({
+                            entrada: 'Entrada',
+                            saida: 'Saída',
+                            almoco_inicio: 'Início do almoço',
+                            almoco_fim: 'Retorno do almoço'
+                          })[event.tipo] || event.tipo}
+                        </span>
+                        <span className="font-bold text-pink-700">{event.hora}</span>
+                      </div>
+                      <p className="text-xs text-gray-500">Origem: {event.origem === 'gestor' ? 'gestor' : 'funcionária'}</p>
+                      {event.endereco && <p className="truncate text-xs text-gray-500">{event.endereco}</p>}
+                    </div>
+                  ))}
+                  {!todayPunchEvents.length && <p className="text-gray-500">Nenhuma batida registrada.</p>}
                 </div>
               </div>
             )}
@@ -7924,7 +8532,7 @@ function App() {
                 Registros ({filteredRecords.length})
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3 w-full md:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-3 w-full md:w-auto">
               <div className="flex items-end">
                 <button
                   type="button"
@@ -7990,6 +8598,18 @@ function App() {
                   </button>
                 </div>
               )}
+              {isManager && (
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={openSupplementalPeriodForSelectedDay}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700 shadow-sm transition-all hover:border-sky-300 hover:bg-sky-100"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Adicionar período
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -8020,98 +8640,101 @@ function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredRecords.map((registro) => {
+                  {filteredRecords.flatMap((registro, groupIndex) => {
                     const date = getDayInfo(registro);
                     const diaSemana = date ? date.toLocaleDateString('pt-BR', { weekday: 'long' }) : '-';
                     const diaMes = date ? String(date.getDate()).padStart(2, '0') : '-';
                     const recordSchedule = getRecordWorkSchedule(registro);
-                    const workSummary = calculateWorkSummary(registro, recordSchedule);
                     const dayKey = getRecordDayKey(registro);
                     const nationalHolidays = date ? getBrazilNationalHolidays(date.getFullYear()) : new Set();
                     const bankStartDate = getPointBankStartDateForRecord(registro);
                     const bankCalculationEnabled = !isPointBankDateBeforeStart(dayKey, bankStartDate);
-                    const absenceDebitMinutes = date && bankCalculationEnabled
-                      ? getPointAbsenceDebitMinutes({ record: registro, date, dayKey, nationalHolidays, schedule: recordSchedule })
-                      : 0;
-                    const balanceDistribution = calculatePointBalanceDistribution(registro, workSummary, { absenceDebitMinutes, schedule: recordSchedule, bankCalculationEnabled });
-                    const justificationLabel = date
-                      ? getPointSheetJustification({ record: registro, date, dayKey, summary: workSummary, nationalHolidays, schedule: recordSchedule })
-                      : (registro.justificativa || '-');
-                    const recordPointStatus = buildPointStatus(registro);
-                    const statusLabel = registro.statusPonto || recordPointStatus.statusPonto;
-                    const isPendingAdjustment = Boolean(registro.inconsistente || registro.necessitaAjuste || recordPointStatus.inconsistente);
-                    const manualManagerRecord = isManualManagerRecord(registro);
+                    const dayCalculation = calculatePointDay(registro, { date, dayKey, nationalHolidays, schedule: recordSchedule, bankCalculationEnabled });
+                    const { summary: workSummary, balance: balanceDistribution, baseJustification, status: recordPointStatus } = dayCalculation;
+                    const statusLabel = recordPointStatus.statusPonto;
+                    const isPendingAdjustment = Boolean(recordPointStatus.inconsistente || recordPointStatus.necessitaAjuste);
                     const excusedAbsenceRecord = isExcusedAbsenceRecord(registro);
                     const manualNonWorkingDayRecord = isManualNonWorkingDayRecord(registro);
-                    return (
-                      <tr key={registro.id} className="hover:bg-gray-50">
+                    const vacationRecord = isVacationRecord(registro);
+                    const presentationRows = buildPointPresentationRows(registro, { baseJustification });
+                    return presentationRows.map((presentationRow) => {
+                      const entryLocation = presentationRow.entryEvent?.localizacao || null;
+                      const exitLocation = presentationRow.exitEvent?.localizacao || null;
+                      const entryAddress = presentationRow.entryEvent?.endereco || '';
+                      const exitAddress = presentationRow.exitEvent?.endereco || '';
+                      const isSupplementalRow = presentationRow.rowType === 'supplemental';
+                      const isManagerRow = presentationRow.origin === 'gestor';
+                      const rowStatusLabel = isPendingAdjustment ? statusLabel : presentationRow.typeLabel;
+                      const rowTone = presentationRow.supplementalType === 'saida_particular'
+                        ? 'bg-rose-50 text-rose-700'
+                        : isSupplementalRow || isManagerRow
+                          ? 'bg-amber-50 text-amber-700'
+                          : vacationRecord || excusedAbsenceRecord || presentationRow.rowType === 'work'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-sky-50 text-sky-700';
+                      return (
+                      <tr
+                        key={`${registro.id}-${presentationRow.id}`}
+                        className={`${groupIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'} hover:bg-pink-50/40 ${presentationRow.isGroupEnd ? 'border-b-2 border-b-gray-300' : ''}`}
+                      >
                         <td className="py-3 px-4">
                           <div className="space-y-1">
                             <p>{registro.funcionarioNome || '-'}</p>
-                            {manualManagerRecord && (
-                              <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                                Lançado pelo gestor
-                              </span>
-                            )}
-                            {excusedAbsenceRecord && (
-                              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                Falta abonada
-                              </span>
-                            )}
-                            {manualNonWorkingDayRecord && (
-                              <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
-                                {getManualNonWorkingDayJustification(registro)}
-                              </span>
-                            )}
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${rowTone}`}>
+                              {presentationRow.originLabel}
+                            </span>
                           </div>
                         </td>
                         <td className="py-3 px-4 capitalize">{diaSemana}</td>
                         <td className="py-3 px-4">{diaMes}</td>
-                        <td className="py-3 px-4 font-semibold">{formatTime(registro.horaEntrada)}</td>
-                        <td className="py-3 px-4 font-semibold">{formatTime(registro.horaAlmocoSaida)}</td>
-                        <td className="py-3 px-4 font-semibold">{formatTime(registro.horaAlmocoRetorno)}</td>
-                        <td className="py-3 px-4 font-semibold">{formatTime(registro.horaSaida)}</td>
-                        <td className="py-3 px-4">{workSummary.irregularidade}</td>
-                        <td className="py-3 px-4">{workSummary.workedLabel}</td>
-                        <td className="py-3 px-4 font-semibold text-sky-700">{balanceDistribution.bancoHoras}</td>
-                        <td className="py-3 px-4 font-semibold text-emerald-700">{balanceDistribution.horaExtra}</td>
-                        <td className="py-3 px-4 max-w-xs">{justificationLabel}</td>
+                        <td className="py-3 px-4 font-semibold">{formatTime(presentationRow.horaEntrada)}</td>
+                        <td className="py-3 px-4 font-semibold">{formatTime(presentationRow.horaAlmocoSaida)}</td>
+                        <td className="py-3 px-4 font-semibold">{formatTime(presentationRow.horaAlmocoRetorno)}</td>
+                        <td className="py-3 px-4 font-semibold">{formatTime(presentationRow.horaSaida)}</td>
+                        <td className="py-3 px-4">{presentationRow.showDailyTotals ? workSummary.irregularidade : '-'}</td>
+                        <td className="py-3 px-4">{presentationRow.showDailyTotals ? workSummary.workedLabel : '-'}</td>
+                        <td className="py-3 px-4 font-semibold text-sky-700">{presentationRow.showDailyTotals ? balanceDistribution.bancoHoras : '-'}</td>
+                        <td className="py-3 px-4 font-semibold text-emerald-700">{presentationRow.showDailyTotals ? balanceDistribution.horaExtra : '-'}</td>
+                        <td className="py-3 px-4 max-w-xs">
+                          <p>{presentationRow.justification || '-'}</p>
+                          {presentationRow.justificationDetail && (
+                            <p className="mt-1 text-xs text-gray-500">{presentationRow.justificationDetail}</p>
+                          )}
+                        </td>
                         <td className="py-3 px-4">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
-                            isPendingAdjustment
-                              ? 'bg-amber-50 text-amber-700'
-                              : registro.horaSaida
-                                ? 'bg-emerald-50 text-emerald-700'
-                                : 'bg-sky-50 text-sky-700'
-                          }`}>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${isPendingAdjustment ? 'bg-amber-50 text-amber-700' : rowTone}`}>
                             {isPendingAdjustment && <AlertTriangle className="h-3 w-3" />}
-                            {statusLabel}
+                            {rowStatusLabel}
                           </span>
                         </td>
                         {isManager && (
                           <td className="py-3 px-4">
                             <div className="space-y-3 text-xs">
-                              {(manualManagerRecord || excusedAbsenceRecord || registro.virtualAbsence) && (
+                              {(isSupplementalRow || (isManagerRow && !entryLocation && !exitLocation) || vacationRecord || excusedAbsenceRecord || registro.virtualAbsence) && (
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-700">
-                                  {excusedAbsenceRecord
-                                    ? 'Sem localização — falta abonada pelo gestor'
-                                    : manualNonWorkingDayRecord
-                                      ? registro.localizacaoObservacao || `Sem localização — ${getManualNonWorkingDayJustification(registro).toLowerCase()} lançada pelo gestor`
-                                      : registro.virtualAbsence
-                                        ? 'Sem localização — falta sem registro'
-                                        : 'Sem localização — lançamento manual pelo gestor'}
+                                  {isSupplementalRow
+                                    ? 'Sem localização — período lançado pelo gestor'
+                                    : vacationRecord
+                                    ? 'Sem localização — férias lançadas pelo gestor'
+                                    : excusedAbsenceRecord
+                                      ? 'Sem localização — falta abonada pelo gestor'
+                                      : manualNonWorkingDayRecord
+                                        ? registro.localizacaoObservacao || `Sem localização — ${getManualNonWorkingDayJustification(registro).toLowerCase()} lançada pelo gestor`
+                                        : registro.virtualAbsence
+                                          ? 'Sem localização — falta sem registro'
+                                          : 'Sem localização — lançamento manual pelo gestor'}
                                 </div>
                               )}
-                              {registro.localizacaoEntrada && (
+                              {entryLocation && (
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-1 font-semibold text-pink-600">
                                     <MapPin className="w-4 h-4" /> Entrada
                                   </div>
                                   <p className="text-gray-600">
-                                    {registro.localizacaoEntradaEndereco || 'Endereço não disponível'}
+                                    {entryAddress || 'Endereço não disponível'}
                                   </p>
                                   <a
-                                    href={`https://maps.google.com/?q=${registro.localizacaoEntrada.latitude},${registro.localizacaoEntrada.longitude}`}
+                                    href={`https://maps.google.com/?q=${entryLocation.latitude},${entryLocation.longitude}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-1 text-pink-600 hover:underline"
@@ -8120,16 +8743,16 @@ function App() {
                                   </a>
                                 </div>
                               )}
-                              {registro.localizacaoSaida && (
+                              {exitLocation && (
                                 <div className="space-y-1">
                                   <div className="flex items-center gap-1 font-semibold text-emerald-600">
                                     <MapPin className="w-4 h-4" /> Saída
                                   </div>
                                   <p className="text-gray-600">
-                                    {registro.localizacaoSaidaEndereco || 'Endereço não disponível'}
+                                    {exitAddress || 'Endereço não disponível'}
                                   </p>
                                   <a
-                                    href={`https://maps.google.com/?q=${registro.localizacaoSaida.latitude},${registro.localizacaoSaida.longitude}`}
+                                    href={`https://maps.google.com/?q=${exitLocation.latitude},${exitLocation.longitude}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-1 text-emerald-600 hover:underline"
@@ -8138,7 +8761,7 @@ function App() {
                                   </a>
                                 </div>
                               )}
-                              {!manualManagerRecord && !excusedAbsenceRecord && !registro.virtualAbsence && !registro.localizacaoEntrada && !registro.localizacaoSaida && (
+                              {!isSupplementalRow && !isManagerRow && !vacationRecord && !excusedAbsenceRecord && !registro.virtualAbsence && !entryLocation && !exitLocation && (
                                 <span className="text-gray-400">-</span>
                               )}
                             </div>
@@ -8146,25 +8769,30 @@ function App() {
                         )}
                         {isManager && (
                           <td className="py-3 px-4">
-                            {registro.virtualAbsence ? (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => openManualPointModal({
-                                  funcionarioId: registro.funcionarioId,
-                                  dia: registro.dia,
-                                  tipoLancamento: 'abono_falta'
-                                })}
-                              >
-                                Abonar
-                              </Button>
+                            {presentationRow.isGroupEnd ? (
+                              registro.virtualAbsence ? (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => openManualPointModal({
+                                    funcionarioId: registro.funcionarioId,
+                                    dia: registro.dia,
+                                    tipoLancamento: 'abono_falta'
+                                  })}
+                                >
+                                  Abonar
+                                </Button>
+                              ) : (
+                                <Button size="sm" variant="secondary" onClick={() => openEditModal(registro)}>Editar</Button>
+                              )
                             ) : (
-                              <Button size="sm" variant="secondary" onClick={() => openEditModal(registro)}>Editar</Button>
+                              <span className="text-gray-300">-</span>
                             )}
                           </td>
                         )}
                       </tr>
                     );
+                    });
                   })}
                 </tbody>
               </table>
@@ -8175,13 +8803,19 @@ function App() {
         <Modal isOpen={manualPointModalOpen} onClose={() => setManualPointModalOpen(false)} title="Lançar ponto manual" size="lg">
           <div className="space-y-4">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              {manualPointIsAbsenceExcuse
+              {manualPointIsAbsence
+                ? 'Este registro será marcado como falta e descontará a carga prevista do dia no banco de horas.'
+                : manualPointIsAbsenceExcuse
                 ? 'Este registro será marcado como falta abonada pelo gestor e não descontará banco de horas.'
                 : manualPointIsCompensatedDayOff
                   ? 'Este registro será marcado como folga compensada pelo gestor e não impactará banco de horas.'
                   : manualPointIsManagerRelease
                     ? 'Este registro será marcado como liberação pela chefia e não impactará banco de horas.'
-                    : 'Este registro será marcado como lançamento manual pelo gestor e ficará sem localização real da colaboradora.'}
+                    : manualPointIsVacation
+                      ? 'Este registro será marcado como férias e não impactará os cálculos do mês.'
+                      : manualPointIsOtherExcusedDay
+                        ? 'Este registro será neutralizado administrativamente e não impactará banco de horas ou hora extra.'
+                        : 'Este registro será marcado como lançamento manual pelo gestor e ficará sem localização real da colaboradora.'}
             </div>
             {manualPointError && (
               <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
@@ -8236,7 +8870,7 @@ function App() {
               )}
             </div>
             <Textarea
-              label="Justificativa obrigatória"
+              label={`Justificativa${['manual', 'abono_falta', 'liberacao_chefia'].includes(manualPointForm.tipoLancamento) ? ' obrigatória' : ''}`}
               value={manualPointForm.justificativa}
               onChange={(e) => setManualPointForm({ ...manualPointForm, justificativa: e.target.value })}
               placeholder={manualPointIsAbsenceExcuse
@@ -8246,14 +8880,16 @@ function App() {
                   : manualPointIsManagerRelease
                     ? 'Ex.: Colaboradora liberada pela chefia, sem desconto no mês.'
                     : 'Ex.: Colaboradora compareceu ao trabalho, porém esqueceu de registrar o ponto no sistema.'}
-              required
+              required={['manual', 'abono_falta', 'liberacao_chefia'].includes(manualPointForm.tipoLancamento)}
             />
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setManualPointModalOpen(false)}>Cancelar</Button>
               <Button onClick={handleSaveManualPoint} disabled={savingManualPoint}>
                 {savingManualPoint
                   ? 'Salvando...'
-                  : manualPointIsAbsenceExcuse
+                  : manualPointIsAbsence
+                    ? 'Salvar falta'
+                    : manualPointIsAbsenceExcuse
                     ? 'Salvar abono de falta'
                     : manualPointIsCompensatedDayOff
                       ? 'Salvar folga compensada'
@@ -8265,20 +8901,226 @@ function App() {
           </div>
         </Modal>
 
-        <Modal isOpen={Boolean(editingRecord)} onClose={() => setEditingRecord(null)} title="Editar registro" size="lg">
+        <Modal isOpen={Boolean(editingRecord)} onClose={() => setEditingRecord(null)} title="Editar registro de ponto" size="lg">
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input label="Hora de entrada" type="time" value={editForm.horaEntrada} onChange={(e) => setEditForm({ ...editForm, horaEntrada: e.target.value })} />
-              <Input label="Hora de saída" type="time" value={editForm.horaSaida} onChange={(e) => setEditForm({ ...editForm, horaSaida: e.target.value })} />
-              <Input label="Saída para almoço" type="time" value={editForm.horaAlmocoSaida} onChange={(e) => setEditForm({ ...editForm, horaAlmocoSaida: e.target.value })} />
-              <Input label="Retorno do almoço" type="time" value={editForm.horaAlmocoRetorno} onChange={(e) => setEditForm({ ...editForm, horaAlmocoRetorno: e.target.value })} />
-              <Input label="Irregularidade" value={editForm.irregularidade} onChange={(e) => setEditForm({ ...editForm, irregularidade: e.target.value })} />
-              <Input label="Quantidade (horas)" value={editForm.qtde} onChange={(e) => setEditForm({ ...editForm, qtde: e.target.value })} />
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              O estado anterior será preservado na auditoria. Ao salvar, o dia será substituído e recalculado integralmente com base no novo tipo.
             </div>
-            <Textarea label="Justificativa" value={editForm.justificativa} onChange={(e) => setEditForm({ ...editForm, justificativa: e.target.value })} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Colaboradora"
+                value={editingRecord?.funcionarioNome || getEmployeeDisplayName(getEmployeeById(editingRecord?.funcionarioId))}
+                disabled
+                readOnly
+              />
+              <Input label="Data do ponto" type="date" value={getRecordDayKey(editingRecord || {})} disabled readOnly />
+              <Select
+                label="Tipo de lançamento"
+                value={editForm.tipoLancamento}
+                onChange={(e) => setEditForm({ ...editForm, tipoLancamento: e.target.value })}
+                required
+              >
+                <option value="manual">Lançamento manual de ponto</option>
+                <option value="abono_falta">Abono de falta</option>
+                <option value="liberacao_chefia">Liberação Chefia</option>
+                <option value="folga_compensada">FOLGA COMPENSADA</option>
+              </Select>
+              <Input label="Tipo atual" value={getEditablePointTypeLabel(getEditablePointType(editingRecord || {}))} disabled readOnly />
+              {editPointUsesTimeFields && (
+                <>
+                  <Input label="Entrada" type="time" value={editForm.horaEntrada} onChange={(e) => setEditForm({ ...editForm, horaEntrada: e.target.value })} />
+                  <Input label="Saída para almoço" type="time" value={editForm.horaAlmocoSaida} onChange={(e) => setEditForm({ ...editForm, horaAlmocoSaida: e.target.value })} />
+                  <Input label="Retorno do almoço" type="time" value={editForm.horaAlmocoRetorno} onChange={(e) => setEditForm({ ...editForm, horaAlmocoRetorno: e.target.value })} />
+                  <Input label="Saída final" type="time" value={editForm.horaSaida} onChange={(e) => setEditForm({ ...editForm, horaSaida: e.target.value })} />
+                </>
+              )}
+            </div>
+            <Textarea
+              label={`Justificativa${editPointRequiresJustification ? ' obrigatória' : ''}`}
+              value={editForm.justificativa}
+              onChange={(e) => setEditForm({ ...editForm, justificativa: e.target.value })}
+              placeholder={editPointRequiresJustification ? 'Informe a justificativa do novo lançamento.' : 'Informação complementar, quando aplicável.'}
+              required={editPointRequiresJustification}
+            />
+            <Textarea
+              label="Observações"
+              value={editForm.observacoes}
+              onChange={(e) => setEditForm({ ...editForm, observacoes: e.target.value })}
+              placeholder="Observações adicionais sobre o dia."
+            />
+            <Textarea
+              label="Motivo da correção (obrigatório)"
+              value={editForm.motivoCorrecao}
+              onChange={(e) => setEditForm({ ...editForm, motivoCorrecao: e.target.value })}
+              placeholder="Ex.: Lançamento realizado incorretamente."
+              required
+            />
+            <div className="space-y-3 rounded-xl border border-gray-200 p-4">
+              <div>
+                <h3 className="font-semibold text-gray-800">Batidas registradas</h3>
+                <p className="text-xs text-gray-500">Eventos reais preservados separadamente dos ajustes administrativos.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {getPointPunchEvents(editingRecord || {}).map((event) => (
+                  <div key={event.id} className="rounded-lg bg-gray-50 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-gray-800">
+                        {({
+                          entrada: 'Entrada',
+                          saida: 'Saída',
+                          almoco_inicio: 'Saída para almoço',
+                          almoco_fim: 'Retorno do almoço'
+                        })[event.tipo] || event.tipo}
+                      </span>
+                      <span className="font-bold text-pink-700">{event.hora}</span>
+                    </div>
+                    <p className="text-xs text-gray-500">Origem: {event.origem === 'gestor' ? 'gestor' : 'funcionária'}</p>
+                    {(event.endereco || event.localizacao) && (
+                      <p className="mt-1 text-xs text-gray-500">{event.endereco || 'Localização geográfica registrada'}</p>
+                    )}
+                  </div>
+                ))}
+                {!getPointPunchEvents(editingRecord || {}).length && (
+                  <p className="text-sm text-gray-500">Nenhuma batida registrada neste dia.</p>
+                )}
+              </div>
+            </div>
+            <div className="space-y-3 rounded-xl border border-sky-200 bg-sky-50/40 p-4">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <div>
+                  <h3 className="font-semibold text-gray-800">Períodos complementares e justificativas</h3>
+                  <p className="text-xs text-gray-500">Ajustes por intervalo sem alterar as batidas originais.</p>
+                </div>
+                <Button size="sm" onClick={() => openSupplementalPeriodModal()}>
+                  <Plus className="h-4 w-4" />
+                  Adicionar período
+                </Button>
+              </div>
+              {getActiveSupplementalPeriods(editingRecord || {}).length === 0 ? (
+                <p className="rounded-lg bg-white p-3 text-sm text-gray-500">Nenhum período complementar cadastrado.</p>
+              ) : (
+                <div className="space-y-2">
+                  {getActiveSupplementalPeriods(editingRecord || {}).map((period) => {
+                    const createdAt = period.criadoEm?.toDate
+                      ? period.criadoEm.toDate()
+                      : (period.criadoEm ? new Date(period.criadoEm) : null);
+                    return (
+                      <div key={period.id} className="rounded-lg border border-sky-100 bg-white p-3 text-sm">
+                        <div className="flex flex-col justify-between gap-3 sm:flex-row">
+                          <div className="space-y-1">
+                            <p className="font-semibold text-gray-800">
+                              {POINT_SUPPLEMENTAL_TYPES[period.tipo] || period.tipo} · {period.horaInicio}–{period.horaFim} — {getSupplementalPeriodDurationLabel(period)}
+                            </p>
+                            <p className="text-gray-600">{period.justificativa}</p>
+                            {period.observacao && <p className="text-xs text-gray-500">{period.observacao}</p>}
+                            <p className="text-xs text-gray-500">
+                              {period.gestorNome || 'Gestor'} · {createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt.toLocaleString('pt-BR') : '-'}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <Button size="sm" variant="secondary" onClick={() => openSupplementalPeriodModal(period)}>Editar</Button>
+                            <Button size="sm" variant="danger" onClick={() => handleRemoveSupplementalPeriod(period)} disabled={savingSupplementalPeriod}>
+                              <Trash2 className="h-4 w-4" />
+                              Remover
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {Array.isArray(editingRecord?.historicoAlteracoes) && editingRecord.historicoAlteracoes.length > 0 && (
+              <details className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
+                <summary className="cursor-pointer font-semibold text-gray-700">
+                  Histórico de alterações ({editingRecord.historicoAlteracoes.length})
+                </summary>
+                <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+                  {[...editingRecord.historicoAlteracoes].reverse().map((entry, index) => (
+                    <div key={`${entry.data || entry.tipo || 'alteracao'}-${index}`} className="rounded-lg bg-white p-3 text-gray-600">
+                      <p className="font-semibold text-gray-800">{entry.tipoAnterior && entry.novoTipo ? `${entry.tipoAnterior} → ${entry.novoTipo}` : (entry.tipo || 'Alteração')}</p>
+                      <p>{entry.motivoCorrecao || entry.justificativa || entry.observacao || '-'}</p>
+                      <p className="text-xs text-gray-500">{entry.gestor || entry.gestorNome || 'Gestor'} · {entry.data ? new Date(entry.data).toLocaleString('pt-BR') : '-'}</p>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setEditingRecord(null)}>Cancelar</Button>
-              <Button onClick={handleSaveEdit} disabled={savingEdit}>{savingEdit ? 'Salvando...' : 'Salvar ajustes'}</Button>
+              <Button onClick={handleSaveEdit} disabled={savingEdit}>{savingEdit ? 'Salvando e recalculando...' : 'Salvar e recalcular'}</Button>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal
+          isOpen={supplementalPeriodModalOpen}
+          onClose={closeSupplementalPeriodModal}
+          title={editingSupplementalPeriod ? 'Editar período complementar' : 'Adicionar período complementar'}
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+              Este período será armazenado separadamente. Nenhuma batida real da funcionária será criada, alterada ou removida.
+            </div>
+            {supplementalPeriodError && (
+              <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+                {supplementalPeriodError}
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Input
+                label="Funcionária"
+                value={editingRecord?.funcionarioNome || getEmployeeDisplayName(getEmployeeById(editingRecord?.funcionarioId))}
+                disabled
+                readOnly
+              />
+              <Input label="Data" type="date" value={getRecordDayKey(editingRecord || {})} disabled readOnly />
+              <Select
+                label="Tipo do ajuste"
+                value={supplementalPeriodForm.tipo}
+                onChange={(event) => setSupplementalPeriodForm({ ...supplementalPeriodForm, tipo: event.target.value })}
+                required
+              >
+                {Object.entries(POINT_SUPPLEMENTAL_TYPES).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </Select>
+              <Input label="Gestor responsável" value={userName} disabled readOnly />
+              <Input
+                label="Horário inicial"
+                type="time"
+                value={supplementalPeriodForm.horaInicio}
+                onChange={(event) => setSupplementalPeriodForm({ ...supplementalPeriodForm, horaInicio: event.target.value })}
+                required
+              />
+              <Input
+                label="Horário final"
+                type="time"
+                value={supplementalPeriodForm.horaFim}
+                onChange={(event) => setSupplementalPeriodForm({ ...supplementalPeriodForm, horaFim: event.target.value })}
+                required
+              />
+            </div>
+            <Textarea
+              label="Justificativa obrigatória"
+              value={supplementalPeriodForm.justificativa}
+              onChange={(event) => setSupplementalPeriodForm({ ...supplementalPeriodForm, justificativa: event.target.value })}
+              placeholder="Descreva o motivo e o contexto do ajuste."
+              required
+            />
+            <Textarea
+              label="Observação opcional"
+              value={supplementalPeriodForm.observacao}
+              onChange={(event) => setSupplementalPeriodForm({ ...supplementalPeriodForm, observacao: event.target.value })}
+              placeholder="Informações adicionais para auditoria."
+            />
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={closeSupplementalPeriodModal}>Cancelar</Button>
+              <Button onClick={handleSaveSupplementalPeriod} disabled={savingSupplementalPeriod}>
+                {savingSupplementalPeriod ? 'Salvando e recalculando...' : editingSupplementalPeriod ? 'Salvar alteração' : 'Adicionar período'}
+              </Button>
             </div>
           </div>
         </Modal>

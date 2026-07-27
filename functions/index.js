@@ -479,10 +479,225 @@ const formatSignedPointMinutes = (minutes) => {
 
 const hasPointTimeValue = (value) => pointTimeToMinutes(value) !== null;
 
+const toPointInterval = (startValue, endValue, source = null) => {
+  const start = typeof startValue === 'number' ? startValue : pointTimeToMinutes(startValue);
+  const end = typeof endValue === 'number' ? endValue : pointTimeToMinutes(endValue);
+  if (start === null || end === null || end <= start) return null;
+  return {start, end, source};
+};
+
+const mergePointIntervals = (intervals = []) => {
+  const sorted = intervals
+    .filter(Boolean)
+    .map((interval) => ({...interval}))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  const merged = [];
+  sorted.forEach((interval) => {
+    const previous = merged[merged.length - 1];
+    if (!previous || interval.start > previous.end) {
+      merged.push(interval);
+      return;
+    }
+    previous.end = Math.max(previous.end, interval.end);
+  });
+  return merged;
+};
+
+const sumPointIntervals = (intervals = []) => intervals.reduce(
+  (total, interval) => total + (interval.end - interval.start),
+  0,
+);
+
+const subtractPointIntervals = (baseIntervals = [], deductions = []) => {
+  const base = mergePointIntervals(baseIntervals);
+  const cuts = mergePointIntervals(deductions);
+  return base.flatMap((interval) => {
+    let fragments = [interval];
+    cuts.forEach((cut) => {
+      fragments = fragments.flatMap((fragment) => {
+        if (cut.end <= fragment.start || cut.start >= fragment.end) return [fragment];
+        const pieces = [];
+        if (cut.start > fragment.start) pieces.push({start: fragment.start, end: cut.start});
+        if (cut.end < fragment.end) pieces.push({start: cut.end, end: fragment.end});
+        return pieces;
+      });
+    });
+    return fragments;
+  });
+};
+
+const getActivePointSupplementalPeriods = (record = {}) => (
+  Array.isArray(record.periodosComplementares) ?
+    record.periodosComplementares.filter((period) => period && period.ativo !== false) :
+    []
+);
+
+const getLegacyPointEvents = (record = {}) => [
+  record.horaEntrada && {
+    tipo: 'entrada',
+    hora: record.horaEntrada,
+    origem: 'funcionaria',
+    localizacao: record.localizacaoEntrada || null,
+    endereco: record.localizacaoEntradaEndereco || '',
+  },
+  record.horaAlmocoSaida && {tipo: 'almoco_inicio', hora: record.horaAlmocoSaida, origem: 'funcionaria'},
+  record.horaAlmocoRetorno && {tipo: 'almoco_fim', hora: record.horaAlmocoRetorno, origem: 'funcionaria'},
+  record.horaSaida && {
+    tipo: 'saida',
+    hora: record.horaSaida,
+    origem: 'funcionaria',
+    localizacao: record.localizacaoSaida || null,
+    endereco: record.localizacaoSaidaEndereco || '',
+  },
+].filter(Boolean);
+
+const getPointEvents = (record = {}) => {
+  const stored = Array.isArray(record.batidas) ? record.batidas.filter(Boolean) : [];
+  return stored.length ? stored : getLegacyPointEvents(record);
+};
+
+const getPointOpenEvent = (record = {}) => {
+  let openEvent = null;
+  getPointEvents(record).forEach((event) => {
+    if (event.tipo === 'entrada' || event.tipo === 'almoco_fim') openEvent = event;
+    if (event.tipo === 'saida' || event.tipo === 'almoco_inicio') openEvent = null;
+  });
+  return openEvent;
+};
+
+const getPointEventWorkIntervals = (record = {}) => {
+  const intervals = [];
+  let openStart = null;
+  getPointEvents(record).forEach((event) => {
+    const minute = pointTimeToMinutes(event.hora);
+    if (minute === null) return;
+    if (event.tipo === 'entrada' || event.tipo === 'almoco_fim') {
+      if (openStart === null) openStart = minute;
+      return;
+    }
+    if ((event.tipo === 'saida' || event.tipo === 'almoco_inicio') && openStart !== null) {
+      const interval = toPointInterval(openStart, minute, event);
+      if (interval) intervals.push(interval);
+      openStart = null;
+    }
+  });
+  return intervals;
+};
+
+const getPointWorkIntervals = (record = {}) => {
+  const storedPeriods = Array.isArray(record.periodosTrabalho) ?
+    record.periodosTrabalho
+      .filter((period) => period && period.ativo !== false)
+      .flatMap((period) => {
+        const start = period.horaInicio || period.inicio;
+        const end = period.horaFim || period.fim;
+        const startMinutes = pointTimeToMinutes(start);
+        const endMinutes = pointTimeToMinutes(end);
+        const lunchStart = pointTimeToMinutes(period.horaAlmocoSaida);
+        const lunchReturn = pointTimeToMinutes(period.horaAlmocoRetorno);
+        const hasValidLunch = startMinutes !== null && endMinutes !== null &&
+          lunchStart !== null && lunchReturn !== null &&
+          lunchStart > startMinutes && lunchReturn > lunchStart && lunchReturn < endMinutes;
+        if (!hasValidLunch) return [toPointInterval(start, end, period)].filter(Boolean);
+        return [
+          toPointInterval(startMinutes, lunchStart, period),
+          toPointInterval(lunchReturn, endMinutes, period),
+        ].filter(Boolean);
+      })
+      .filter(Boolean) :
+    [];
+  const entrada = pointTimeToMinutes(record.horaEntrada);
+  const saida = pointTimeToMinutes(record.horaSaida);
+  const almocoSaida = pointTimeToMinutes(record.horaAlmocoSaida);
+  const almocoRetorno = pointTimeToMinutes(record.horaAlmocoRetorno);
+  const legacyIntervals = [];
+  if (entrada !== null && saida !== null) {
+    if (almocoSaida !== null && almocoRetorno !== null) {
+      legacyIntervals.push(toPointInterval(entrada, almocoSaida), toPointInterval(almocoRetorno, saida));
+    } else if (almocoSaida === null && almocoRetorno === null) {
+      legacyIntervals.push(toPointInterval(entrada, saida));
+    }
+  }
+  return mergePointIntervals([
+    ...legacyIntervals.filter(Boolean),
+    ...getPointEventWorkIntervals(record),
+    ...storedPeriods,
+  ]);
+};
+
+const consolidatePointRecordsForCalculation = (records = [], primaryRecord = {}) => {
+  const activeRecords = records.filter((record) => (
+    record && record.ativo !== false && record.duplicadoArquivado !== true
+  ));
+  const workIntervals = mergePointIntervals(activeRecords.flatMap(getPointWorkIntervals));
+  const supplementalKeys = new Set();
+  const supplementalPeriods = activeRecords.flatMap((record) => (
+    getActivePointSupplementalPeriods(record).filter((period) => {
+      const key = [period.tipo, period.horaInicio, period.horaFim].join('|');
+      if (supplementalKeys.has(key)) return false;
+      supplementalKeys.add(key);
+      return true;
+    })
+  ));
+  const hasPeriodContent = workIntervals.length > 0 || supplementalPeriods.length > 0;
+  return {
+    ...primaryRecord,
+    tipoLancamento: hasPeriodContent ? 'normal' : primaryRecord.tipoLancamento,
+    faltaSemAbono: hasPeriodContent ? false : primaryRecord.faltaSemAbono,
+    faltaAbonada: hasPeriodContent ? false : primaryRecord.faltaAbonada,
+    abonoFalta: hasPeriodContent ? false : primaryRecord.abonoFalta,
+    folgaCompensada: hasPeriodContent ? false : primaryRecord.folgaCompensada,
+    liberacaoChefia: hasPeriodContent ? false : primaryRecord.liberacaoChefia,
+    ferias: hasPeriodContent ? false : primaryRecord.ferias,
+    lancamentoFerias: hasPeriodContent ? false : primaryRecord.lancamentoFerias,
+    folga: hasPeriodContent ? false : primaryRecord.folga,
+    feriado: hasPeriodContent ? false : primaryRecord.feriado,
+    periodosTrabalho: workIntervals.map((interval, index) => ({
+      id: `consolidado_${index}_${interval.start}_${interval.end}`,
+      horaInicio: formatPointMinutes(interval.start),
+      horaFim: formatPointMinutes(interval.end),
+      origem: interval.source?.origem || 'funcionaria',
+      ativo: true,
+    })),
+    periodosComplementares: supplementalPeriods,
+  };
+};
+
 const isExcusedAbsenceRecord = (record = {}) => (
   record.tipoLancamento === 'abono_falta' ||
   record.faltaAbonada === true ||
   record.abonoFalta === true
+);
+
+const isVacationPointRecord = (record = {}) => (
+  record.tipoLancamento === 'ferias' ||
+  record.tipoLancamento === 'férias' ||
+  record.ferias === true ||
+  record.lancamentoFerias === true ||
+  (!record.tipoLancamento && String(record.justificativa || '').trim().toLowerCase() === 'férias') ||
+  (!record.tipoLancamento && String(record.justificativa || '').trim().toLowerCase() === 'ferias')
+);
+
+const normalizePointAdministrativeType = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[\s-]+/g, '_');
+
+const isAdministrativePointRecord = (record = {}) => (
+  isVacationPointRecord(record) ||
+  ['manual_pelo_gestor', 'falta', 'abono_falta', 'falta_abonada', 'folga_compensada', 'liberacao_chefia', 'folga', 'feriado']
+    .includes(normalizePointAdministrativeType(record.tipoLancamento)) ||
+  record.lancamentoManualGestor === true ||
+  record.manualPeloGestor === true ||
+  record.faltaSemAbono === true ||
+  record.faltaAbonada === true ||
+  record.abonoFalta === true ||
+  record.folgaCompensada === true ||
+  record.liberacaoChefia === true ||
+  record.folga === true ||
+  record.feriado === true
 );
 
 const parseExpectedPointMinutes = (...values) => {
@@ -509,6 +724,12 @@ const parseExpectedPointMinutes = (...values) => {
 const getPointRecordDate = (record = {}) => {
   const [year, month, day] = String(record.dia || '').split('-').map(Number);
   return year && month && day ? new Date(year, month - 1, day) : null;
+};
+
+const isBrazilNationalPointHoliday = (dayKey = '') => {
+  const suffix = String(dayKey || '').slice(4);
+  return ['-01-01', '-04-21', '-05-01', '-09-07', '-10-12', '-11-02', '-11-15', '-11-20', '-12-25']
+    .includes(suffix);
 };
 
 const normalizePointBankStartDate = (value) => {
@@ -544,7 +765,7 @@ const getExpectedPointMinutesForDay = (record = {}) => {
   );
 
   return {
-    expectedMinutes: dayOfWeek !== null && scheduleDay.isWorkday ?
+    expectedMinutes: dayOfWeek !== null && scheduleDay.isWorkday && !isBrazilNationalPointHoliday(record.dia) ?
       (scheduleDay.expectedMinutes || expectedMinutes) :
       0,
     hasDate: dayOfWeek !== null,
@@ -568,46 +789,58 @@ const calculatePointSummary = (record = {}) => {
     return {workedLabel: '', irregularidade: '', workedMinutes: null, irregularityMinutes: null, calculable: false};
   }
 
-  const entrada = pointTimeToMinutes(record.horaEntrada);
-  const saida = pointTimeToMinutes(record.horaSaida);
-  if (entrada === null || saida === null) {
-    return {workedLabel: '', irregularidade: '', workedMinutes: null, irregularityMinutes: null, calculable: false};
-  }
+  const supplementalPeriods = getActivePointSupplementalPeriods(record);
+  const actualIntervals = getPointWorkIntervals(record);
+  const externalIntervals = supplementalPeriods
+    .filter((period) => period.tipo === 'trabalho_externo')
+    .map((period) => toPointInterval(period.horaInicio, period.horaFim, period))
+    .filter(Boolean);
+  const privateIntervals = supplementalPeriods
+    .filter((period) => period.tipo === 'saida_particular')
+    .map((period) => toPointInterval(period.horaInicio, period.horaFim, period))
+    .filter(Boolean);
+  const justifiedIntervals = supplementalPeriods
+    .filter((period) => ['abono_periodo', 'liberacao_chefia_periodo'].includes(period.tipo))
+    .map((period) => toPointInterval(period.horaInicio, period.horaFim, period))
+    .filter(Boolean);
+  const beforeDeductions = mergePointIntervals([...actualIntervals, ...externalIntervals]);
+  const effectiveIntervals = subtractPointIntervals(beforeDeductions, privateIntervals);
+  const workedMinutes = sumPointIntervals(effectiveIntervals);
+  const justifiedRegisteredMinutes = sumPointIntervals(mergePointIntervals(justifiedIntervals));
+  const {expectedMinutes, hasDate} = getExpectedPointMinutesForDay(record);
+  const justifiedAppliedMinutes = Math.min(justifiedRegisteredMinutes, Math.max(expectedMinutes - workedMinutes, 0));
+  const consideredMinutes = workedMinutes + justifiedAppliedMinutes;
+  const hasOpenPeriod = Boolean(getPointOpenEvent(record));
+  const hasCalculableContent = workedMinutes > 0 || justifiedRegisteredMinutes > 0 || (!hasOpenPeriod && expectedMinutes > 0 && !getPointEvents(record).length);
 
-  const almocoSaida = pointTimeToMinutes(record.horaAlmocoSaida);
-  const almocoRetorno = pointTimeToMinutes(record.horaAlmocoRetorno);
-  const hasLunchStart = hasPointTimeValue(record.horaAlmocoSaida);
-  const hasLunchReturn = hasPointTimeValue(record.horaAlmocoRetorno);
-  const hasCompleteLunch = hasLunchStart && hasLunchReturn;
-  const hasNoLunch = !hasLunchStart && !hasLunchReturn;
-
-  if (!hasCompleteLunch && !hasNoLunch) {
-    return {workedLabel: '', irregularidade: '', workedMinutes: null, irregularityMinutes: null, calculable: false};
-  }
-
-  const workedMinutes = hasCompleteLunch ?
-    (almocoSaida - entrada) + (saida - almocoRetorno) :
-    saida - entrada;
-
-  if (!Number.isFinite(workedMinutes) || workedMinutes <= 0) {
+  if (!hasCalculableContent) {
     return {workedLabel: '', irregularidade: '', workedMinutes: null, irregularityMinutes: null, calculable: false};
   }
 
   const workedLabel = formatPointMinutes(workedMinutes);
-  const {expectedMinutes, hasDate} = getExpectedPointMinutesForDay(record);
   if (!hasDate) {
     return {
       workedLabel,
       irregularidade: '',
       workedMinutes,
+      consideredMinutes,
+      justifiedAppliedMinutes,
       irregularityMinutes: null,
       calculable: false,
     };
   }
 
-  const diff = workedMinutes - expectedMinutes;
+  const diff = consideredMinutes - expectedMinutes;
   const irregularidade = diff === 0 ? '00:00' : formatSignedPointMinutes(diff);
-  return {workedLabel, irregularidade, workedMinutes, irregularityMinutes: diff, calculable: true};
+  return {
+    workedLabel,
+    irregularidade,
+    workedMinutes,
+    consideredMinutes,
+    justifiedAppliedMinutes,
+    irregularityMinutes: diff,
+    calculable: true,
+  };
 };
 
 const formatPointBalanceCell = (minutes) => {
@@ -620,7 +853,9 @@ const hasMissingLunchBreak = (record = {}, summary = null) => (
   hasPointTimeValue(record.horaSaida) &&
   summary?.calculable === true &&
   !hasPointTimeValue(record.horaAlmocoSaida) &&
-  !hasPointTimeValue(record.horaAlmocoRetorno)
+  !hasPointTimeValue(record.horaAlmocoRetorno) &&
+  getActivePointSupplementalPeriods(record).length === 0 &&
+  getPointWorkIntervals(record).length <= 1
 );
 
 const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => {
@@ -645,15 +880,13 @@ const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => 
   const isScheduledSegSabSaturday = isSegSabScheduledSaturdayWorkday(record);
   const isSaturdayWorked = isSaturdayPointRecord(record) &&
     !isScheduledSegSabSaturday &&
-    hasPointTimeValue(record.horaEntrada) &&
-    hasPointTimeValue(record.horaSaida) &&
     summary?.calculable === true &&
-    Number.isFinite(summary?.workedMinutes);
+    Number.isFinite(summary?.workedMinutes) &&
+    summary.workedMinutes > 0;
   const isScheduledSegSabSaturdayWorked = isScheduledSegSabSaturday &&
-    hasPointTimeValue(record.horaEntrada) &&
-    hasPointTimeValue(record.horaSaida) &&
     summary?.calculable === true &&
-    Number.isFinite(summary?.workedMinutes);
+    Number.isFinite(summary?.workedMinutes) &&
+    summary.workedMinutes > 0;
   const missingLunchBankMinutes = !isSaturdayWorked &&
     !isScheduledSegSabSaturdayWorked &&
     hasMissingLunchBreak(record, summary) ?
@@ -692,6 +925,25 @@ const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => 
 
 const pointInconsistencies = (record = {}) => {
   const issues = [];
+  if (Array.isArray(record.batidas) && record.batidas.length) {
+    let state = 'sem_periodo';
+    record.batidas.forEach((event) => {
+      if (event.tipo === 'entrada') {
+        if (state !== 'sem_periodo') issues.push('Entrada registrada enquanto já existia um período aberto.');
+        state = 'trabalhando';
+      } else if (event.tipo === 'almoco_inicio') {
+        if (state !== 'trabalhando') issues.push('Início do almoço sem período de trabalho aberto.');
+        state = 'almoco';
+      } else if (event.tipo === 'almoco_fim') {
+        if (state !== 'almoco') issues.push('Retorno do almoço sem início de almoço correspondente.');
+        state = 'trabalhando';
+      } else if (event.tipo === 'saida') {
+        if (state !== 'trabalhando') issues.push('Saída registrada sem entrada correspondente.');
+        state = 'sem_periodo';
+      }
+    });
+    return [...new Set(issues)];
+  }
   if (record.horaSaida && !record.horaEntrada) {
     issues.push('Saída registrada sem entrada correspondente.');
   }
@@ -729,7 +981,7 @@ const pointStatusPatch = (record = {}) => {
   return {
     inconsistente: false,
     necessitaAjuste: false,
-    statusPonto: record.horaSaida ? 'Completo' : 'Em andamento',
+    statusPonto: getPointOpenEvent(record) ? 'Em andamento' : (getPointWorkIntervals(record).length ? 'Completo' : 'Sem registro'),
     inconsistencias: [],
   };
 };
@@ -1903,31 +2155,81 @@ const pointPayloadForType = (type, timeLabel, coords, address) => {
   }[type] || null;
 };
 
-const validatePointTransition = (type, current = {}) => {
-  if (current.horaSaida) {
-    throw new HttpsError('failed-precondition', 'A jornada de hoje já foi encerrada.');
+const getPointEventState = (events = []) => {
+  let state = 'sem_periodo';
+  events.forEach((event) => {
+    if (event.tipo === 'entrada') state = 'trabalhando';
+    if (event.tipo === 'almoco_inicio') state = 'almoco';
+    if (event.tipo === 'almoco_fim') state = 'trabalhando';
+    if (event.tipo === 'saida') state = 'sem_periodo';
+  });
+  return state;
+};
+
+const validatePointTransition = (type, current = {}, timeLabel = '') => {
+  const events = getPointEvents(current);
+  const state = getPointEventState(events);
+  const currentMinutes = pointTimeToMinutes(timeLabel);
+  const lastEvent = events[events.length - 1];
+  const lastMinutes = pointTimeToMinutes(lastEvent?.hora);
+  if (currentMinutes !== null && lastMinutes !== null && currentMinutes <= lastMinutes) {
+    throw new HttpsError('failed-precondition', 'O novo horário deve ser posterior à última batida registrada.');
   }
   if (type === 'entrada') {
-    if (current.horaEntrada) throw new HttpsError('already-exists', 'A entrada de hoje já foi registrada.');
+    if (state !== 'sem_periodo') {
+      throw new HttpsError('already-exists', 'Já existe um período de trabalho aberto.');
+    }
     return;
   }
   if (type === 'almoco_inicio') {
-    if (!current.horaEntrada) throw new HttpsError('failed-precondition', 'Registre a entrada antes do início do almoço.');
-    if (current.horaAlmocoSaida) throw new HttpsError('already-exists', 'O início do almoço de hoje já foi registrado.');
+    if (state !== 'trabalhando') {
+      throw new HttpsError('failed-precondition', 'Registre a entrada antes do início do almoço.');
+    }
     return;
   }
   if (type === 'almoco_fim') {
-    if (!current.horaAlmocoSaida) throw new HttpsError('failed-precondition', 'Registre o início do almoço antes do retorno.');
-    if (current.horaAlmocoRetorno) throw new HttpsError('already-exists', 'O retorno do almoço de hoje já foi registrado.');
+    if (state !== 'almoco') {
+      throw new HttpsError('failed-precondition', 'Registre o início do almoço antes do retorno.');
+    }
     return;
   }
   if (type === 'saida') {
-    if (current.horaAlmocoSaida && !current.horaAlmocoRetorno) {
+    if (state === 'almoco') {
       throw new HttpsError('failed-precondition', 'Registre o retorno do almoço antes da saída.');
+    }
+    if (state !== 'trabalhando') {
+      throw new HttpsError('failed-precondition', 'Registre uma entrada antes da saída.');
     }
     return;
   }
   throw new HttpsError('invalid-argument', 'Tipo de registro de ponto inválido.');
+};
+
+const buildPointWorkPeriodsFromEvents = (events = []) => {
+  const periods = [];
+  let openEvent = null;
+  events.forEach((event) => {
+    if (event.tipo === 'entrada' || event.tipo === 'almoco_fim') {
+      openEvent = event;
+      return;
+    }
+    if ((event.tipo === 'saida' || event.tipo === 'almoco_inicio') && openEvent) {
+      const interval = toPointInterval(openEvent.hora, event.hora);
+      if (interval) {
+        periods.push({
+          id: `${openEvent.id || openEvent.registradoEm}_${event.id || event.registradoEm}`,
+          horaInicio: openEvent.hora,
+          horaFim: event.hora,
+          origem: openEvent.origem || 'funcionaria',
+          entradaBatidaId: openEvent.id || '',
+          saidaBatidaId: event.id || '',
+          ativo: true,
+        });
+      }
+      openEvent = null;
+    }
+  });
+  return periods;
 };
 
 exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => {
@@ -1938,6 +2240,7 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
   const employeeSchedule = sanitizeEmployeeWorkSchedule(profile.jornadaTrabalho || profile.escalaTrabalho || profile.workSchedule);
   const {now, dayKey, competenciaKey, timeLabel} = getSaoPauloPointNow();
   const pontosRef = db.collection('lojas').doc(lojaId).collection('pontos');
+  const punchAuditRef = db.collection('lojas').doc(lojaId).collection('pontosAuditoria').doc();
   const fallbackRecordRef = pontosRef.doc(`${uid}_${dayKey}`);
   const timestamp = admin.firestore.FieldValue.serverTimestamp();
   const actionMap = {
@@ -1946,8 +2249,8 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
     almoco_fim: 'retorno do almoço',
     saida: 'saída',
   };
-  const payload = pointPayloadForType(type, timeLabel, request.data?.coords || null, request.data?.address || '');
-  if (!payload) {
+  const actionPayload = pointPayloadForType(type, timeLabel, request.data?.coords || null, request.data?.address || '');
+  if (!actionPayload) {
     throw new HttpsError('invalid-argument', 'Tipo de registro de ponto inválido.');
   }
 
@@ -1957,13 +2260,39 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
     const existingQuery = pontosRef
       .where('funcionarioId', '==', uid)
       .where('dia', '==', dayKey)
-      .where('competencia', '==', competenciaKey)
-      .limit(1);
+      .where('competencia', '==', competenciaKey);
     const querySnap = await transaction.get(existingQuery);
     const recordRef = querySnap.empty ? fallbackRecordRef : querySnap.docs[0].ref;
     const recordSnap = querySnap.empty ? await transaction.get(recordRef) : querySnap.docs[0];
     const existingData = recordSnap.exists ? recordSnap.data() || {} : {};
-    validatePointTransition(type, existingData);
+    if (isAdministrativePointRecord(existingData)) {
+      throw new HttpsError('failed-precondition', 'Este dia possui um lançamento administrativo. Solicite o ajuste a um gestor autorizado.');
+    }
+    validatePointTransition(type, existingData, timeLabel);
+    const legacyPayload = Object.entries(actionPayload).reduce((acc, [field, value]) => {
+      if (existingData[field] === undefined || existingData[field] === null || existingData[field] === '') {
+        acc[field] = value;
+      }
+      return acc;
+    }, {});
+    const previousEvents = getPointEvents(existingData).map((event, index) => ({
+      ...event,
+      id: event.id || `legado_${index}_${event.tipo}_${event.hora}`,
+      origem: event.origem || 'funcionaria',
+    }));
+    const pointEvent = {
+      id: `${now.getTime()}_${type}`,
+      tipo: type,
+      descricao: actionMap[type],
+      hora: timeLabel,
+      origem: 'funcionaria',
+      funcionarioId: uid,
+      registradoEm: now.toISOString(),
+      localizacao: actionPayload.localizacaoEntrada || actionPayload.localizacaoSaida || null,
+      endereco: actionPayload.localizacaoEntradaEndereco || actionPayload.localizacaoSaidaEndereco || '',
+    };
+    const nextEvents = [...previousEvents, pointEvent];
+    const nextWorkPeriods = buildPointWorkPeriodsFromEvents(nextEvents);
 
     const baseData = {
       funcionarioId: uid,
@@ -1996,15 +2325,23 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
       ...(recordSnap.exists ? {} : baseData),
       ...existingData,
       jornadaTrabalho: existingData.jornadaTrabalho || employeeSchedule,
-      ...payload,
+      ...legacyPayload,
+      batidas: nextEvents,
+      periodosTrabalho: nextWorkPeriods,
       updatedAt: timestamp,
     };
-    const statusPatch = pointStatusPatch(mergedRecord);
-    const summary = calculatePointSummary(mergedRecord);
-    const balanceDistribution = calculatePointBalanceDistribution(mergedRecord, summary);
+    const dailyRecords = querySnap.docs
+      .map((document) => document.ref.path === recordRef.path ? mergedRecord : document.data())
+      .concat(querySnap.empty ? [mergedRecord] : []);
+    const calculationRecord = consolidatePointRecordsForCalculation(dailyRecords, mergedRecord);
+    const statusPatch = pointStatusPatch(calculationRecord);
+    const summary = calculatePointSummary(calculationRecord);
+    const balanceDistribution = calculatePointBalanceDistribution(calculationRecord, summary);
     const updateData = {
       ...(recordSnap.exists ? {} : baseData),
-      ...payload,
+      ...legacyPayload,
+      batidas: nextEvents,
+      periodosTrabalho: nextWorkPeriods,
       ...statusPatch,
       irregularidade: statusPatch.inconsistente ? 'Pendente de ajuste' : summary.irregularidade,
       qtde: statusPatch.inconsistente ? '' : summary.workedLabel,
@@ -2015,17 +2352,31 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
       almocoNaoRegistradoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.almocoNaoRegistradoBancoHoras,
       jornadaTrabalho: mergedRecord.jornadaTrabalho,
       updatedAt: timestamp,
-      historicoRegistros: admin.firestore.FieldValue.arrayUnion({
-        tipo: type,
-        descricao: actionMap[type],
-        hora: timeLabel,
-        registradoEm: now.toISOString(),
-      }),
+      historicoRegistros: admin.firestore.FieldValue.arrayUnion(pointEvent),
     };
     transaction.set(recordRef, updateData, {merge: true});
+    transaction.set(punchAuditRef, {
+      tipo: 'batida_funcionaria',
+      acao: 'criado',
+      origem: 'funcionaria',
+      pontoId: recordRef.id,
+      lojaId,
+      funcionarioId: uid,
+      funcionarioNome: profile.nome || profile.name || profile.email || 'Colaborador',
+      dia: dayKey,
+      tipoBatida: type,
+      horario: timeLabel,
+      valorAnterior: previousEvents[previousEvents.length - 1] || null,
+      valorNovo: pointEvent,
+      justificativa: '',
+      gestorId: '',
+      gestor: '',
+      criadoEm: timestamp,
+      data: now.toISOString(),
+    });
     responseRecordId = recordRef.id;
     responseRecord = {
-      ...mergedRecord,
+      ...calculationRecord,
       ...statusPatch,
       irregularidade: updateData.irregularidade,
       qtde: updateData.qtde,

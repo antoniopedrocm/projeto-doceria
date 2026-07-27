@@ -28,6 +28,35 @@ function accountantHasStore(lojaId) {
     || lojaId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lojaIds;
 }
 
+function currentUserData() {
+  return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+}
+
+function isOwnerUser() {
+  return isSignedIn() && currentUserData().role in [
+    'dono', 'owner', 'admin', 'adm', 'administrador', 'administradora', 'administrador_master'
+  ];
+}
+
+function currentUserHasStore(lojaId) {
+  return currentUserData().lojaId == lojaId
+    || (currentUserData().keys().hasAny(['lojaIds']) && lojaId in currentUserData().lojaIds);
+}
+
+function canManageStorePoints(lojaId) {
+  return isSignedIn()
+    && !isReadOnlyAccountant()
+    && (
+      isOwnerUser()
+      || (
+        (currentUserData().role == 'gerente' || currentUserData().role == 'gestor' || currentUserData().role == 'gestora')
+        && currentUserHasStore(lojaId)
+        && currentUserData().get('permissions', {}).get('meu-espaco', true)
+        && currentUserData().get('permissionDetails', {}).get('meu-espaco', {}).get('managePoint', true)
+      )
+    );
+}
+
 function canReadStoreCollection(lojaId, collection) {
   return isSignedIn() && (
     !isReadOnlyAccountant()
@@ -176,6 +205,17 @@ match /lojas/{lojaId} {
     allow read: if isSignedIn() && !isReadOnlyAccountant();
   }
 
+  match /pontos/{pontoId} {
+    allow read: if canReadStoreCollection(lojaId, 'pontos');
+    allow create, update, delete: if canManageStorePoints(lojaId);
+  }
+
+  match /pontosAuditoria/{auditId} {
+    allow read: if canManageStorePoints(lojaId);
+    allow create: if canManageStorePoints(lojaId);
+    allow update, delete: if false;
+  }
+
   match /{collection}/{document=**} {
     allow read: if collection != 'ifood'
       && collection != 'fiscalConfig'
@@ -183,6 +223,8 @@ match /lojas/{lojaId} {
     allow write: if canStaffWrite()
       && collection != 'ifood'
       && collection != 'fiscalConfig'
+      && collection != 'pontos'
+      && collection != 'pontosAuditoria'
       && collection != 'ifoodOrders'
       && collection != 'ifoodEvents'
       && collection != 'ifoodAlerts'
