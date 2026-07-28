@@ -3780,7 +3780,7 @@ const createFood99Functions = ({
     return result;
   };
 
-  return {
+  const exportedFunctions = {
     food99GetConfiguration: onCall(async (request) => {
       const {lojaId, requester} = await requireCallableStore(request);
       const environment = requestEnvironment(request);
@@ -4903,6 +4903,34 @@ const createFood99Functions = ({
       }
     }),
   };
+
+  exportedFunctions.food99HubApi = onRequest(
+    {timeoutSeconds: 120, memory: '512MiB'},
+    async (request, response) => {
+      const method = cleanText(request.method).toUpperCase();
+      const pathname = cleanText(request.path || cleanText(request.url).split('?')[0]) || '/';
+      if (method === 'GET' && (pathname === '/' || pathname === '/health')) {
+        if (typeof response.set === 'function') {
+          response.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+          response.set('Pragma', 'no-cache');
+        }
+        response.status(200).json({
+          ok: true,
+          service: 'food99-hub-api',
+          provider: PROVIDER,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+      if (method === 'POST' && (pathname === '/' || pathname === '/webhook')) {
+        await exportedFunctions.food99Webhook(request, response);
+        return;
+      }
+      response.status(404).json({errno: 1, errmsg: 'not found'});
+    }
+  );
+
+  return exportedFunctions;
 };
 
 module.exports = {createFood99Functions};

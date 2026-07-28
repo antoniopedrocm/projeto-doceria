@@ -290,6 +290,9 @@ Polling, catálogo e sincronizações só podem executar quando todos os critér
 | `food99ScheduledPoll` | Scheduler | Executar polling elegível com backoff |
 | `food99ProductStockChanged` | Trigger | Consolidar mudanças antes de sincronizar |
 | `food99Webhook` | HTTP | Validar `didi-header-sign` sobre o corpo bruto, preservar App ID de 64 bits, persistir e enfileirar eventos |
+| `food99HubApi` | Cloud Run/HTTP | API própria do projeto: `GET /health` sem segredos e `POST /webhook` reutilizando integralmente a validação oficial do webhook |
+
+`API base efetiva` e `Autenticação efetiva` permanecem em `https://openapi.99food.com`, pois esse é o host oficial publicado pela 99Food para os endpoints OpenAPI. A API `food99HubApi` pertence ao projeto Google da doceria e deve ser usada como URL pública de callback no formato `https://<serviço>.a.run.app/webhook?environment=<ambiente>`; ela não substitui o host do provedor.
 
 ## Fontes oficiais
 

@@ -358,6 +358,16 @@ test('verifies webhooks against rawBody MD5 and the official didi-header-sign he
   assert.match(coreSource, /crypto\.createHash\('md5'\)\.update\(raw\)\.update\(String\(appSecret \|\| ''\), 'utf8'\)/);
 });
 
+test('exposes a dedicated Cloud Run API with health and signed webhook routes', () => {
+  const api = food99Source.slice(food99Source.indexOf('exportedFunctions.food99HubApi = onRequest'));
+  assert.match(api, /pathname === '\/health'/);
+  assert.match(api, /service:\s*'food99-hub-api'/);
+  assert.match(api, /response\.set\('Cache-Control', 'no-store, no-cache, must-revalidate'\)/);
+  assert.match(api, /pathname === '\/webhook'/);
+  assert.match(api, /await exportedFunctions\.food99Webhook\(request, response\)/);
+  assert.doesNotMatch(api, /appSecret|auth_token|clientSecret/);
+});
+
 test('contains no legacy HMAC webhook verification or x-99Food-signature header', () => {
   assert.doesNotMatch(`${food99Source}\n${coreSource}`, /createHmac|x-99Food-signature/i);
 });

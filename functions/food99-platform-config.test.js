@@ -240,7 +240,7 @@ const makeHarness = ({
   };
 };
 
-const invokeSignedWebhook = async (harness, rawJson) => {
+const invokeSignedWebhook = async (harness, rawJson, functionName = 'food99Webhook') => {
   const rawBody = Buffer.from(rawJson, 'utf8');
   let statusCode = 0;
   let responseBody;
@@ -254,8 +254,10 @@ const invokeSignedWebhook = async (harness, rawJson) => {
       return this;
     },
   };
-  await harness.functions.food99Webhook({
+  await harness.functions[functionName]({
     method: 'POST',
+    path: functionName === 'food99HubApi' ? '/webhook' : '/',
+    url: functionName === 'food99HubApi' ? '/webhook?environment=development' : '/?environment=development',
     query: {environment: 'development'},
     body: JSON.parse(rawJson),
     rawBody,
@@ -267,6 +269,52 @@ const invokeSignedWebhook = async (harness, rawJson) => {
   }, response);
   return {responseBody, statusCode};
 };
+
+test('food99 Hub API exposes a secret-free health endpoint with no-store headers', async () => {
+  const harness = makeHarness();
+  let statusCode = 0;
+  let responseBody;
+  const headers = {};
+  const response = {
+    set(name, value) {
+      headers[name] = value;
+      return this;
+    },
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(value) {
+      responseBody = value;
+      return this;
+    },
+  };
+
+  await harness.functions.food99HubApi({method: 'GET', path: '/health', url: '/health'}, response);
+
+  assert.equal(statusCode, 200);
+  assert.equal(responseBody.ok, true);
+  assert.equal(responseBody.service, 'food99-hub-api');
+  assert.equal(responseBody.provider, 'food99');
+  assert.match(responseBody.timestamp, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(headers['Cache-Control'], 'no-store, no-cache, must-revalidate');
+  assert.equal(headers.Pragma, 'no-cache');
+  assert.deepEqual(harness.secretAccesses, []);
+  assert.doesNotMatch(JSON.stringify(responseBody), /secret|token|credential/i);
+});
+
+test('food99 Hub API delegates its webhook route to the signed webhook handler', async () => {
+  const exactAppId = '5764607601352902593';
+  const exactShopId = '5764610361924520465';
+  const harness = makeHarness({appIdValue: exactAppId, withStore: true});
+  const rawJson = `{"app_id":${exactAppId},"type":"shopBindStatus","timestamp":1760678329,"data":{"appShopIDList":["${exactShopId}"],"bindStatus":"bind"}}`;
+
+  const result = await invokeSignedWebhook(harness, rawJson, 'food99HubApi');
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(result.responseBody, {errno: 0});
+  assert.equal(harness.documents.get(authorizationPath)?.status, 'authorized');
+});
 
 test('owner receives the real App ID without loading the App Secret', async () => {
   const harness = makeHarness();
