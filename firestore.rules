@@ -9,6 +9,11 @@ function isSignedIn() {
   return request.auth != null;
 }
 
+function hasCurrentUserProfile() {
+  return isSignedIn()
+    && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+}
+
 function isReadOnlyAccountant() {
   return isSignedIn()
     && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -33,7 +38,17 @@ function currentUserData() {
 }
 
 function isOwnerUser() {
-  return isSignedIn() && currentUserData().role == 'dono';
+  return hasCurrentUserProfile() && currentUserData().role in [
+    'dono', 'owner', 'admin', 'adm', 'administrador', 'administradora', 'administrador_master'
+  ];
+}
+
+function isManagerUser() {
+  return hasCurrentUserProfile() && currentUserData().role == 'gerente';
+}
+
+function isAttendantUser() {
+  return hasCurrentUserProfile() && currentUserData().role == 'atendente';
 }
 
 function isEntreLojasOwnerUser() {
@@ -73,8 +88,10 @@ function canManageStorePoints(lojaId) {
     && (
       isOwnerUser()
       || (
-        (currentUserData().role == 'gerente' || currentUserData().role == 'administrador_master')
+        (currentUserData().role == 'gerente' || currentUserData().role == 'gestor' || currentUserData().role == 'gestora')
         && currentUserHasStore(lojaId)
+        && currentUserData().get('permissions', {}).get('meu-espaco', true)
+        && currentUserData().get('permissionDetails', {}).get('meu-espaco', {}).get('managePoint', true)
       )
     );
 }
@@ -82,6 +99,96 @@ function canManageStorePoints(lojaId) {
 function currentUserHasStore(lojaId) {
   return currentUserData().lojaId == lojaId
     || (currentUserData().keys().hasAny(['lojaIds']) && lojaId in currentUserData().lojaIds);
+}
+
+function currentUserHasSuppliersModule() {
+  return currentUserData()
+    .get('permissions', {})
+    .get('fornecedores', true);
+}
+
+function canReadOperationalCashRegister(lojaId) {
+  return isOwnerUser()
+    || (
+      isAttendantUser()
+      && currentUserHasStore(lojaId)
+    )
+    || (
+      isManagerUser()
+      && currentUserHasStore(lojaId)
+      && currentUserHasSuppliersModule()
+    );
+}
+
+function managerHasCashPermission(lojaId, permissionId) {
+  return isManagerUser()
+    && currentUserHasStore(lojaId)
+    && currentUserHasSuppliersModule()
+    && currentUserData()
+      .get('permissionDetails', {})
+      .get('caixa', {})
+      .get(permissionId, true);
+}
+
+function canReadCashReconciliation(lojaId) {
+  return isOwnerUser()
+    || (
+      managerHasCashPermission(lojaId, 'visualizarConferencia')
+      && managerHasCashPermission(lojaId, 'visualizarValoresCalculados')
+      && managerHasCashPermission(lojaId, 'visualizarDivergencias')
+      && managerHasCashPermission(lojaId, 'visualizarSangrias')
+    );
+}
+
+function canReadCashWithdrawals(lojaId) {
+  return isOwnerUser() || managerHasCashPermission(lojaId, 'visualizarSangrias');
+}
+
+function canReadInternalCashSettings(lojaId) {
+  return isOwnerUser()
+    || (
+      isManagerUser()
+      && currentUserHasStore(lojaId)
+      && currentUserHasSuppliersModule()
+    );
+}
+
+function canReadCashAlert(lojaId) {
+  return isOwnerUser()
+    || (
+      managerHasCashPermission(lojaId, 'visualizarDivergencias')
+      && exists(
+        /databases/$(database)/documents/lojas/$(lojaId)/configuracoesInternas/alertas
+      )
+      && get(
+        /databases/$(database)/documents/lojas/$(lojaId)/configuracoesInternas/alertas
+      ).data.get('destinatarios', 'somente_dono') == 'dono_e_gerentes'
+    );
+}
+
+function isCashExpenseWithdrawalValue(value) {
+  return value is string
+    && value.lower().matches(
+      '.*(retirada_caixa|retirada_despesa|retirada_para_despesa|retirada_despesa_caixa).*'
+    );
+}
+
+function isCashExpenseWithdrawal(data) {
+  return data.get('registroCaixa', false) == true
+    || isCashExpenseWithdrawalValue(data.get('origem', ''))
+    || isCashExpenseWithdrawalValue(data.get('tipo', ''));
+}
+
+function isValidOwnClientProfileCreation(userId) {
+  return isSignedIn()
+    && request.auth.uid == userId
+    && request.resource.data.keys().hasOnly([
+      'email', 'nome', 'role', 'lojaId', 'lojaIds'
+    ])
+    && request.resource.data.role == 'cliente'
+    && request.resource.data.lojaId == null
+    && request.resource.data.lojaIds is list
+    && request.resource.data.lojaIds.size() == 0;
 }
 
 function validTransferenciaEntreLojasStatuses() {
@@ -149,7 +256,7 @@ function canReadStoreCollection(lojaId, collection) {
         || accountantHasModule('financeiro')
         || accountantHasModule('relatorios')
       ))
-      || (collection in ['meuEspaco', 'pontos'] && accountantHasModule('meu-espaco'))
+      || (collection in ['meuEspaco', 'pontos', 'ferias', 'feriasAuditoria'] && accountantHasModule('meu-espaco'))
     ))
   );
 }
@@ -279,6 +386,68 @@ match /lojas/{lojaId} {
     allow create, update, delete: if canManageStorePoints(lojaId);
   }
 
+  match /pontosAuditoria/{auditId} {
+    allow read: if canManageStorePoints(lojaId);
+    allow create: if canManageStorePoints(lojaId);
+    allow update, delete: if false;
+  }
+
+  match /ferias/{feriasId} {
+    allow read: if canReadStoreCollection(lojaId, 'ferias');
+    allow create, update, delete: if canManageStorePoints(lojaId);
+  }
+
+  match /feriasAuditoria/{auditId} {
+    allow read: if canReadStoreCollection(lojaId, 'feriasAuditoria');
+    allow create: if canManageStorePoints(lojaId);
+    allow update, delete: if false;
+  }
+
+  // Dados operacionais do caixa podem ser consultados pelos perfis que atuam na loja.
+  // Toda mutacao passa pelas Cloud Functions para garantir transacao e idempotencia.
+  match /caixas/{caixaId} {
+    allow read: if canReadOperationalCashRegister(lojaId);
+    allow create, update, delete: if false;
+  }
+
+  // Calculos, sangrias e alertas canonicos nunca sao gravados pelo cliente.
+  match /conferenciasCaixa/{conferenciaId} {
+    allow read: if canReadCashReconciliation(lojaId);
+    allow create, update, delete: if false;
+  }
+
+  match /sangriasCaixa/{sangriaId} {
+    allow read: if canReadCashWithdrawals(lojaId);
+    allow create, update, delete: if false;
+  }
+
+  match /alertas/{alertaId} {
+    allow read: if canReadCashAlert(lojaId);
+    allow create, update, delete: if false;
+
+    match /auditoria/{auditId} {
+      allow read: if isOwnerUser();
+      allow create, update, delete: if false;
+    }
+  }
+
+  match /configuracoesInternas/{configId} {
+    allow read: if configId == 'alertas'
+      && canReadInternalCashSettings(lojaId);
+    allow create, update, delete: if false;
+  }
+
+  // Contas comuns mantem o fluxo atual. Retiradas de caixa sao criadas somente
+  // pelas Functions e nao podem ser disfarçadas por uma alteracao posterior.
+  match /contas_a_pagar/{contaId} {
+    allow read: if canReadStoreCollection(lojaId, 'contas_a_pagar');
+    allow create: if canStaffWrite() && !isCashExpenseWithdrawal(request.resource.data);
+    allow update: if canStaffWrite()
+      && !isCashExpenseWithdrawal(resource.data)
+      && !isCashExpenseWithdrawal(request.resource.data);
+    allow delete: if canStaffWrite() && !isCashExpenseWithdrawal(resource.data);
+  }
+
   // Dados 99Food sao lidos pelo painel, mas toda mutacao passa pelas Functions.
   match /food99/{docId} {
     // Contem referencias a segredos e somente e carregado por callable autorizado.
@@ -317,11 +486,24 @@ match /lojas/{lojaId} {
     allow read: if collection != 'ifood'
       && collection != 'food99'
       && collection != 'fiscalConfig'
+      && collection != 'caixas'
+      && collection != 'conferenciasCaixa'
+      && collection != 'sangriasCaixa'
+      && collection != 'alertas'
+      && collection != 'configuracoesInternas'
       && canReadStoreCollection(lojaId, collection);
     allow write: if canStaffWrite()
       && collection != 'ifood'
       && collection != 'food99'
       && collection != 'fiscalConfig'
+      && collection != 'caixas'
+      && collection != 'conferenciasCaixa'
+      && collection != 'sangriasCaixa'
+      && collection != 'alertas'
+      && collection != 'configuracoesInternas'
+      && collection != 'contas_a_pagar'
+      && collection != 'ferias'
+      && collection != 'feriasAuditoria'
       && collection != 'ifoodOrders'
       && collection != 'ifoodEvents'
       && collection != 'ifoodAlerts'
@@ -346,12 +528,25 @@ match /integrations/{document=**} {
 
 match /users/{userId} {
   allow read: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
-  allow write: if canStaffWrite();
+  // Administracao de perfis passa pelas Functions. A unica escrita direta
+  // aceita e o bootstrap estrito do proprio perfil como cliente sem loja.
+  allow create: if isValidOwnClientProfileCreation(userId);
+  allow update, delete: if false;
+
+  match /notificacoes/{notificacaoId} {
+    // Alertas financeiros sao consultados por Callable para validar loja,
+    // perfil, configuracao atual e exclusao logica. Outros tipos continuam
+    // com a leitura individual direta ja existente.
+    allow read: if isSignedIn()
+      && request.auth.uid == userId
+      && resource.data.get('categoria', '') != 'caixa';
+    allow create, update, delete: if false;
+  }
 }
 
 match /customProfiles/{userId} {
   allow read: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
-  allow write: if canStaffWrite();
+  allow create, update, delete: if false;
 }
 
 match /transferenciasEntreLojas/{transferenciaId} {

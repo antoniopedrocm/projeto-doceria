@@ -41,6 +41,18 @@ import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
 import IfoodHub from './components/ifood/IfoodHub';
 import Food99Hub from './components/food99/Food99Hub';
+import CaixaTab from './components/caixa/CaixaTab';
+import AlertasNotificacoesTab from './components/configuracoes/AlertasNotificacoesTab';
+import NotificationsBell from './components/notifications/NotificationsBell';
+import {
+  CAIXA_PERMISSION_KEYS,
+  CAIXA_PERMISSION_LABELS,
+  getDefaultCaixaPermissionsForRole,
+  getEmptyCaixaPermissions,
+  sanitizeCaixaPermissions,
+  createIdempotencyKey,
+} from './caixa/caixaCore';
+import { registrarRetiradaDespesaCaixa } from './services/caixaService';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
@@ -754,6 +766,7 @@ const getDefaultPermissionsForRole = (role) => {
     pedidos: true,
     'entre-lojas': true,
     agenda: true,
+    fornecedores: true,
     'meu-espaco': true,
   };
 };
@@ -765,6 +778,10 @@ const sanitizePermissions = (permissions, role) => {
   return MENU_PERMISSION_KEYS.reduce((acc, key) => {
     if (normalizeRole(role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(key)) {
       acc[key] = false;
+      return acc;
+    }
+    if (normalizeRole(role) === ROLE_ATTENDANT && key === 'fornecedores') {
+      acc[key] = true;
       return acc;
     }
     if (Object.prototype.hasOwnProperty.call(permissions, key)) {
@@ -781,36 +798,37 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
   return {
     'entre-lojas': {
       statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : []
-    }
+    },
+    caixa: permissions?.fornecedores
+      ? getDefaultCaixaPermissionsForRole(role)
+      : getEmptyCaixaPermissions(),
   };
 };
 
 const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = null) => {
   const permissions = permissionsInput || getDefaultPermissionsForRole(role);
-
-  if (!permissions?.['entre-lojas']) {
-    return { 'entre-lojas': { statuses: [] } };
-  }
-
   const details = permissionDetails && typeof permissionDetails === 'object' ? permissionDetails : null;
   const entreLojasDetails = details?.['entre-lojas'] || details?.entreLojas || null;
+  const caixaDetails = details?.caixa || details?.cash || null;
+  const rawStatuses = permissions?.['entre-lojas'] && entreLojasDetails
+    ? (Array.isArray(entreLojasDetails.statuses)
+      ? entreLojasDetails.statuses
+      : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []))
+    : (permissions?.['entre-lojas'] ? ENTRE_LOJAS_TRANSFER_STATUS_VALUES : []);
 
-  if (!entreLojasDetails) {
-    return getDefaultPermissionDetailsForRole(role, permissions);
-  }
-
-  const rawStatuses = Array.isArray(entreLojasDetails.statuses)
-    ? entreLojasDetails.statuses
-    : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []);
-
-  const validStatuses = rawStatuses
-    .map((status) => String(status || '').trim())
-    .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status));
+  const validStatuses = permissions?.['entre-lojas']
+    ? rawStatuses
+      .map((status) => String(status || '').trim())
+      .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status))
+    : [];
 
   return {
     'entre-lojas': {
       statuses: Array.from(new Set(validStatuses))
-    }
+    },
+    caixa: permissions?.fornecedores
+      ? sanitizeCaixaPermissions(caixaDetails, role)
+      : getEmptyCaixaPermissions(),
   };
 };
 
@@ -1690,7 +1708,7 @@ const maskCpfCnpj = (value) => {
 
 // --- NOVOS COMPONENTES ---
 
-const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser }) => {
+const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser, availableStores, storeInfoMap }) => {
     const [activeTab, setActiveTab] = usePersistentState('fornecedores_activeTab', 'fornecedores');
     
     // States
@@ -1714,9 +1732,12 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     const [showReceitaModal, setShowReceitaModal] = useState(false);
     const [showRetiradaCaixaModal, setShowRetiradaCaixaModal] = useState(false);
     const [editingReceita, setEditingReceita] = useState(null);
-    const [editingRetiradaCaixa, setEditingRetiradaCaixa] = useState(null);
     const [receitaFormData, setReceitaFormData] = useState({});
     const [retiradaCaixaFormData, setRetiradaCaixaFormData] = useState({ data: new Date().toISOString().split('T')[0], motivo: '', valor: '', observacoes: '' });
+    const [retiradaCaixaStoreId, setRetiradaCaixaStoreId] = useState(effectiveStoreId || '');
+    const [isSavingRetiradaCaixa, setIsSavingRetiradaCaixa] = useState(false);
+    const retiradaCaixaSubmittingRef = useRef(false);
+    const retiradaCaixaIdempotencyRef = useRef(createIdempotencyKey('retirada-despesa'));
     const [editingPerda, setEditingPerda] = useState(null);
     const [perdaFormData, setPerdaFormData] = useState({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: '', motivo: 'Vencimento', outroMotivo: '' });
 
@@ -1903,21 +1924,27 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         return Number.isFinite(parsed) ? parsed : 0;
     };
 
-    const getRetiradaCaixaDate = useCallback((item) => getJSDate(item.dataRetirada || item.dataPagamento || item.dataVencimento || item.createdAt), []);
+    const getRetiradaCaixaDate = useCallback((item) => {
+        const value = item.dataOperacional || item.dataRetirada || item.dataPagamento || item.dataVencimento || item.registradoEm || item.createdAt;
+        if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            return new Date(`${value}T12:00:00`);
+        }
+        return getJSDate(value);
+    }, []);
 
     const retiradasCaixa = useMemo(() => {
         return (data.contas_a_pagar || [])
-            .filter(item => item.origem === 'retirada_caixa' || item.tipo === 'retirada_caixa')
+            .filter(item => (
+                item.registroCaixa === true
+                || ['retirada_caixa', 'retirada_despesa_caixa', 'retirada_para_despesa'].includes(item.origem)
+                || ['retirada_caixa', 'retirada_despesa_caixa', 'retirada_para_despesa'].includes(item.tipo)
+            ))
             .sort((a, b) => {
                 const dateA = getRetiradaCaixaDate(a) || new Date(0);
                 const dateB = getRetiradaCaixaDate(b) || new Date(0);
                 return dateB - dateA;
             });
     }, [data.contas_a_pagar, getRetiradaCaixaDate]);
-
-    const retiradaCaixaTotal = useMemo(() => (
-        retiradasCaixa.reduce((sum, item) => sum + (Number(item.valor) || 0), 0)
-    ), [retiradasCaixa]);
 
     const getRetiradaCaixaRegistrant = (item) => (
         item.registradoPorNome
@@ -2051,67 +2078,51 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         setShowReceitaModal(false);
     };
 
-    const handleNewRetiradaCaixa = () => {
-        setEditingRetiradaCaixa(null);
+    const handleNewRetiradaCaixa = (storeId = effectiveStoreId, dataOperacional = '') => {
         resetRetiradaCaixaForm();
-        setShowRetiradaCaixaModal(true);
-    };
-
-    const handleEditRetiradaCaixa = (retirada) => {
-        const dataRetirada = getRetiradaCaixaDate(retirada);
-        setEditingRetiradaCaixa(retirada);
-        setRetiradaCaixaFormData({
-            data: dataRetirada ? dataRetirada.toISOString().split('T')[0] : '',
-            motivo: retirada.motivo || (retirada.descricao || '').replace(/^Retirada do caixa\s*-\s*/i, ''),
-            valor: String(retirada.valor ?? ''),
-            observacoes: retirada.observacoes || retirada.observacao || ''
-        });
+        setRetiradaCaixaStoreId(storeId || '');
+        if (dataOperacional) {
+            setRetiradaCaixaFormData((current) => ({ ...current, data: dataOperacional }));
+        }
+        retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${storeId || 'sem-loja'}`);
         setShowRetiradaCaixaModal(true);
     };
 
     const handleRetiradaCaixaSubmit = async (e) => {
         e.preventDefault();
+        if (retiradaCaixaSubmittingRef.current) return;
         const motivo = String(retiradaCaixaFormData.motivo || '').trim();
         const valor = roundCurrency(parseCurrencyInput(retiradaCaixaFormData.valor));
+        const valorCentavos = Math.round(valor * 100);
         const dataRetirada = retiradaCaixaFormData.data || new Date().toISOString().split('T')[0];
 
         if (!motivo) { alert('Informe o motivo da retirada.'); return; }
         if (!valor || valor <= 0) { alert('Informe um valor de retirada maior que zero.'); return; }
+        if (!retiradaCaixaStoreId) { alert('Selecione uma loja para registrar a retirada.'); return; }
 
-        const dataToSave = {
-            descricao: `Retirada do caixa - ${motivo}`,
-            valor,
-            dataVencimento: dataRetirada,
-            dataPagamento: dataRetirada,
-            dataRetirada,
-            status: 'Pago',
-            categoria: 'Despesa Variável',
-            tipo: 'retirada_caixa',
-            origem: 'retirada_caixa',
-            motivo,
-            observacoes: String(retiradaCaixaFormData.observacoes || '').trim(),
-            registradoPorNome: getCurrentUserName(),
-            registradoPorEmail: currentUser?.auth?.email || currentUser?.email || '',
-            registradoPorUid: currentUser?.uid || currentUser?.auth?.uid || '',
-            registradoEm: editingRetiradaCaixa?.registradoEm || new Date().toISOString(),
-            atualizadoEm: new Date().toISOString()
-        };
-
-        if (editingRetiradaCaixa) {
-            await updateItem('contas_a_pagar', editingRetiradaCaixa.id, dataToSave);
-        } else {
-            await addItem('contas_a_pagar', dataToSave);
+        retiradaCaixaSubmittingRef.current = true;
+        setIsSavingRetiradaCaixa(true);
+        try {
+            await registrarRetiradaDespesaCaixa({
+                lojaId: retiradaCaixaStoreId,
+                dataOperacional: dataRetirada,
+                valorCentavos,
+                motivo,
+                observacao: String(retiradaCaixaFormData.observacoes || '').trim(),
+                idempotencyKey: retiradaCaixaIdempotencyRef.current,
+            });
+            alert('Retirada para despesa registrada com sucesso.');
+            setShowRetiradaCaixaModal(false);
+            resetRetiradaCaixaForm();
+            retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${retiradaCaixaStoreId}`);
+        } catch (error) {
+            console.error('Erro ao registrar retirada para despesa:', error);
+            alert(error?.message || 'Não foi possível registrar a retirada para despesa.');
+        } finally {
+            retiradaCaixaSubmittingRef.current = false;
+            setIsSavingRetiradaCaixa(false);
         }
-
-        setShowRetiradaCaixaModal(false);
-        setEditingRetiradaCaixa(null);
-        resetRetiradaCaixaForm();
     };
-
-    const handleDeleteRetiradaCaixa = (retirada) => setConfirmDelete({
-        isOpen: true,
-        onConfirm: () => deleteItem('contas_a_pagar', retirada.id)
-    });
 
     // UI Rendering
     return (
@@ -2120,7 +2131,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2"><div className="flex flex-wrap gap-2">
                 {['fornecedores', 'pedidos', 'estoque', 'caixa', 'receitas', 'perdas'].map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
-                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'caixa' && 'Retiradas do Caixa'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
+                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'caixa' && 'Caixa'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
                     </button>
                 ))}
             </div></div>
@@ -2207,65 +2218,16 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             )}
 
             {activeTab === 'caixa' && (
-                <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
-                            <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
-                                    <Banknote className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-500">Total retirado</p>
-                                    <p className="text-2xl font-bold text-gray-900">{formatCurrencyBR(retiradaCaixaTotal)}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
-                            <p className="text-sm text-gray-500">Registros</p>
-                            <p className="text-2xl font-bold text-gray-900">{retiradasCaixa.length}</p>
-                        </div>
-                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
-                            <p className="text-sm font-semibold text-gray-800">Contabilização automática</p>
-                            <p className="text-sm text-gray-600 mt-1">Cada retirada entra como despesa paga no Financeiro.</p>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-gray-800">Retiradas do Caixa</h2>
-                            <p className="text-sm text-gray-600">Registre saídas imediatas, como compras pequenas ou acertos operacionais.</p>
-                        </div>
-                        <Button onClick={handleNewRetiradaCaixa} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Nova Retirada</Button>
-                    </div>
-
-                    <Table
-                        columns={[
-                            { header: 'Data', render: (row) => getRetiradaCaixaDate(row)?.toLocaleDateString('pt-BR') || '-' },
-                            {
-                                header: 'Motivo',
-                                render: (row) => (
-                                    <div>
-                                        <p className="font-semibold text-gray-900">{row.motivo || row.descricao || '-'}</p>
-                                        <p className="text-xs text-gray-500">{row.descricao || 'Retirada do caixa'}</p>
-                                    </div>
-                                )
-                            },
-                            { header: 'Valor', render: (row) => <span className="font-semibold text-rose-600">{formatCurrencyBR(row.valor || 0)}</span> },
-                            { header: 'Registrado por', render: (row) => getRetiradaCaixaRegistrant(row) },
-                            { header: 'Observação', render: (row) => row.observacoes || row.observacao || '-' }
-                        ]}
-                        data={retiradasCaixa}
-                        actions={[
-                            { icon: Edit, label: "Editar", onClick: handleEditRetiradaCaixa },
-                            { icon: Trash2, label: "Excluir", onClick: handleDeleteRetiradaCaixa }
-                        ]}
-                    />
-                    {retiradasCaixa.length === 0 && (
-                        <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 text-center text-gray-500">
-                            Nenhuma retirada do caixa registrada ainda.
-                        </div>
-                    )}
-                </div>
+                <CaixaTab
+                    currentUser={currentUser}
+                    effectiveStoreId={effectiveStoreId}
+                    availableStores={availableStores}
+                    storeInfoMap={storeInfoMap}
+                    retiradas={retiradasCaixa}
+                    getRetiradaDate={getRetiradaCaixaDate}
+                    getRetiradaRegistrant={getRetiradaCaixaRegistrant}
+                    onNewRetirada={handleNewRetiradaCaixa}
+                />
             )}
 
             {activeTab === 'receitas' && (
@@ -2394,7 +2356,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowEstoqueModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar Item</Button></div>
                 </form>
             </Modal>
-            <Modal isOpen={showRetiradaCaixaModal} onClose={() => setShowRetiradaCaixaModal(false)} title={editingRetiradaCaixa ? 'Editar Retirada do Caixa' : 'Registrar Retirada do Caixa'} size="md">
+            <Modal isOpen={showRetiradaCaixaModal} onClose={() => !isSavingRetiradaCaixa && setShowRetiradaCaixaModal(false)} title="Registrar retirada para despesa" size="md">
                 <form onSubmit={handleRetiradaCaixaSubmit} className="space-y-4">
                     <Input
                         label="Motivo da retirada"
@@ -2428,11 +2390,11 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                         onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, observacoes: e.target.value })}
                     />
                     <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-800">
-                        Esta retirada será registrada automaticamente como despesa paga no Financeiro.
+                        Esta retirada para despesa será registrada automaticamente como paga no Financeiro.
                     </div>
                     <div className="flex justify-end gap-3 pt-2">
-                        <Button variant="secondary" type="button" onClick={() => setShowRetiradaCaixaModal(false)}>Cancelar</Button>
-                        <Button type="submit"><Save className="w-4 h-4"/> Salvar Retirada</Button>
+                        <Button variant="secondary" type="button" disabled={isSavingRetiradaCaixa} onClick={() => setShowRetiradaCaixaModal(false)}>Cancelar</Button>
+                        <Button type="submit" disabled={isSavingRetiradaCaixa}><Save className="w-4 h-4"/> {isSavingRetiradaCaixa ? 'Registrando...' : 'Registrar retirada para despesa'}</Button>
                     </div>
                 </form>
             </Modal>
@@ -8310,7 +8272,7 @@ function App() {
     );
   };
   
-	const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, deleteItem, availableStores, storeInfoMap, resolveActiveStoreForWrite, selectedStoreId }) => {
+	const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, deleteItem, availableStores, storeInfoMap, resolveActiveStoreForWrite, selectedStoreId, onOpenCashRecord }) => {
     const [activeTab, setActiveTab] = usePersistentState('configuracoes_activeTab', 'users');
 
     // States para Usuários
@@ -8332,6 +8294,7 @@ function App() {
         lojaId: "",
         lojaIds: [],
         permissions: getDefaultPermissionsForRole(ROLE_ATTENDANT),
+        permissionDetails: getDefaultPermissionDetailsForRole(ROLE_ATTENDANT),
         applyCustomProfile: true,
         jornadaTrabalho: sanitizeEmployeeWorkSchedule(),
         dataInicioBancoHoras: '',
@@ -9367,7 +9330,7 @@ const effectiveStoreName = useMemo(() => {
             </div>
 
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2">
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                     <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'users' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Usuários
                     </button>
@@ -9382,6 +9345,9 @@ const effectiveStoreName = useMemo(() => {
                     </button>
                     <button onClick={() => setActiveTab('entre-lojas')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'entre-lojas' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Entre Lojas
+                    </button>
+                    <button onClick={() => setActiveTab('alertas-notificacoes')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'alertas-notificacoes' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
+                        Alertas e Notificações
                     </button>
                     <button onClick={() => setActiveTab('logs')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'logs' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Logs de Atividade
@@ -9845,6 +9811,15 @@ const effectiveStoreName = useMemo(() => {
                     </div>
                 )
             )}
+
+            {activeTab === 'alertas-notificacoes' && (
+                <AlertasNotificacoesTab
+                    user={user}
+                    storeId={effectiveStoreId}
+                    storeName={effectiveStoreName}
+                    onOpenCashRecord={onOpenCashRecord}
+                />
+            )}
             
             <Modal isOpen={showUserModal} onClose={() => setShowUserModal(false)} title={editingUser ? "Editar Usuário" : "Novo Usuário"}>
                  <form onSubmit={handleUserSubmit} className="space-y-4">
@@ -10203,15 +10178,21 @@ const effectiveStoreName = useMemo(() => {
                                 const normalizedFormRole = normalizeRole(userFormData.role);
                                 const isRestrictedAccountantModule = normalizedFormRole === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id);
                                 const isEntreLojas = item.id === 'entre-lojas';
-                                const moduleChecked = Boolean(userFormData.permissions?.[item.id]);
-                                const selectedEntreLojasStatuses = sanitizePermissionDetails(
+                                const isFornecedores = item.id === 'fornecedores';
+                                const supportsCashPermissions = [ROLE_ATTENDANT, ROLE_MANAGER, ROLE_OWNER].includes(normalizedFormRole);
+                                const sanitizedFormPermissions = sanitizePermissions(userFormData.permissions, userFormData.role);
+                                const isRequiredAttendantModule = normalizedFormRole === ROLE_ATTENDANT && isFornecedores;
+                                const moduleChecked = Boolean(sanitizedFormPermissions[item.id]);
+                                const sanitizedDetails = sanitizePermissionDetails(
                                     userFormData.permissionDetails,
                                     userFormData.role,
-                                    sanitizePermissions(userFormData.permissions, userFormData.role)
-                                )['entre-lojas']?.statuses || [];
+                                    sanitizedFormPermissions
+                                );
+                                const selectedEntreLojasStatuses = sanitizedDetails['entre-lojas']?.statuses || [];
+                                const selectedCaixaPermissions = sanitizedDetails.caixa || getEmptyCaixaPermissions();
 
                                 return (
-                                    <div key={item.id} className={isEntreLojas && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
+                                    <div key={item.id} className={(isEntreLojas || isFornecedores) && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
                                         <label
                                             className={`flex items-center gap-2 text-sm text-gray-700 ${!userFormData.applyCustomProfile ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             title={`Permitir acesso ao menu "${item.label}"`}
@@ -10219,7 +10200,7 @@ const effectiveStoreName = useMemo(() => {
                                             <input
                                                 type="checkbox"
                                                 checked={moduleChecked}
-                                                disabled={!userFormData.applyCustomProfile || isRestrictedAccountantModule}
+                                                disabled={!userFormData.applyCustomProfile || isRestrictedAccountantModule || isRequiredAttendantModule}
                                                 onChange={(e) => {
                                                     const nextPermissions = {
                                                         ...sanitizePermissions(userFormData.permissions, userFormData.role),
@@ -10228,13 +10209,16 @@ const effectiveStoreName = useMemo(() => {
                                                     setUserFormData({
                                                         ...userFormData,
                                                         permissions: nextPermissions,
-                                                        permissionDetails: isEntreLojas
+                                                        permissionDetails: (isEntreLojas || isFornecedores)
                                                             ? sanitizePermissionDetails(userFormData.permissionDetails, userFormData.role, nextPermissions)
-                                                            : userFormData.permissionDetails
+                                                            : userFormData.permissionDetails,
                                                     });
                                                 }}
                                             />
                                             {item.label}
+                                            {isRequiredAttendantModule && (
+                                                <span className="text-xs text-gray-400">(acesso operacional obrigatório)</span>
+                                            )}
                                             {isRestrictedAccountantModule && (
                                                 <span className="text-xs text-gray-400">(indisponível para leitura)</span>
                                             )}
@@ -10307,6 +10291,51 @@ const effectiveStoreName = useMemo(() => {
                                                 {!selectedEntreLojasStatuses.length && (
                                                     <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
                                                         O usuário acessará o menu, mas não verá remessas até que pelo menos um status seja marcado.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {isFornecedores && moduleChecked && userFormData.applyCustomProfile && (
+                                            <div className="ml-6 rounded-xl border border-pink-100 bg-white p-3 space-y-3">
+                                                <div>
+                                                    <p className="text-xs font-semibold text-gray-800">Permissões internas de Caixa</p>
+                                                    <p className="text-xs text-gray-500">
+                                                        Protegem somente as áreas dentro de Fornecedores/Estoque → Caixa, sem reduzir o acesso aos demais recursos do módulo.
+                                                    </p>
+                                                </div>
+                                                {supportsCashPermissions ? (
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        {CAIXA_PERMISSION_KEYS.map((permissionKey) => (
+                                                            <label key={permissionKey} className="flex items-start gap-2 text-xs text-gray-700">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="mt-0.5"
+                                                                    checked={Boolean(selectedCaixaPermissions[permissionKey])}
+                                                                    onChange={(event) => {
+                                                                        setUserFormData((prev) => {
+                                                                            const currentPermissions = sanitizePermissions(prev.permissions, prev.role);
+                                                                            const currentDetails = sanitizePermissionDetails(prev.permissionDetails, prev.role, currentPermissions);
+                                                                            return {
+                                                                                ...prev,
+                                                                                permissionDetails: {
+                                                                                    ...currentDetails,
+                                                                                    caixa: {
+                                                                                        ...currentDetails.caixa,
+                                                                                        [permissionKey]: event.target.checked,
+                                                                                    },
+                                                                                },
+                                                                            };
+                                                                        });
+                                                                    }}
+                                                                />
+                                                                <span>{CAIXA_PERMISSION_LABELS[permissionKey]}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-700">
+                                                        Este perfil não pode acessar operações ou informações do caixa.
                                                     </p>
                                                 )}
                                             </div>
@@ -17727,6 +17756,19 @@ const handleSubmit = async (e) => {
     return ids.length ? ids[0] : null;
   }, [user, selectedStoreId, resolveStoreIdsForView]);
 
+  const openCashRecordFromAlert = useCallback((alert = {}) => {
+    try {
+      sessionStorage.setItem('fornecedores_activeTab', JSON.stringify('caixa'));
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(alert.dataOperacional || ''))) {
+        sessionStorage.setItem('caixa_operational_date', alert.dataOperacional);
+      }
+    } catch (error) {
+      console.error('Não foi possível preparar a abertura do registro do caixa.', error);
+    }
+    if (alert.lojaId) selectStoreById(alert.lojaId);
+    setCurrentPage('fornecedores');
+  }, [selectStoreById, setCurrentPage]);
+
   const renderCurrentPage = () => {
     if (authLoading || (loading && user)) {
       return (<div className="flex h-full w-full items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-pink-500"></div></div>);
@@ -17762,7 +17804,7 @@ const handleSubmit = async (e) => {
       case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial />;
       case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
       case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
-      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} /> : <PaginaInicial />;
+      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} /> : <PaginaInicial />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
       default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;
@@ -17901,36 +17943,16 @@ const handleSubmit = async (e) => {
             </div>
             <div className="flex items-center gap-4">
                                 {user && (
-                                        <div className="relative">
-                                                <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-full hover:bg-gray-100">
-							<Bell className="w-5 h-5 text-gray-600" />
-							{pendingOrders.length > 0 && 
-								<span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center animate-pulse">
-									{pendingOrders.length}
-								</span>
-							}
-						</button>
-						{showNotifications && (
-							<div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl z-20 border">
-								<div className="p-4 font-bold border-b">Pedidos Pendentes ({pendingOrders.length})</div>
-								<div className="p-2 max-h-96 overflow-y-auto">
-									{pendingOrders.length > 0 ? (
-										pendingOrders.map(order => (
-											<div key={order.id} className="p-2 border-b hover:bg-gray-50 cursor-pointer" onClick={() => { setCurrentPage('pedidos'); setShowNotifications(false); }}>
-												<p className="font-semibold">{order.clienteNome || 'Cliente'}</p>
-												<p className="text-sm text-gray-500">ID: {order.id?.substring(0,8) || 'N/A'}</p>
-												<p className="text-sm text-gray-500">Data: {getJSDate(order.createdAt)?.toLocaleDateString() || '-'}</p>
-												<p className="text-sm">Status: <span className="font-medium">{order.status}</span></p>
-											</div>
-										))
-									) : (
-										<p className="p-4 text-center text-gray-500">Nenhum pedido pendente.</p>
-									)}
-								</div>
-							</div>
-						)}
-					</div>
-				)}
+                                    <NotificationsBell
+                                        user={user}
+                                        pendingOrders={pendingOrders}
+                                        isOpen={showNotifications}
+                                        onToggle={() => setShowNotifications((current) => !current)}
+                                        onClose={() => setShowNotifications(false)}
+                                        onOpenOrders={() => setCurrentPage('pedidos')}
+                                        storeInfoMap={storeInfoMap}
+                                    />
+                                )}
 				
 				<div className="relative">
 					<button onClick={() => {
