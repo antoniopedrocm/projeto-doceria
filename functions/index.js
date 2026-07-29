@@ -8,7 +8,7 @@
  */
 
 const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
-const {onDocumentCreated, onDocumentUpdated} = require("firebase-functions/v2/firestore");
+const {onDocumentCreated, onDocumentUpdated, onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -16,6 +16,11 @@ const express = require("express");
 const cors = require("cors");
 const crypto = require('crypto');
 const {createFiscalFunctions} = require('./fiscal');
+const {createCaixaFunctions} = require('./caixa');
+const {
+  defaultCashPermissions,
+  sanitizeCashPermissions,
+} = require('./caixa-core');
 
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
@@ -129,6 +134,7 @@ const getDefaultPermissionsForRole = (role) => {
     pedidos: true,
     'entre-lojas': true,
     agenda: true,
+    fornecedores: true,
     'meu-espaco': true,
   };
 };
@@ -142,6 +148,10 @@ const sanitizePermissions = (permissions, role) => {
   return MENU_PERMISSION_KEYS.reduce((acc, key) => {
     if (normalizeRole(role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(key)) {
       acc[key] = false;
+      return acc;
+    }
+    if (normalizeRole(role) === ROLE_ATTENDANT && key === 'fornecedores') {
+      acc[key] = true;
       return acc;
     }
     if (Object.prototype.hasOwnProperty.call(permissions, key)) {
@@ -159,39 +169,40 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
     'entre-lojas': {
       statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : [],
     },
+    caixa: permissions?.fornecedores ?
+      defaultCashPermissions(role) :
+      defaultCashPermissions(ROLE_ACCOUNTANT),
   };
 };
 
 const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = null) => {
   const permissions = permissionsInput || getDefaultPermissionsForRole(role);
-
-  if (!permissions?.['entre-lojas']) {
-    return {'entre-lojas': {statuses: []}};
-  }
-
   const details = permissionDetails && typeof permissionDetails === 'object' ? permissionDetails : null;
   const entreLojasDetails = details?.['entre-lojas'] || details?.entreLojas || null;
+  const rawStatuses = permissions?.['entre-lojas'] && entreLojasDetails ?
+    (Array.isArray(entreLojasDetails.statuses) ?
+      entreLojasDetails.statuses :
+      (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : [])) :
+    (permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : []);
+  const statuses = Array.from(new Set(rawStatuses
+      .map((status) => String(status || '').trim())
+      .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status))));
+  const caixaDetails = details?.caixa || details?.cash || null;
 
-  if (!entreLojasDetails) {
-    return getDefaultPermissionDetailsForRole(role, permissions);
-  }
-
-  const rawStatuses = Array.isArray(entreLojasDetails.statuses)
-    ? entreLojasDetails.statuses
-    : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []);
-
-  const statuses = Array.from(new Set(
-      rawStatuses
-          .map((status) => String(status || '').trim())
-          .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status)),
-  ));
-
-  return {'entre-lojas': {statuses}};
+  return {
+    'entre-lojas': {statuses},
+    caixa: permissions?.fornecedores ?
+      sanitizeCashPermissions(caixaDetails, role) :
+      defaultCashPermissions(ROLE_ACCOUNTANT),
+  };
 };
 
 const ensureCustomProfile = async (uid, role, permissionsInput = null, permissionDetailsInput = null) => {
   const permissions = sanitizePermissions(permissionsInput, role);
-  const permissionDetails = sanitizePermissionDetails(permissionDetailsInput, role, permissions);
+  const permissionDetails = permissionDetailsInput &&
+    typeof permissionDetailsInput === 'object' ?
+    sanitizePermissionDetails(permissionDetailsInput, role, permissions) :
+    getDefaultPermissionDetailsForRole(role, permissions);
   await db.collection('customProfiles').doc(uid).set({
     uid,
     permissions,
@@ -3421,6 +3432,15 @@ exports.notifyNewOrder = onDocumentCreated({
         logger.error("Erro ao enviar notificações de novo pedido:", error);
     }
 });
+
+Object.assign(exports, createCaixaFunctions({
+    admin,
+    db,
+    onCall,
+    onDocumentWritten,
+    HttpsError,
+    logger,
+}));
 
 Object.assign(exports, createFiscalFunctions({
     admin,
