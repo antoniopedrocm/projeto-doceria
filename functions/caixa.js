@@ -644,6 +644,10 @@ const createCaixaFunctions = ({
     ]));
     return usersSnapshot.docs.flatMap((document) => {
       const profile = document.data() || {};
+      if (profile.ativo === false || String(profile.status || '')
+          .trim().toLowerCase() === 'inativo') {
+        return [];
+      }
       const role = normalizeRole(profile.role || customProfiles.get(document.id)?.role);
       const storeIds = extractStoreIds(profile);
       if (role === ROLE_OWNER) {

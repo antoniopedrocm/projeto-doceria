@@ -76,6 +76,11 @@ const seedFirestore = async () => {
           doc(db, "users", "attendant-a"),
           userProfile("atendente", [STORE_A]),
       ),
+      setDoc(doc(db, "users", "inactive-attendant"), {
+        ...userProfile("atendente", [STORE_A]),
+        ativo: false,
+        status: "inativo",
+      }),
       setDoc(doc(db, "users", "client"), userProfile("cliente")),
       setDoc(doc(db, "customProfiles", "attendant-a"), {
         role: "atendente",
@@ -506,6 +511,25 @@ describe("notificacoes individuais e perfis", () => {
       lojaId: null,
       lojaIds: [],
     }));
+  });
+});
+
+describe("bloqueio imediato de usuario inativo", () => {
+  test("inativo nao le nem opera a plataforma", async () => {
+    const db = testEnv.authenticatedContext("inactive-attendant").firestore();
+
+    await assertFails(
+        getDoc(doc(db, "users", "inactive-attendant")),
+    );
+    await assertFails(
+        getDoc(cashDoc(db, STORE_A, "caixas", "2026-07-27")),
+    );
+    await assertFails(
+        setDoc(cashDoc(db, STORE_A, "contas_a_pagar", "bloqueada"), {
+          tipo: "fornecedor",
+          valor: 100,
+        }),
+    );
   });
 });
 

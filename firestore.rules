@@ -5,8 +5,19 @@ function isPublicRead() {
   return true;
 }
 
-function isSignedIn() {
+function isAuthenticated() {
   return request.auth != null;
+}
+
+function isSignedIn() {
+  return isAuthenticated()
+    && (
+      !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+      || (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('ativo', true) != false
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'ativo') != 'inativo'
+      )
+    );
 }
 
 function hasCurrentUserProfile() {
@@ -332,7 +343,21 @@ match /lojas/{lojaId} {
 
     match /{subcollection}/{configDocId} {
       allow get, list: if subcollection == 'cupons'
-        || (isSignedIn() && (!isReadOnlyAccountant() || accountantHasModule('configuracoes')));
+        || (
+          subcollection == 'logs'
+          && (
+            isOwnerUser()
+            || (
+              isManagerUser()
+              && currentUserData().get('permissions', {}).get('configuracoes', true)
+            )
+          )
+        )
+        || (
+          subcollection != 'logs'
+          && isSignedIn()
+          && (!isReadOnlyAccountant() || accountantHasModule('configuracoes'))
+        );
       allow create, update, delete: if canStaffWrite();
     }
   }
@@ -485,6 +510,7 @@ match /lojas/{lojaId} {
   match /{collection}/{document=**} {
     allow read: if collection != 'ifood'
       && collection != 'food99'
+      && collection != 'configuracoes'
       && collection != 'fiscalConfig'
       && collection != 'caixas'
       && collection != 'conferenciasCaixa'
@@ -495,6 +521,7 @@ match /lojas/{lojaId} {
     allow write: if canStaffWrite()
       && collection != 'ifood'
       && collection != 'food99'
+      && collection != 'configuracoes'
       && collection != 'fiscalConfig'
       && collection != 'caixas'
       && collection != 'conferenciasCaixa'
@@ -527,7 +554,8 @@ match /integrations/{document=**} {
 }
 
 match /users/{userId} {
-  allow read: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
+  allow get: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
+  allow list: if isSignedIn() && !isReadOnlyAccountant();
   // Administracao de perfis passa pelas Functions. A unica escrita direta
   // aceita e o bootstrap estrito do proprio perfil como cliente sem loja.
   allow create: if isValidOwnClientProfileCreation(userId);
@@ -542,6 +570,11 @@ match /users/{userId} {
       && resource.data.get('categoria', '') != 'caixa';
     allow create, update, delete: if false;
   }
+}
+
+// Motivos de inativacao sao privados e acessados somente pelas Functions.
+match /userStatusMetadata/{userId} {
+  allow read, write: if false;
 }
 
 match /customProfiles/{userId} {
@@ -562,6 +595,7 @@ match /{collection}/{document=**} {
     && collection != 'integrations'
     && collection != 'users'
     && collection != 'customProfiles'
+    && collection != 'userStatusMetadata'
     && collection != 'transferenciasEntreLojas'
     && (!isReadOnlyAccountant()
       || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
@@ -569,7 +603,8 @@ match /{collection}/{document=**} {
     && collection != 'lojas'
     && collection != 'integrations'
     && collection != 'users'
-    && collection != 'customProfiles';
+    && collection != 'customProfiles'
+    && collection != 'userStatusMetadata';
 }
 
 }

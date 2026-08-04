@@ -23,6 +23,15 @@ const {
   defaultCashPermissions,
   sanitizeCashPermissions,
 } = require('./caixa-core');
+const {
+  USER_STATUS_ACTIVE,
+  USER_STATUS_INACTIVE,
+  countActiveOwners,
+  getUserStatusPolicyViolation,
+  isUserActive,
+  managerHasUserStatusPermission,
+  normalizeInactivationReason,
+} = require('./user-status-core');
 
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
@@ -173,6 +182,7 @@ const sanitizePermissions = (permissions, role) => {
 
 const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
   const permissions = permissionsInput || getDefaultPermissionsForRole(role);
+  const normalizedRole = normalizeRole(role);
   return {
     'entre-lojas': {
       statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : [],
@@ -180,6 +190,9 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
     caixa: permissions?.fornecedores ?
       defaultCashPermissions(role) :
       defaultCashPermissions(ROLE_ACCOUNTANT),
+    configuracoes: {
+      gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER,
+    },
   };
 };
 
@@ -196,12 +209,20 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
       .map((status) => String(status || '').trim())
       .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status))));
   const caixaDetails = details?.caixa || details?.cash || null;
+  const configuracoesDetails = details?.configuracoes || details?.settings || {};
+  const normalizedRole = normalizeRole(role);
 
   return {
     'entre-lojas': {statuses},
     caixa: permissions?.fornecedores ?
       sanitizeCashPermissions(caixaDetails, role) :
       defaultCashPermissions(ROLE_ACCOUNTANT),
+    configuracoes: {
+      gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER || (
+        normalizedRole === ROLE_MANAGER &&
+        configuracoesDetails.gerenciarStatusUsuarios === true
+      ),
+    },
   };
 };
 
@@ -259,23 +280,74 @@ const getUserProfile = async (uid) => {
   return snap.exists ? snap.data() : {};
 };
 
-const verifyManagementAccess = async (uid) => {
+const assertActiveUser = async (uid) => {
   if (!uid) {
     throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
   }
   const profile = await getUserProfile(uid);
+  if (!Object.keys(profile).length) {
+    throw new HttpsError('permission-denied', 'Perfil de usuário não encontrado.');
+  }
+  if (!isUserActive(profile)) {
+    throw new HttpsError(
+        'permission-denied',
+        'Sua conta está inativa. Entre em contato com o responsável pela empresa.',
+    );
+  }
+  return profile;
+};
+
+const onActiveUserCall = (optionsOrHandler, possibleHandler) => {
+  const hasOptions = typeof optionsOrHandler !== 'function';
+  const handler = hasOptions ? possibleHandler : optionsOrHandler;
+  const guardedHandler = async (request) => {
+    await assertActiveUser(request.auth?.uid);
+    return handler(request);
+  };
+  return hasOptions ?
+    onCall(optionsOrHandler, guardedHandler) :
+    onCall(guardedHandler);
+};
+
+const verifyManagementAccess = async (uid) => {
+  const profile = await assertActiveUser(uid);
   const role = normalizeRole(profile.role);
   const stores = extractStoreIds(profile);
+  const customProfileSnap = await db.collection('customProfiles').doc(uid).get();
+  const customProfile = customProfileSnap.exists ? customProfileSnap.data() : {};
+  const permissions = sanitizePermissions(
+      customProfile.permissions || profile.permissions,
+      role,
+  );
+  const permissionDetails = sanitizePermissionDetails(
+      customProfile.permissionDetails || profile.permissionDetails,
+      role,
+      permissions,
+  );
 
   if (role === ROLE_OWNER) {
-    return { role, stores, allStores: stores.length === 0 };
+    return {
+      role,
+      stores,
+      allStores: stores.length === 0,
+      profile,
+      permissions,
+      permissionDetails,
+    };
   }
 
   if (role === ROLE_MANAGER) {
     if (!stores.length) {
       throw new HttpsError('permission-denied', 'Gerentes precisam estar associados a pelo menos uma loja.');
     }
-    return { role, stores, allStores: false };
+    return {
+      role,
+      stores,
+      allStores: false,
+      profile,
+      permissions,
+      permissionDetails,
+    };
   }
 
   throw new HttpsError('permission-denied', 'Você não tem permissão para realizar esta ação.');
@@ -301,6 +373,29 @@ const assertManagerCannotGrantOwnerAccess = (requester, targetRole, permissionsI
   }
 };
 
+const assertManagerCannotGrantUserStatusAccess = async (
+    requester,
+    targetUid,
+    requestedPermissionDetails,
+) => {
+  if (
+    requester.role !== ROLE_MANAGER ||
+    !managerHasUserStatusPermission(requestedPermissionDetails)
+  ) {
+    return;
+  }
+  if (targetUid) {
+    const existingCustomProfile = await db.collection('customProfiles')
+        .doc(targetUid).get();
+    const existingDetails = existingCustomProfile.data()?.permissionDetails || {};
+    if (managerHasUserStatusPermission(existingDetails)) return;
+  }
+  throw new HttpsError(
+      'permission-denied',
+      'Somente um Dono pode conceder a permissão de gerenciar status de usuários.',
+  );
+};
+
 const rethrowHttpsError = (error) => {
   if (error instanceof HttpsError) {
     throw error;
@@ -308,10 +403,7 @@ const rethrowHttpsError = (error) => {
 };
 
 const verifyStoreReadAccess = async (uid) => {
-  if (!uid) {
-    throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
-  }
-  const profile = await getUserProfile(uid);
+  const profile = await assertActiveUser(uid);
   const role = normalizeRole(profile.role);
   const stores = extractStoreIds(profile);
   const permissions = await getUserPermissions(uid, role);
@@ -331,13 +423,10 @@ const verifyStoreReadAccess = async (uid) => {
 };
 
 const verifyPointStoreAccess = async (uid, lojaId) => {
-  if (!uid) {
-    throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
-  }
+  const profile = await assertActiveUser(uid);
   if (!lojaId || lojaId === STORE_ALL_KEY) {
     throw new HttpsError('failed-precondition', 'Selecione uma loja específica para registrar o ponto.');
   }
-  const profile = await getUserProfile(uid);
   const role = normalizeRole(profile.role);
   const stores = extractStoreIds(profile);
 
@@ -1538,6 +1627,7 @@ const LOOKUP_CLIENT_ALLOWED_ORIGINS = [
 
 exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
   try {
+    if (request.auth?.uid) await assertActiveUser(request.auth.uid);
     const rawPhone = request.data?.telefone;
     const lojaId = typeof request.data?.lojaId === 'string' ? request.data.lojaId.trim() : '';
 
@@ -1619,6 +1709,7 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
 
 exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
   try {
+    if (request.auth?.uid) await assertActiveUser(request.auth.uid);
     const lojaId = typeof request.data?.lojaId === 'string' ? request.data.lojaId.trim() : '';
     const clientId = typeof request.data?.clientId === 'string' ? request.data.clientId.trim() : '';
     const nome = typeof request.data?.nome === 'string' ? request.data.nome.trim() : '';
@@ -1680,6 +1771,7 @@ exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
 
 exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
   try {
+    if (request.auth?.uid) await assertActiveUser(request.auth.uid);
     const clientId = typeof request.data?.clientId === 'string' ? request.data.clientId.trim() : '';
     const lojaId = typeof request.data?.lojaId === 'string' ? request.data.lojaId.trim() : '';
     const incomingAddress = request.data?.address;
@@ -2076,6 +2168,11 @@ exports.listAllUsers = onCall(async (request) => {
         usersFromFirestoreSnap.forEach((doc) => {
             usersDataFromFirestore[doc.id] = doc.data();
         });
+        const statusMetadataSnap = await db.collection('userStatusMetadata').get();
+        const statusMetadata = {};
+        statusMetadataSnap.forEach((doc) => {
+            statusMetadata[doc.id] = doc.data();
+        });
 
         const customProfilesSnap = await db.collection('customProfiles').get();
         const customProfiles = {};
@@ -2085,6 +2182,7 @@ exports.listAllUsers = onCall(async (request) => {
 
         const combinedUsers = await Promise.all(usersFromAuth.map(async (userRecord) => {
             const firestoreData = usersDataFromFirestore[userRecord.uid] || {};
+            const privateStatusData = statusMetadata[userRecord.uid] || {};
             const storedProfile = customProfiles[userRecord.uid];
             const role = firestoreData.role
                 ? normalizeRole(firestoreData.role)
@@ -2098,6 +2196,7 @@ exports.listAllUsers = onCall(async (request) => {
             const permissionDetails = storedProfile
                 ? sanitizePermissionDetails(storedProfile.permissionDetails || firestoreData.permissionDetails, role, permissions)
                 : ensuredProfile.permissionDetails;
+            const active = isUserActive(firestoreData, userRecord);
 
             if (!storedProfile) {
                 customProfiles[userRecord.uid] = {permissions, permissionDetails};
@@ -2112,6 +2211,14 @@ exports.listAllUsers = onCall(async (request) => {
                 lojaIds,
                 permissions,
                 permissionDetails,
+                ativo: active,
+                status: active ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
+                authDisabled: userRecord.disabled === true,
+                inativadoEm: firestoreData.inativadoEm || null,
+                inativadoPor: firestoreData.inativadoPor || null,
+                motivoInativacao: privateStatusData.motivoInativacao || '',
+                reativadoEm: firestoreData.reativadoEm || null,
+                reativadoPor: firestoreData.reativadoPor || null,
                 jornadaTrabalho: sanitizeEmployeeWorkSchedule(firestoreData.jornadaTrabalho),
                 dataInicioBancoHoras: normalizePointBankStartDate(
                   firestoreData.dataInicioBancoHoras ||
@@ -2140,6 +2247,277 @@ exports.listAllUsers = onCall(async (request) => {
         logger.error("Erro ao listar usuários:", error);
         throw new HttpsError("internal", "Não foi possível listar os usuários.");
     }
+});
+
+const assertCanChangeUserStatus = async ({
+  requester,
+  requesterUid,
+  targetUid,
+  targetProfile,
+  activating,
+}) => {
+  const targetRole = normalizeRole(targetProfile.role);
+  const targetStores = extractStoreIds(targetProfile);
+  let activeOwnerCount = 0;
+  if (!activating && targetRole === ROLE_OWNER && isUserActive(targetProfile)) {
+    const usersSnapshot = await db.collection('users').get();
+    activeOwnerCount = countActiveOwners(
+        usersSnapshot.docs.map((document) => document.data() || {}),
+        normalizeRole,
+    );
+  }
+  const violation = getUserStatusPolicyViolation({
+    requesterUid,
+    requesterRole: requester.role,
+    requesterStores: requester.stores,
+    requesterAllStores: requester.allStores,
+    requesterPermissionDetails: requester.permissionDetails,
+    targetUid,
+    targetRole,
+    targetStores,
+    targetActive: isUserActive(targetProfile),
+    activeOwnerCount,
+    activating,
+  });
+  const violations = {
+    'self-management': {
+      code: 'permission-denied',
+      message: activating ?
+        'Você não pode reativar sua própria conta por esta tela.' :
+        'Você não pode inativar sua própria conta por esta tela.',
+    },
+    'manager-permission': {
+      code: 'permission-denied',
+      message: 'Você não possui permissão para gerenciar o status de usuários.',
+    },
+    'manager-owner': {
+      code: 'permission-denied',
+      message: 'Gerentes não podem alterar o status de um Dono.',
+    },
+    'store-scope': {
+      code: 'permission-denied',
+      message: 'Você não pode alterar usuários fora do seu escopo de lojas.',
+    },
+    'last-active-owner': {
+      code: 'failed-precondition',
+      message: 'Não é possível inativar este usuário porque ele é o último Dono ativo da empresa.',
+    },
+  };
+  if (violation) {
+    throw new HttpsError(
+        violations[violation].code,
+        violations[violation].message,
+    );
+  }
+};
+
+const getUserStatusAuditStoreIds = async (targetProfile) => {
+  const targetStores = extractStoreIds(targetProfile);
+  if (targetStores.length) return targetStores;
+  const storesSnapshot = await db.collection('lojas').select().get();
+  return storesSnapshot.docs.map((document) => document.id);
+};
+
+const persistUserStatusAndAudit = async ({
+  targetUid,
+  targetProfile,
+  targetAuth,
+  requesterUid,
+  requester,
+  activating,
+  reason,
+  tokensRevoked,
+}) => {
+  const timestamp = admin.firestore.FieldValue.serverTimestamp();
+  const previousStatus = isUserActive(targetProfile) ?
+    USER_STATUS_ACTIVE :
+    USER_STATUS_INACTIVE;
+  const nextStatus = activating ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE;
+  const targetStores = extractStoreIds(targetProfile);
+  const actorProfile = requester.profile || {};
+  const actorEmail = actorProfile.email || '';
+  const commonAudit = {
+    categoria: 'usuarios',
+    tipo: activating ? 'reativacao_usuario' : 'inativacao_usuario',
+    action: activating ? 'Usuário reativado' : 'Usuário inativado',
+    usuarioAfetado: targetProfile.nome || targetAuth.displayName || targetAuth.email || targetUid,
+    usuarioAfetadoUid: targetUid,
+    usuarioAfetadoEmail: targetProfile.email || targetAuth.email || '',
+    perfil: normalizeRole(targetProfile.role),
+    lojaIds: targetStores,
+    statusAnterior: previousStatus,
+    novoStatus: nextStatus,
+    motivo: activating ? '' : reason,
+    realizadoPorUid: requesterUid,
+    realizadoPor: actorProfile.nome || actorEmail || requesterUid,
+    userEmail: actorEmail,
+    timestamp,
+    firebaseAuthentication: {
+      disabled: !activating,
+      tokensRevoked,
+      resultado: 'sucesso',
+    },
+  };
+  const details = activating ?
+    `${commonAudit.usuarioAfetado} (${commonAudit.usuarioAfetadoEmail}) foi reativado com o mesmo perfil, lojas e permissões.` :
+    `${commonAudit.usuarioAfetado} (${commonAudit.usuarioAfetadoEmail}) foi inativado. Motivo: ${reason}. Firebase Auth desabilitado e sessões revogadas.`;
+  const statusPatch = activating ? {
+    ativo: true,
+    status: USER_STATUS_ACTIVE,
+    reativadoEm: timestamp,
+    reativadoPor: requesterUid,
+    updatedAt: timestamp,
+    firebaseAuthDisabled: false,
+  } : {
+    ativo: false,
+    status: USER_STATUS_INACTIVE,
+    inativadoEm: timestamp,
+    inativadoPor: requesterUid,
+    updatedAt: timestamp,
+    firebaseAuthDisabled: true,
+  };
+  const auditStoreIds = await getUserStatusAuditStoreIds(targetProfile);
+  const batch = db.batch();
+  batch.set(db.collection('users').doc(targetUid), statusPatch, {merge: true});
+  if (!activating) {
+    batch.set(db.collection('userStatusMetadata').doc(targetUid), {
+      motivoInativacao: reason,
+      inativadoEm: timestamp,
+      inativadoPor: requesterUid,
+      updatedAt: timestamp,
+    }, {merge: true});
+  }
+  batch.set(db.collection('auditLogs').doc(), {
+    ...commonAudit,
+    details,
+  });
+  auditStoreIds.forEach((storeId) => {
+    const logRef = db.collection('lojas').doc(storeId)
+        .collection('configuracoes').doc(CONFIG_DOC_ID)
+        .collection('logs').doc();
+    batch.set(logRef, {
+      ...commonAudit,
+      details,
+      lojaId: storeId,
+    });
+  });
+  await batch.commit();
+  return {
+    ...statusPatch,
+    ativo: activating,
+    status: nextStatus,
+  };
+};
+
+const changeUserStatus = async (request, activating) => {
+  const requesterUid = request.auth?.uid;
+  const requester = await verifyManagementAccess(requesterUid);
+  const targetUid = typeof request.data?.uid === 'string' ?
+    request.data.uid.trim() :
+    '';
+  const reason = normalizeInactivationReason(request.data?.motivo);
+  if (!targetUid) {
+    throw new HttpsError('invalid-argument', 'UID do usuário é obrigatório.');
+  }
+  if (!activating && !reason) {
+    throw new HttpsError(
+        'invalid-argument',
+        'O motivo da inativação é obrigatório.',
+    );
+  }
+
+  const targetRef = db.collection('users').doc(targetUid);
+  const targetSnapshot = await targetRef.get();
+  if (!targetSnapshot.exists) {
+    throw new HttpsError('not-found', 'Usuário não encontrado.');
+  }
+  const targetProfile = targetSnapshot.data() || {};
+  const targetAuth = await auth.getUser(targetUid).catch((error) => {
+    if (error?.code === 'auth/user-not-found') {
+      throw new HttpsError(
+          'failed-precondition',
+          'O usuário não existe no Firebase Authentication.',
+      );
+    }
+    throw error;
+  });
+  const internalActive = isUserActive(targetProfile);
+  const authActive = targetAuth.disabled !== true;
+  const alreadyInDesiredState = activating ?
+    internalActive && authActive :
+    !internalActive && !authActive;
+  if (alreadyInDesiredState) {
+    return {
+      success: true,
+      unchanged: true,
+      uid: targetUid,
+      ativo: activating,
+      status: activating ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
+      message: activating ?
+        'O usuário já está ativo.' :
+        'O usuário já está inativo.',
+    };
+  }
+
+  await assertCanChangeUserStatus({
+    requester,
+    requesterUid,
+    targetUid,
+    targetProfile,
+    activating,
+  });
+
+  let tokensRevoked = false;
+  if (activating) {
+    await auth.updateUser(targetUid, {disabled: false});
+  } else {
+    await auth.updateUser(targetUid, {disabled: true});
+    await auth.revokeRefreshTokens(targetUid);
+    tokensRevoked = true;
+  }
+
+  const persisted = await persistUserStatusAndAudit({
+    targetUid,
+    targetProfile,
+    targetAuth,
+    requesterUid,
+    requester,
+    activating,
+    reason,
+    tokensRevoked,
+  });
+  return {
+    success: true,
+    unchanged: false,
+    uid: targetUid,
+    ativo: persisted.ativo,
+    status: persisted.status,
+    authDisabled: !activating,
+    tokensRevoked,
+    message: activating ?
+      'Usuário reativado com sucesso.' :
+      'Usuário inativado com sucesso.',
+  };
+};
+
+exports.inativarUsuario = onCall(async (request) => {
+  try {
+    return await changeUserStatus(request, false);
+  } catch (error) {
+    rethrowHttpsError(error);
+    logger.error('Erro ao inativar usuário:', error);
+    throw new HttpsError('internal', 'Não foi possível inativar o usuário.');
+  }
+});
+
+exports.reativarUsuario = onCall(async (request) => {
+  try {
+    return await changeUserStatus(request, true);
+  } catch (error) {
+    rethrowHttpsError(error);
+    logger.error('Erro ao reativar usuário:', error);
+    throw new HttpsError('internal', 'Não foi possível reativar o usuário.');
+  }
 });
 
 // Cria um novo usuário
@@ -2188,6 +2566,11 @@ exports.createUser = onCall(async (request) => {
             }
         }
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
+        await assertManagerCannotGrantUserStatusAccess(
+            requester,
+            null,
+            requestedPermissionDetails,
+        );
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho);
         const sanitizedBankStartDate = normalizePointBankStartDate(dataInicioBancoHoras);
 
@@ -2211,8 +2594,12 @@ exports.createUser = onCall(async (request) => {
             lojaIds: targetStores,
             permissions,
             permissionDetails,
+            ativo: true,
+            status: USER_STATUS_ACTIVE,
             jornadaTrabalho: sanitizedWorkSchedule,
             dataInicioBancoHoras: sanitizedBankStartDate,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         return {uid: userRecord.uid, message: "Usuário criado com sucesso!"};
     } catch (error) {
@@ -2284,6 +2671,11 @@ exports.updateUser = onCall(async (request) => {
         }
 
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
+        await assertManagerCannotGrantUserStatusAccess(
+            requester,
+            uid,
+            requestedPermissionDetails,
+        );
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
         const hasBankStartDatePayload = Object.prototype.hasOwnProperty.call(request.data || {}, "dataInicioBancoHoras");
         const sanitizedBankStartDate = hasBankStartDatePayload
@@ -2517,7 +2909,7 @@ exports.notifyNewOrder = onDocumentCreated({
 Object.assign(exports, createCaixaFunctions({
     admin,
     db,
-    onCall,
+    onCall: onActiveUserCall,
     onDocumentWritten,
     HttpsError,
     logger,
@@ -2526,7 +2918,7 @@ Object.assign(exports, createCaixaFunctions({
 Object.assign(exports, createFiscalFunctions({
     admin,
     db,
-    onCall,
+    onCall: onActiveUserCall,
     HttpsError,
     logger,
     verifyManagementAccess,
@@ -2538,7 +2930,7 @@ Object.assign(exports, createFiscalFunctions({
 Object.assign(exports, createIfoodFunctions({
     admin,
     db,
-    onCall,
+    onCall: onActiveUserCall,
     onRequest,
     onSchedule,
     onDocumentWritten,
@@ -2552,7 +2944,7 @@ Object.assign(exports, createIfoodFunctions({
 Object.assign(exports, createFood99Functions({
     admin,
     db,
-    onCall,
+    onCall: onActiveUserCall,
     onRequest,
     onSchedule,
     onDocumentWritten,
