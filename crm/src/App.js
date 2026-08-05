@@ -3,7 +3,8 @@ import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
   Clock, Edit, Trash2, Eye, X, Save, MessageCircle, Cake, Gift, ChevronLeft, ChevronRight, Printer, Home, Store, BookOpen, Instagram, MapPin, Image as ImageIcon, MessageSquare, VolumeX, ArrowUpCircle, ArrowDownCircle, Banknote, PackagePlus, Ticket,
-  Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle, Download // Ícone adicionado
+  Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle, Download,
+  UserX, UserCheck
 } from 'lucide-react';
 
 // --- CORREÇÃO ---
@@ -84,7 +85,10 @@ const ROLE_ACCOUNTANT = 'contador';
 const ROLE_CLIENT = 'cliente';
 const ROLE_DEFAULT = ROLE_ATTENDANT;
 const CLIENT_ADMIN_ACCESS_DENIED = 'auth/client-admin-access-denied';
+const USER_INACTIVE_ACCESS_DENIED = 'auth/user-inactive';
 const STORE_ALL_KEY = '__all__';
+const USER_STATUS_ACTIVE = 'ativo';
+const USER_STATUS_INACTIVE = 'inativo';
 const DEFAULT_NCM_PRODUCT = '19059090';
 const NCM_PRODUCT_OPTIONS = [
   { value: '19059090', label: '1905.90.90 - bolo, bolo de pote, torta, brownie, cupcake etc.' },
@@ -675,6 +679,9 @@ const refreshFirebaseTokenSilently = async (contextLabel, { force = false } = {}
 };
 
 const getGoogleAuthErrorMessage = (error, strategy = {}) => {
+  if (error?.code === 'auth/user-disabled' || error?.code === USER_INACTIVE_ACCESS_DENIED) {
+    return 'Sua conta está inativa. Entre em contato com o responsável pela empresa.';
+  }
   if (error?.code === 'auth/popup-closed-by-user') {
     return 'A janela do Google foi fechada antes de concluir o login. Toque em “Entrar com Google” novamente e aguarde voltar para o sistema.';
   }
@@ -1251,6 +1258,7 @@ const sanitizePermissions = (permissions, role) => {
 
 const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
   const permissions = permissionsInput || getDefaultPermissionsForRole(role);
+  const normalizedRole = normalizeRole(role);
   return {
     'entre-lojas': {
       statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : []
@@ -1258,6 +1266,9 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
     caixa: permissions?.fornecedores
       ? getDefaultCaixaPermissionsForRole(role)
       : getEmptyCaixaPermissions(),
+    configuracoes: {
+      gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER,
+    },
   };
 };
 
@@ -1266,6 +1277,8 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
   const details = permissionDetails && typeof permissionDetails === 'object' ? permissionDetails : null;
   const entreLojasDetails = details?.['entre-lojas'] || details?.entreLojas || null;
   const caixaDetails = details?.caixa || details?.cash || null;
+  const configuracoesDetails = details?.configuracoes || details?.settings || {};
+  const normalizedRole = normalizeRole(role);
   const rawStatuses = permissions?.['entre-lojas'] && entreLojasDetails
     ? (Array.isArray(entreLojasDetails.statuses)
       ? entreLojasDetails.statuses
@@ -1285,7 +1298,21 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
     caixa: permissions?.fornecedores
       ? sanitizeCaixaPermissions(caixaDetails, role)
       : getEmptyCaixaPermissions(),
+    configuracoes: {
+      gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER || (
+        normalizedRole === ROLE_MANAGER &&
+        configuracoesDetails.gerenciarStatusUsuarios === true
+      ),
+    },
   };
+};
+
+const isUserAccountActive = (profile = {}) => {
+  const status = String(profile.status || '').trim().toLowerCase();
+  return profile.ativo !== false &&
+    profile.authDisabled !== true &&
+    profile.firebaseAuthDisabled !== true &&
+    status !== USER_STATUS_INACTIVE;
 };
 
 const getEntreLojasAllowedStatusesFromProfile = (profile) => {
@@ -1335,6 +1362,9 @@ const buildUserDataFromProfile = (authUser, profile = {}, customProfileData = nu
     permissionDetails,
     customPermissionDetails,
     hasCustomProfile: Boolean(customProfileData),
+    ativo: isUserAccountActive(profile),
+    status: isUserAccountActive(profile) ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
+    authDisabled: profile.authDisabled === true || profile.firebaseAuthDisabled === true,
   };
 };
 
@@ -1354,6 +1384,9 @@ const cacheAuthenticatedProfile = (authUser, userData) => {
     customPermissionDetails: userData.customPermissionDetails || null,
     hasCustomProfile: Boolean(userData.hasCustomProfile),
     canAccessAllStores: Boolean(userData.canAccessAllStores),
+    ativo: userData.ativo !== false,
+    status: userData.status || USER_STATUS_ACTIVE,
+    authDisabled: userData.authDisabled === true,
     updatedAt: Date.now()
   };
 
@@ -1541,7 +1574,7 @@ const Modal = ({ isOpen, onClose, title, children, size = "md", closeOnEscape = 
   const sizeClasses = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
   return ( <div className="fixed inset-0 z-50 flex items-center justify-center p-4"> <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} /> <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col`}> <div className="flex items-center justify-between p-6 border-b border-gray-100"> <h2 className="text-xl font-semibold text-gray-800">{title}</h2> <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"> <X className="w-5 h-5" /> </button> </div> <div className="p-6 overflow-y-auto"> {children} </div> </div> </div> );
 };
-const Button = ({ children, variant = "primary", size = "md", onClick, className = "", disabled = false, type = "button" }) => {
+const Button = ({ children, variant = "primary", size = "md", onClick, className = "", disabled = false, type = "button", title = "" }) => {
   const baseClasses = "font-medium rounded-xl transition-all flex items-center gap-2 justify-center";
   const variants = {
     primary: "bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5",
@@ -1550,7 +1583,7 @@ const Button = ({ children, variant = "primary", size = "md", onClick, className
     danger: "bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl"
   };
   const sizes = { sm: "px-4 py-2 text-sm", md: "px-6 py-3", lg: "px-8 py-4 text-lg" };
-  return (<button type={type} onClick={onClick} disabled={disabled} className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>{children}</button>);
+  return (<button type={type} title={title} onClick={onClick} disabled={disabled} className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>{children}</button>);
 };
 const Input = ({ label, error, className = "", ...props }) => (<div className="space-y-1 w-full">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<input {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${error ? 'border-red-300' : 'border-gray-300'} ${className}`} />{error && <p className="text-sm text-red-600">{error}</p>}</div>);
 const Textarea = ({ label, error, className = "", ...props }) => (<div className="space-y-1">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<textarea {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${error ? 'border-red-300' : 'border-gray-300'} ${className}`} />{error && <p className="text-sm text-red-600">{error}</p>}</div>);
@@ -5468,6 +5501,12 @@ function App() {
         await setDoc(userDocRef, profile, { merge: true });
       }
 
+      if (!isUserAccountActive(profile)) {
+        const accessError = new Error('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+        accessError.code = USER_INACTIVE_ACCESS_DENIED;
+        throw accessError;
+      }
+
       const role = normalizeRole(profile.role);
       if (role === ROLE_CLIENT) {
         const accessError = new Error('Perfil Cliente não pode acessar a aplicação administrativa.');
@@ -5512,7 +5551,11 @@ function App() {
         console.error("Erro ao carregar dados do usuário:", error);
         if (!isMounted) return;
 
-        if (error?.code === CLIENT_ADMIN_ACCESS_DENIED) {
+        if (
+          error?.code === CLIENT_ADMIN_ACCESS_DENIED ||
+          error?.code === USER_INACTIVE_ACCESS_DENIED ||
+          error?.code === 'permission-denied'
+        ) {
           try {
             await signOut(auth);
           } catch (signOutError) {
@@ -5520,7 +5563,9 @@ function App() {
           }
           if (!isMounted) return;
           setUser(null);
-          setLoginError(error.message);
+          setLoginError(error?.code === CLIENT_ADMIN_ACCESS_DENIED
+            ? error.message
+            : 'Sua conta está inativa. Entre em contato com o responsável pela empresa.');
           setShowLogin(true);
           setCurrentPage('pagina-inicial');
           clearGoogleAuthFlow();
@@ -5589,6 +5634,31 @@ function App() {
       unsubscribe();
     };
   }, [stopAlarm, setCurrentPage]);
+
+    useEffect(() => {
+        const uid = user?.auth?.uid;
+        if (!uid) return undefined;
+
+        return onSnapshot(doc(db, 'users', uid), (snapshot) => {
+            if (!snapshot.exists() || isUserAccountActive(snapshot.data() || {})) return;
+            setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+            setShowLogin(true);
+            setCurrentPage('pagina-inicial');
+            signOut(auth).catch((error) => {
+                console.error('Erro ao encerrar sessão de usuário inativo:', error);
+            });
+        }, (error) => {
+            console.error('Erro ao acompanhar status da conta:', error);
+            if (error?.code === 'permission-denied') {
+                setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+                setShowLogin(true);
+                setCurrentPage('pagina-inicial');
+                signOut(auth).catch((signOutError) => {
+                    console.error('Erro ao encerrar sessão sem permissão:', signOutError);
+                });
+            }
+        });
+    }, [user?.auth?.uid, setCurrentPage]);
 
     useEffect(() => {
         if (!user?.auth?.uid) return undefined;
@@ -5756,7 +5826,9 @@ function App() {
             setCurrentPage('dashboard');
              // O onAuthStateChanged cuidará de inicializar o AudioManager se necessário
         } catch (error) {
-            if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+            if (error.code === 'auth/user-disabled') {
+                setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+            } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
                 setLoginError('Email ou senha inválidos.');
             } else {
                  console.error("Erro no login:", error);
@@ -6082,6 +6154,10 @@ function App() {
     });
     const [supplementalPeriodError, setSupplementalPeriodError] = useState('');
     const [savingSupplementalPeriod, setSavingSupplementalPeriod] = useState(false);
+    const activeEmployees = useMemo(
+      () => employees.filter((employee) => isUserAccountActive(employee)),
+      [employees]
+    );
 
     const hasPointManagementPermission = user?.permissions?.['meu-espaco'] !== false
       && user?.permissionDetails?.['meu-espaco']?.managePoint !== false;
@@ -7560,9 +7636,13 @@ function App() {
     const openManualPointModal = (defaults = {}) => {
       if (!isManager) return;
       const baseDay = defaults.dia || activeDayFilter || selectedDay || todayKey;
+      const requestedEmployeeId = defaults.funcionarioId || (selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : '');
+      const requestedEmployee = employees.find((item) => item.id === requestedEmployeeId);
       setManualPointForm({
         tipoLancamento: defaults.tipoLancamento || 'manual',
-        funcionarioId: defaults.funcionarioId || (selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : ''),
+        funcionarioId: requestedEmployee && isUserAccountActive(requestedEmployee)
+          ? requestedEmployeeId
+          : '',
         dia: baseDay,
         horaEntrada: '',
         horaAlmocoSaida: '',
@@ -7594,6 +7674,11 @@ function App() {
         manualPointForm.horaAlmocoRetorno,
         manualPointForm.horaSaida
       ].some(Boolean);
+
+      if (employee && !isUserAccountActive(employee)) {
+        setManualPointError('Usuários inativos não podem receber novos lançamentos.');
+        return;
+      }
 
       if (!employee) {
         setManualPointError('Selecione a colaboradora.');
@@ -8800,7 +8885,7 @@ function App() {
                 required
               >
                 <option value="">Selecione</option>
-                {employees.map((employee) => (
+                {activeEmployees.map((employee) => (
                   <option key={employee.id} value={employee.id}>{getEmployeeDisplayName(employee)}</option>
                 ))}
               </Select>
@@ -10090,8 +10175,17 @@ function App() {
     const [userExcludeTerm, setUserExcludeTerm] = useState('');
     const [userEmailFilter, setUserEmailFilter] = useState('any');
     const [userRoleFilter, setUserRoleFilter] = useState('all');
+    const [userStatusFilter, setUserStatusFilter] = useState('all');
     const [showUserModal, setShowUserModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [userStatusModal, setUserStatusModal] = useState({
+        isOpen: false,
+        usuario: null,
+        activating: false,
+        motivo: '',
+        error: '',
+        submitting: false,
+    });
     const [editingUser, setEditingUser] = useState(null);
     const [selectedExistingUserId, setSelectedExistingUserId] = useState('');
     const [userFormData, setUserFormData] = useState({
@@ -10111,6 +10205,10 @@ function App() {
     const [newPassword, setNewPassword] = useState("");
 
     const getUsuarioId = useCallback((usuario) => usuario?.uid || usuario?.id || '', []);
+    const canManageUserStatus = user?.role === ROLE_OWNER || (
+        user?.role === ROLE_MANAGER &&
+        user?.permissionDetails?.configuracoes?.gerenciarStatusUsuarios === true
+    );
 	
 	const effectiveStoreId = useMemo(() => {
 	if (!user) return null;
@@ -10153,18 +10251,21 @@ const effectiveStoreName = useMemo(() => {
             const name = (usuario.nome || '').toLowerCase();
             const email = (usuario.email || '').trim();
             const role = (usuario.role || '').toLowerCase();
+            const active = isUserAccountActive(usuario);
 
-            if (search && !name.includes(search)) return false;
+            if (search && !name.includes(search) && !email.toLowerCase().includes(search)) return false;
             if (exclude && name.includes(exclude)) return false;
 
             if (userEmailFilter === 'empty' && email) return false;
             if (userEmailFilter === 'filled' && !email) return false;
 
             if (userRoleFilter !== 'all' && role !== userRoleFilter.toLowerCase()) return false;
+            if (userStatusFilter === USER_STATUS_ACTIVE && !active) return false;
+            if (userStatusFilter === USER_STATUS_INACTIVE && active) return false;
 
             return true;
         });
-    }, [usuarios, userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter]);
+    }, [usuarios, userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter, userStatusFilter]);
 
     const visibleUserIds = useMemo(() => {
         return (filteredUsuarios || []).map(getUsuarioId).filter(Boolean);
@@ -10192,15 +10293,17 @@ const effectiveStoreName = useMemo(() => {
             userSearchTerm.trim() ||
             userExcludeTerm.trim() ||
             userEmailFilter !== 'any' ||
-            userRoleFilter !== 'all'
+            userRoleFilter !== 'all' ||
+            userStatusFilter !== 'all'
         );
-    }, [userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter]);
+    }, [userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter, userStatusFilter]);
 
     const handleClearUserFilters = useCallback(() => {
         setUserSearchTerm('');
         setUserExcludeTerm('');
         setUserEmailFilter('any');
         setUserRoleFilter('all');
+        setUserStatusFilter('all');
     }, []);
 
     const handleToggleUserSelection = useCallback((usuario, checked) => {
@@ -10241,9 +10344,12 @@ const effectiveStoreName = useMemo(() => {
                                 ? u.lojaIds
                                 : (u.lojaId ? [u.lojaId] : []);
                             const normalizedRole = normalizeRole(u.role);
+                            const active = isUserAccountActive(u);
                             return {
                                 ...u,
                                 role: normalizedRole,
+                                ativo: active,
+                                status: active ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
                                 lojaIds: lojas,
                                 lojaId: lojas[0] || null,
                                 permissions: sanitizePermissions(u.permissions, normalizedRole),
@@ -10538,6 +10644,97 @@ const effectiveStoreName = useMemo(() => {
         setShowUserModal(true);
     };
 
+    const closeUserStatusModal = () => {
+        if (userStatusModal.submitting) return;
+        setUserStatusModal({
+            isOpen: false,
+            usuario: null,
+            activating: false,
+            motivo: '',
+            error: '',
+            submitting: false,
+        });
+    };
+
+    const handleOpenUserStatusModal = (usuario) => {
+        if (!canManageUserStatus) return;
+        const targetUid = getUsuarioId(usuario);
+        const activating = !isUserAccountActive(usuario);
+        if (!activating && targetUid === user?.auth?.uid) {
+            alert('Você não pode inativar sua própria conta por esta tela.');
+            return;
+        }
+        setUserStatusModal({
+            isOpen: true,
+            usuario,
+            activating,
+            motivo: '',
+            error: '',
+            submitting: false,
+        });
+    };
+
+    const handleUserStatusSubmit = async (event) => {
+        event.preventDefault();
+        const target = userStatusModal.usuario;
+        const uid = getUsuarioId(target);
+        const motivo = userStatusModal.motivo.trim();
+        if (!uid) return;
+        if (!userStatusModal.activating && !motivo) {
+            setUserStatusModal((current) => ({
+                ...current,
+                error: 'O motivo da inativação é obrigatório.',
+            }));
+            return;
+        }
+
+        setUserStatusModal((current) => ({
+            ...current,
+            error: '',
+            submitting: true,
+        }));
+        try {
+            const functionName = userStatusModal.activating
+                ? 'reativarUsuario'
+                : 'inativarUsuario';
+            const changeStatus = httpsCallable(functions, functionName);
+            const result = await changeStatus({
+                uid,
+                ...(userStatusModal.activating ? {} : {motivo}),
+            });
+            const active = result.data?.ativo === true;
+            setUsuarios((currentUsers) => currentUsers.map((usuario) => (
+                getUsuarioId(usuario) === uid
+                    ? {
+                        ...usuario,
+                        ativo: active,
+                        status: active ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
+                        authDisabled: !active,
+                        ...(!active ? {motivoInativacao: motivo} : {}),
+                    }
+                    : usuario
+            )));
+            setUserStatusModal({
+                isOpen: false,
+                usuario: null,
+                activating: false,
+                motivo: '',
+                error: '',
+                submitting: false,
+            });
+            alert(result.data?.message || (active
+                ? 'Usuário reativado com sucesso!'
+                : 'Usuário inativado com sucesso!'));
+        } catch (error) {
+            console.error('Erro ao alterar status do usuário:', error);
+            setUserStatusModal((current) => ({
+                ...current,
+                error: error.message || 'Não foi possível alterar o status do usuário.',
+                submitting: false,
+            }));
+        }
+    };
+
     const handleExistingUserSelect = async (uid) => {
         setSelectedExistingUserId(uid);
         if (!uid) {
@@ -10688,9 +10885,12 @@ const effectiveStoreName = useMemo(() => {
                             ? u.lojaIds
                             : (u.lojaId ? [u.lojaId] : []);
                         const normalizedRole = normalizeRole(u.role);
+                        const active = isUserAccountActive(u);
                         return {
                             ...u,
                             role: normalizedRole,
+                            ativo: active,
+                            status: active ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
                             lojaIds: lojas,
                             lojaId: lojas[0] || null,
                             permissions: sanitizePermissions(u.permissions, normalizedRole),
@@ -11087,6 +11287,15 @@ const effectiveStoreName = useMemo(() => {
         return <span className={`px-3 py-1 rounded-full text-xs font-medium ${roleClass}`}>{normalizedRole}</span>;
     };
 
+    const renderUserStatusBadge = (row) => {
+        const active = isUserAccountActive(row);
+        return (
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                {active ? 'Ativo' : 'Inativo'}
+            </span>
+        );
+    };
+
     const getUserStoreLabel = (row) => {
         const lojas = Array.isArray(row.lojaIds) ? row.lojaIds : (row.lojaId ? [row.lojaId] : []);
         if (normalizeRole(row.role) === ROLE_OWNER && lojas.length === 0) {
@@ -11098,10 +11307,29 @@ const effectiveStoreName = useMemo(() => {
         return lojas.map((id) => storeInfoMap[id]?.nome || id).join(', ');
     };
 
-    const userActions = [ 
-        { icon: Edit, label: "Editar", onClick: handleEditUser }, 
+    const userActions = [
+        { icon: Edit, label: "Editar", onClick: handleEditUser },
         { icon: Key, label: "Alterar Senha", onClick: (u) => { setEditingUser(u); setShowPasswordModal(true); } },
-        { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => handleDeleteUser(row) }) } 
+        {
+            icon: UserX,
+            getIcon: (row) => isUserAccountActive(row) ? UserX : UserCheck,
+            label: (row) => isUserAccountActive(row) ? 'Inativar usuário' : 'Reativar usuário',
+            visible: (row) => canManageUserStatus && !(
+                user?.role === ROLE_MANAGER && normalizeRole(row.role) === ROLE_OWNER
+            ),
+            onClick: handleOpenUserStatusModal,
+        },
+        {
+            icon: Trash2,
+            label: "Excluir",
+            onClick: (row) => setConfirmDelete({
+                isOpen: true,
+                title: 'Excluir usuário',
+                message: 'Este usuário pode possuir histórico na plataforma. Considere inativá-lo em vez de excluir. Deseja continuar com a exclusão definitiva?',
+                confirmLabel: 'Excluir usuário',
+                onConfirm: () => handleDeleteUser(row),
+            }),
+        },
     ];
     
     const cupomColumns = [
@@ -11178,10 +11406,10 @@ const effectiveStoreName = useMemo(() => {
                             Limpar filtros
                         </Button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                         <Input
-                            label="Buscar por nome"
-                            placeholder="Ex: Ana"
+                            label="Buscar por nome ou e-mail"
+                            placeholder="Ex: Ana ou ana@email.com"
                             value={userSearchTerm}
                             onChange={(e) => setUserSearchTerm(e.target.value)}
                         />
@@ -11211,6 +11439,15 @@ const effectiveStoreName = useMemo(() => {
                                     {roleOption.charAt(0).toUpperCase() + roleOption.slice(1)}
                                 </option>
                             ))}
+                        </Select>
+                        <Select
+                            label="Status"
+                            value={userStatusFilter}
+                            onChange={(e) => setUserStatusFilter(e.target.value)}
+                        >
+                            <option value="all">Todos</option>
+                            <option value={USER_STATUS_ACTIVE}>Ativos</option>
+                            <option value={USER_STATUS_INACTIVE}>Inativos</option>
                         </Select>
                     </div>
                 </div>
@@ -11282,6 +11519,7 @@ const effectiveStoreName = useMemo(() => {
                                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Email</th>
                                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Permissão</th>
                                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Loja</th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
                                             <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">Ações</th>
                                         </tr>
                                     </thead>
@@ -11306,13 +11544,15 @@ const effectiveStoreName = useMemo(() => {
                                                     <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{usuario.email}</td>
                                                     <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{renderUserRoleBadge(usuario)}</td>
                                                     <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{getUserStoreLabel(usuario)}</td>
+                                                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{renderUserStatusBadge(usuario)}</td>
                                                     <td className="px-6 py-4 text-right">
                                                         <div className="flex justify-end gap-2">
-                                                            {userActions.map((action, actionIndex) => {
+                                                            {userActions.filter((action) => !action.visible || action.visible(usuario)).map((action, actionIndex) => {
                                                                 const actionLabel = typeof action.label === 'function' ? action.label(usuario) : action.label;
+                                                                const ActionIcon = action.getIcon ? action.getIcon(usuario) : action.icon;
                                                                 return (
                                                                     <button key={actionIndex} onClick={() => action.onClick(usuario)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title={actionLabel}>
-                                                                        <action.icon className="w-4 h-4 text-gray-600" />
+                                                                        <ActionIcon className="w-4 h-4 text-gray-600" />
                                                                     </button>
                                                                 );
                                                             })}
@@ -11346,11 +11586,12 @@ const effectiveStoreName = useMemo(() => {
                                                 Selecionar
                                             </label>
                                             <div className="flex justify-end gap-2">
-                                                {userActions.map((action, actionIndex) => {
+                                                {userActions.filter((action) => !action.visible || action.visible(usuario)).map((action, actionIndex) => {
                                                     const actionLabel = typeof action.label === 'function' ? action.label(usuario) : action.label;
+                                                    const ActionIcon = action.getIcon ? action.getIcon(usuario) : action.icon;
                                                     return (
                                                         <button key={actionIndex} onClick={() => action.onClick(usuario)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700" title={actionLabel}>
-                                                            <action.icon className="w-4 h-4" />
+                                                            <ActionIcon className="w-4 h-4" />
                                                         </button>
                                                     );
                                                 })}
@@ -11368,6 +11609,10 @@ const effectiveStoreName = useMemo(() => {
                                             <div>
                                                 <p className="text-xs text-gray-500">Loja</p>
                                                 <p className="mt-1 text-gray-900">{getUserStoreLabel(usuario)}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Status</p>
+                                                <div className="mt-1">{renderUserStatusBadge(usuario)}</div>
                                             </div>
                                         </div>
                                     </div>
@@ -11987,6 +12232,7 @@ const effectiveStoreName = useMemo(() => {
                                 const isRestrictedAccountantModule = normalizedFormRole === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id);
                                 const isEntreLojas = item.id === 'entre-lojas';
                                 const isFornecedores = item.id === 'fornecedores';
+                                const isConfiguracoes = item.id === 'configuracoes';
                                 const supportsCashPermissions = [ROLE_ATTENDANT, ROLE_MANAGER, ROLE_OWNER].includes(normalizedFormRole);
                                 const sanitizedFormPermissions = sanitizePermissions(userFormData.permissions, userFormData.role);
                                 const isRequiredAttendantModule = normalizedFormRole === ROLE_ATTENDANT && isFornecedores;
@@ -11998,9 +12244,10 @@ const effectiveStoreName = useMemo(() => {
                                 );
                                 const selectedEntreLojasStatuses = sanitizedDetails['entre-lojas']?.statuses || [];
                                 const selectedCaixaPermissions = sanitizedDetails.caixa || getEmptyCaixaPermissions();
+                                const canManageUserStatuses = sanitizedDetails.configuracoes?.gerenciarStatusUsuarios === true;
 
                                 return (
-                                    <div key={item.id} className={(isEntreLojas || isFornecedores) && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
+                                    <div key={item.id} className={(isEntreLojas || isFornecedores || isConfiguracoes) && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
                                         <label
                                             className={`flex items-center gap-2 text-sm text-gray-700 ${!userFormData.applyCustomProfile ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             title={`Permitir acesso ao menu "${item.label}"`}
@@ -12104,6 +12351,40 @@ const effectiveStoreName = useMemo(() => {
                                             </div>
                                         )}
 
+                                        {isConfiguracoes && moduleChecked && normalizeRole(userFormData.role) === ROLE_MANAGER && userFormData.applyCustomProfile && (
+                                            <div className="ml-6 rounded-xl border border-pink-100 bg-white p-3 space-y-2">
+                                                <p className="text-xs font-semibold text-gray-800">Permissões internas de Usuários</p>
+                                                <label className="flex items-start gap-2 text-xs text-gray-700">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="mt-0.5"
+                                                        checked={canManageUserStatuses}
+                                                        disabled={user?.role !== ROLE_OWNER}
+                                                        onChange={(event) => {
+                                                            setUserFormData((prev) => {
+                                                                const currentPermissions = sanitizePermissions(prev.permissions, prev.role);
+                                                                const currentDetails = sanitizePermissionDetails(prev.permissionDetails, prev.role, currentPermissions);
+                                                                return {
+                                                                    ...prev,
+                                                                    permissionDetails: {
+                                                                        ...currentDetails,
+                                                                        configuracoes: {
+                                                                            ...currentDetails.configuracoes,
+                                                                            gerenciarStatusUsuarios: event.target.checked,
+                                                                        },
+                                                                    },
+                                                                };
+                                                            });
+                                                        }}
+                                                    />
+                                                    <span>Permitir inativar e reativar usuários das lojas às quais este gerente pertence.</span>
+                                                </label>
+                                                {user?.role !== ROLE_OWNER && (
+                                                    <p className="text-xs text-gray-500">Somente um Dono pode conceder ou remover esta permissão.</p>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {isFornecedores && moduleChecked && userFormData.applyCustomProfile && (
                                             <div className="ml-6 rounded-xl border border-pink-100 bg-white p-3 space-y-3">
                                                 <div>
@@ -12159,6 +12440,78 @@ const effectiveStoreName = useMemo(() => {
                         <Button type="submit">
                             <Save className="w-4 h-4" />
                             Salvar
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
+
+            <Modal
+                isOpen={userStatusModal.isOpen}
+                onClose={closeUserStatusModal}
+                title={userStatusModal.activating ? 'Reativar usuário' : 'Inativar usuário'}
+                size="sm"
+            >
+                <form onSubmit={handleUserStatusSubmit} className="space-y-4">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-2 text-sm">
+                        <div><span className="font-semibold text-gray-700">Nome:</span> {userStatusModal.usuario?.nome || 'Não informado'}</div>
+                        <div><span className="font-semibold text-gray-700">E-mail:</span> {userStatusModal.usuario?.email || 'Não informado'}</div>
+                        <div className="flex items-center gap-2"><span className="font-semibold text-gray-700">Perfil:</span> {userStatusModal.usuario ? renderUserRoleBadge(userStatusModal.usuario) : null}</div>
+                        <div><span className="font-semibold text-gray-700">Loja(s):</span> {userStatusModal.usuario ? getUserStoreLabel(userStatusModal.usuario) : 'Não definida'}</div>
+                    </div>
+
+                    <div className={`rounded-xl border p-4 text-sm ${userStatusModal.activating ? 'border-green-100 bg-green-50 text-green-900' : 'border-amber-100 bg-amber-50 text-amber-900'}`}>
+                        {userStatusModal.activating ? (
+                            <p>Deseja reativar este usuário?<br /><br />O acesso será restaurado com o mesmo perfil, lojas e permissões que ele possuía anteriormente.</p>
+                        ) : (
+                            <p>Deseja inativar este usuário?<br /><br />O usuário perderá o acesso à plataforma, mas todos os registros, lançamentos e históricos serão preservados.</p>
+                        )}
+                    </div>
+
+                    {!userStatusModal.activating && (
+                        <div className="space-y-1">
+                            <label className="block text-sm font-medium text-gray-700" htmlFor="motivo-inativacao">
+                                Motivo da inativação <span className="text-red-600">*</span>
+                            </label>
+                            <textarea
+                                id="motivo-inativacao"
+                                value={userStatusModal.motivo}
+                                onChange={(event) => setUserStatusModal((current) => ({
+                                    ...current,
+                                    motivo: event.target.value,
+                                    error: '',
+                                }))}
+                                className="w-full min-h-24 rounded-xl border border-gray-300 px-4 py-3 focus:border-pink-500 focus:ring-2 focus:ring-pink-500"
+                                maxLength={1000}
+                                required
+                                disabled={userStatusModal.submitting}
+                            />
+                        </div>
+                    )}
+
+                    {userStatusModal.error && (
+                        <p className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-700">
+                            {userStatusModal.error}
+                        </p>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button
+                            variant="secondary"
+                            type="button"
+                            onClick={closeUserStatusModal}
+                            disabled={userStatusModal.submitting}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            variant={userStatusModal.activating ? 'primary' : 'danger'}
+                            type="submit"
+                            disabled={userStatusModal.submitting}
+                        >
+                            {userStatusModal.activating ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+                            {userStatusModal.submitting
+                                ? 'Salvando...'
+                                : (userStatusModal.activating ? 'Reativar usuário' : 'Inativar usuário')}
                         </Button>
                     </div>
                 </form>
