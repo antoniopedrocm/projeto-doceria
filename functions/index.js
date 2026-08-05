@@ -19,6 +19,7 @@ const {createFiscalFunctions} = require('./fiscal');
 const {createIfoodFunctions} = require('./ifood');
 const {createFood99Functions} = require('./food99');
 const {createCaixaFunctions} = require('./caixa');
+const {createEntreLojasFunctions} = require('./entre-lojas');
 const {
   defaultCashPermissions,
   sanitizeCashPermissions,
@@ -2519,6 +2520,14 @@ Object.assign(exports, createCaixaFunctions({
     db,
     onCall,
     onDocumentWritten,
+    HttpsError,
+    logger,
+}));
+
+Object.assign(exports, createEntreLojasFunctions({
+    admin,
+    db,
+    onCall,
     HttpsError,
     logger,
 }));

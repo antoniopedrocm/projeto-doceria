@@ -54,6 +54,11 @@ import {
 } from './caixa/caixaCore';
 import { obterRegistroDiarioCaixa, registrarRetiradaDespesaCaixa } from './services/caixaService';
 import PostClosingConfirmation from './components/caixa/PostClosingConfirmation';
+import {
+  getClosingActionPermissions,
+  getEntreLojasStoreRelation,
+  getTransferActionPermissions
+} from './utils/entreLojasPermissions';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
@@ -11227,8 +11232,6 @@ const handleSubmit = async (e) => {
       return [];
     }, [availableStores, user, userStoreIds]);
 
-    const canMarkAsPaid = user?.role === ROLE_OWNER || user?.role === ROLE_MANAGER;
-    const canConfirmPaymentByRole = user?.role === ROLE_OWNER || user?.role === ROLE_MANAGER;
     const isEditingTransfer = !!editingTransfer?.id;
     const isEditingClosing = !!editingClosing?.id;
     const canChangeOriginStore = allowedOriginStoreIds.length > 1;
@@ -11931,13 +11934,22 @@ const handleSubmit = async (e) => {
       }, { quantidadeRemessas: 0, quantidadeRemessasPagas: 0, quantidadeTotalItens: 0, totalRepasse: 0, totalRevenda: 0, totalPagoRepasse: 0, totalPagoRevenda: 0 });
     };
 
-    const buildClosingHistoryEntry = (acao, status, comentario) => ({
+    const buildEntreLojasAuditContext = (record) => ({
+      usuarioPerfil: user?.role || '',
+      usuarioLojaIds: allowedStoreIds,
+      relacaoAutorizacao: getEntreLojasStoreRelation({ user, record })
+    });
+
+    const buildClosingHistoryEntry = (acao, status, comentario, record = null) => ({
       acao,
       status,
+      statusAnterior: record?.status || null,
+      statusNovo: status,
       data: Timestamp.now(),
       usuarioUid: user?.auth?.uid || '',
       usuarioNome: user?.name || user?.email || '',
-      comentario
+      comentario,
+      ...buildEntreLojasAuditContext(record)
     });
 
     const addItemToTransfer = () => {
@@ -12204,28 +12216,36 @@ const handleSubmit = async (e) => {
       return false;
     };
 
-    const isOriginStoreAllowed = (transfer) => {
-      if (!transfer) return false;
-      if (user?.role === ROLE_OWNER) return true;
-      const originId = normalizeStoreId(transfer.lojaOrigemId);
-      return allowedStoreIds.includes(originId);
+    const getTransferPermissions = (transfer) => {
+      const linkedClosing = transfer?.fechamentoId
+        ? fechamentos.find((closing) => closing.id === transfer.fechamentoId)
+        : null;
+      return getTransferActionPermissions({
+        user,
+        transfer,
+        linkedClosingStatus: linkedClosing?.status || transfer?.fechamentoStatus || null,
+        lockedForEdit: isTransferLockedForEdit(transfer)
+      });
     };
 
     const canEditTransfer = (transfer) => {
       if (!user || !transfer) return false;
-      if (isTransferLockedForEdit(transfer)) return false;
-      if (user.role === ROLE_OWNER) return true;
-      if (user.role === ROLE_MANAGER || user.role === ROLE_ATTENDANT) return isOriginStoreAllowed(transfer);
-      return false;
+      return getTransferPermissions(transfer).canEdit;
     };
 
     const canDeleteTransfer = (transfer) => {
       if (!user || !transfer) return false;
-      return ['rascunho', 'aguardando_conferencia'].includes(transfer.status) && isOriginStoreAllowed(transfer);
+      return getTransferPermissions(transfer).canDelete;
     };
 
     const recalculateClosingTotals = async (fechamentoId) => {
       if (!fechamentoId) return;
+
+      if (user?.role === ROLE_MANAGER) {
+        const recalculateClosing = httpsCallable(functions, 'recalculateEntreLojasClosing');
+        await recalculateClosing({ fechamentoId });
+        return;
+      }
 
       await runTransaction(db, async (transaction) => {
         const closingRef = doc(db, 'fechamentosEntreLojas', fechamentoId);
@@ -12406,34 +12426,17 @@ const handleSubmit = async (e) => {
     const canActOnTransfer = (transfer, action) => {
       if (!user || !transfer) return false;
       if (!canReadTransferForCurrentViewer(transfer)) return false;
-      const linkedClosing = transfer.fechamentoId ? fechamentos.find((closing) => closing.id === transfer.fechamentoId) : null;
-      const linkedClosingStatus = linkedClosing?.status || transfer.fechamentoStatus;
-      if (
-        transfer.fechamentoId
-        && linkedClosingStatus
-        && linkedClosingStatus !== 'aberto'
-        && user.role !== ROLE_OWNER
-        && ['conferir', 'marcar_pago', 'cancelar'].includes(action)
-      ) {
-        return false;
-      }
-      if (action === 'editar_remessa') return canEditTransfer(transfer);
-      if (action === 'excluir_remessa') return canDeleteTransfer(transfer);
-      if (action === 'cancelar') {
-        const originAllowed = user.role === ROLE_OWNER || allowedStoreIds.includes(normalizeStoreId(transfer.lojaOrigemId));
-        return originAllowed && !['pagamento_confirmado', 'cancelado', 'cancelada'].includes(transfer.status);
-      }
-      if (transfer.fechamentoId && ['confirmar_pagamento', 'contestar_pagamento'].includes(action)) {
-        return false;
-      }
-      if (user.role === ROLE_OWNER) return true;
-      const originAllowed = allowedStoreIds.includes(normalizeStoreId(transfer.lojaOrigemId));
-      const destinationAllowed = allowedStoreIds.includes(normalizeStoreId(transfer.lojaDestinoId));
-      if (action === 'conferir') return destinationAllowed;
-      if (action === 'marcar_pago') return canMarkAsPaid && destinationAllowed;
-      if (action === 'confirmar_pagamento') return canConfirmPaymentByRole && originAllowed;
-      if (action === 'contestar_pagamento') return canConfirmPaymentByRole && originAllowed;
-      return originAllowed || destinationAllowed;
+      const permissions = getTransferPermissions(transfer);
+      const permissionByAction = {
+        conferir: permissions.canConfirmWithoutDivergence && permissions.canConfirmWithDivergence,
+        marcar_pago: permissions.canMarkAsPaid,
+        confirmar_pagamento: permissions.canConfirmPayment,
+        contestar_pagamento: permissions.canContestPayment,
+        editar_remessa: permissions.canEdit,
+        excluir_remessa: permissions.canDelete,
+        cancelar: permissions.canCancel
+      };
+      return permissionByAction[action] === true;
     };
 
     const deleteTransfer = async (transfer) => {
@@ -12473,7 +12476,10 @@ const handleSubmit = async (e) => {
           ...historyEntry,
           data: Timestamp.now(),
           usuarioUid: user?.auth?.uid || '',
-          usuarioNome: user?.name || user?.email || ''
+          usuarioNome: user?.name || user?.email || '',
+          statusAnterior: transfer.status || null,
+          statusNovo: payload.status || transfer.status || null,
+          ...buildEntreLojasAuditContext(transfer)
         })
       });
     };
@@ -12588,36 +12594,36 @@ const handleSubmit = async (e) => {
       return false;
     };
 
+    const getClosingPermissions = (closing) => getClosingActionPermissions({
+      user,
+      closing
+    });
+
     const canEditClosing = (closing) => {
       if (!user || !closing) return false;
-      if (closing.status !== 'aberto') return false;
-      if (user.role === ROLE_OWNER) return true;
-      if (user.role === ROLE_MANAGER) return isStoreAllowedForUser(closing.lojaOrigemId) || isStoreAllowedForUser(closing.lojaDestinoId);
-      return false;
+      return getClosingPermissions(closing).canEdit;
     };
 
-    const canCloseClosing = (closing) => canEditClosing(closing);
+    const canCloseClosing = (closing) => getClosingPermissions(closing).canClose;
     const canPayClosing = (closing) => {
-      if (!user || !closing || !['fechado', 'pagamento_contestado'].includes(closing.status)) return false;
-      if (user.role === ROLE_OWNER) return true;
-      return user.role === ROLE_MANAGER && isStoreAllowedForUser(closing.lojaDestinoId);
+      if (!user || !closing) return false;
+      return getClosingPermissions(closing).canMarkAsPaid;
     };
     const canConfirmClosingPayment = (closing) => {
-      if (!user || !closing || closing.status !== 'pagamento_informado') return false;
-      if (user.role === ROLE_OWNER) return true;
-      return user.role === ROLE_MANAGER && isStoreAllowedForUser(closing.lojaOrigemId);
+      if (!user || !closing) return false;
+      return getClosingPermissions(closing).canConfirmPayment;
     };
-    const canContestClosingPayment = canConfirmClosingPayment;
+    const canContestClosingPayment = (closing) => {
+      if (!user || !closing) return false;
+      return getClosingPermissions(closing).canContestPayment;
+    };
     const canCancelClosing = (closing) => {
-      if (!user || !closing || closing.status === 'pagamento_confirmado') return false;
-      if (user.role === ROLE_OWNER) return true;
-      return user.role === ROLE_MANAGER && (isStoreAllowedForUser(closing.lojaOrigemId) || isStoreAllowedForUser(closing.lojaDestinoId));
+      if (!user || !closing) return false;
+      return getClosingPermissions(closing).canCancel;
     };
     const canDeleteClosing = (closing) => {
       if (!user || !closing) return false;
-      if (!['aberto', 'cancelado'].includes(closing.status)) return false;
-      if (user.role === ROLE_OWNER) return true;
-      return user.role === ROLE_MANAGER && (isStoreAllowedForUser(closing.lojaOrigemId) || isStoreAllowedForUser(closing.lojaDestinoId));
+      return getClosingPermissions(closing).canDelete;
     };
     const canCreateTransferInClosing = (closing) => {
       if (!user || !closing || closing.status !== 'aberto') return false;
@@ -12628,6 +12634,7 @@ const handleSubmit = async (e) => {
 
     const canMoveTransferToClosing = (transfer, closing) => {
       if (!transfer || !closing || closing.status !== 'aberto') return false;
+      if (!canEditClosing(closing)) return false;
       if (transfer.fechamentoId === closing.id) return false;
       if (normalizeStoreId(transfer.lojaOrigemId) !== normalizeStoreId(closing.lojaOrigemId)) return false;
       if (normalizeStoreId(transfer.lojaDestinoId) !== normalizeStoreId(closing.lojaDestinoId)) return false;
@@ -13046,7 +13053,7 @@ const handleSubmit = async (e) => {
               financeiroContaPagarId: latestClosing.financeiroContaPagarId || null,
               financeiroContaReceberId: latestClosing.financeiroContaReceberId || null
             };
-            historyEntry = buildClosingHistoryEntry('fechamento_fechado', nextStatus, closingActionComment || 'Agrupamento fechado');
+            historyEntry = buildClosingHistoryEntry('fechamento_fechado', nextStatus, closingActionComment || 'Agrupamento fechado', latestClosing);
           }
 
           if (action === 'marcar_pago') {
@@ -13067,7 +13074,7 @@ const handleSubmit = async (e) => {
               dataPagamento: closingPaymentForm.dataPagamento || formatInputDate(new Date()),
               observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
             };
-            historyEntry = buildClosingHistoryEntry('pagamento_informado', nextStatus, closingActionComment || 'Pagamento informado pela loja destino');
+            historyEntry = buildClosingHistoryEntry('pagamento_informado', nextStatus, closingActionComment || 'Pagamento informado', latestClosing);
             transferStatusPayload = {
               status: 'pagamento_informado',
               dataPagamentoInformado: serverTimestamp(),
@@ -13077,7 +13084,11 @@ const handleSubmit = async (e) => {
               dataPagamento: closingPaymentForm.dataPagamento || formatInputDate(new Date()),
               observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
             };
-            transferHistoryEntry = buildClosingHistoryEntry('pagamento_informado_por_fechamento', 'pagamento_informado', closingActionComment || `Pagamento informado no fechamento ${latestClosing.nome || latestClosing.numero || latestClosing.id}`);
+            transferHistoryEntry = {
+              acao: 'pagamento_informado_por_fechamento',
+              status: 'pagamento_informado',
+              comentario: closingActionComment || `Pagamento informado no fechamento ${latestClosing.nome || latestClosing.numero || latestClosing.id}`
+            };
           }
 
           if (action === 'confirmar_pagamento') {
@@ -13095,7 +13106,7 @@ const handleSubmit = async (e) => {
               dataPagamentoConfirmado: serverTimestamp(),
               observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
             };
-            historyEntry = buildClosingHistoryEntry('pagamento_confirmado', nextStatus, closingActionComment || 'Pagamento confirmado pela loja origem');
+            historyEntry = buildClosingHistoryEntry('pagamento_confirmado', nextStatus, closingActionComment || 'Pagamento confirmado pela loja origem', latestClosing);
             transferStatusPayload = {
               status: 'pagamento_confirmado',
               dataPagamentoConfirmado: serverTimestamp(),
@@ -13103,7 +13114,11 @@ const handleSubmit = async (e) => {
               pagamentoConfirmadoPorNome: user?.name || user?.email || '',
               observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
             };
-            transferHistoryEntry = buildClosingHistoryEntry('pagamento_confirmado_por_fechamento', 'pagamento_confirmado', closingActionComment || `Pagamento confirmado no fechamento ${latestClosing.nome || latestClosing.numero || latestClosing.id}`);
+            transferHistoryEntry = {
+              acao: 'pagamento_confirmado_por_fechamento',
+              status: 'pagamento_confirmado',
+              comentario: closingActionComment || `Pagamento confirmado no fechamento ${latestClosing.nome || latestClosing.numero || latestClosing.id}`
+            };
           }
 
           if (action === 'contestar_pagamento') {
@@ -13113,7 +13128,7 @@ const handleSubmit = async (e) => {
               status: nextStatus,
               observacaoPagamento: closingActionComment || latestClosing.observacaoPagamento || ''
             };
-            historyEntry = buildClosingHistoryEntry('pagamento_contestado', nextStatus, closingActionComment || 'Pagamento contestado pela loja origem');
+            historyEntry = buildClosingHistoryEntry('pagamento_contestado', nextStatus, closingActionComment || 'Pagamento contestado pela loja origem', latestClosing);
           }
 
           if (action === 'cancelar') {
@@ -13126,7 +13141,7 @@ const handleSubmit = async (e) => {
               canceladoPorNome: user?.name || user?.email || '',
               observacaoCancelamento: closingActionComment || ''
             };
-            historyEntry = buildClosingHistoryEntry('fechamento_cancelado', nextStatus, closingActionComment || 'Fechamento cancelado');
+            historyEntry = buildClosingHistoryEntry('fechamento_cancelado', nextStatus, closingActionComment || 'Fechamento cancelado', latestClosing);
           }
 
           if (!historyEntry) return;
@@ -13144,7 +13159,14 @@ const handleSubmit = async (e) => {
               ...(shouldApplyPaymentStatus ? transferStatusPayload : {}),
               fechamentoStatus: nextStatus,
               dataAtualizacao: serverTimestamp(),
-              ...(shouldApplyPaymentStatus && transferHistoryEntry ? { historico: arrayUnion(transferHistoryEntry) } : {})
+              ...(shouldApplyPaymentStatus && transferHistoryEntry ? {
+                historico: arrayUnion(buildClosingHistoryEntry(
+                  transferHistoryEntry.acao,
+                  transferHistoryEntry.status,
+                  transferHistoryEntry.comentario,
+                  transfer
+                ))
+              } : {})
             });
           });
         });

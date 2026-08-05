@@ -18,6 +18,7 @@ const {
 const PROJECT_ID = "demo-caixa-rules";
 const STORE_A = "loja-a";
 const STORE_B = "loja-b";
+const STORE_C = "loja-c";
 
 let testEnv;
 
@@ -45,6 +46,12 @@ const seedFirestore = async () => {
             visualizarDivergencias: true,
             visualizarSangrias: true,
           }),
+      ),
+      setDoc(doc(db, "users", "manager-b"), userProfile("gerente", [STORE_B])),
+      setDoc(doc(db, "users", "manager-c"), userProfile("gerente", [STORE_C])),
+      setDoc(
+          doc(db, "users", "manager-ab"),
+          userProfile("gerente", [STORE_B, STORE_A]),
       ),
       setDoc(
           doc(db, "users", "manager-limited"),
@@ -84,6 +91,58 @@ const seedFirestore = async () => {
       }),
       setDoc(doc(db, "lojas", STORE_A), {nome: "Loja A"}),
       setDoc(doc(db, "lojas", STORE_B), {nome: "Loja B"}),
+      setDoc(doc(db, "lojas", STORE_C), {nome: "Loja C"}),
+      setDoc(doc(db, "transferenciasEntreLojas", "remessa-origem"), {
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "aguardando_conferencia",
+        historico: [],
+      }),
+      setDoc(doc(db, "transferenciasEntreLojas", "remessa-destino"), {
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "aguardando_conferencia",
+        historico: [],
+      }),
+      setDoc(doc(db, "transferenciasEntreLojas", "remessa-pagamento"), {
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "conferencia_sem_divergencia",
+        historico: [],
+      }),
+      setDoc(doc(db, "transferenciasEntreLojas", "remessa-pagamento-origem"), {
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "conferencia_com_divergencia",
+        historico: [],
+      }),
+      setDoc(doc(db, "transferenciasEntreLojas", "remessa-cancelamento"), {
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "aguardando_conferencia",
+        historico: [],
+      }),
+      setDoc(doc(db, "fechamentosEntreLojas", "fechamento-aberto"), {
+        nome: "Fechamento aberto",
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "aberto",
+        historico: [],
+      }),
+      setDoc(doc(db, "fechamentosEntreLojas", "fechamento-cancelamento"), {
+        nome: "Fechamento para cancelar",
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "aberto",
+        historico: [],
+      }),
+      setDoc(doc(db, "fechamentosEntreLojas", "fechamento-pagamento"), {
+        nome: "Fechamento para pagamento",
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "fechado",
+        historico: [],
+      }),
       setDoc(doc(db, "lojas", STORE_A, "caixas", "2026-07-27"), {
         dataOperacional: "2026-07-27",
         valorInicialCentavos: 20000,
@@ -548,5 +607,176 @@ describe("retiradas para despesa em contas a pagar", () => {
     await assertFails(
         deleteDoc(cashDoc(db, STORE_A, "contas_a_pagar", "retirada")),
     );
+  });
+});
+
+const entreLojasDoc = (db, collectionName, documentId) =>
+  doc(db, collectionName, documentId);
+
+const entreLojasHistory = (uid, action, previousStatus, nextStatus, relation) => ({
+  acao: action,
+  status: nextStatus,
+  statusAnterior: previousStatus,
+  statusNovo: nextStatus,
+  usuarioUid: uid,
+  usuarioPerfil: uid === "owner" ? "dono" : "gerente",
+  usuarioLojaIds: [],
+  relacaoAutorizacao: relation,
+  comentario: "teste direto de autorizacao",
+  data: "2026-08-05T12:00:00.000Z",
+});
+
+const confirmTransferPatch = (uid, status, relation) => ({
+  status,
+  dataConferencia: "2026-08-05T12:00:00.000Z",
+  conferidoPorUid: uid,
+  conferidoPorNome: uid,
+  observacaoDestino: status === "conferencia_com_divergencia" ? "Divergencia" : "",
+  dataAtualizacao: "2026-08-05T12:00:00.000Z",
+  historico: [entreLojasHistory(
+      uid,
+      status,
+      "aguardando_conferencia",
+      status,
+      relation,
+  )],
+});
+
+describe("regras de acao do modulo Entre Lojas", () => {
+  test("origem e destino conferem; terceira loja e atendente sao bloqueados", async () => {
+    const originDb = testEnv.authenticatedContext("manager-a").firestore();
+    const destinationDb = testEnv.authenticatedContext("manager-b").firestore();
+    const thirdDb = testEnv.authenticatedContext("manager-c").firestore();
+    const attendantDb = testEnv.authenticatedContext("attendant-a").firestore();
+
+    await assertSucceeds(updateDoc(entreLojasDoc(
+        originDb, "transferenciasEntreLojas", "remessa-origem",
+    ), confirmTransferPatch("manager-a", "conferencia_sem_divergencia", "origem")));
+    await assertSucceeds(updateDoc(entreLojasDoc(
+        destinationDb, "transferenciasEntreLojas", "remessa-destino",
+    ), confirmTransferPatch("manager-b", "conferencia_com_divergencia", "destino")));
+    await assertFails(updateDoc(entreLojasDoc(
+        thirdDb, "transferenciasEntreLojas", "remessa-cancelamento",
+    ), confirmTransferPatch("manager-c", "conferencia_sem_divergencia", "sem_vinculo")));
+    await assertFails(updateDoc(entreLojasDoc(
+        attendantDb, "transferenciasEntreLojas", "remessa-cancelamento",
+    ), confirmTransferPatch("attendant-a", "conferencia_sem_divergencia", "origem")));
+  });
+
+  test("origem e destino marcam remessas como pagas", async () => {
+    const pay = async (uid, documentId, previousStatus, relation) => {
+      const db = testEnv.authenticatedContext(uid).firestore();
+      await assertSucceeds(updateDoc(entreLojasDoc(
+          db, "transferenciasEntreLojas", documentId,
+      ), {
+        status: "pagamento_informado",
+        dataPagamentoInformado: "2026-08-05T12:00:00.000Z",
+        pagamentoInformadoPorUid: uid,
+        pagamentoInformadoPorNome: uid,
+        observacaoPagamento: "Pagamento",
+        dataAtualizacao: "2026-08-05T12:00:00.000Z",
+        historico: [entreLojasHistory(
+            uid, "pagamento_informado", previousStatus,
+            "pagamento_informado", relation,
+        )],
+      }));
+    };
+
+    await pay("manager-a", "remessa-pagamento-origem", "conferencia_com_divergencia", "origem");
+    await pay("manager-b", "remessa-pagamento", "conferencia_sem_divergencia", "destino");
+  });
+
+  test("cancelamento de remessa permite origem e bloqueia destino", async () => {
+    const cancellationPatch = (uid, relation) => ({
+      status: "cancelado",
+      dataCancelamento: "2026-08-05T12:00:00.000Z",
+      canceladoPorUid: uid,
+      canceladoPorNome: uid,
+      observacaoCancelamento: "Cancelamento",
+      dataAtualizacao: "2026-08-05T12:00:00.000Z",
+      historico: [entreLojasHistory(
+          uid, "remessa_cancelada", "aguardando_conferencia", "cancelado", relation,
+      )],
+    });
+    const destinationDb = testEnv.authenticatedContext("manager-b").firestore();
+    const originDb = testEnv.authenticatedContext("manager-a").firestore();
+
+    await assertFails(updateDoc(entreLojasDoc(
+        destinationDb, "transferenciasEntreLojas", "remessa-cancelamento",
+    ), cancellationPatch("manager-b", "destino")));
+    await assertSucceeds(updateDoc(entreLojasDoc(
+        originDb, "transferenciasEntreLojas", "remessa-cancelamento",
+    ), cancellationPatch("manager-a", "origem")));
+  });
+
+  test("destino paga fechamento, mas nao edita nem cancela", async () => {
+    const destinationDb = testEnv.authenticatedContext("manager-b").firestore();
+
+    await assertSucceeds(updateDoc(entreLojasDoc(
+        destinationDb, "fechamentosEntreLojas", "fechamento-pagamento",
+    ), {
+      status: "pagamento_informado",
+      pagamentoInformadoPorUid: "manager-b",
+      pagamentoInformadoPorNome: "manager-b",
+      dataAtualizacao: "2026-08-05T12:00:00.000Z",
+      historico: [entreLojasHistory(
+          "manager-b", "pagamento_informado", "fechado", "pagamento_informado", "destino",
+      )],
+    }));
+    await assertFails(updateDoc(entreLojasDoc(
+        destinationDb, "fechamentosEntreLojas", "fechamento-aberto",
+    ), {nome: "Edicao indevida"}));
+    await assertFails(updateDoc(entreLojasDoc(
+        destinationDb, "fechamentosEntreLojas", "fechamento-cancelamento",
+    ), {
+      status: "cancelado",
+      canceladoPorUid: "manager-b",
+      historico: [entreLojasHistory(
+          "manager-b", "fechamento_cancelado", "aberto", "cancelado", "destino",
+      )],
+    }));
+  });
+
+  test("terceira loja nao paga nem edita fechamento", async () => {
+    const thirdDb = testEnv.authenticatedContext("manager-c").firestore();
+
+    await assertFails(updateDoc(entreLojasDoc(
+        thirdDb, "fechamentosEntreLojas", "fechamento-pagamento",
+    ), {
+      status: "pagamento_informado",
+      pagamentoInformadoPorUid: "manager-c",
+      historico: [entreLojasHistory(
+          "manager-c", "pagamento_informado", "fechado",
+          "pagamento_informado", "sem_vinculo",
+      )],
+    }));
+    await assertFails(updateDoc(entreLojasDoc(
+        thirdDb, "fechamentosEntreLojas", "fechamento-aberto",
+    ), {nome: "Edicao de terceira loja"}));
+  });
+
+  test("origem, vinculo duplo e dono preservam as acoes de origem", async () => {
+    const originDb = testEnv.authenticatedContext("manager-a").firestore();
+    const bothDb = testEnv.authenticatedContext("manager-ab").firestore();
+    const ownerDb = testEnv.authenticatedContext("owner").firestore();
+
+    await assertSucceeds(updateDoc(entreLojasDoc(
+        originDb, "fechamentosEntreLojas", "fechamento-aberto",
+    ), {nome: "Edicao autorizada"}));
+    await assertSucceeds(updateDoc(entreLojasDoc(
+        bothDb, "fechamentosEntreLojas", "fechamento-cancelamento",
+    ), {
+      status: "cancelado",
+      canceladoPorUid: "manager-ab",
+      historico: [entreLojasHistory(
+          "manager-ab", "fechamento_cancelado", "aberto", "cancelado", "origem",
+      )],
+    }));
+    await assertSucceeds(updateDoc(entreLojasDoc(
+        ownerDb, "fechamentosEntreLojas", "fechamento-aberto",
+    ), {nome: "Edicao do dono"}));
+    await assertSucceeds(updateDoc(entreLojasDoc(
+        ownerDb, "transferenciasEntreLojas", "remessa-cancelamento",
+    ), {status: "cancelado"}));
   });
 });

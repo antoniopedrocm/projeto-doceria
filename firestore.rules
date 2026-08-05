@@ -233,6 +233,220 @@ function canReadTransferenciaEntreLojasDoc() {
     );
 }
 
+function isEntreLojasManagerRelated(data) {
+  return isManagerUser()
+    && (currentUserHasStore(data.lojaOrigemId) || currentUserHasStore(data.lojaDestinoId));
+}
+
+function isEntreLojasManagerOrigin(data) {
+  return isManagerUser() && currentUserHasStore(data.lojaOrigemId);
+}
+
+function transferChangedFieldsOnly(fields) {
+  return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+}
+
+function lastEntreLojasHistoryActorIsCurrentUser() {
+  return request.resource.data.historico is list
+    && request.resource.data.historico.size() > resource.data.get('historico', []).size()
+    && request.resource.data.historico[
+      request.resource.data.historico.size() - 1
+    ].usuarioUid == request.auth.uid;
+}
+
+function isTransferConfirmationUpdate() {
+  return resource.data.status == 'aguardando_conferencia'
+    && request.resource.data.status in [
+      'conferencia_sem_divergencia', 'conferencia_com_divergencia'
+    ]
+    && request.resource.data.conferidoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && transferChangedFieldsOnly([
+      'status', 'dataConferencia', 'conferidoPorUid', 'conferidoPorNome',
+      'observacaoDestino', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isTransferMarkPaidUpdate() {
+  return resource.data.status in [
+      'aguardando_conferencia', 'conferencia_sem_divergencia',
+      'conferencia_com_divergencia', 'pagamento_informado'
+    ]
+    && request.resource.data.status == 'pagamento_informado'
+    && request.resource.data.pagamentoInformadoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && transferChangedFieldsOnly([
+      'status', 'dataPagamentoInformado', 'pagamentoInformadoPorUid',
+      'pagamentoInformadoPorNome', 'observacaoPagamento', 'formaPagamento',
+      'dataPagamento', 'fechamentoStatus', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isTransferConfirmOrContestPaymentUpdate() {
+  return resource.data.status == 'pagamento_informado'
+    && request.resource.data.status in ['pagamento_confirmado', 'pagamento_contestado']
+    && (
+      request.resource.data.status == 'pagamento_contestado'
+      || request.resource.data.pagamentoConfirmadoPorUid == request.auth.uid
+    )
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && transferChangedFieldsOnly([
+      'status', 'dataPagamentoConfirmado', 'pagamentoConfirmadoPorUid',
+      'pagamentoConfirmadoPorNome', 'observacaoPagamento', 'fechamentoStatus',
+      'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isTransferCancelUpdate() {
+  return !(resource.data.status in ['pagamento_confirmado', 'cancelado', 'cancelada'])
+    && request.resource.data.status in ['cancelado', 'cancelada']
+    && request.resource.data.canceladoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && transferChangedFieldsOnly([
+      'status', 'dataCancelamento', 'canceladoPorUid', 'canceladoPorNome',
+      'observacaoCancelamento', 'fechamentoId', 'fechamentoNome',
+      'fechamentoStatus', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isTransferDraftSendUpdate() {
+  return resource.data.status == 'rascunho'
+    && request.resource.data.status == 'aguardando_conferencia';
+}
+
+function canCreateTransferenciaEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      (isManagerUser() || isAttendantUser())
+      && currentUserHasStore(request.resource.data.lojaOrigemId)
+    );
+}
+
+function canUpdateTransferenciaEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      isManagerUser()
+      && (
+        (
+          (isTransferConfirmationUpdate() || isTransferMarkPaidUpdate())
+          && isEntreLojasManagerRelated(resource.data)
+        )
+        || (
+          (isTransferConfirmOrContestPaymentUpdate() || isTransferCancelUpdate())
+          && isEntreLojasManagerOrigin(resource.data)
+        )
+        || (
+          (request.resource.data.status == resource.data.status || isTransferDraftSendUpdate())
+          && currentUserHasStore(resource.data.lojaOrigemId)
+          && currentUserHasStore(request.resource.data.lojaOrigemId)
+        )
+      )
+    )
+    || (
+      isAttendantUser()
+      && (request.resource.data.status == resource.data.status || isTransferDraftSendUpdate())
+      && currentUserHasStore(resource.data.lojaOrigemId)
+      && currentUserHasStore(request.resource.data.lojaOrigemId)
+    );
+}
+
+function canDeleteTransferenciaEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      (isManagerUser() || isAttendantUser())
+      && currentUserHasStore(resource.data.lojaOrigemId)
+      && resource.data.status in ['rascunho', 'aguardando_conferencia']
+    );
+}
+
+function closingChangedFieldsOnly(fields) {
+  return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+}
+
+function isClosingMarkPaidUpdate() {
+  return resource.data.status in ['fechado', 'pagamento_contestado']
+    && request.resource.data.status == 'pagamento_informado'
+    && request.resource.data.pagamentoInformadoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && closingChangedFieldsOnly([
+      'status', 'quantidadeRemessasPagas', 'totalPagoRepasse',
+      'totalPagoRevenda', 'totalRestanteRepasse', 'totalRestanteRevenda',
+      'pagamentoInformadoPorUid', 'pagamentoInformadoPorNome',
+      'dataPagamentoInformado', 'formaPagamento', 'dataPagamento',
+      'observacaoPagamento', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isClosingConfirmOrContestPaymentUpdate() {
+  return resource.data.status == 'pagamento_informado'
+    && request.resource.data.status in ['pagamento_confirmado', 'pagamento_contestado']
+    && (
+      request.resource.data.status == 'pagamento_contestado'
+      || request.resource.data.pagamentoConfirmadoPorUid == request.auth.uid
+    )
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && closingChangedFieldsOnly([
+      'status', 'quantidadeRemessasPagas', 'totalPagoRepasse',
+      'totalPagoRevenda', 'totalRestanteRepasse', 'totalRestanteRevenda',
+      'pagamentoConfirmadoPorUid', 'pagamentoConfirmadoPorNome',
+      'dataPagamentoConfirmado', 'observacaoPagamento', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isClosingCancelUpdate() {
+  return resource.data.status != 'pagamento_confirmado'
+    && request.resource.data.status == 'cancelado'
+    && request.resource.data.canceladoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && closingChangedFieldsOnly([
+      'status', 'dataCancelamento', 'canceladoPorUid', 'canceladoPorNome',
+      'observacaoCancelamento', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isClosingCloseUpdate() {
+  return resource.data.status == 'aberto' && request.resource.data.status == 'fechado';
+}
+
+function canCreateFechamentoEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      isManagerUser()
+      && (
+        currentUserHasStore(request.resource.data.lojaOrigemId)
+        || currentUserHasStore(request.resource.data.lojaDestinoId)
+      )
+    );
+}
+
+function canUpdateFechamentoEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      isManagerUser()
+      && (
+        (isClosingMarkPaidUpdate() && isEntreLojasManagerRelated(resource.data))
+        || (
+          (
+            isClosingConfirmOrContestPaymentUpdate()
+            || isClosingCancelUpdate()
+            || isClosingCloseUpdate()
+            || request.resource.data.status == resource.data.status
+          )
+          && isEntreLojasManagerOrigin(resource.data)
+        )
+      )
+    );
+}
+
+function canDeleteFechamentoEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      isManagerUser()
+      && isEntreLojasManagerRelated(resource.data)
+      && resource.data.status in ['aberto', 'cancelado']
+    );
+}
+
 function canReadStoreCollection(lojaId, collection) {
   return isSignedIn() && (
     !isReadOnlyAccountant()
@@ -552,7 +766,16 @@ match /customProfiles/{userId} {
 match /transferenciasEntreLojas/{transferenciaId} {
   allow get: if canReadTransferenciaEntreLojasDoc();
   allow list: if canReadTransferenciaEntreLojasDoc();
-  allow create, update, delete: if canStaffWrite();
+  allow create: if canCreateTransferenciaEntreLojas();
+  allow update: if canUpdateTransferenciaEntreLojas();
+  allow delete: if canDeleteTransferenciaEntreLojas();
+}
+
+match /fechamentosEntreLojas/{fechamentoId} {
+  allow read: if isSignedIn();
+  allow create: if canCreateFechamentoEntreLojas();
+  allow update: if canUpdateFechamentoEntreLojas();
+  allow delete: if canDeleteFechamentoEntreLojas();
 }
 
 // --- REGRAS PARA OUTRAS COLEÇÕES (Acesso somente para usuários autenticados no CRM) ---
@@ -563,13 +786,16 @@ match /{collection}/{document=**} {
     && collection != 'users'
     && collection != 'customProfiles'
     && collection != 'transferenciasEntreLojas'
+    && collection != 'fechamentosEntreLojas'
     && (!isReadOnlyAccountant()
       || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
   allow write: if canStaffWrite()
     && collection != 'lojas'
     && collection != 'integrations'
     && collection != 'users'
-    && collection != 'customProfiles';
+    && collection != 'customProfiles'
+    && collection != 'transferenciasEntreLojas'
+    && collection != 'fechamentosEntreLojas';
 }
 
 }
