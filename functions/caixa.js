@@ -153,6 +153,12 @@ const publicRemoval = (snapshotOrData, fallbackId = '') => {
     responsavelUid: data.responsavelUid || '',
     responsavelNome: data.responsavelNome || '',
     responsavelEmail: data.responsavelEmail || '',
+    dataMovimentacao: data.dataMovimentacao || data.dataOperacional || '',
+    horaMovimentacao: data.horaMovimentacao || '',
+    lancamentoPosEncerramento: data.lancamentoPosEncerramento === true,
+    caixaJaEncerrado: data.caixaJaEncerrado === true,
+    perfilResponsavel: data.perfilResponsavel || '',
+    auditoriaPosEncerramento: data.auditoriaPosEncerramento || null,
     criadoEm: data.criadoEm || null,
     atualizadoEm: data.atualizadoEm || null,
     ajustes: Array.isArray(data.ajustes) ? data.ajustes : [],
@@ -174,6 +180,13 @@ const publicWithdrawal = (snapshotOrData, fallbackId = '') => {
     responsavelUid: data.registradoPorUid || '',
     responsavelNome: data.registradoPorNome || '',
     responsavelEmail: data.registradoPorEmail || '',
+    dataMovimentacao: data.dataMovimentacao || data.dataOperacional ||
+      data.dataRetirada || '',
+    horaMovimentacao: data.horaMovimentacao || '',
+    lancamentoPosEncerramento: data.lancamentoPosEncerramento === true,
+    caixaJaEncerrado: data.caixaJaEncerrado === true,
+    perfilResponsavel: data.perfilResponsavel || '',
+    auditoriaPosEncerramento: data.auditoriaPosEncerramento || null,
     registradoEm: data.registradoEm || data.createdAt || null,
   };
 };
@@ -346,6 +359,18 @@ const createCaixaFunctions = ({
       );
     }
     return cents;
+  };
+
+  const requireOptionalMovementTime = (request) => {
+    const value = cleanText(request.data?.horaMovimentacao, 5);
+    if (!value) return '';
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+      throw new HttpsError(
+        'invalid-argument',
+        'horaMovimentacao deve usar o formato HH:mm.',
+      );
+    }
+    return value;
   };
 
   const requireIdempotency = (request, operation, actor) => {
@@ -732,6 +757,160 @@ const createCaixaFunctions = ({
     return alertId;
   };
 
+  const closingAlertReference = (actor, dateKey, referencePath) => {
+    const alertId = idempotencyDocumentId(
+      'CAIXA_ENCERRAMENTO_DIVERGENTE',
+      actor.lojaId,
+      `${dateKey}:${referencePath}`,
+    );
+    return {
+      id: alertId,
+      ref: alertsCollection(actor.lojaId).doc(alertId),
+    };
+  };
+
+  const reconcileClosingAlertAfterAdjustment = ({
+    transaction,
+    actor,
+    dateKey,
+    protectedRef,
+    alertSnapshot,
+    recipients,
+    calculated,
+    closingCents,
+    previousExpectedCents,
+    previousDifferenceCents,
+    adjustment,
+  }) => {
+    const alertReference = closingAlertReference(
+      actor,
+      dateKey,
+      protectedRef.path,
+    );
+    const existing = documentData(alertSnapshot);
+    const existingRecipients = Array.isArray(existing.destinatariosUids) ?
+      existing.destinatariosUids : [];
+    const currentRecipients = Array.from(new Set(recipients || []));
+    const auditEntry = {
+      ajusteId: adjustment.id,
+      tipoMovimentacao: adjustment.tipoMovimentacao,
+      movimentacaoId: adjustment.movimentacaoId,
+      motivo: adjustment.motivo,
+      usuarioUid: actor.uid,
+      usuarioNome: actor.nome,
+      perfil: actor.role,
+      dataOperacional: dateKey,
+      valorEsperadoAntesCentavos: previousExpectedCents,
+      valorEsperadoDepoisCentavos: calculated.expectedCents,
+      diferencaAntesCentavos: previousDifferenceCents,
+      diferencaDepoisCentavos: calculated.differenceCents,
+      registradoEm: adjustment.registradoEm,
+    };
+
+    if (calculated.differenceCents === 0) {
+      if (!alertSnapshot?.exists) return null;
+      transaction.set(alertReference.ref, {
+        valores: {
+          valorEsperadoCentavos: calculated.expectedCents,
+          valorEncerramentoCentavos: closingCents,
+          valorInformadoCentavos: closingCents,
+          diferencaCentavos: 0,
+        },
+        diferencaCentavos: 0,
+        situacao: 'resolvido',
+        resolvidoPorUid: actor.uid,
+        resolvidoPorNome: actor.nome,
+        resolvidoPorEmail: actor.email || '',
+        resolvidoEm: FieldValue.serverTimestamp(),
+        observacaoResolucao: 'Resolvido apos ajuste pos-encerramento.',
+        historicoDivergencias: FieldValue.arrayUnion(auditEntry),
+        atualizadoEm: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      existingRecipients.forEach((uid) => {
+        transaction.set(notificationRef(uid, alertReference.id), {
+          diferencaCentavos: 0,
+          valores: {
+            valorEsperadoCentavos: calculated.expectedCents,
+            valorEncerramentoCentavos: closingCents,
+            valorInformadoCentavos: closingCents,
+            diferencaCentavos: 0,
+          },
+          situacao: 'resolvido',
+          resolvidoEm: FieldValue.serverTimestamp(),
+          observacaoResolucao: 'Resolvido apos ajuste pos-encerramento.',
+          atualizadoEm: FieldValue.serverTimestamp(),
+        }, {merge: true});
+      });
+      setAlertAudit(
+        transaction,
+        actor,
+        alertReference.id,
+        'DIVERGENCIA_RESOLVIDA_APOS_AJUSTE_POS_ENCERRAMENTO',
+        normalizeAlertSituation(existing.situacao),
+        'resolvido',
+        `${adjustment.tipoMovimentacao}: ${adjustment.motivo}`,
+      );
+      return alertReference.id;
+    }
+
+    const base = {
+      categoria: 'caixa',
+      tipo: 'CAIXA_ENCERRAMENTO_DIVERGENTE',
+      origem: 'divergencia_encerramento',
+      lojaId: actor.lojaId,
+      dataOperacional: dateKey,
+      titulo: 'Divergencia no encerramento do caixa',
+      mensagem: 'Um ajuste pos-encerramento alterou a conferencia do caixa.',
+      severidade: 'warning',
+      valores: {
+        valorEsperadoCentavos: calculated.expectedCents,
+        valorEncerramentoCentavos: closingCents,
+        valorInformadoCentavos: closingCents,
+        diferencaCentavos: calculated.differenceCents,
+      },
+      diferencaCentavos: calculated.differenceCents,
+      responsavelUid: actor.uid,
+      responsavelNome: actor.nome,
+      responsavelEmail: actor.email || '',
+      referencia: protectedRef.path,
+      chaveIdempotencia: adjustment.id,
+      destinatariosUids: currentRecipients,
+      situacao: 'aberto',
+      resolvidoPorUid: null,
+      resolvidoPorNome: null,
+      resolvidoPorEmail: null,
+      resolvidoEm: null,
+      observacaoResolucao: '',
+      isDeleted: false,
+      historicoDivergencias: FieldValue.arrayUnion(auditEntry),
+      atualizadoEm: FieldValue.serverTimestamp(),
+    };
+    if (!alertSnapshot?.exists) base.criadoEm = FieldValue.serverTimestamp();
+    transaction.set(alertReference.ref, base, {merge: true});
+    currentRecipients.forEach((uid) => {
+      transaction.set(notificationRef(uid, alertReference.id), {
+        ...base,
+        alertaId: alertReference.id,
+        alertaRef: alertReference.ref.path,
+        destinatarioUid: uid,
+        lida: false,
+        lidaEm: null,
+      }, {merge: true});
+    });
+    setAlertAudit(
+      transaction,
+      actor,
+      alertReference.id,
+      alertSnapshot?.exists ?
+        'DIVERGENCIA_RECALCULADA_APOS_AJUSTE_POS_ENCERRAMENTO' :
+        'DIVERGENCIA_CRIADA_APOS_AJUSTE_POS_ENCERRAMENTO',
+      alertSnapshot?.exists ? normalizeAlertSituation(existing.situacao) : '',
+      'aberto',
+      `${previousDifferenceCents} -> ${calculated.differenceCents} centavos; ajuste ${adjustment.id}`,
+    );
+    return alertReference.id;
+  };
+
   const buildConferenceResponse = (data, actor, id) => {
     const response = {id, ...data};
     delete response.chaveIdempotencia;
@@ -853,6 +1032,120 @@ const createCaixaFunctions = ({
         sangrias: removalRecords.map((record) => record.id),
       },
     };
+  };
+
+  const recalculateClosedDayWithPendingMovement = async ({
+    transaction,
+    actor,
+    dateKey,
+    daily,
+    protectedSnapshot,
+    movementType,
+    movementId,
+    amountCents,
+  }) => {
+    if (
+      !Number.isSafeInteger(daily.valorInicialCentavos) ||
+      !Number.isSafeInteger(daily.valorEncerramentoCentavos)
+    ) {
+      throw new HttpsError(
+        'failed-precondition',
+        'O caixa encerrado nao possui valores validos para recalculo.',
+      );
+    }
+    const components = await calculateDayInsideTransaction({
+      transaction,
+      actor,
+      dateKey,
+    });
+    const before = calculateCashConference({
+      initialCents: daily.valorInicialCentavos,
+      cashSalesCents: components.vendasDinheiroCentavos,
+      otherCashEntriesCents: components.outrasEntradasDinheiroCentavos,
+      cashWithdrawalsCents: components.retiradasDespesaCentavos,
+      cashRemovalsCents: components.sangriasCentavos,
+      cashRefundsCents: components.estornosDinheiroCentavos,
+      closingCents: daily.valorEncerramentoCentavos,
+    });
+    if (movementType === 'retirada_despesa') {
+      components.retiradasDespesaCentavos += amountCents;
+      components.fontes.retiradasDespesa = Array.from(new Set([
+        ...components.fontes.retiradasDespesa,
+        movementId,
+      ]));
+    } else if (movementType === 'sangria') {
+      components.sangriasCentavos += amountCents;
+      components.fontes.sangrias = Array.from(new Set([
+        ...components.fontes.sangrias,
+        movementId,
+      ]));
+    } else {
+      throw new HttpsError(
+        'invalid-argument',
+        'Tipo de movimentacao pos-encerramento invalido.',
+      );
+    }
+    const after = calculateCashConference({
+      initialCents: daily.valorInicialCentavos,
+      cashSalesCents: components.vendasDinheiroCentavos,
+      otherCashEntriesCents: components.outrasEntradasDinheiroCentavos,
+      cashWithdrawalsCents: components.retiradasDespesaCentavos,
+      cashRemovalsCents: components.sangriasCentavos,
+      cashRefundsCents: components.estornosDinheiroCentavos,
+      closingCents: daily.valorEncerramentoCentavos,
+    });
+    const protectedData = documentData(protectedSnapshot);
+    return {
+      components,
+      before: {
+        expectedCents: Number.isSafeInteger(
+          protectedData.valorEsperadoCentavos,
+        ) ? protectedData.valorEsperadoCentavos : before.expectedCents,
+        differenceCents: Number.isSafeInteger(
+          protectedData.diferencaCentavos,
+        ) ? protectedData.diferencaCentavos : before.differenceCents,
+      },
+      after,
+    };
+  };
+
+  const writePostClosingConference = ({
+    transaction,
+    actor,
+    dateKey,
+    daily,
+    protectedRef,
+    recalculation,
+    adjustment,
+  }) => {
+    const {components, after} = recalculation;
+    transaction.set(protectedRef, {
+      lojaId: actor.lojaId,
+      dataOperacional: dateKey,
+      valorInicialCentavos: daily.valorInicialCentavos,
+      vendasDinheiroCentavos: components.vendasDinheiroCentavos,
+      outrasEntradasDinheiroCentavos:
+        components.outrasEntradasDinheiroCentavos,
+      outrasEntradasCentavos: components.outrasEntradasDinheiroCentavos,
+      retiradasDespesaCentavos: components.retiradasDespesaCentavos,
+      retiradasDespesasCentavos: components.retiradasDespesaCentavos,
+      sangriasCentavos: components.sangriasCentavos,
+      estornosDinheiroCentavos: components.estornosDinheiroCentavos,
+      valorEsperadoCentavos: after.expectedCents,
+      valorEncerramentoCentavos: daily.valorEncerramentoCentavos,
+      diferencaCentavos: after.differenceCents,
+      temDivergencia: after.differenceCents !== 0,
+      responsavelInicioUid: daily.responsavelInicioUid || '',
+      responsavelInicioNome: daily.responsavelInicioNome || '',
+      responsavelEncerramentoUid: daily.responsavelEncerramentoUid || '',
+      responsavelEncerramentoNome: daily.responsavelEncerramentoNome || '',
+      fontes: components.fontes,
+      versaoCalculo: CALCULATION_VERSION,
+      ajustesPosEncerramento: FieldValue.arrayUnion(adjustment),
+      ultimoAjustePosEncerramentoEm: FieldValue.serverTimestamp(),
+      calculadoEm: FieldValue.serverTimestamp(),
+      atualizadoEm: FieldValue.serverTimestamp(),
+    }, {merge: true});
   };
 
   return {
@@ -1137,6 +1430,7 @@ const createCaixaFunctions = ({
         throw new HttpsError('invalid-argument', 'Informe o motivo da retirada.');
       }
       const observation = cleanText(request.data?.observacao, 1000);
+      const movementTime = requireOptionalMovementTime(request);
       const idempotency = requireIdempotency(
         request,
         'registrarRetiradaDespesaCaixa',
@@ -1146,23 +1440,94 @@ const createCaixaFunctions = ({
       const withdrawalRef = storeRef(actor.lojaId)
         .collection('contas_a_pagar').doc(withdrawalId);
       const recordRef = dailyRef(actor.lojaId, dateKey);
+      const protectedRef = conferenceRef(actor.lojaId, dateKey);
+      const alertReference = closingAlertReference(
+        actor,
+        dateKey,
+        protectedRef.path,
+      );
 
       await db.runTransaction(async (transaction) => {
-        const [operationSnap, withdrawalSnap, recordSnap] = await Promise.all([
+        const [
+          operationSnap,
+          withdrawalSnap,
+          recordSnap,
+          protectedSnapshot,
+          alertSnapshot,
+        ] = await Promise.all([
           transaction.get(idempotency.ref),
           transaction.get(withdrawalRef),
           transaction.get(recordRef),
+          transaction.get(protectedRef),
+          transaction.get(alertReference.ref),
         ]);
         if (operationSnap.exists) return;
         if (withdrawalSnap.exists) {
           throw new HttpsError('already-exists', 'Esta retirada ja foi registrada.');
         }
         const daily = documentData(recordSnap);
-        if (daily.temValorEncerramento === true) {
+        const isPostClosing = daily.temValorEncerramento === true ||
+          Number.isSafeInteger(daily.valorEncerramentoCentavos);
+        if (isPostClosing && actor.role !== ROLE_OWNER) {
           throw new HttpsError(
             'failed-precondition',
             'Nao e possivel registrar retirada depois do encerramento do dia.',
           );
+        }
+
+        let recalculation = null;
+        let recipients = [];
+        let adjustment = null;
+        if (isPostClosing) {
+          recalculation = await recalculateClosedDayWithPendingMovement({
+            transaction,
+            actor,
+            dateKey,
+            daily,
+            protectedSnapshot,
+            movementType: 'retirada_despesa',
+            movementId: withdrawalId,
+            amountCents,
+          });
+          if (recalculation.after.differenceCents !== 0) {
+            const [configSnap, usersSnap, profilesSnap] = await Promise.all([
+              transaction.get(internalConfigRef(actor.lojaId)),
+              transaction.get(db.collection('users')),
+              transaction.get(db.collection('customProfiles')),
+            ]);
+            recipients = resolveAlertRecipients({
+              usersSnapshot: usersSnap,
+              profilesSnapshot: profilesSnap,
+              lojaId: actor.lojaId,
+              config: normalizeAlertConfig(documentData(configSnap)),
+            });
+          }
+          adjustment = {
+            id: idempotency.keyHash.slice(0, 32),
+            tipoMovimentacao: 'retirada_despesa',
+            movimentacaoId: withdrawalId,
+            valorCentavos: amountCents,
+            dataMovimentacao: dateKey,
+            horaMovimentacao: movementTime,
+            dataOperacionalAfetada: dateKey,
+            motivo: reason,
+            usuarioUid: actor.uid,
+            usuarioNome: actor.nome,
+            usuarioEmail: actor.email || '',
+            perfil: actor.role,
+            caixaJaEncerrado: true,
+            valorEsperadoAntesCentavos:
+              recalculation.before.expectedCents,
+            valorEsperadoDepoisCentavos:
+              recalculation.after.expectedCents,
+            diferencaAntesCentavos:
+              recalculation.before.differenceCents,
+            diferencaDepoisCentavos:
+              recalculation.after.differenceCents,
+            valorEncerramentoPreservadoCentavos:
+              daily.valorEncerramentoCentavos,
+            registradoEm: admin.firestore.Timestamp.now(),
+          };
         }
 
         transaction.set(withdrawalRef, {
@@ -1181,6 +1546,13 @@ const createCaixaFunctions = ({
           registroCaixa: true,
           motivo: reason,
           observacoes: observation,
+          dataMovimentacao: dateKey,
+          horaMovimentacao: movementTime,
+          lancamentoPosEncerramento: isPostClosing,
+          caixaJaEncerrado: isPostClosing,
+          perfilResponsavel: actor.role,
+          dataLancamento: FieldValue.serverTimestamp(),
+          auditoriaPosEncerramento: adjustment,
           registradoPorUid: actor.uid,
           registradoPorNome: actor.nome,
           registradoPorEmail: actor.email || '',
@@ -1188,11 +1560,39 @@ const createCaixaFunctions = ({
           createdAt: FieldValue.serverTimestamp(),
           atualizadoEm: FieldValue.serverTimestamp(),
         });
+        if (isPostClosing && recalculation && adjustment) {
+          writePostClosingConference({
+            transaction,
+            actor,
+            dateKey,
+            daily,
+            protectedRef,
+            recalculation,
+            adjustment,
+          });
+          reconcileClosingAlertAfterAdjustment({
+            transaction,
+            actor,
+            dateKey,
+            protectedRef,
+            alertSnapshot,
+            recipients,
+            calculated: recalculation.after,
+            closingCents: daily.valorEncerramentoCentavos,
+            previousExpectedCents: recalculation.before.expectedCents,
+            previousDifferenceCents: recalculation.before.differenceCents,
+            adjustment,
+          });
+        }
         setActivityLog(
           transaction,
           actor,
-          'Retirada para despesa registrada no caixa',
-          `Data operacional: ${dateKey}; motivo: ${reason}`,
+          isPostClosing ?
+            'Retirada para despesa registrada apos encerramento' :
+            'Retirada para despesa registrada no caixa',
+          isPostClosing ?
+            `Movimentacao referente a ${dateKey}, lancada posteriormente por ${actor.nome}; motivo: ${reason}; valor esperado ${recalculation.before.expectedCents} -> ${recalculation.after.expectedCents}; diferenca ${recalculation.before.differenceCents} -> ${recalculation.after.differenceCents}` :
+            `Data operacional: ${dateKey}; motivo: ${reason}`,
           withdrawalId,
         );
         setIdempotencyResult(
@@ -1207,7 +1607,9 @@ const createCaixaFunctions = ({
       const saved = await withdrawalRef.get();
       return {
         success: true,
-        message: 'Retirada para despesa registrada com sucesso.',
+        message: saved.data()?.lancamentoPosEncerramento === true ?
+          'Lancamento registrado com sucesso. A conferencia do caixa foi recalculada.' :
+          'Retirada para despesa registrada com sucesso.',
         retirada: publicWithdrawal(saved),
       };
     }),
@@ -1222,6 +1624,7 @@ const createCaixaFunctions = ({
       const reason = cleanText(request.data?.motivo, 300);
       const observation = cleanText(request.data?.observacao, 1000);
       const destination = cleanText(request.data?.destino, 300);
+      const movementTime = requireOptionalMovementTime(request);
       const idempotency = requireIdempotency(
         request,
         'registrarSangriaCaixa',
@@ -1230,12 +1633,26 @@ const createCaixaFunctions = ({
       const removalId = `sangria_${dateKey}_${idempotency.keyHash.slice(0, 24)}`;
       const removalRef = removalsCollection(actor.lojaId).doc(removalId);
       const recordRef = dailyRef(actor.lojaId, dateKey);
+      const protectedRef = conferenceRef(actor.lojaId, dateKey);
+      const alertReference = closingAlertReference(
+        actor,
+        dateKey,
+        protectedRef.path,
+      );
 
       await db.runTransaction(async (transaction) => {
-        const [operationSnap, removalSnap, recordSnap] = await Promise.all([
+        const [
+          operationSnap,
+          removalSnap,
+          recordSnap,
+          protectedSnapshot,
+          alertSnapshot,
+        ] = await Promise.all([
           transaction.get(idempotency.ref),
           transaction.get(removalRef),
           transaction.get(recordRef),
+          transaction.get(protectedRef),
+          transaction.get(alertReference.ref),
         ]);
         if (operationSnap.exists) return;
         if (removalSnap.exists) {
@@ -1248,11 +1665,75 @@ const createCaixaFunctions = ({
             'Informe o valor inicial do dia antes de registrar sangria.',
           );
         }
-        if (daily.temValorEncerramento === true) {
+        const isPostClosing = daily.temValorEncerramento === true ||
+          Number.isSafeInteger(daily.valorEncerramentoCentavos);
+        if (isPostClosing && actor.role !== ROLE_OWNER) {
           throw new HttpsError(
             'failed-precondition',
             'Nao e possivel registrar sangria depois do encerramento do dia.',
           );
+        }
+        if (isPostClosing && !reason) {
+          throw new HttpsError(
+            'invalid-argument',
+            'Informe o motivo do lancamento apos o encerramento.',
+          );
+        }
+
+        let recalculation = null;
+        let recipients = [];
+        let adjustment = null;
+        if (isPostClosing) {
+          recalculation = await recalculateClosedDayWithPendingMovement({
+            transaction,
+            actor,
+            dateKey,
+            daily,
+            protectedSnapshot,
+            movementType: 'sangria',
+            movementId: removalId,
+            amountCents,
+          });
+          if (recalculation.after.differenceCents !== 0) {
+            const [configSnap, usersSnap, profilesSnap] = await Promise.all([
+              transaction.get(internalConfigRef(actor.lojaId)),
+              transaction.get(db.collection('users')),
+              transaction.get(db.collection('customProfiles')),
+            ]);
+            recipients = resolveAlertRecipients({
+              usersSnapshot: usersSnap,
+              profilesSnapshot: profilesSnap,
+              lojaId: actor.lojaId,
+              config: normalizeAlertConfig(documentData(configSnap)),
+            });
+          }
+          adjustment = {
+            id: idempotency.keyHash.slice(0, 32),
+            tipoMovimentacao: 'sangria',
+            movimentacaoId: removalId,
+            valorCentavos: amountCents,
+            dataMovimentacao: dateKey,
+            horaMovimentacao: movementTime,
+            dataOperacionalAfetada: dateKey,
+            motivo: reason,
+            destino: destination,
+            usuarioUid: actor.uid,
+            usuarioNome: actor.nome,
+            usuarioEmail: actor.email || '',
+            perfil: actor.role,
+            caixaJaEncerrado: true,
+            valorEsperadoAntesCentavos:
+              recalculation.before.expectedCents,
+            valorEsperadoDepoisCentavos:
+              recalculation.after.expectedCents,
+            diferencaAntesCentavos:
+              recalculation.before.differenceCents,
+            diferencaDepoisCentavos:
+              recalculation.after.differenceCents,
+            valorEncerramentoPreservadoCentavos:
+              daily.valorEncerramentoCentavos,
+            registradoEm: admin.firestore.Timestamp.now(),
+          };
         }
 
         transaction.set(removalRef, {
@@ -1264,6 +1745,13 @@ const createCaixaFunctions = ({
           motivo: reason,
           observacao: observation,
           destino: destination,
+          dataMovimentacao: dateKey,
+          horaMovimentacao: movementTime,
+          lancamentoPosEncerramento: isPostClosing,
+          caixaJaEncerrado: isPostClosing,
+          perfilResponsavel: actor.role,
+          dataLancamento: FieldValue.serverTimestamp(),
+          auditoriaPosEncerramento: adjustment,
           responsavelUid: actor.uid,
           responsavelNome: actor.nome,
           responsavelEmail: actor.email || '',
@@ -1271,11 +1759,39 @@ const createCaixaFunctions = ({
           criadoEm: FieldValue.serverTimestamp(),
           atualizadoEm: FieldValue.serverTimestamp(),
         });
+        if (isPostClosing && recalculation && adjustment) {
+          writePostClosingConference({
+            transaction,
+            actor,
+            dateKey,
+            daily,
+            protectedRef,
+            recalculation,
+            adjustment,
+          });
+          reconcileClosingAlertAfterAdjustment({
+            transaction,
+            actor,
+            dateKey,
+            protectedRef,
+            alertSnapshot,
+            recipients,
+            calculated: recalculation.after,
+            closingCents: daily.valorEncerramentoCentavos,
+            previousExpectedCents: recalculation.before.expectedCents,
+            previousDifferenceCents: recalculation.before.differenceCents,
+            adjustment,
+          });
+        }
         setActivityLog(
           transaction,
           actor,
-          'Sangria registrada no caixa',
-          `Data operacional: ${dateKey}`,
+          isPostClosing ?
+            'Sangria registrada apos encerramento' :
+            'Sangria registrada no caixa',
+          isPostClosing ?
+            `Movimentacao referente a ${dateKey}, lancada posteriormente por ${actor.nome}; motivo: ${reason}; valor esperado ${recalculation.before.expectedCents} -> ${recalculation.after.expectedCents}; diferenca ${recalculation.before.differenceCents} -> ${recalculation.after.differenceCents}` :
+            `Data operacional: ${dateKey}`,
           removalId,
         );
         setIdempotencyResult(
@@ -1290,7 +1806,9 @@ const createCaixaFunctions = ({
       const saved = await removalRef.get();
       return {
         success: true,
-        message: 'Sangria registrada com sucesso.',
+        message: saved.data()?.lancamentoPosEncerramento === true ?
+          'Lancamento registrado com sucesso. A conferencia do caixa foi recalculada.' :
+          'Sangria registrada com sucesso.',
         sangria: publicRemoval(saved),
       };
     }),

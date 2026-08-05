@@ -52,7 +52,8 @@ import {
   sanitizeCaixaPermissions,
   createIdempotencyKey,
 } from './caixa/caixaCore';
-import { registrarRetiradaDespesaCaixa } from './services/caixaService';
+import { obterRegistroDiarioCaixa, registrarRetiradaDespesaCaixa } from './services/caixaService';
+import PostClosingConfirmation from './components/caixa/PostClosingConfirmation';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
@@ -1733,9 +1734,11 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     const [showRetiradaCaixaModal, setShowRetiradaCaixaModal] = useState(false);
     const [editingReceita, setEditingReceita] = useState(null);
     const [receitaFormData, setReceitaFormData] = useState({});
-    const [retiradaCaixaFormData, setRetiradaCaixaFormData] = useState({ data: new Date().toISOString().split('T')[0], motivo: '', valor: '', observacoes: '' });
+    const [retiradaCaixaFormData, setRetiradaCaixaFormData] = useState({ data: new Date().toISOString().split('T')[0], hora: '', motivo: '', valor: '', observacoes: '' });
     const [retiradaCaixaStoreId, setRetiradaCaixaStoreId] = useState(effectiveStoreId || '');
     const [isSavingRetiradaCaixa, setIsSavingRetiradaCaixa] = useState(false);
+    const [retiradaCaixaPostClosing, setRetiradaCaixaPostClosing] = useState(false);
+    const [pendingPostClosingRetirada, setPendingPostClosingRetirada] = useState(null);
     const retiradaCaixaSubmittingRef = useRef(false);
     const retiradaCaixaIdempotencyRef = useRef(createIdempotencyKey('retirada-despesa'));
     const [editingPerda, setEditingPerda] = useState(null);
@@ -1760,7 +1763,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     const resetEstoqueForm = () => setEstoqueFormData({ nome: '', categoria: DEFAULT_FORNECEDOR_CATEGORIES[0], fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' });
     const resetPerdaForm = () => setPerdaFormData({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: new Date().toISOString().split('T')[0], motivo: 'Vencimento', outroMotivo: '' });
     const resetReceitaForm = () => setReceitaFormData({ nome: '', categoria: '', ingredientes: '', modoPreparo: '', tempoPreparo: '', rendimento: '', custoEstimado: '', observacoes: '' });
-    const resetRetiradaCaixaForm = () => setRetiradaCaixaFormData({ data: new Date().toISOString().split('T')[0], motivo: '', valor: '', observacoes: '' });
+    const resetRetiradaCaixaForm = () => setRetiradaCaixaFormData({ data: new Date().toISOString().split('T')[0], hora: '', motivo: '', valor: '', observacoes: '' });
 
     const openStockMovementModal = (item, type) => {
         setStockMovementModal({ isOpen: true, type, item });
@@ -2078,14 +2081,28 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         setShowReceitaModal(false);
     };
 
-    const handleNewRetiradaCaixa = (storeId = effectiveStoreId, dataOperacional = '') => {
+    const handleNewRetiradaCaixa = (storeId = effectiveStoreId, dataOperacional = '', postClosing = false) => {
         resetRetiradaCaixaForm();
         setRetiradaCaixaStoreId(storeId || '');
+        setRetiradaCaixaPostClosing(postClosing === true);
+        setPendingPostClosingRetirada(null);
         if (dataOperacional) {
             setRetiradaCaixaFormData((current) => ({ ...current, data: dataOperacional }));
         }
         retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${storeId || 'sem-loja'}`);
         setShowRetiradaCaixaModal(true);
+    };
+
+    const saveRetiradaCaixa = async (payload, postClosing = false) => {
+        await registrarRetiradaDespesaCaixa(payload);
+        alert(postClosing
+            ? 'Lançamento registrado com sucesso. A conferência do caixa foi recalculada.'
+            : 'Retirada para despesa registrada com sucesso.');
+        setShowRetiradaCaixaModal(false);
+        setPendingPostClosingRetirada(null);
+        setRetiradaCaixaPostClosing(false);
+        resetRetiradaCaixaForm();
+        retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${retiradaCaixaStoreId}`);
     };
 
     const handleRetiradaCaixaSubmit = async (e) => {
@@ -2103,20 +2120,49 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         retiradaCaixaSubmittingRef.current = true;
         setIsSavingRetiradaCaixa(true);
         try {
-            await registrarRetiradaDespesaCaixa({
+            const payload = {
                 lojaId: retiradaCaixaStoreId,
                 dataOperacional: dataRetirada,
                 valorCentavos,
                 motivo,
                 observacao: String(retiradaCaixaFormData.observacoes || '').trim(),
+                horaMovimentacao: String(retiradaCaixaFormData.hora || '').trim(),
                 idempotencyKey: retiradaCaixaIdempotencyRef.current,
+            };
+            const dailyResponse = await obterRegistroDiarioCaixa({
+                lojaId: retiradaCaixaStoreId,
+                dataOperacional: dataRetirada,
             });
-            alert('Retirada para despesa registrada com sucesso.');
-            setShowRetiradaCaixaModal(false);
-            resetRetiradaCaixaForm();
-            retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${retiradaCaixaStoreId}`);
+            const daily = dailyResponse?.registro || null;
+            const isPostClosing = daily?.temValorEncerramento === true
+                || Number.isSafeInteger(daily?.valorEncerramentoCentavos);
+            setRetiradaCaixaPostClosing(isPostClosing);
+            if (isPostClosing) {
+                if (normalizeRole(currentUser?.role) !== ROLE_OWNER) {
+                    alert('Somente o Dono pode registrar retirada depois do encerramento do dia.');
+                    return;
+                }
+                setPendingPostClosingRetirada(payload);
+                return;
+            }
+            await saveRetiradaCaixa(payload, false);
         } catch (error) {
             console.error('Erro ao registrar retirada para despesa:', error);
+            alert(error?.message || 'Não foi possível registrar a retirada para despesa.');
+        } finally {
+            retiradaCaixaSubmittingRef.current = false;
+            setIsSavingRetiradaCaixa(false);
+        }
+    };
+
+    const confirmPostClosingRetirada = async () => {
+        if (!pendingPostClosingRetirada || retiradaCaixaSubmittingRef.current) return;
+        retiradaCaixaSubmittingRef.current = true;
+        setIsSavingRetiradaCaixa(true);
+        try {
+            await saveRetiradaCaixa(pendingPostClosingRetirada, true);
+        } catch (error) {
+            console.error('Erro ao registrar retirada para despesa após encerramento:', error);
             alert(error?.message || 'Não foi possível registrar a retirada para despesa.');
         } finally {
             retiradaCaixaSubmittingRef.current = false;
@@ -2220,6 +2266,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             {activeTab === 'caixa' && (
                 <CaixaTab
                     currentUser={currentUser}
+                    isOwner={normalizeRole(currentUser?.role) === ROLE_OWNER}
                     effectiveStoreId={effectiveStoreId}
                     availableStores={availableStores}
                     storeInfoMap={storeInfoMap}
@@ -2356,7 +2403,12 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowEstoqueModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar Item</Button></div>
                 </form>
             </Modal>
-            <Modal isOpen={showRetiradaCaixaModal} onClose={() => !isSavingRetiradaCaixa && setShowRetiradaCaixaModal(false)} title="Registrar retirada para despesa" size="md">
+            <Modal isOpen={showRetiradaCaixaModal} onClose={() => {
+                if (isSavingRetiradaCaixa) return;
+                setShowRetiradaCaixaModal(false);
+                setPendingPostClosingRetirada(null);
+                setRetiradaCaixaPostClosing(false);
+            }} title="Registrar retirada para despesa" size="md">
                 <form onSubmit={handleRetiradaCaixaSubmit} className="space-y-4">
                     <Input
                         label="Motivo da retirada"
@@ -2378,10 +2430,19 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                             label="Data da retirada"
                             type="date"
                             value={retiradaCaixaFormData.data || ''}
-                            onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, data: e.target.value })}
+                            onChange={e => {
+                                setRetiradaCaixaFormData({ ...retiradaCaixaFormData, data: e.target.value });
+                                setRetiradaCaixaPostClosing(false);
+                            }}
                             required
                         />
                     </div>
+                    <Input
+                        label="Horário da movimentação (opcional)"
+                        type="time"
+                        value={retiradaCaixaFormData.hora || ''}
+                        onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, hora: e.target.value })}
+                    />
                     <Textarea
                         label="Observação"
                         rows="3"
@@ -2392,12 +2453,23 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-800">
                         Esta retirada para despesa será registrada automaticamente como paga no Financeiro.
                     </div>
+                    {retiradaCaixaPostClosing && normalizeRole(currentUser?.role) === ROLE_OWNER && (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                            Este caixa já possui encerramento. O lançamento será registrado como ajuste pós-encerramento e a conferência será recalculada. O encerramento original será preservado.
+                        </div>
+                    )}
                     <div className="flex justify-end gap-3 pt-2">
                         <Button variant="secondary" type="button" disabled={isSavingRetiradaCaixa} onClick={() => setShowRetiradaCaixaModal(false)}>Cancelar</Button>
                         <Button type="submit" disabled={isSavingRetiradaCaixa}><Save className="w-4 h-4"/> {isSavingRetiradaCaixa ? 'Registrando...' : 'Registrar retirada para despesa'}</Button>
                     </div>
                 </form>
             </Modal>
+            <PostClosingConfirmation
+                isOpen={Boolean(pendingPostClosingRetirada)}
+                isSaving={isSavingRetiradaCaixa}
+                onCancel={() => !isSavingRetiradaCaixa && setPendingPostClosingRetirada(null)}
+                onConfirm={confirmPostClosingRetirada}
+            />
             <ReceitasModal
                 isOpen={showReceitaModal}
                 onClose={() => setShowReceitaModal(false)}

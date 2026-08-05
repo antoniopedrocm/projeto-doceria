@@ -614,3 +614,264 @@ test('historico pagina alertas antigos sem criar duplicidade', async () => {
     snapshot.data().isDeleted === true
   )));
 });
+
+test('somente dono registra retirada pos-encerramento e resolve divergencia', async () => {
+  const storeId = 'ajuste-retirada-pos-encerramento';
+  await seedStore(storeId);
+  await Promise.all([
+    seedUser('owner', 'dono'),
+    seedUser('manager', 'gerente', [storeId]),
+    seedUser('attendant', 'atendente', [storeId]),
+  ]);
+  await caixa.registrarValorInicialCaixa(requestFor('attendant', {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 10000,
+    idempotencyKey: `${storeId}-inicio`,
+  }));
+  await seedCashOrder(
+      storeId,
+      'venda-200',
+      200,
+      admin.firestore.Timestamp.fromDate(
+          new Date('2026-07-27T15:00:00.000Z'),
+      ),
+  );
+  await caixa.registrarEncerramentoCaixa(requestFor('attendant', {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 28000,
+    observacao: 'Valor contado original',
+    idempotencyKey: `${storeId}-encerramento`,
+  }));
+  const dailyRef = db.collection('lojas').doc(storeId)
+    .collection('caixas').doc('2026-07-27');
+  const originalDaily = (await dailyRef.get()).data();
+
+  const blockedPayload = {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 2000,
+    motivo: 'Despesa esquecida',
+  };
+  await assert.rejects(
+      caixa.registrarRetiradaDespesaCaixa(requestFor('attendant', {
+        ...blockedPayload,
+        idempotencyKey: `${storeId}-atendente-bloqueada`,
+      })),
+      expectHttpsCode('failed-precondition'),
+  );
+  await assert.rejects(
+      caixa.registrarRetiradaDespesaCaixa(requestFor('manager', {
+        ...blockedPayload,
+        idempotencyKey: `${storeId}-gerente-bloqueado`,
+      })),
+      expectHttpsCode('failed-precondition'),
+  );
+
+  const ownerPayload = {
+    ...blockedPayload,
+    horaMovimentacao: '17:30',
+    idempotencyKey: `${storeId}-dono-ajuste`,
+  };
+  const response = await caixa.registrarRetiradaDespesaCaixa(
+      requestFor('owner', ownerPayload),
+  );
+  await caixa.registrarRetiradaDespesaCaixa(
+      requestFor('owner', ownerPayload),
+  );
+  assert.match(response.message, /conferencia do caixa foi recalculada/i);
+
+  const payables = await db.collection('lojas').doc(storeId)
+    .collection('contas_a_pagar')
+    .where('origem', '==', 'retirada_despesa_caixa').get();
+  assert.equal(payables.size, 1);
+  const withdrawal = payables.docs[0].data();
+  assert.equal(withdrawal.dataMovimentacao, '2026-07-27');
+  assert.equal(withdrawal.horaMovimentacao, '17:30');
+  assert.equal(withdrawal.lancamentoPosEncerramento, true);
+  assert.equal(withdrawal.perfilResponsavel, 'dono');
+  assert.equal(withdrawal.auditoriaPosEncerramento.diferencaAntesCentavos, -2000);
+  assert.equal(withdrawal.auditoriaPosEncerramento.diferencaDepoisCentavos, 0);
+  assert.ok(withdrawal.registradoEm.toMillis() >=
+    originalDaily.valorEncerramentoRegistradoEm.toMillis());
+
+  const conference = (await db.collection('lojas').doc(storeId)
+    .collection('conferenciasCaixa').doc('2026-07-27').get()).data();
+  assert.equal(conference.retiradasDespesaCentavos, 2000);
+  assert.equal(conference.valorEsperadoCentavos, 28000);
+  assert.equal(conference.diferencaCentavos, 0);
+  assert.equal(conference.ajustesPosEncerramento.length, 1);
+
+  const preservedDaily = (await dailyRef.get()).data();
+  assert.equal(preservedDaily.valorEncerramentoCentavos, 28000);
+  assert.equal(preservedDaily.responsavelEncerramentoUid, 'attendant');
+  assert.equal(preservedDaily.observacaoEncerramento, 'Valor contado original');
+  assert.equal(
+      preservedDaily.valorEncerramentoRegistradoEm.toMillis(),
+      originalDaily.valorEncerramentoRegistradoEm.toMillis(),
+  );
+
+  const alerts = await db.collection('lojas').doc(storeId)
+    .collection('alertas').get();
+  assert.equal(alerts.size, 1);
+  assert.equal(alerts.docs[0].data().situacao, 'resolvido');
+  assert.equal(alerts.docs[0].data().diferencaCentavos, 0);
+  assert.equal(alerts.docs[0].data().historicoDivergencias.length, 1);
+  const alertAudit = await alerts.docs[0].ref.collection('auditoria').get();
+  assert.ok(alertAudit.docs.some((document) => (
+    document.data().action ===
+      'DIVERGENCIA_RESOLVIDA_APOS_AJUSTE_POS_ENCERRAMENTO'
+  )));
+});
+
+test('dono registra sangria pos-encerramento e cria uma nova divergencia', async () => {
+  const storeId = 'ajuste-sangria-pos-encerramento';
+  await seedStore(storeId);
+  await Promise.all([
+    seedUser('owner', 'dono'),
+    seedUser('manager', 'gerente', [storeId]),
+    seedUser('attendant', 'atendente', [storeId]),
+  ]);
+  await db.collection('lojas').doc(storeId)
+    .collection('configuracoesInternas').doc('alertas')
+    .set({destinatarios: 'dono_e_gerentes'});
+  await caixa.registrarValorInicialCaixa(requestFor('attendant', {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 10000,
+    idempotencyKey: `${storeId}-inicio`,
+  }));
+  await seedCashOrder(
+      storeId,
+      'venda-200',
+      200,
+      admin.firestore.Timestamp.fromDate(
+          new Date('2026-07-27T15:00:00.000Z'),
+      ),
+  );
+  await caixa.registrarEncerramentoCaixa(requestFor('attendant', {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 30000,
+    idempotencyKey: `${storeId}-encerramento`,
+  }));
+
+  await assert.rejects(
+      caixa.registrarSangriaCaixa(requestFor('manager', {
+        lojaId: storeId,
+        dataOperacional: '2026-07-27',
+        valorCentavos: 5000,
+        motivo: 'Tentativa do gerente',
+        idempotencyKey: `${storeId}-gerente-bloqueado`,
+      })),
+      expectHttpsCode('failed-precondition'),
+  );
+  await assert.rejects(
+      caixa.registrarSangriaCaixa(requestFor('owner', {
+        lojaId: storeId,
+        dataOperacional: '2026-07-27',
+        valorCentavos: 5000,
+        motivo: '',
+        observacao: 'Sem motivo formal',
+        idempotencyKey: `${storeId}-sem-motivo`,
+      })),
+      expectHttpsCode('invalid-argument'),
+  );
+
+  const ownerPayload = {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 5000,
+    motivo: 'Sangria informada posteriormente',
+    destino: 'Banco',
+    horaMovimentacao: '18:10',
+    idempotencyKey: `${storeId}-dono-sangria`,
+  };
+  await caixa.registrarSangriaCaixa(requestFor('owner', ownerPayload));
+  await caixa.registrarSangriaCaixa(requestFor('owner', ownerPayload));
+
+  const removals = await db.collection('lojas').doc(storeId)
+    .collection('sangriasCaixa').get();
+  assert.equal(removals.size, 1);
+  const removal = removals.docs[0].data();
+  assert.equal(removal.lancamentoPosEncerramento, true);
+  assert.equal(removal.dataMovimentacao, '2026-07-27');
+  assert.equal(removal.horaMovimentacao, '18:10');
+  assert.equal(removal.auditoriaPosEncerramento.diferencaAntesCentavos, 0);
+  assert.equal(removal.auditoriaPosEncerramento.diferencaDepoisCentavos, 5000);
+  assert.equal((await db.collection('lojas').doc(storeId)
+    .collection('contas_a_pagar').get()).empty, true);
+
+  const conference = (await db.collection('lojas').doc(storeId)
+    .collection('conferenciasCaixa').doc('2026-07-27').get()).data();
+  assert.equal(conference.sangriasCentavos, 5000);
+  assert.equal(conference.valorEsperadoCentavos, 25000);
+  assert.equal(conference.diferencaCentavos, 5000);
+
+  const alerts = await db.collection('lojas').doc(storeId)
+    .collection('alertas').get();
+  assert.equal(alerts.size, 1);
+  assert.equal(alerts.docs[0].data().diferencaCentavos, 5000);
+  assert.deepEqual(
+      [...alerts.docs[0].data().destinatariosUids].sort(),
+      ['manager', 'owner'],
+  );
+  const alertId = alerts.docs[0].id;
+  assert.equal((await db.collection('users').doc('owner')
+    .collection('notificacoes').doc(alertId).get()).exists, true);
+  assert.equal((await db.collection('users').doc('manager')
+    .collection('notificacoes').doc(alertId).get()).exists, true);
+  assert.equal((await db.collection('users').doc('attendant')
+    .collection('notificacoes').doc(alertId).get()).exists, false);
+});
+
+test('ajuste pos-encerramento atualiza alerta existente sem duplicar', async () => {
+  const storeId = 'ajuste-altera-divergencia';
+  await seedStore(storeId);
+  await Promise.all([
+    seedUser('owner', 'dono'),
+    seedUser('attendant', 'atendente', [storeId]),
+  ]);
+  await caixa.registrarValorInicialCaixa(requestFor('attendant', {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 10000,
+    idempotencyKey: `${storeId}-inicio`,
+  }));
+  await seedCashOrder(
+      storeId,
+      'venda-200',
+      200,
+      admin.firestore.Timestamp.fromDate(
+          new Date('2026-07-27T15:00:00.000Z'),
+      ),
+  );
+  await caixa.registrarEncerramentoCaixa(requestFor('attendant', {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 20000,
+    idempotencyKey: `${storeId}-encerramento`,
+  }));
+  const alertsBefore = await db.collection('lojas').doc(storeId)
+    .collection('alertas').get();
+  assert.equal(alertsBefore.size, 1);
+  const originalAlertId = alertsBefore.docs[0].id;
+  assert.equal(alertsBefore.docs[0].data().diferencaCentavos, -10000);
+
+  await caixa.registrarRetiradaDespesaCaixa(requestFor('owner', {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 8000,
+    motivo: 'Despesa omitida no fechamento',
+    idempotencyKey: `${storeId}-retirada-80`,
+  }));
+
+  const alertsAfter = await db.collection('lojas').doc(storeId)
+    .collection('alertas').get();
+  assert.equal(alertsAfter.size, 1);
+  assert.equal(alertsAfter.docs[0].id, originalAlertId);
+  assert.equal(alertsAfter.docs[0].data().diferencaCentavos, -2000);
+  assert.equal(alertsAfter.docs[0].data().situacao, 'aberto');
+  assert.equal(alertsAfter.docs[0].data().historicoDivergencias.length, 1);
+});
