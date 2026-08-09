@@ -17,6 +17,7 @@ const cors = require("cors");
 const crypto = require('crypto');
 const {createFiscalFunctions} = require('./fiscal');
 const {createCaixaFunctions} = require('./caixa');
+const {createEntreLojasFunctions} = require('./entre-lojas');
 const {
   defaultCashPermissions,
   sanitizeCashPermissions,
@@ -3827,6 +3828,14 @@ Object.assign(exports, createCaixaFunctions({
     db,
     onCall: onActiveUserCall,
     onDocumentWritten,
+    HttpsError,
+    logger,
+}));
+
+Object.assign(exports, createEntreLojasFunctions({
+    admin,
+    db,
+    onCall: onActiveUserCall,
     HttpsError,
     logger,
 }));
