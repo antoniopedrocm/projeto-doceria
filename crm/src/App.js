@@ -61,6 +61,7 @@ import {
   filterEntreLojasTransfers,
   getClosingActionPermissions,
   getEntreLojasStoreRelation,
+  getEntreLojasVisibleTransferStatuses,
   getTransferActionPermissions,
   summarizeEntreLojasTransfers
 } from './utils/entreLojasPermissions';
@@ -11330,11 +11331,12 @@ const handleSubmit = async (e) => {
     };
 
     const allowedStoreIds = useMemo(() => Array.from(new Set(userStoreIds.map(normalizeStoreId).filter(Boolean))), [userStoreIds]);
-    const allowedTransferStatuses = useMemo(() => (
-      canAccessAllTransfers
+    const allowedTransferStatuses = useMemo(() => getEntreLojasVisibleTransferStatuses({
+      user,
+      allowedStatuses: canAccessAllTransfers
         ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES]
         : getEntreLojasAllowedStatusesFromProfile(user)
-    ), [canAccessAllTransfers, user]);
+    }), [canAccessAllTransfers, user]);
     const allowedTransferStatusSet = useMemo(() => new Set(allowedTransferStatuses), [allowedTransferStatuses]);
 
     const selectedStoreIdForView = useMemo(() => {

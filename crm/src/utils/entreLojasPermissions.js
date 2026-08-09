@@ -19,6 +19,7 @@ const normalizeStatusSet = (statuses = []) => (
     ? statuses
     : new Set((Array.isArray(statuses) ? statuses : []).map(normalizeValue).filter(Boolean))
 );
+const MANAGER_ALWAYS_VISIBLE_TRANSFER_STATUSES = new Set(['pagamento_confirmado']);
 
 export const ENTRE_LOJAS_RELATION = Object.freeze({
   OWNER: 'dono',
@@ -56,6 +57,14 @@ const isRelatedManager = (relation) => (
   || relation === ENTRE_LOJAS_RELATION.DESTINATION
 );
 
+export const getEntreLojasVisibleTransferStatuses = ({ user, allowedStatuses = [] }) => {
+  const visibleStatuses = new Set(normalizeStatusSet(allowedStatuses));
+  if (normalizeRole(user?.role) === 'gerente') {
+    MANAGER_ALWAYS_VISIBLE_TRANSFER_STATUSES.forEach((status) => visibleStatuses.add(status));
+  }
+  return Array.from(visibleStatuses);
+};
+
 export const canViewEntreLojasTransfer = ({ user, transfer, allowedStatuses = [] }) => {
   if (!user || !transfer) return false;
 
@@ -63,7 +72,8 @@ export const canViewEntreLojasTransfer = ({ user, transfer, allowedStatuses = []
   if (isOwnerRelation(relation)) return true;
 
   const status = normalizeValue(transfer.status);
-  if (!status || !normalizeStatusSet(allowedStatuses).has(status)) return false;
+  const visibleStatuses = getEntreLojasVisibleTransferStatuses({ user, allowedStatuses });
+  if (!status || !visibleStatuses.includes(status)) return false;
 
   if (status === 'rascunho') return isOriginRelation(relation);
   return isRelatedManager(relation);

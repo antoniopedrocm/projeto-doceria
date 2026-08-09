@@ -33,6 +33,15 @@ const userProfile = (role, storeIds = [], cashPermissions = {}) => ({
   lojaIds: storeIds,
   permissions: {},
   permissionDetails: {
+    "entre-lojas": {
+      statuses: [
+        "rascunho",
+        "aguardando_conferencia",
+        "conferencia_sem_divergencia",
+        "conferencia_com_divergencia",
+        "pagamento_informado",
+      ],
+    },
     caixa: cashPermissions,
   },
 });
@@ -131,6 +140,12 @@ const seedFirestore = async () => {
         lojaOrigemId: STORE_A,
         lojaDestinoId: STORE_B,
         status: "rascunho",
+        historico: [],
+      }),
+      setDoc(doc(db, "transferenciasEntreLojas", "remessa-confirmacao"), {
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "pagamento_informado",
         historico: [],
       }),
       setDoc(doc(db, "fechamentosEntreLojas", "fechamento-aberto"), {
@@ -706,6 +721,52 @@ describe("regras de acao do modulo Entre Lojas", () => {
         collection(destinationDb, "transferenciasEntreLojas"),
         where("lojaDestinoId", "==", STORE_B),
         where("status", "==", "rascunho"),
+    )));
+  });
+
+  test("pagamento confirmado permanece visivel apos a transicao para origem e destino", async () => {
+    const ownerDb = testEnv.authenticatedContext("owner").firestore();
+    const originDb = testEnv.authenticatedContext("manager-a").firestore();
+    const destinationDb = testEnv.authenticatedContext("manager-b").firestore();
+    const thirdDb = testEnv.authenticatedContext("manager-c").firestore();
+    const confirmedRef = (db) => entreLojasDoc(
+        db, "transferenciasEntreLojas", "remessa-confirmacao",
+    );
+
+    await assertSucceeds(updateDoc(confirmedRef(originDb), {
+      status: "pagamento_confirmado",
+      dataPagamentoConfirmado: "2026-08-09T12:00:00.000Z",
+      pagamentoConfirmadoPorUid: "manager-a",
+      pagamentoConfirmadoPorNome: "manager-a",
+      observacaoPagamento: "Pagamento confirmado",
+      dataAtualizacao: "2026-08-09T12:00:00.000Z",
+      historico: [entreLojasHistory(
+          "manager-a", "pagamento_confirmado", "pagamento_informado",
+          "pagamento_confirmado", "origem",
+      )],
+    }));
+
+    await assertSucceeds(getDoc(confirmedRef(ownerDb)));
+    await assertSucceeds(getDoc(confirmedRef(originDb)));
+    await assertSucceeds(getDoc(confirmedRef(destinationDb)));
+    await assertFails(getDoc(confirmedRef(thirdDb)));
+
+    const originSnapshot = await assertSucceeds(getDocs(query(
+        collection(originDb, "transferenciasEntreLojas"),
+        where("lojaOrigemId", "==", STORE_A),
+        where("status", "==", "pagamento_confirmado"),
+    )));
+    const destinationSnapshot = await assertSucceeds(getDocs(query(
+        collection(destinationDb, "transferenciasEntreLojas"),
+        where("lojaDestinoId", "==", STORE_B),
+        where("status", "==", "pagamento_confirmado"),
+    )));
+    assert.equal(originSnapshot.size, 1);
+    assert.equal(destinationSnapshot.size, 1);
+    await assertFails(getDocs(query(
+        collection(thirdDb, "transferenciasEntreLojas"),
+        where("lojaDestinoId", "==", STORE_B),
+        where("status", "==", "pagamento_confirmado"),
     )));
   });
 

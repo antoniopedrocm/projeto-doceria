@@ -228,7 +228,8 @@ function currentUserHasTransferenciaStatus(status) {
     || (
       currentUserHasEntreLojasModule()
       && (
-        !currentUserData().get('permissionDetails', {}).keys().hasAny(['entre-lojas'])
+        (isManagerUser() && status == 'pagamento_confirmado')
+        || !currentUserData().get('permissionDetails', {}).keys().hasAny(['entre-lojas'])
         || status in currentUserData().get('permissionDetails', {}).get('entre-lojas', {}).get('statuses', validTransferenciaEntreLojasStatuses())
       )
     );

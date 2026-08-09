@@ -6,6 +6,7 @@ import {
   filterEntreLojasTransfers,
   getClosingActionPermissions,
   getEntreLojasStoreRelation,
+  getEntreLojasVisibleTransferStatuses,
   getTransferActionPermissions,
   summarizeEntreLojasTransfers
 } from './entreLojasPermissions';
@@ -58,6 +59,20 @@ describe('visibilidade de remessas em Entre Lojas', () => {
     })).toBe(false);
   });
 
+  test('pagamento confirmado permanece visivel para gerentes relacionados com perfil personalizado antigo', () => {
+    const confirmedTransfer = { ...transfer, status: 'pagamento_confirmado' };
+    const legacyStatuses = ['aguardando_conferencia', 'pagamento_informado'];
+
+    expect(getEntreLojasVisibleTransferStatuses({
+      user: manager('matriz'),
+      allowedStatuses: legacyStatuses
+    })).toContain('pagamento_confirmado');
+    expect(canViewEntreLojasTransfer({ user: { role: 'dono' }, transfer: confirmedTransfer, allowedStatuses: [] })).toBe(true);
+    expect(canViewEntreLojasTransfer({ user: manager('matriz'), transfer: confirmedTransfer, allowedStatuses: legacyStatuses })).toBe(true);
+    expect(canViewEntreLojasTransfer({ user: manager('garavelo'), transfer: confirmedTransfer, allowedStatuses: legacyStatuses })).toBe(true);
+    expect(canViewEntreLojasTransfer({ user: manager('outra-loja'), transfer: confirmedTransfer, allowedStatuses: legacyStatuses })).toBe(false);
+  });
+
   test('abas e filtros usam os vinculos reais do gerente destino', () => {
     const visibleTransfers = [
       { ...transfer, id: 'aguardando', totalRepasse: 10, totalRevenda: 20, dataCriacao: new Date('2026-08-01T12:00:00') },
@@ -69,7 +84,7 @@ describe('visibilidade de remessas em Entre Lojas', () => {
     const baseOptions = {
       transfers: visibleTransfers,
       user: manager('garavelo'),
-      allowedStatuses: allStatuses,
+      allowedStatuses: allStatuses.filter((status) => status !== 'pagamento_confirmado'),
       selectedStoreId: 'garavelo',
       paymentStatuses: ['pagamento_informado', 'conferencia_sem_divergencia', 'conferencia_com_divergencia'],
       historyStatuses: ['pagamento_confirmado', 'pagamento_contestado', 'cancelado', 'cancelada']
@@ -85,10 +100,20 @@ describe('visibilidade de remessas em Entre Lojas', () => {
     expect(filterEntreLojasTransfers({ ...baseOptions, activeTab: 'aguardando_conferencia' }).map((item) => item.id)).toEqual(['aguardando']);
     expect(filterEntreLojasTransfers({ ...baseOptions, activeTab: 'aguardando_pagamento' }).map((item) => item.id)).toEqual(['pagamento']);
     expect(filterEntreLojasTransfers({ ...baseOptions, activeTab: 'historico' }).map((item) => item.id)).toEqual(['historico']);
+    expect(filterEntreLojasTransfers({ ...baseOptions, statusFilter: 'pagamento_confirmado' }).map((item) => item.id)).toEqual(['historico']);
     expect(filterEntreLojasTransfers({ ...baseOptions, statusFilter: 'pagamento_informado' }).map((item) => item.id)).toEqual(['pagamento']);
     expect(filterEntreLojasTransfers({ ...baseOptions, originFilter: 'outra-origem' })).toHaveLength(0);
     expect(filterEntreLojasTransfers({ ...baseOptions, destinationFilter: 'garavelo' })).toHaveLength(3);
     expect(filterEntreLojasTransfers({ ...baseOptions, startDateFilter: '2026-08-02', endDateFilter: '2026-08-02' }).map((item) => item.id)).toEqual(['pagamento']);
+
+    const originOptions = { ...baseOptions, user: manager('matriz'), selectedStoreId: 'matriz' };
+    expect(filterEntreLojasTransfers({ ...originOptions, activeTab: 'todas' }).map((item) => item.id)).toEqual([
+      'aguardando', 'pagamento', 'historico', 'rascunho', 'terceira'
+    ]);
+    expect(filterEntreLojasTransfers({ ...originOptions, activeTab: 'enviadas' }).map((item) => item.id)).toEqual([
+      'aguardando', 'pagamento', 'historico', 'rascunho', 'terceira'
+    ]);
+    expect(filterEntreLojasTransfers({ ...originOptions, activeTab: 'historico' }).map((item) => item.id)).toEqual(['historico']);
   });
 
   test('vinculo duplo nao duplica remessa nem totais dos cards', () => {
