@@ -54,6 +54,19 @@ import {
 } from './caixa/caixaCore';
 import { obterRegistroDiarioCaixa, registrarRetiradaDespesaCaixa } from './services/caixaService';
 import PostClosingConfirmation from './components/caixa/PostClosingConfirmation';
+import {
+  buildPurchaseOrderMoneyFields,
+  calculateItemsSubtotalCents,
+  cleanSupplierName,
+  findEquivalentSupplier,
+  formatCentsAsCurrency,
+  hydratePurchaseOrder,
+  moneyInputToCents,
+  normalizeSupplierName,
+  resolvePurchaseOrderSubtotalCents,
+  resolvePurchaseOrderTotalCents,
+  searchSuppliers
+} from './fornecedores/purchaseOrderCore';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
@@ -1721,7 +1734,15 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     
     const [showPedidoModal, setShowPedidoModal] = useState(false);
     const [editingPedido, setEditingPedido] = useState(null);
-    const [pedidoFormData, setPedidoFormData] = useState({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente' });
+    const [pedidoFormData, setPedidoFormData] = useState(() => hydratePurchaseOrder({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente', observacaoGeral: '' }));
+    const [fornecedorPedidoBusca, setFornecedorPedidoBusca] = useState('');
+    const [fornecedorPedidoDropdownOpen, setFornecedorPedidoDropdownOpen] = useState(false);
+    const [showQuickFornecedorModal, setShowQuickFornecedorModal] = useState(false);
+    const [quickFornecedorNome, setQuickFornecedorNome] = useState('');
+    const [isSavingQuickFornecedor, setIsSavingQuickFornecedor] = useState(false);
+    const [fornecedorCriadoNoPedido, setFornecedorCriadoNoPedido] = useState(false);
+    const [isSavingPedido, setIsSavingPedido] = useState(false);
+    const receivingPedidoIdsRef = useRef(new Set());
 
     const [showEstoqueModal, setShowEstoqueModal] = useState(false);
     const [editingEstoque, setEditingEstoque] = useState(null);
@@ -1759,7 +1780,12 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         setIsSavingFornecedorCategoria(false);
         setPreviousFornecedorCategoria('');
     };
-    const resetPedidoForm = () => setPedidoFormData({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente' });
+    const resetPedidoForm = () => {
+        setPedidoFormData(hydratePurchaseOrder({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente', observacaoGeral: '' }));
+        setFornecedorPedidoBusca('');
+        setFornecedorPedidoDropdownOpen(false);
+        setFornecedorCriadoNoPedido(false);
+    };
     const resetEstoqueForm = () => setEstoqueFormData({ nome: '', categoria: DEFAULT_FORNECEDOR_CATEGORIES[0], fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' });
     const resetPerdaForm = () => setPerdaFormData({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: new Date().toISOString().split('T')[0], motivo: 'Vencimento', outroMotivo: '' });
     const resetReceitaForm = () => setReceitaFormData({ nome: '', categoria: '', ingredientes: '', modoPreparo: '', tempoPreparo: '', rendimento: '', custoEstimado: '', observacoes: '' });
@@ -1832,15 +1858,26 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     }, [data.categoriasFornecedores, fornecedorFormData.categoria, estoqueFormData.categoria]);
     
 	useEffect(() => {
-		const total = (pedidoFormData.itens || []).reduce((sum, item) => 
-			sum + ((item.quantidade || 0) * (item.custoUnitario || 0)), 0
-		);
-		
-		// Só atualiza se mudou para evitar loop
-		if (total !== pedidoFormData.valorTotal) {
-			setPedidoFormData(prev => ({ ...prev, valorTotal: total }));
-        }
-    }, [pedidoFormData.itens, pedidoFormData.valorTotal]);
+        setPedidoFormData((previous) => {
+            const subtotalItensCentavos = calculateItemsSubtotalCents(previous.itens || []);
+            const valorTotalCentavos = previous.totalDefinidoManualmente
+                ? resolvePurchaseOrderTotalCents(previous)
+                : subtotalItensCentavos;
+            const moneyFields = buildPurchaseOrderMoneyFields({
+                items: previous.itens || [],
+                totalCents: valorTotalCentavos,
+                manuallyDefined: previous.totalDefinidoManualmente
+            });
+
+            if (
+                previous.subtotalItensCentavos === moneyFields.subtotalItensCentavos
+                && previous.valorTotalCentavos === moneyFields.valorTotalCentavos
+                && previous.valorNaoDetalhadoCentavos === moneyFields.valorNaoDetalhadoCentavos
+            ) return previous;
+
+            return { ...previous, ...moneyFields };
+        });
+    }, [pedidoFormData.itens]);
 
     const handlePerdaProdutoChange = async (e) => {
         const produtoId = e.target.value;
@@ -1867,7 +1904,18 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
 
     // Memoized Filters
     const filteredFornecedores = useMemo(() => (data.fornecedores || []).filter(f => (f.nome && f.nome.toLowerCase().includes(searchTerm.toLowerCase())) || (f.categoria && f.categoria.toLowerCase().includes(searchTerm.toLowerCase()))), [data.fornecedores, searchTerm]);
-    const pedidosComNomes = useMemo(() => (data.pedidosCompra || []).map(pedido => ({ ...pedido, fornecedorNome: data.fornecedores.find(f => f.id === pedido.fornecedorId)?.nome || 'N/A' })), [data.pedidosCompra, data.fornecedores]);
+    const pedidosComNomes = useMemo(() => (data.pedidosCompra || []).map(pedido => ({
+        ...pedido,
+        fornecedorNome: data.fornecedores.find(f => f.id === pedido.fornecedorId)?.nome || pedido.fornecedorNome || 'N/A'
+    })), [data.pedidosCompra, data.fornecedores]);
+    const pedidoFornecedorResults = useMemo(
+        () => searchSuppliers(data.fornecedores || [], fornecedorPedidoBusca),
+        [data.fornecedores, fornecedorPedidoBusca]
+    );
+    const pedidoFornecedorEquivalent = useMemo(
+        () => findEquivalentSupplier(data.fornecedores || [], fornecedorPedidoBusca),
+        [data.fornecedores, fornecedorPedidoBusca]
+    );
     const estoqueComNomes = useMemo(() => (data.estoque || []).map(item => ({ ...item, fornecedorNome: data.fornecedores.find(f => f.id === item.fornecedorId)?.nome || 'N/A' })), [data.estoque, data.fornecedores]);
     const estoqueFornecedores = useMemo(() => {
         const fornecedores = new Set();
@@ -1965,6 +2013,66 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         || 'Usuário'
     );
 
+    const getCurrentUserId = () => currentUser?.auth?.uid || currentUser?.uid || '';
+
+    const selectFornecedorForPedido = (fornecedor, createdDuringOrder = false) => {
+        if (!fornecedor) return;
+        setPedidoFormData((previous) => ({
+            ...previous,
+            fornecedorId: fornecedor.id,
+            fornecedorNome: fornecedor.nome
+        }));
+        setFornecedorPedidoBusca(fornecedor.nome || '');
+        setFornecedorPedidoDropdownOpen(false);
+        setFornecedorCriadoNoPedido(createdDuringOrder);
+    };
+
+    const openQuickFornecedorModal = (name) => {
+        const cleanedName = cleanSupplierName(name);
+        if (!cleanedName) return;
+        setQuickFornecedorNome(cleanedName);
+        setFornecedorPedidoDropdownOpen(false);
+        setShowQuickFornecedorModal(true);
+    };
+
+    const handleQuickFornecedorSubmit = async (event) => {
+        event.preventDefault();
+        const cleanedName = cleanSupplierName(quickFornecedorNome);
+        if (!cleanedName) {
+            alert('Informe o nome do fornecedor.');
+            return;
+        }
+
+        const existing = findEquivalentSupplier(data.fornecedores || [], cleanedName);
+        if (existing) {
+            selectFornecedorForPedido(existing, false);
+            setShowQuickFornecedorModal(false);
+            alert('Este fornecedor já estava cadastrado e foi selecionado.');
+            return;
+        }
+
+        try {
+            setIsSavingQuickFornecedor(true);
+            const supplierPayload = {
+                nome: cleanedName,
+                nomeNormalizado: normalizeSupplierName(cleanedName),
+                categoria: DEFAULT_FORNECEDOR_CATEGORIES[0],
+                status: 'Ativo',
+                criadoDurantePedido: true,
+                createdBy: getCurrentUserId(),
+                createdByNome: getCurrentUserName(),
+                createdByEmail: currentUser?.auth?.email || currentUser?.email || ''
+            };
+            const supplierRef = await addItem('fornecedores', supplierPayload);
+            selectFornecedorForPedido({ id: supplierRef.id, ...supplierPayload }, true);
+            setShowQuickFornecedorModal(false);
+        } catch (error) {
+            console.error('Erro ao cadastrar fornecedor durante o pedido:', error);
+        } finally {
+            setIsSavingQuickFornecedor(false);
+        }
+    };
+
 
     // Handlers Fornecedores
     const handleNewFornecedor = () => { setEditingFornecedor(null); resetFornecedorForm(); setShowFornecedorModal(true); };
@@ -2026,12 +2134,183 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     };
 
     // Handlers Pedidos de Compra
-    const handleNewPedido = () => { setEditingPedido(null); resetPedidoForm(); setShowPedidoModal(true); };
-    const handleEditPedido = (pedido) => { setEditingPedido(pedido); setPedidoFormData({ ...pedido, dataPedido: pedido.dataPedido?.split('T')[0] || '', dataPrevistaEntrega: pedido.dataPrevistaEntrega?.split('T')[0] || '' }); setShowPedidoModal(true); };
-    const handlePedidoSubmit = async (e) => { e.preventDefault(); if (editingPedido) { await updateItem('pedidosCompra', editingPedido.id, pedidoFormData); } else { await addItem('pedidosCompra', pedidoFormData); } setShowPedidoModal(false); };
-    const handleUpdatePedidoStatus = async (pedido, status) => { await updateItem('pedidosCompra', pedido.id, { ...pedido, status }); if (status === 'Recebido') { const conta = { descricao: `Compra de ${pedido.fornecedorNome}`, valor: pedido.valorTotal, dataVencimento: new Date().toISOString().split('T')[0], status: 'Pendente', categoria: 'Fornecedores', pedidoCompraId: pedido.id }; await addItem('contas_a_pagar', conta); alert('Conta a pagar gerada no financeiro!'); } };
-    const handleAddItemToPedido = (item) => { setPedidoFormData(prev => ({...prev, itens: [...(prev.itens || []), {...item, quantidade: 1, custoUnitario: item.custoUnitario || 0}]}))};
-    const handleUpdateItemInPedido = (index, field, value) => { const newItens = [...pedidoFormData.itens]; newItens[index][field] = value; setPedidoFormData(prev => ({...prev, itens: newItens})) };
+    const handleNewPedido = () => {
+        setEditingPedido(null);
+        resetPedidoForm();
+        setShowPedidoModal(true);
+    };
+    const handleEditPedido = (pedido) => {
+        const hydrated = hydratePurchaseOrder(pedido);
+        setEditingPedido(pedido);
+        setPedidoFormData({
+            ...hydrated,
+            dataPedido: typeof pedido.dataPedido === 'string' ? pedido.dataPedido.split('T')[0] : '',
+            dataPrevistaEntrega: typeof pedido.dataPrevistaEntrega === 'string' ? pedido.dataPrevistaEntrega.split('T')[0] : ''
+        });
+        setFornecedorPedidoBusca(pedido.fornecedorNome || '');
+        setFornecedorPedidoDropdownOpen(false);
+        setFornecedorCriadoNoPedido(false);
+        setShowPedidoModal(true);
+    };
+    const handlePedidoSubmit = async (event) => {
+        event.preventDefault();
+        if (!pedidoFormData.fornecedorId) {
+            alert('Selecione um fornecedor.');
+            return;
+        }
+
+        const items = pedidoFormData.itens || [];
+        const moneyFields = buildPurchaseOrderMoneyFields({
+            items,
+            totalCents: resolvePurchaseOrderTotalCents(pedidoFormData),
+            manuallyDefined: pedidoFormData.totalDefinidoManualmente
+        });
+        if (items.length === 0 && moneyFields.valorTotalCentavos <= 0) {
+            alert('Informe o valor total do pedido quando nenhum item for detalhado.');
+            return;
+        }
+        if (
+            moneyFields.valorTotalCentavos < moneyFields.subtotalItensCentavos
+            && !window.confirm('O valor total informado é menor que a soma dos itens detalhados. Deseja continuar?')
+        ) return;
+
+        const timestamp = new Date();
+        const auditEntry = {
+            acao: editingPedido ? 'pedido_atualizado' : 'pedido_criado',
+            data: timestamp,
+            usuarioUid: getCurrentUserId(),
+            usuarioNome: getCurrentUserName(),
+            fornecedorId: pedidoFormData.fornecedorId,
+            fornecedorNome: pedidoFormData.fornecedorNome,
+            fornecedorCriadoDurantePedido: fornecedorCriadoNoPedido
+                || editingPedido?.fornecedorCriadoDurantePedido === true,
+            subtotalItensCentavos: moneyFields.subtotalItensCentavos,
+            valorTotalCentavos: moneyFields.valorTotalCentavos,
+            valorTotalAnteriorCentavos: editingPedido ? resolvePurchaseOrderTotalCents(editingPedido) : null,
+            observacaoGeral: pedidoFormData.observacaoGeral || ''
+        };
+        const formWithoutId = { ...pedidoFormData };
+        delete formWithoutId.id;
+        const payload = {
+            ...formWithoutId,
+            ...moneyFields,
+            observacaoGeral: (pedidoFormData.observacaoGeral || '').trim(),
+            fornecedorCriadoDurantePedido: fornecedorCriadoNoPedido
+                || editingPedido?.fornecedorCriadoDurantePedido === true,
+            historico: [...(editingPedido?.historico || []), auditEntry],
+            updatedAt: timestamp,
+            updatedBy: getCurrentUserId(),
+            updatedByNome: getCurrentUserName()
+        };
+
+        try {
+            setIsSavingPedido(true);
+            if (editingPedido) {
+                await updateItem('pedidosCompra', editingPedido.id, payload);
+            } else {
+                await addItem('pedidosCompra', {
+                    ...payload,
+                    createdBy: getCurrentUserId(),
+                    createdByNome: getCurrentUserName(),
+                    createdByEmail: currentUser?.auth?.email || currentUser?.email || ''
+                });
+            }
+            setShowPedidoModal(false);
+        } finally {
+            setIsSavingPedido(false);
+        }
+    };
+    const handleUpdatePedidoStatus = async (pedido, status) => {
+        if (pedido.status === status) {
+            alert(`O pedido já está com o status ${status}.`);
+            return;
+        }
+        if (receivingPedidoIdsRef.current.has(pedido.id)) return;
+        receivingPedidoIdsRef.current.add(pedido.id);
+
+        try {
+            let financialAccount = (data.contas_a_pagar || []).find((account) => account.pedidoCompraId === pedido.id)
+                || (pedido.contaPagarId ? { id: pedido.contaPagarId } : null);
+            if (status === 'Recebido' && !financialAccount) {
+                const valorCentavos = resolvePurchaseOrderTotalCents(pedido);
+                const accountId = `pedidoCompra_${pedido.id}`;
+                const accountRef = await addItem('contas_a_pagar', {
+                    descricao: `Compra de ${pedido.fornecedorNome}`,
+                    valor: valorCentavos / 100,
+                    valorCentavos,
+                    dataVencimento: new Date().toISOString().split('T')[0],
+                    status: 'Pendente',
+                    categoria: 'Fornecedores',
+                    pedidoCompraId: pedido.id,
+                    lojaId: effectiveStoreId,
+                    createdAt: new Date(),
+                    createdBy: getCurrentUserId(),
+                    createdByNome: getCurrentUserName()
+                }, effectiveStoreId, accountId);
+                financialAccount = { id: accountRef.id };
+            }
+
+            await updateItem('pedidosCompra', pedido.id, {
+                status,
+                ...(financialAccount?.id ? { contaPagarId: financialAccount.id } : {}),
+                updatedAt: new Date(),
+                updatedBy: getCurrentUserId(),
+                updatedByNome: getCurrentUserName(),
+                historico: [...(pedido.historico || []), {
+                    acao: 'status_atualizado',
+                    statusAnterior: pedido.status || '',
+                    statusNovo: status,
+                    data: new Date(),
+                    usuarioUid: getCurrentUserId(),
+                    usuarioNome: getCurrentUserName(),
+                    subtotalItensCentavos: resolvePurchaseOrderSubtotalCents(pedido),
+                    valorTotalCentavos: resolvePurchaseOrderTotalCents(pedido),
+                    observacaoGeral: pedido.observacaoGeral || ''
+                }]
+            });
+            if (status === 'Recebido') alert('Pedido recebido e conta a pagar vinculada ao financeiro.');
+        } finally {
+            receivingPedidoIdsRef.current.delete(pedido.id);
+        }
+    };
+    const handleFornecedorPedidoSearchChange = (event) => {
+        const value = event.target.value;
+        setFornecedorPedidoBusca(value);
+        setFornecedorPedidoDropdownOpen(true);
+        if (normalizeSupplierName(value) !== normalizeSupplierName(pedidoFormData.fornecedorNome)) {
+            setPedidoFormData((previous) => ({ ...previous, fornecedorId: '', fornecedorNome: '' }));
+            setFornecedorCriadoNoPedido(false);
+        }
+    };
+    const handlePedidoTotalChange = (event) => {
+        const valorTotalCentavos = moneyInputToCents(event.target.value);
+        setPedidoFormData((previous) => ({
+            ...previous,
+            ...buildPurchaseOrderMoneyFields({
+                items: previous.itens || [],
+                totalCents: valorTotalCentavos,
+                manuallyDefined: true
+            })
+        }));
+    };
+    const handleAddItemToPedido = (item) => {
+        const custoUnitario = Number(item.custoUnitario || 0);
+        setPedidoFormData(prev => ({
+            ...prev,
+            itens: [...(prev.itens || []), {
+                ...item,
+                quantidade: 1,
+                custoUnitario,
+                custoUnitarioCentavos: Math.round(custoUnitario * 100)
+            }]
+        }));
+    };
+    const handleUpdateItemInPedido = (index, field, value) => {
+        const newItens = [...pedidoFormData.itens];
+        newItens[index] = { ...newItens[index], [field]: value };
+        if (field === 'custoUnitario') newItens[index].custoUnitarioCentavos = Math.round(Number(value || 0) * 100);
+        setPedidoFormData(prev => ({...prev, itens: newItens}));
+    };
     const handleRemoveItemFromPedido = (index) => { const newItens = pedidoFormData.itens.filter((_, i) => i !== index); setPedidoFormData(prev => ({...prev, itens: newItens}));};
 
     // Handlers Estoque
@@ -2194,7 +2473,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             {activeTab === 'pedidos' && (
                  <div>
                     <div className="flex justify-end mb-6"><Button onClick={handleNewPedido}><Plus className="w-4 h-4" /> Novo Pedido de Compra</Button></div>
-                    <Table columns={[{ header: 'Fornecedor', key: 'fornecedorNome' }, { header: 'Data do Pedido', render: (row) => getJSDate(row.dataPedido)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Previsão de Entrega', render: (row) => getJSDate(row.dataPrevistaEntrega)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Valor Total', render: (row) => `R$ ${(row.valorTotal || 0).toFixed(2)}`}, { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'Recebido' ? 'bg-green-100 text-green-800' : row.status === 'Pendente' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>{row.status}</span> }]} data={pedidosComNomes} actions={[{ icon: Edit, label: "Editar", onClick: handleEditPedido }, { icon: Truck, label: "Receber", onClick: (row) => handleUpdatePedidoStatus(row, 'Recebido') }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidosCompra', row.id) }) }]} />
+                    <Table columns={[{ header: 'Fornecedor', key: 'fornecedorNome' }, { header: 'Data do Pedido', render: (row) => getJSDate(row.dataPedido)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Previsão de Entrega', render: (row) => getJSDate(row.dataPrevistaEntrega)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Valor Total', render: (row) => formatCentsAsCurrency(resolvePurchaseOrderTotalCents(row)) }, { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'Recebido' ? 'bg-green-100 text-green-800' : row.status === 'Pendente' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>{row.status}</span> }]} data={pedidosComNomes} actions={[{ icon: Eye, label: "Abrir/Editar", onClick: handleEditPedido }, { icon: Truck, label: "Receber", onClick: (row) => handleUpdatePedidoStatus(row, 'Recebido') }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidosCompra', row.id) }) }]} />
                 </div>
             )}
              {activeTab === 'estoque' && (
@@ -2353,9 +2632,63 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             <Modal isOpen={showPedidoModal} onClose={() => setShowPedidoModal(false)} title={editingPedido ? 'Editar Pedido de Compra' : 'Novo Pedido de Compra'} size="xl">
                 <form onSubmit={handlePedidoSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Select label="Fornecedor" value={pedidoFormData.fornecedorId || ''} onChange={e => setPedidoFormData({...pedidoFormData, fornecedorId: e.target.value, fornecedorNome: e.target.selectedOptions[0].text })} required><option value="">Selecione...</option>{data.fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</Select>
+                        <div className="space-y-1 relative">
+                            <label className="block text-sm font-medium text-gray-700">Fornecedor</label>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={fornecedorPedidoBusca}
+                                    onChange={handleFornecedorPedidoSearchChange}
+                                    onFocus={() => setFornecedorPedidoDropdownOpen(true)}
+                                    onBlur={() => window.setTimeout(() => setFornecedorPedidoDropdownOpen(false), 150)}
+                                    placeholder="Digite o nome do fornecedor..."
+                                    autoComplete="off"
+                                    className={`w-full pl-10 pr-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${pedidoFormData.fornecedorId ? 'border-green-400 bg-green-50' : 'border-gray-300'}`}
+                                />
+                            </div>
+                            {pedidoFormData.fornecedorId && <p className="text-xs text-green-700">Fornecedor selecionado: {pedidoFormData.fornecedorNome}</p>}
+                            {fornecedorPedidoDropdownOpen && (
+                                <div className="absolute z-20 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl">
+                                    {pedidoFornecedorResults.map((fornecedor) => (
+                                        <button
+                                            key={fornecedor.id}
+                                            type="button"
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            onClick={() => selectFornecedorForPedido(fornecedor, false)}
+                                            className="block w-full px-4 py-3 text-left text-sm hover:bg-pink-50"
+                                        >
+                                            <span className="font-medium text-gray-800">{fornecedor.nome}</span>
+                                            {fornecedor.categoria && <span className="block text-xs text-gray-500">{fornecedor.categoria}</span>}
+                                        </button>
+                                    ))}
+                                    {cleanSupplierName(fornecedorPedidoBusca) && !pedidoFornecedorEquivalent && (
+                                        <button
+                                            type="button"
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            onClick={() => openQuickFornecedorModal(fornecedorPedidoBusca)}
+                                            className="block w-full border-t border-pink-100 px-4 py-3 text-left text-sm font-semibold text-pink-700 hover:bg-pink-50"
+                                        >
+                                            + Cadastrar “{cleanSupplierName(fornecedorPedidoBusca)}” como novo fornecedor
+                                        </button>
+                                    )}
+                                    {pedidoFornecedorResults.length === 0 && pedidoFornecedorEquivalent && (
+                                        <p className="px-4 py-3 text-sm text-gray-500">Fornecedor equivalente já cadastrado.</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                         <Input label="Data do Pedido" type="date" value={pedidoFormData.dataPedido || ''} onChange={e => setPedidoFormData({...pedidoFormData, dataPedido: e.target.value})} required/>
                         <Input label="Previsão de Entrega" type="date" value={pedidoFormData.dataPrevistaEntrega || ''} onChange={e => setPedidoFormData({...pedidoFormData, dataPrevistaEntrega: e.target.value})} />
+                        <Input
+                            label="Valor total do pedido"
+                            type="text"
+                            inputMode="decimal"
+                            value={formatCentsAsCurrency(resolvePurchaseOrderTotalCents(pedidoFormData))}
+                            onChange={handlePedidoTotalChange}
+                            onFocus={(event) => event.target.select()}
+                            required={(pedidoFormData.itens || []).length === 0}
+                        />
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-2">
@@ -2379,10 +2712,65 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                                     </div>
                                 ))}
                             </div>
-                            <div className="text-right font-bold text-lg mt-2">Total: R$ {(pedidoFormData.valorTotal || 0).toFixed(2)}</div>
+                            <div className="mt-3 rounded-xl bg-gray-50 p-3 space-y-1 text-sm">
+                                <div className="flex justify-between"><span>Itens detalhados:</span><strong>{formatCentsAsCurrency(resolvePurchaseOrderSubtotalCents(pedidoFormData))}</strong></div>
+                                {pedidoFormData.valorNaoDetalhadoCentavos !== 0 && (
+                                    <div className={`flex justify-between ${pedidoFormData.valorNaoDetalhadoCentavos < 0 ? 'text-amber-700' : 'text-pink-700'}`}>
+                                        <span>{pedidoFormData.valorNaoDetalhadoCentavos < 0 ? 'Ajuste/desconto:' : 'Valor não detalhado em itens:'}</span>
+                                        <strong>{formatCentsAsCurrency(pedidoFormData.valorNaoDetalhadoCentavos)}</strong>
+                                    </div>
+                                )}
+                                <div className="flex justify-between border-t border-gray-200 pt-1 text-base"><span>Total do pedido:</span><strong>{formatCentsAsCurrency(resolvePurchaseOrderTotalCents(pedidoFormData))}</strong></div>
+                                {pedidoFormData.totalDefinidoManualmente && <p className="text-xs text-gray-500">Total definido manualmente; alterações nos itens não o sobrescrevem.</p>}
+                            </div>
                         </div>
                     </div>
-                    <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowPedidoModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar Pedido</Button></div>
+                    <Textarea
+                        label="Observação geral do pedido"
+                        rows="3"
+                        placeholder="Ex.: Compra geral de embalagens e ingredientes. Alguns itens não foram detalhados individualmente no pedido."
+                        value={pedidoFormData.observacaoGeral || ''}
+                        onChange={(event) => setPedidoFormData({ ...pedidoFormData, observacaoGeral: event.target.value })}
+                    />
+                    {editingPedido && (
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <p><span className="text-gray-500">Responsável:</span> {editingPedido.createdByNome || editingPedido.createdByEmail || '-'}</p>
+                                <p><span className="text-gray-500">Criado em:</span> {getJSDate(editingPedido.createdAt)?.toLocaleString('pt-BR') || '-'}</p>
+                            </div>
+                            <details>
+                                <summary className="cursor-pointer font-medium text-gray-700">Histórico do pedido ({(editingPedido.historico || []).length})</summary>
+                                <div className="mt-2 space-y-2">
+                                    {(editingPedido.historico || []).length === 0 && <p className="text-gray-500">Pedido anterior à auditoria detalhada.</p>}
+                                    {[...(editingPedido.historico || [])].reverse().map((entry, index) => (
+                                        <div key={`${entry.acao || 'evento'}-${index}`} className="rounded-lg border border-gray-200 bg-white p-2">
+                                            <p className="font-medium">{entry.acao || 'Alteração'}</p>
+                                            <p className="text-xs text-gray-500">{entry.usuarioNome || '-'} · {getJSDate(entry.data)?.toLocaleString('pt-BR') || '-'}</p>
+                                            {Number.isInteger(entry.valorTotalCentavos) && <p className="text-xs">Total: {formatCentsAsCurrency(entry.valorTotalCentavos)}</p>}
+                                            {entry.observacaoGeral && <p className="text-xs">Observação: {entry.observacaoGeral}</p>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </details>
+                        </div>
+                    )}
+                    <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowPedidoModal(false)} disabled={isSavingPedido}>Cancelar</Button><Button type="submit" disabled={isSavingPedido}><Save className="w-4 h-4"/> {isSavingPedido ? 'Salvando...' : 'Salvar Pedido'}</Button></div>
+                </form>
+            </Modal>
+            <Modal isOpen={showQuickFornecedorModal} onClose={() => !isSavingQuickFornecedor && setShowQuickFornecedorModal(false)} title="Novo fornecedor" size="sm">
+                <form onSubmit={handleQuickFornecedorSubmit} className="space-y-4">
+                    <Input
+                        label="Nome"
+                        value={quickFornecedorNome}
+                        onChange={(event) => setQuickFornecedorNome(event.target.value)}
+                        autoFocus
+                        required
+                    />
+                    <p className="text-sm text-gray-500">O fornecedor será salvo no cadastro oficial desta loja e poderá ser complementado depois.</p>
+                    <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
+                        <Button variant="secondary" type="button" onClick={() => setShowQuickFornecedorModal(false)} disabled={isSavingQuickFornecedor}>Cancelar</Button>
+                        <Button type="submit" disabled={isSavingQuickFornecedor}><Save className="w-4 h-4"/> {isSavingQuickFornecedor ? 'Salvando...' : 'Salvar fornecedor'}</Button>
+                    </div>
                 </form>
             </Modal>
             <Modal isOpen={showEstoqueModal} onClose={() => setShowEstoqueModal(false)} title={editingEstoque ? 'Editar Item de Estoque' : 'Novo Item de Estoque'} size="lg">
@@ -4489,7 +4877,7 @@ function App() {
     }
   };
 
-  const addItem = async (section, item, targetStoreId = null) => {
+  const addItem = async (section, item, targetStoreId = null, documentId = null) => {
     try {
         assertWritableRole();
         const storeId = targetStoreId || resolveActiveStoreForWrite();
@@ -4516,9 +4904,14 @@ function App() {
             createdAt: new Date()
          };
 
-        const docRef = await runWithRetry(
+        const docRef = documentId
+            ? doc(getStoreCollectionRef(storeId, section), documentId)
+            : null;
+        const persistedRef = await runWithRetry(
             `addItem:${section}`,
-            () => addDoc(getStoreCollectionRef(storeId, section), payload),
+            () => documentId
+                ? setDoc(docRef, payload, { merge: true }).then(() => docRef)
+                : addDoc(getStoreCollectionRef(storeId, section), payload),
             { route: currentPage, uid: currentAuthUser?.uid || userId, collection: section }
         );
         await waitForPendingWrites(db);
@@ -4526,7 +4919,7 @@ function App() {
         if (isSalesOrder) {
             console.log('[Sales][Create] Venda persistida com sucesso no Firestore.', {
                 storeId,
-                docId: docRef.id
+                docId: persistedRef.id
             });
         }
 
@@ -4535,7 +4928,7 @@ function App() {
                 'addItem:logs',
                 () => addDoc(getStoreCollectionRef(storeId, 'logs'), {
                 action: `Novo item adicionado em ${section}`,
-                details: `ID: ${docRef.id}`,
+                details: `ID: ${persistedRef.id}`,
                 userEmail: user?.auth?.email || 'N/A',
                 timestamp: new Date()
                 }),
@@ -4543,7 +4936,7 @@ function App() {
             );
         }
 
-        return docRef;
+        return persistedRef;
     } catch (e) {
         if (section === 'pedidos') {
             console.error('[Sales][Create] Erro real ao persistir venda:', e);
