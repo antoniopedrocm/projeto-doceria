@@ -18,6 +18,10 @@ const crypto = require('crypto');
 const {createFiscalFunctions} = require('./fiscal');
 const {createIfoodFunctions} = require('./ifood');
 const {createFood99Functions} = require('./food99');
+const {
+  ROLE_BROKER,
+  BROKER_RESTRICTED_MODULES,
+} = require('./corretor-auth');
 
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
@@ -64,11 +68,12 @@ const ENTRE_LOJAS_TRANSFER_STATUS_VALUES = [
 const normalizeRole = (role) => {
   if (!role || typeof role !== 'string') return ROLE_ATTENDANT;
   const value = role.toLowerCase().trim();
-  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT, ROLE_CLIENT].includes(value)) {
+  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT, ROLE_BROKER, ROLE_CLIENT].includes(value)) {
     return value;
   }
   if (value === 'client') return ROLE_CLIENT;
   if (value === 'accountant') return ROLE_ACCOUNTANT;
+  if (value === 'broker') return ROLE_BROKER;
   if (['admin', 'adm', 'administrador', 'administradora', 'administrador master', 'administradora master', 'admin master', 'admin_master', 'master', 'superadmin'].includes(value)) {
     return ROLE_OWNER;
   }
@@ -88,6 +93,10 @@ const getDefaultPermissionsForRole = (role) => {
       acc[key] = true;
       return acc;
     }, {});
+  }
+
+  if (normalizedRole === ROLE_BROKER) {
+    return basePermissions;
   }
 
   if (normalizedRole === ROLE_MANAGER) {
@@ -148,6 +157,10 @@ const sanitizePermissions = (permissions, role) => {
   }
 
   return MENU_PERMISSION_KEYS.reduce((acc, key) => {
+    if (normalizeRole(role) === ROLE_BROKER && BROKER_RESTRICTED_MODULES.has(key)) {
+      acc[key] = false;
+      return acc;
+    }
     if (normalizeRole(role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(key)) {
       acc[key] = false;
       return acc;
@@ -253,6 +266,7 @@ const verifyManagementAccess = async (uid) => {
     throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
   }
   const profile = await getUserProfile(uid);
+  assertUserActive(profile);
   const role = normalizeRole(profile.role);
   const stores = extractStoreIds(profile);
 
@@ -290,6 +304,24 @@ const assertManagerCannotGrantOwnerAccess = (requester, targetRole, permissionsI
   }
 };
 
+const isUserActive = (profile = {}) => (
+  profile.ativo !== false
+  && String(profile.status || 'ativo').trim().toLowerCase() !== 'inativo'
+  && profile.authDisabled !== true
+);
+
+const assertUserActive = (profile) => {
+  if (!isUserActive(profile)) {
+    throw new HttpsError('permission-denied', 'Este usuário está inativo.');
+  }
+};
+
+const assertOnlyOwnerCanGrantBroker = (requester, targetRole) => {
+  if (normalizeRole(targetRole) === ROLE_BROKER && requester.role !== ROLE_OWNER) {
+    throw new HttpsError('permission-denied', 'Somente o Dono pode atribuir o perfil Corretor.');
+  }
+};
+
 const rethrowHttpsError = (error) => {
   if (error instanceof HttpsError) {
     throw error;
@@ -301,19 +333,20 @@ const verifyStoreReadAccess = async (uid) => {
     throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
   }
   const profile = await getUserProfile(uid);
+  assertUserActive(profile);
   const role = normalizeRole(profile.role);
   const stores = extractStoreIds(profile);
   const permissions = await getUserPermissions(uid, role);
 
   if (role === ROLE_OWNER) {
-    return {role, stores, allStores: stores.length === 0, permissions};
+    return {role, stores, allStores: stores.length === 0, permissions, profile};
   }
 
-  if ([ROLE_MANAGER, ROLE_ACCOUNTANT].includes(role)) {
+  if ([ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_BROKER].includes(role)) {
     if (!stores.length) {
       throw new HttpsError('permission-denied', 'Este usuário precisa estar associado a pelo menos uma loja.');
     }
-    return {role, stores, allStores: false, permissions};
+    return {role, stores, allStores: false, permissions, profile};
   }
 
   throw new HttpsError('permission-denied', 'Você não tem permissão para consultar esta operação.');
@@ -327,6 +360,7 @@ const verifyPointStoreAccess = async (uid, lojaId) => {
     throw new HttpsError('failed-precondition', 'Selecione uma loja específica para registrar o ponto.');
   }
   const profile = await getUserProfile(uid);
+  assertUserActive(profile);
   const role = normalizeRole(profile.role);
   const stores = extractStoreIds(profile);
 
@@ -803,6 +837,35 @@ const isStoreOpenNow = (storeConfig = {}, now = new Date()) => {
 const app = express();
 app.use(cors({origin: true})); // Habilita CORS para a API do cardápio
 app.use(express.json());
+app.use(async (req, res, next) => {
+  const authorization = String(req.headers.authorization || '');
+  if (!authorization.startsWith('Bearer ')) return next();
+  try {
+    const decoded = await auth.verifyIdToken(authorization.slice(7));
+    req.authUser = decoded;
+    req.authProfile = await getUserProfile(decoded.uid);
+    return next();
+  } catch (error) {
+    logger.warn('Token inválido recebido pela API HTTP.', {path: req.path, code: error?.code || null});
+    return res.status(401).json({code: 'unauthenticated', message: 'Sessão inválida.'});
+  }
+});
+
+const rejectBrokerHttpMutation = (req, res, next) => {
+  if (normalizeRole(req.authProfile?.role) === ROLE_BROKER) {
+    return res.status(403).json({code: 'permission-denied', message: 'O perfil Corretor possui acesso somente leitura.'});
+  }
+  return next();
+};
+
+const assertCallableNotBroker = async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) return;
+  const profile = await getUserProfile(uid);
+  if (normalizeRole(profile.role) === ROLE_BROKER) {
+    throw new HttpsError('permission-denied', 'O perfil Corretor possui acesso somente leitura.');
+  }
+};
 
 const CLIENTS_COLLECTION = 'clientes';
 const getClientsCollection = () => db.collection(CLIENTS_COLLECTION);
@@ -1082,7 +1145,7 @@ app.get("/clientes", async (req, res) => {
 });
 
 // Rota para criar um novo cliente
-app.post("/clientes", async (req, res) => {
+app.post("/clientes", rejectBrokerHttpMutation, async (req, res) => {
   const lojaId = requireStoreId(req, res);
   if (!lojaId) return;
 
@@ -1112,7 +1175,7 @@ app.post("/clientes", async (req, res) => {
 });
 
 // Rota para atualizar um cliente (adicionar endereço ou registrar compra)
-app.put("/clientes/:id", async (req, res) => {
+app.put("/clientes/:id", rejectBrokerHttpMutation, async (req, res) => {
   const lojaId = requireStoreId(req, res);
   if (!lojaId) return;
 
@@ -1146,7 +1209,7 @@ app.put("/clientes/:id", async (req, res) => {
 
 
 // Rota para criar um novo pedido
-app.post("/pedidos", async (req, res) => {
+app.post("/pedidos", rejectBrokerHttpMutation, async (req, res) => {
   const lojaId = requireStoreId(req, res);
   if (!lojaId) return;
   try {
@@ -1173,7 +1236,7 @@ app.post("/pedidos", async (req, res) => {
   }
 });
 
-app.post("/checkout/confirmar", async (req, res) => {
+app.post("/checkout/confirmar", rejectBrokerHttpMutation, async (req, res) => {
   const lojaId = requireStoreId(req, res);
   if (!lojaId) return;
 
@@ -1608,6 +1671,7 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
 
 exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
   try {
+    await assertCallableNotBroker(request);
     const lojaId = typeof request.data?.lojaId === 'string' ? request.data.lojaId.trim() : '';
     const clientId = typeof request.data?.clientId === 'string' ? request.data.clientId.trim() : '';
     const nome = typeof request.data?.nome === 'string' ? request.data.nome.trim() : '';
@@ -1669,6 +1733,7 @@ exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
 
 exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
   try {
+    await assertCallableNotBroker(request);
     const clientId = typeof request.data?.clientId === 'string' ? request.data.clientId.trim() : '';
     const lojaId = typeof request.data?.lojaId === 'string' ? request.data.lojaId.trim() : '';
     const incomingAddress = request.data?.address;
@@ -2176,6 +2241,7 @@ exports.createUser = onCall(async (request) => {
                 throw new HttpsError("permission-denied", "Você não pode criar usuários para outras lojas.");
             }
         }
+        assertOnlyOwnerCanGrantBroker(requester, normalizedRole);
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho);
         const sanitizedBankStartDate = normalizePointBankStartDate(dataInicioBancoHoras);
@@ -2245,6 +2311,10 @@ exports.updateUser = onCall(async (request) => {
         const existingStores = extractStoreIds(existingProfile);
         const existingRole = normalizeRole(existingProfile.role);
 
+        if (existingRole === ROLE_BROKER && requester.role !== ROLE_OWNER) {
+            throw new HttpsError("permission-denied", "Somente o Dono pode alterar um usuário Corretor.");
+        }
+
         let targetStores = [];
         if (normalizedRole === ROLE_OWNER) {
             targetStores = Array.isArray(lojaIds) ? lojaIds : existingStores;
@@ -2272,6 +2342,7 @@ exports.updateUser = onCall(async (request) => {
             }
         }
 
+        assertOnlyOwnerCanGrantBroker(requester, normalizedRole);
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
         const hasBankStartDatePayload = Object.prototype.hasOwnProperty.call(request.data || {}, "dataInicioBancoHoras");
@@ -2343,8 +2414,8 @@ exports.deleteUser = onCall(async (request) => {
         const targetStores = extractStoreIds(targetProfile);
         const targetRole = normalizeRole(targetProfile.role);
 
-        if (targetRole === ROLE_OWNER && requester.role !== ROLE_OWNER) {
-            throw new HttpsError("permission-denied", "Somente donos podem remover outros donos.");
+        if ([ROLE_OWNER, ROLE_BROKER].includes(targetRole) && requester.role !== ROLE_OWNER) {
+            throw new HttpsError("permission-denied", "Somente donos podem remover usuários Dono ou Corretor.");
         }
 
         const requesterStores = requester.role === ROLE_OWNER && requester.allStores ? targetStores : requester.stores;
@@ -2372,8 +2443,8 @@ exports.updateUserPassword = onCall(async (request) => {
     try {
 		const targetProfile = await getUserProfile(uid);
         const targetRole = normalizeRole(targetProfile.role);
-        if (targetRole === ROLE_OWNER && requester.role !== ROLE_OWNER) {
-            throw new HttpsError("permission-denied", "Somente donos podem alterar a senha de outro dono.");
+        if ([ROLE_OWNER, ROLE_BROKER].includes(targetRole) && requester.role !== ROLE_OWNER) {
+            throw new HttpsError("permission-denied", "Somente donos podem alterar a senha de usuários Dono ou Corretor.");
         }
         if (requester.role === ROLE_MANAGER) {
             const targetStores = extractStoreIds(targetProfile);

@@ -41,6 +41,12 @@ import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
 import IfoodHub from './components/ifood/IfoodHub';
 import Food99Hub from './components/food99/Food99Hub';
+import {
+  CORRETOR_RESTRICTED_MODULES,
+  isCorretorReadControl,
+  isCorretorMutationControl,
+  sanitizeCorretorPermissions
+} from './utils/corretorPermissions';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
@@ -54,6 +60,7 @@ const ROLE_OWNER = 'dono';
 const ROLE_MANAGER = 'gerente';
 const ROLE_ATTENDANT = 'atendente';
 const ROLE_ACCOUNTANT = 'contador';
+const ROLE_BROKER = 'corretor';
 const ROLE_CLIENT = 'cliente';
 const ROLE_DEFAULT = ROLE_ATTENDANT;
 const STORE_ALL_KEY = '__all__';
@@ -672,6 +679,11 @@ const normalizeRole = (role) => {
     'contabilidade'
   ]);
 
+  const brokerAliases = new Set([
+    ROLE_BROKER,
+    'broker',
+  ]);
+
   if (ownerAliases.has(normalizedValue)) {
     return ROLE_OWNER;
   }
@@ -688,16 +700,29 @@ const normalizeRole = (role) => {
     return ROLE_ACCOUNTANT;
   }
 
+  if (brokerAliases.has(normalizedValue)) {
+    return ROLE_BROKER;
+  }
+
   if (clientAliases.has(normalizedValue)) {
     return ROLE_CLIENT;
   }
 
-  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT, ROLE_CLIENT].includes(value)) {
+  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT, ROLE_BROKER, ROLE_CLIENT].includes(value)) {
     return value;
   }
 
   return ROLE_DEFAULT;
 };
+
+const getRoleLabel = (role) => ({
+  [ROLE_OWNER]: 'Dono',
+  [ROLE_MANAGER]: 'Gerente',
+  [ROLE_ATTENDANT]: 'Atendente',
+  [ROLE_ACCOUNTANT]: 'Contador',
+  [ROLE_BROKER]: 'Corretor',
+  [ROLE_CLIENT]: 'Cliente',
+}[normalizeRole(role)] || 'Atendente');
 
 const getDefaultPermissionsForRole = (role) => {
   const base = MENU_PERMISSION_KEYS.reduce((acc, key) => ({ ...acc, [key]: false }), {});
@@ -705,6 +730,10 @@ const getDefaultPermissionsForRole = (role) => {
 
   if (normalizedRole === ROLE_OWNER) {
     return MENU_PERMISSION_KEYS.reduce((acc, key) => ({ ...acc, [key]: true }), {});
+  }
+
+  if (normalizedRole === ROLE_BROKER) {
+    return base;
   }
 
   if (normalizedRole === ROLE_MANAGER) {
@@ -761,6 +790,10 @@ const getDefaultPermissionsForRole = (role) => {
 const sanitizePermissions = (permissions, role) => {
   const defaults = getDefaultPermissionsForRole(role);
   if (!permissions || typeof permissions !== 'object') return defaults;
+
+  if (normalizeRole(role) === ROLE_BROKER) {
+    return sanitizeCorretorPermissions(permissions, MENU_PERMISSION_KEYS);
+  }
 
   return MENU_PERMISSION_KEYS.reduce((acc, key) => {
     if (normalizeRole(role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(key)) {
@@ -952,11 +985,11 @@ const getEntreLojasAllowedStatusesFromProfile = (profile) => {
   return details['entre-lojas']?.statuses || [];
 };
 
-const ACCOUNTANT_COLLECTION_PERMISSIONS = {
-  produtos: ['produtos', 'relatorios'],
-  subcategorias: ['produtos'],
+const READ_ONLY_COLLECTION_PERMISSIONS = {
+  produtos: ['produtos', 'relatorios', 'nota-fiscal'],
+  subcategorias: ['produtos', 'nota-fiscal'],
   categoriasFornecedores: ['fornecedores'],
-  contas_a_pagar: ['financeiro', 'relatorios'],
+  contas_a_pagar: ['financeiro', 'relatorios', 'fornecedores'],
   contas_a_receber: ['financeiro', 'relatorios'],
   fornecedores: ['fornecedores'],
   pedidosCompra: ['fornecedores'],
@@ -978,14 +1011,14 @@ const ACCOUNTANT_COLLECTION_PERMISSIONS = {
   food99Health: ['food99'],
   logs: ['configuracoes'],
   cupons: ['configuracoes'],
-  pedidos: ['dashboard', 'pedidos', 'financeiro', 'relatorios', 'nota-fiscal'],
+  pedidos: ['dashboard', 'pedidos', 'agenda', 'financeiro', 'relatorios', 'nota-fiscal'],
 };
 
 const getCollectionsToSyncForUser = (userProfile) => {
-  if (userProfile?.role !== ROLE_ACCOUNTANT) return COLLECTIONS_TO_SYNC;
+  if (![ROLE_ACCOUNTANT, ROLE_BROKER].includes(normalizeRole(userProfile?.role))) return COLLECTIONS_TO_SYNC;
   const permissions = sanitizePermissions(userProfile.customPermissions || userProfile.permissions, userProfile.role);
   return COLLECTIONS_TO_SYNC.filter((collectionName) => (
-    ACCOUNTANT_COLLECTION_PERMISSIONS[collectionName] || []
+    READ_ONLY_COLLECTION_PERMISSIONS[collectionName] || []
   ).some((permission) => permissions[permission]));
 };
 
@@ -1166,6 +1199,51 @@ const Button = ({ children, variant = "primary", size = "md", onClick, className
   };
   const sizes = { sm: "px-4 py-2 text-sm", md: "px-6 py-3", lg: "px-8 py-4 text-lg" };
   return (<button type={type} title={title} onClick={onClick} disabled={disabled} className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>{children}</button>);
+};
+
+const CorretorReadOnlyBoundary = ({ enabled, moduleLabel, children }) => {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!enabled || !containerRef.current) return undefined;
+    const disableMutationControls = () => {
+      containerRef.current?.querySelectorAll('button, a, [role="button"], input[type="submit"], input[type="button"]').forEach((control) => {
+        if (!isCorretorMutationControl(control)) return;
+        control.dataset.corretorDisabled = 'true';
+        control.setAttribute('aria-disabled', 'true');
+        control.setAttribute('title', 'Ação bloqueada para o perfil Corretor (somente leitura).');
+        if ('disabled' in control) control.disabled = true;
+      });
+    };
+    disableMutationControls();
+    const observer = new MutationObserver(disableMutationControls);
+    observer.observe(containerRef.current, {childList: true, subtree: true});
+    return () => observer.disconnect();
+  }, [children, enabled]);
+
+  const blockMutation = useCallback((event) => {
+    if (!enabled) return;
+    const isFormSubmission = event.type === 'submit';
+    const submitter = isFormSubmission ? event.nativeEvent?.submitter : null;
+    const shouldBlock = isFormSubmission
+      ? !isCorretorReadControl(submitter)
+      : isCorretorMutationControl(event.target);
+    if (!shouldBlock) return;
+    event.preventDefault();
+    event.stopPropagation();
+    window.alert(`O perfil Corretor possui acesso somente para consulta em ${moduleLabel || 'este módulo'}.`);
+  }, [enabled, moduleLabel]);
+
+  return (
+    <div ref={containerRef} onClickCapture={blockMutation} onSubmitCapture={blockMutation}>
+      {enabled && (
+        <div className="mx-4 mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          Modo somente leitura: consultas, filtros, detalhes e exportações estão disponíveis; alterações são bloqueadas.
+        </div>
+      )}
+      {children}
+    </div>
+  );
 };
 const Input = ({ label, error, className = "", ...props }) => (<div className="space-y-1 w-full">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<input {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${error ? 'border-red-300' : 'border-gray-300'} ${className}`} />{error && <p className="text-sm text-red-600">{error}</p>}</div>);
 const Textarea = ({ label, error, className = "", ...props }) => (<div className="space-y-1">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<textarea {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${error ? 'border-red-300' : 'border-gray-300'} ${className}`} />{error && <p className="text-sm text-red-600">{error}</p>}</div>);
@@ -3690,11 +3768,13 @@ function App() {
   const callClientApi = useCallback(async (path, { method = 'GET', body = null } = {}) => {
     const storeId = resolveActiveStoreForWrite();
     const url = `${API_BASE_URL}${path}${path.includes('?') ? '&' : '?'}lojaId=${encodeURIComponent(storeId)}`;
+    const idToken = auth.currentUser ? await getIdToken(auth.currentUser) : '';
 
     const response = await fetch(url, {
       method,
       headers: {
         'Content-Type': 'application/json',
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -4116,8 +4196,10 @@ function App() {
           }
 
           const collectionsToSync = getCollectionsToSyncForUser(user);
-          const canSyncClientes = user.role !== ROLE_ACCOUNTANT
-            || sanitizePermissions(user.customPermissions || user.permissions, user.role).clientes;
+          const readPermissions = sanitizePermissions(user.customPermissions || user.permissions, user.role);
+          const canSyncClientes = ![ROLE_ACCOUNTANT, ROLE_BROKER].includes(normalizeRole(user.role))
+            || readPermissions.clientes
+            || readPermissions['nota-fiscal'];
           let isMounted = true;
           let pendingInitial = (storeIds.length * collectionsToSync.length) + (canSyncClientes ? 1 : 0);
           const unsubscribes = [];
@@ -4398,9 +4480,12 @@ function App() {
 
 
   const updateStock = useCallback(async (productId, type, quantity, reason = 'Movimentação de estoque', userInfo = null, targetStoreId = null, options = {}) => {
+    if (user?.role === ROLE_BROKER) {
+      throw new Error('O perfil Corretor possui acesso somente leitura fora da Nota Fiscal.');
+    }
     const storeId = targetStoreId || resolveActiveStoreForWrite();
     await updateStockService(productId, type, quantity, reason, userInfo, storeId, options);
-  }, [resolveActiveStoreForWrite]);
+  }, [resolveActiveStoreForWrite, user?.role]);
 
 
   const ensureAuthenticatedUserForWrite = useCallback(async () => {
@@ -4450,8 +4535,9 @@ function App() {
   }, []);
 
   const assertWritableRole = () => {
-    if (user?.role === ROLE_ACCOUNTANT) {
-      throw new Error('O perfil Contador possui acesso somente leitura.');
+    if ([ROLE_ACCOUNTANT, ROLE_BROKER].includes(user?.role)) {
+      const roleLabel = user?.role === ROLE_BROKER ? 'Corretor' : 'Contador';
+      throw new Error(`O perfil ${roleLabel} possui acesso somente leitura.`);
     }
   };
 
@@ -4673,6 +4759,18 @@ function App() {
                                           };
 
                                           await setDoc(userDocRef, profile, { merge: true });
+                                        }
+
+                                        if (
+                                          profile.ativo === false
+                                          || profile.authDisabled === true
+                                          || String(profile.status || '').trim().toLowerCase() === 'inativo'
+                                        ) {
+                                          await signOut(auth);
+                                          setUser(null);
+                                          setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+                                          setShowLogin(true);
+                                          return;
                                         }
 
                                         const role = normalizeRole(profile.role);
@@ -8839,7 +8937,7 @@ const effectiveStoreName = useMemo(() => {
 
                 const sanitizedPermissions = sanitizePermissions(userFormData.permissions, selectedRole);
                 const sanitizedPermissionDetails = sanitizePermissionDetails(userFormData.permissionDetails, selectedRole, sanitizedPermissions);
-                const applyCustomProfile = Boolean(userFormData.applyCustomProfile);
+                const applyCustomProfile = selectedRole === ROLE_BROKER || Boolean(userFormData.applyCustomProfile);
                 const permissionsToPersist = applyCustomProfile
                     ? sanitizedPermissions
                     : getDefaultPermissionsForRole(selectedRole);
@@ -9313,7 +9411,7 @@ const effectiveStoreName = useMemo(() => {
                     ? 'bg-emerald-100 text-emerald-800'
                     : 'bg-gray-100 text-gray-800';
 
-        return <span className={`px-3 py-1 rounded-full text-xs font-medium ${roleClass}`}>{normalizedRole}</span>;
+        return <span className={`px-3 py-1 rounded-full text-xs font-medium ${roleClass}`}>{getRoleLabel(normalizedRole)}</span>;
     };
 
     const getUserStoreLabel = (row) => {
@@ -9327,10 +9425,11 @@ const effectiveStoreName = useMemo(() => {
         return lojas.map((id) => storeInfoMap[id]?.nome || id).join(', ');
     };
 
+    const canManageUserRow = (row) => user?.role === ROLE_OWNER || normalizeRole(row?.role) !== ROLE_BROKER;
     const userActions = [ 
-        { icon: Edit, label: "Editar", onClick: handleEditUser }, 
-        { icon: Key, label: "Alterar Senha", onClick: (u) => { setEditingUser(u); setShowPasswordModal(true); } },
-        { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => handleDeleteUser(row) }) } 
+        { icon: Edit, label: "Editar", onClick: handleEditUser, isVisible: canManageUserRow },
+        { icon: Key, label: "Alterar Senha", onClick: (u) => { setEditingUser(u); setShowPasswordModal(true); }, isVisible: canManageUserRow },
+        { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => handleDeleteUser(row) }), isVisible: canManageUserRow }
     ];
     
     const cupomColumns = [
@@ -9858,7 +9957,7 @@ const effectiveStoreName = useMemo(() => {
                             <option value="">Cadastrar novo usuário</option>
                             {(usuarios || []).map((u) => (
                                 <option key={u.uid || u.id} value={u.uid || u.id}>
-                                    {(u.nome || u.email || 'Usuário').trim()} • {(u.email || 'sem email')} ({normalizeRole(u.role)})
+                                    {(u.nome || u.email || 'Usuário').trim()} • {(u.email || 'sem email')} ({getRoleLabel(u.role)})
                                 </option>
                             ))}
                         </select>
@@ -9910,7 +10009,8 @@ const effectiveStoreName = useMemo(() => {
                                     lojaId: roleStores[0] || '',
                                     lojaIds: roleStores,
                                     permissions: nextPermissions,
-                                    permissionDetails: getDefaultPermissionDetailsForRole(newRole, nextPermissions)
+                                    permissionDetails: getDefaultPermissionDetailsForRole(newRole, nextPermissions),
+                                    applyCustomProfile: newRole === ROLE_BROKER ? true : userFormData.applyCustomProfile
                                 });
                             }
                         }}
@@ -9920,6 +10020,7 @@ const effectiveStoreName = useMemo(() => {
                         <option value={ROLE_ATTENDANT}>Atendente</option>
                         <option value={ROLE_MANAGER}>Gerente</option>
                         <option value={ROLE_ACCOUNTANT}>Contador</option>
+                        {user?.role === ROLE_OWNER && <option value={ROLE_BROKER}>Corretor</option>}
                         <option value={ROLE_OWNER}>Dono</option>
                     </Select>
 
@@ -10134,8 +10235,8 @@ const effectiveStoreName = useMemo(() => {
                             <div>
                                 <p className="text-sm font-semibold text-gray-800">Permissões personalizadas</p>
                                 <p className="text-xs text-gray-500">
-                                    {normalizeRole(userFormData.role) === ROLE_ACCOUNTANT
-                                        ? 'Selecione os módulos que o contador pode consultar. Este papel é sempre somente leitura.'
+                                    {[ROLE_ACCOUNTANT, ROLE_BROKER].includes(normalizeRole(userFormData.role))
+                                        ? `Selecione os módulos que o ${normalizeRole(userFormData.role) === ROLE_BROKER ? 'corretor' : 'contador'} pode consultar. Este papel é somente leitura fora da Nota Fiscal.`
                                         : 'Selecione quais menus o usuário pode acessar.'}
                                 </p>
                             </div>
@@ -10143,7 +10244,8 @@ const effectiveStoreName = useMemo(() => {
                                 <label className="flex items-center gap-2 text-xs text-gray-600" title="Ative para personalizar o menu deste usuário">
                                     <input
                                         type="checkbox"
-                                        checked={Boolean(userFormData.applyCustomProfile)}
+                                        checked={normalizeRole(userFormData.role) === ROLE_BROKER || Boolean(userFormData.applyCustomProfile)}
+                                        disabled={normalizeRole(userFormData.role) === ROLE_BROKER}
                                         onChange={(e) => {
                                             const useCustom = e.target.checked;
                                             setUserFormData((prev) => {
@@ -10199,9 +10301,14 @@ const effectiveStoreName = useMemo(() => {
                             </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {allMenuItems.map((item) => {
+                            {allMenuItems.filter((item) => (
+                                normalizeRole(userFormData.role) !== ROLE_BROKER
+                                || !CORRETOR_RESTRICTED_MODULES.has(item.id)
+                            )).map((item) => {
                                 const normalizedFormRole = normalizeRole(userFormData.role);
                                 const isRestrictedAccountantModule = normalizedFormRole === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id);
+                                const isRestrictedBrokerModule = normalizedFormRole === ROLE_BROKER && CORRETOR_RESTRICTED_MODULES.has(item.id);
+                                const isRestrictedModule = isRestrictedAccountantModule || isRestrictedBrokerModule;
                                 const isEntreLojas = item.id === 'entre-lojas';
                                 const moduleChecked = Boolean(userFormData.permissions?.[item.id]);
                                 const selectedEntreLojasStatuses = sanitizePermissionDetails(
@@ -10219,7 +10326,7 @@ const effectiveStoreName = useMemo(() => {
                                             <input
                                                 type="checkbox"
                                                 checked={moduleChecked}
-                                                disabled={!userFormData.applyCustomProfile || isRestrictedAccountantModule}
+                                                disabled={!userFormData.applyCustomProfile || isRestrictedModule}
                                                 onChange={(e) => {
                                                     const nextPermissions = {
                                                         ...sanitizePermissions(userFormData.permissions, userFormData.role),
@@ -10229,14 +10336,21 @@ const effectiveStoreName = useMemo(() => {
                                                         ...userFormData,
                                                         permissions: nextPermissions,
                                                         permissionDetails: isEntreLojas
-                                                            ? sanitizePermissionDetails(userFormData.permissionDetails, userFormData.role, nextPermissions)
+                                                            ? (
+                                                                normalizedFormRole === ROLE_BROKER && e.target.checked
+                                                                    ? {
+                                                                        ...sanitizePermissionDetails(userFormData.permissionDetails, userFormData.role, nextPermissions),
+                                                                        'entre-lojas': { statuses: [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] }
+                                                                      }
+                                                                    : sanitizePermissionDetails(userFormData.permissionDetails, userFormData.role, nextPermissions)
+                                                              )
                                                             : userFormData.permissionDetails
                                                     });
                                                 }}
                                             />
                                             {item.label}
-                                            {isRestrictedAccountantModule && (
-                                                <span className="text-xs text-gray-400">(indisponível para leitura)</span>
+                                            {isRestrictedModule && (
+                                                <span className="text-xs text-gray-400">(indisponível para este perfil)</span>
                                             )}
                                         </label>
 
@@ -14249,8 +14363,9 @@ const handleSubmit = async (e) => {
       csc: ''
     });
     const isReadOnly = currentUser?.role === ROLE_ACCOUNTANT;
-    const isPlatformAdmin = currentUser?.role === ROLE_OWNER && currentUser?.canAccessAllStores;
-    const canViewFullFiscalDocument = [ROLE_OWNER, ROLE_MANAGER, ROLE_ACCOUNTANT].includes(currentUser?.role);
+    const isBroker = currentUser?.role === ROLE_BROKER;
+    const isPlatformAdmin = currentUser?.role === ROLE_OWNER;
+    const canViewFullFiscalDocument = [ROLE_OWNER, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_BROKER].includes(currentUser?.role);
 
     const storeName = effectiveStoreId
       ? (storeInfoMap[effectiveStoreId]?.nome || effectiveStoreId)
@@ -14962,6 +15077,10 @@ const handleSubmit = async (e) => {
     }, [buildOrderEditFormWithTotals, buildOrderEditItemFromProduct, storeProducts]);
 
     const handleOpenPreInvoiceOrderEdit = useCallback((order) => {
+      if (isBroker) {
+        setMessage({ type: 'error', text: 'O Corretor não pode alterar pedidos. Ajuste apenas os dados fiscais necessários à emissão.' });
+        return;
+      }
       const lockReason = getPreInvoiceLockedReason(order);
       if (lockReason) {
         setMessage({ type: 'error', text: `${lockReason} Não é seguro alterar o pedido nesta etapa.` });
@@ -14971,7 +15090,7 @@ const handleSubmit = async (e) => {
       setOrderEditForm(normalizeOrderForPreInvoiceEdit(order));
       setOrderEditProductSearch('');
       setOrderEditError('');
-    }, [getPreInvoiceLockedReason, normalizeOrderForPreInvoiceEdit]);
+    }, [getPreInvoiceLockedReason, isBroker, normalizeOrderForPreInvoiceEdit]);
 
     const setOrderEditDraft = (updater) => {
       setOrderEditForm((prev) => buildOrderEditFormWithTotals(typeof updater === 'function' ? updater(prev) : updater));
@@ -16164,7 +16283,7 @@ const handleSubmit = async (e) => {
     };
 
     const handleOpenCancelInvoice = (invoice) => {
-      if (isReadOnly) return;
+      if (isReadOnly || isBroker) return;
       setInvoiceToCancel(invoice);
       setCancelReason('');
       setCancelError('');
@@ -16172,7 +16291,7 @@ const handleSubmit = async (e) => {
 
     const handleConfirmCancelInvoice = async (event) => {
       event.preventDefault();
-      if (isReadOnly || !invoiceToCancel) return;
+      if (isReadOnly || isBroker || !invoiceToCancel) return;
       const normalizedReason = cancelReason.trim();
       if (normalizedReason.length < 15) {
         setCancelError('A justificativa de cancelamento precisa ter ao menos 15 caracteres.');
@@ -16480,12 +16599,17 @@ const handleSubmit = async (e) => {
 
         const summary = { created: 0, updated: 0, errors: 0 };
         for (const chunk of chunks) {
-          const batch = writeBatch(db);
-          chunk.forEach((item) => {
-            batch.set(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', item.id), item.payload, { merge: true });
-          });
           try {
-            await batch.commit();
+            if (isBroker) {
+              const saveProducts = httpsCallable(functions, 'fiscalSaveProducts');
+              await saveProducts(callablePayload({items: chunk.map((item) => ({id: item.id, data: item.payload}))}));
+            } else {
+              const batch = writeBatch(db);
+              chunk.forEach((item) => {
+                batch.set(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', item.id), item.payload, { merge: true });
+              });
+              await batch.commit();
+            }
             chunk.forEach((item) => {
               if (item.action === 'created') summary.created += 1;
               if (item.action === 'updated') summary.updated += 1;
@@ -16533,12 +16657,12 @@ const handleSubmit = async (e) => {
     ];
 
     const orderActions = isReadOnly ? [] : [
-      {
+      ...(!isBroker ? [{
         icon: Edit,
         label: 'Editar pedido antes da nota',
         onClick: handleOpenPreInvoiceOrderEdit,
         isVisible: (row) => !getPreInvoiceLockedReason(row)
-      },
+      }] : []),
       { icon: RefreshCw, label: 'Validar', onClick: handleValidateOrder },
       { icon: Printer, label: 'Emitir', onClick: handleIssueOrder }
     ];
@@ -16568,7 +16692,7 @@ const handleSubmit = async (e) => {
       { icon: Printer, label: 'Exportar DANFE A4', onClick: handleExportDanfeA4, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
       { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => row.status === 'authorized' },
       { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' && Boolean(row.orderId) },
-      { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => !isReadOnly && row.status === 'authorized' }
+      { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => !isReadOnly && !isBroker && row.status === 'authorized' }
     ];
 
     const fiscalProductColumns = [
@@ -16581,7 +16705,7 @@ const handleSubmit = async (e) => {
 
     const productActions = isReadOnly ? [] : [
       { icon: Edit, label: 'Editar', onClick: handleEditFiscalProduct },
-      { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('fiscalProducts', row.id, effectiveStoreId) }) }
+      ...(!isBroker ? [{ icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('fiscalProducts', row.id, effectiveStoreId) }) }] : [])
     ];
 
     const DetailSection = ({ title, children }) => (
@@ -16880,6 +17004,11 @@ const handleSubmit = async (e) => {
                 Perfil Contador: consulta habilitada. Alterações fiscais, emissão e cancelamento não estão disponíveis.
               </div>
             )}
+            {isBroker && (
+              <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50 text-sm text-emerald-800">
+                Perfil Corretor: emissão e configurações fiscais operacionais habilitadas. Cancelamento de nota, alteração de pedido e configuração da URL Cloud Run permanecem bloqueados.
+              </div>
+            )}
             <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
               <h3 className="text-lg font-bold text-gray-800">Emitente</h3>
               {configLoading && <p className="text-sm text-gray-500">Carregando configuração...</p>}
@@ -16965,6 +17094,11 @@ const handleSubmit = async (e) => {
                       Configuração global protegida; não pertence a uma loja.
                       {platformService?.configured ? ` Origem atual: ${platformService.source || 'backend'}.` : ' Ainda não configurada.'}
                     </p>
+                  </div>
+                )}
+                {isBroker && (
+                  <div className="md:col-span-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                    URL única do serviço fiscal (Cloud Run): <strong>{platformService?.configured ? 'configurada pela plataforma' : 'ainda não configurada pelo Dono'}</strong>. O valor permanece protegido.
                   </div>
                 )}
               </div>
@@ -17642,7 +17776,7 @@ const handleSubmit = async (e) => {
                         <Search className="w-4 h-4" /> SEFAZ
                       </a>
                     )}
-                    {!isReadOnly && invoice.status === 'authorized' && (
+                    {!isReadOnly && !isBroker && invoice.status === 'authorized' && (
                       <Button size="sm" variant="danger" onClick={() => { setInvoiceToView(null); handleOpenCancelInvoice(invoice); }} title="Cancelar NFC-e autorizada"><X className="w-4 h-4" /> Cancelar NFC-e</Button>
                     )}
                   </div>
@@ -17679,6 +17813,14 @@ const handleSubmit = async (e) => {
   };
 
   const PlaceholderPage = ({ title }) => (<div className="p-6"><h1 className="text-3xl font-bold text-pink-600">{title}</h1><p>Em desenvolvimento...</p></div>);
+  const AccessDeniedPage = () => (
+    <div className="p-6">
+      <div className="max-w-xl rounded-2xl border border-red-200 bg-red-50 p-6 text-red-800">
+        <h1 className="text-xl font-bold">Acesso não autorizado</h1>
+        <p className="mt-2 text-sm">Este módulo não foi liberado para o seu perfil.</p>
+      </div>
+    </div>
+  );
   const userHasPermission = useCallback((menuId) => {
     if (!user) return menuId === 'pagina-inicial';
 
@@ -17732,9 +17874,21 @@ const handleSubmit = async (e) => {
       return (<div className="flex h-full w-full items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-pink-500"></div></div>);
     }
 
+    const renderNormalModule = (moduleId, content) => (
+      <CorretorReadOnlyBoundary
+        enabled={user?.role === ROLE_BROKER}
+        moduleLabel={allMenuItems.find((item) => item.id === moduleId)?.label}
+      >
+        {content}
+      </CorretorReadOnlyBoundary>
+    );
+    const protectedModule = (moduleId, content) => userHasPermission(moduleId)
+      ? renderNormalModule(moduleId, content)
+      : <AccessDeniedPage />;
+
     switch (currentPage) {
-      case 'pagina-inicial': return <PaginaInicial />;
-      case 'dashboard': return userHasPermission('dashboard') ? <Dashboard
+      case 'pagina-inicial': return protectedModule('pagina-inicial', <PaginaInicial />);
+      case 'dashboard': return protectedModule('dashboard', <Dashboard
                                         handleStopAndSnoozeAlarm={handleStopAndSnoozeAlarm}
                                         isAlarmPlaying={isAlarmPlaying}
                                         isAlarmSnoozed={isAlarmSnoozed}
@@ -17742,27 +17896,26 @@ const handleSubmit = async (e) => {
                                         hasNewPendingOrders={hasNewPendingOrders}
                                         alarmPauseMinutes={resolvedAlarmPauseMinutes}
                                         // --- REMOVIDO: unlockAudio e audioUnlocked ---
-                                        /> : <PaginaInicial />;
-      case 'clientes': return userHasPermission('clientes') ? <Clientes /> : <PaginaInicial />;
-      case 'produtos': return userHasPermission('produtos') ? <Produtos /> : <PaginaInicial />;
-      case 'pedidos': return userHasPermission('pedidos') ? <Pedidos /> : <PaginaInicial />;
-      case 'entre-lojas': return userHasPermission('entre-lojas') ? <EntreLojas /> : <PaginaInicial />;
-      case 'agenda': return userHasPermission('agenda') ? <Agenda /> : <PaginaInicial />;
-      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} /> : <PaginaInicial />;
-      case 'relatorios': return userHasPermission('relatorios') ? <Relatorios data={data} /> : <PaginaInicial />;
-      case 'meu-espaco': return userHasPermission('meu-espaco') ? (
+                                        />);
+      case 'clientes': return protectedModule('clientes', <Clientes />);
+      case 'produtos': return protectedModule('produtos', <Produtos />);
+      case 'pedidos': return protectedModule('pedidos', <Pedidos />);
+      case 'entre-lojas': return protectedModule('entre-lojas', <EntreLojas />);
+      case 'agenda': return protectedModule('agenda', <Agenda />);
+      case 'fornecedores': return protectedModule('fornecedores', <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} />);
+      case 'relatorios': return protectedModule('relatorios', <Relatorios data={data} />);
+      case 'meu-espaco': return userHasPermission('meu-espaco') ? renderNormalModule('meu-espaco',
         <MeuEspaco
           user={user}
           resolveActiveStoreForWrite={resolveActiveStoreForWrite}
           currentStoreIdForDisplay={currentStoreIdForDisplay}
           storeInfoMap={storeInfoMap}
-        />
-      ) : <PaginaInicial />;
-      case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
-      case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial />;
-      case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
-      case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
-      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} /> : <PaginaInicial />;
+        />) : <AccessDeniedPage />;
+      case 'financeiro': return protectedModule('financeiro', <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} />);
+      case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <AccessDeniedPage />;
+      case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <AccessDeniedPage />;
+      case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <AccessDeniedPage />;
+      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} /> : <AccessDeniedPage />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
       default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;

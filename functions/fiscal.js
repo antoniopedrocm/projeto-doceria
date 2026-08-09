@@ -1,6 +1,12 @@
 const {GoogleAuth} = require('google-auth-library');
 const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 const forge = require('node-forge');
+const {
+  ROLE_BROKER,
+  canBrokerPerformFiscalAction,
+  findProtectedFiscalFields,
+  sanitizeBrokerFiscalConfiguration,
+} = require('./corretor-auth');
 
 const secretManager = new SecretManagerServiceClient();
 const MAX_CERTIFICATE_BYTES = 5 * 1024 * 1024;
@@ -466,8 +472,8 @@ const parseFiscalServicePayload = (data) => {
   return {};
 };
 
-const callFiscalService = async (path, body) => {
-  const {serviceUrl, sharedSecret} = getServiceConfig();
+const callFiscalService = async (path, body, serviceConfig = getServiceConfig()) => {
+  const {serviceUrl, sharedSecret} = serviceConfig;
   if (!serviceUrl) {
     const error = new Error('A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
     error.code = 'failed-precondition';
@@ -531,6 +537,57 @@ const createFiscalFunctions = ({
 }) => {
   const FieldValue = admin.firestore.FieldValue;
 
+  const loadPlatformServiceConfig = async () => {
+    const environmentConfig = getServiceConfig();
+    const snapshot = await db.collection('integrations').doc('fiscal').get();
+    const stored = snapshot.exists ? snapshot.data() || {} : {};
+    return {
+      serviceUrl: cleanText(stored.serviceUrl) || environmentConfig.serviceUrl,
+      sharedSecret: environmentConfig.sharedSecret,
+      source: cleanText(stored.serviceUrl) ? 'integrations/fiscal' : (environmentConfig.serviceUrl ? 'FISCAL_SERVICE_URL' : ''),
+    };
+  };
+
+  const writeFiscalAudit = async ({uid, requester, lojaId, action, documentId = '', before = null, after = null, result = 'success', details = {}}) => {
+    const timestamp = FieldValue.serverTimestamp();
+    const profile = requester?.profile || {};
+    const payload = {
+      usuario: profile.nome || profile.email || uid,
+      uid,
+      perfil: requester?.role || profile.role || '',
+      lojaId,
+      dataHora: timestamp,
+      timestamp,
+      modulo: 'nota-fiscal',
+      acao: action,
+      documento: documentId || null,
+      estadoAnterior: before,
+      estadoNovo: after,
+      resultado: result,
+      ...details,
+    };
+    const batch = db.batch();
+    batch.set(db.collection('auditLogs').doc(), payload);
+    if (lojaId) {
+      batch.set(db.collection('lojas').doc(lojaId).collection('configuracoes').doc('config').collection('logs').doc(), payload);
+    }
+    await batch.commit();
+  };
+
+  const writeFiscalAuditSafely = async (payload) => {
+    try {
+      await writeFiscalAudit(payload);
+    } catch (error) {
+      logger.error('Falha ao registrar auditoria fiscal.', {
+        action: payload?.action || null,
+        uid: payload?.uid || null,
+        lojaId: payload?.lojaId || null,
+        code: error?.code || null,
+        message: error?.message || String(error),
+      });
+    }
+  };
+
   const normalizeHttpsError = (error) => {
     if (error instanceof HttpsError) return error;
     if (['invalid-argument', 'failed-precondition', 'permission-denied', 'not-found', 'already-exists', 'aborted'].includes(error?.code)) {
@@ -539,15 +596,29 @@ const createFiscalFunctions = ({
     return new HttpsError('internal', error?.message || 'Falha fiscal inesperada.', error?.details || null);
   };
 
-  const requireStoreAccess = async (uid, lojaId) => {
+  const requireStoreAccess = async (uid, lojaId, action) => {
     if (!lojaId || lojaId === STORE_ALL_KEY) {
       throw new HttpsError('failed-precondition', 'Selecione uma loja específica para emitir nota fiscal.');
     }
 
-    const requester = await verifyManagementAccess(uid);
+    const readRequester = await verifyStoreReadAccess(uid);
+    const requester = readRequester.role === ROLE_BROKER
+      ? readRequester
+      : {...await verifyManagementAccess(uid), profile: readRequester.profile, permissions: readRequester.permissions};
     if (requester.role === 'dono' && requester.allStores) return requester;
     if (!userHasAccessToStores(requester.stores, [lojaId])) {
       throw new HttpsError('permission-denied', 'Você não tem acesso fiscal a esta loja.');
+    }
+    if (requester.role === ROLE_BROKER && !canBrokerPerformFiscalAction(requester.permissions, action)) {
+      await writeFiscalAuditSafely({
+        uid,
+        requester,
+        lojaId,
+        action: 'tentativa-fiscal-bloqueada',
+        result: 'permission-denied',
+        details: {acaoSolicitada: action || null},
+      });
+      throw new HttpsError('permission-denied', 'O perfil Corretor não possui autorização para esta ação fiscal.');
     }
     return requester;
   };
@@ -558,8 +629,8 @@ const createFiscalFunctions = ({
     }
 
     const requester = await verifyStoreReadAccess(uid);
-    if (requester.role === 'contador' && !requester.permissions?.['nota-fiscal']) {
-      throw new HttpsError('permission-denied', 'O perfil Contador não possui acesso ao módulo Nota Fiscal.');
+    if (['contador', ROLE_BROKER].includes(requester.role) && !requester.permissions?.['nota-fiscal']) {
+      throw new HttpsError('permission-denied', 'Este usuário não possui acesso ao módulo Nota Fiscal.');
     }
     if (requester.role === 'dono' && requester.allStores) return requester;
     if (!userHasAccessToStores(requester.stores, [lojaId])) {
@@ -568,14 +639,14 @@ const createFiscalFunctions = ({
     return requester;
   };
 
-  const requireCallableContext = async (request) => {
+  const requireCallableContext = async (request, action) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
     }
     const lojaId = String(request.data?.lojaId || '').trim();
-    await requireStoreAccess(uid, lojaId);
-    return {uid, lojaId};
+    const requester = await requireStoreAccess(uid, lojaId, action);
+    return {uid, lojaId, requester};
   };
 
   const requireReadContext = async (request) => {
@@ -1381,32 +1452,22 @@ const createFiscalFunctions = ({
     fiscalGetConfiguration: onCall(async (request) => {
       try {
         const {lojaId, requester} = await requireReadContext(request);
-        const [issuerSnap, settingsSnap, certificate] = await Promise.all([
+        const [issuerSnap, certificate, platformConfig] = await Promise.all([
           db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('issuer').get(),
-          db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').get(),
           loadCertificate(lojaId),
+          loadPlatformServiceConfig(),
         ]);
-        const rawSettings = settingsSnap.exists ? settingsSnap.data() || {} : {};
-
-        if (rawSettings.serviceUrl || rawSettings.fiscalServiceUrl || rawSettings.sharedSecret || rawSettings.fiscalSharedSecret) {
-          await db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').set({
-            serviceUrl: FieldValue.delete(),
-            fiscalServiceUrl: FieldValue.delete(),
-            sharedSecret: FieldValue.delete(),
-            fiscalSharedSecret: FieldValue.delete(),
-            updatedAt: FieldValue.serverTimestamp(),
-          }, {merge: true});
-        }
-
         return {
           issuer: issuerSnap.exists ? issuerSnap.data() || {} : null,
           settings: await loadSettings(lojaId),
           certificate: publicCertificateInfo(certificate),
-          platformService: requester.role === 'dono' && requester.allStores ? {
-            serviceUrl: getServiceConfig().serviceUrl,
-            configured: Boolean(getServiceConfig().serviceUrl),
-            source: 'FISCAL_SERVICE_URL',
-          } : null,
+          platformService: requester.role === 'dono'
+            ? {
+                serviceUrl: platformConfig.serviceUrl,
+                configured: Boolean(platformConfig.serviceUrl),
+                source: platformConfig.source,
+              }
+            : (requester.role === ROLE_BROKER ? {configured: Boolean(platformConfig.serviceUrl)} : null),
         };
       } catch (error) {
         logger.error('fiscalGetConfiguration failed', error);
@@ -1416,17 +1477,40 @@ const createFiscalFunctions = ({
 
     fiscalSaveConfiguration: onCall(async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
-        const issuer = request.data?.issuer || {};
-        const settings = request.data?.settings || {};
+        const {uid, lojaId, requester} = await requireCallableContext(request, 'save-configuration');
+        const rawIssuer = request.data?.issuer || {};
+        const rawSettings = request.data?.settings || {};
+        const protectedFields = findProtectedFiscalFields(request.data || {});
+        if (requester.role === ROLE_BROKER && protectedFields.length) {
+          await writeFiscalAuditSafely({
+            uid,
+            requester,
+            lojaId,
+            action: 'tentativa-alterar-configuracao-protegida',
+            result: 'permission-denied',
+            details: {camposProtegidos: protectedFields},
+          });
+          throw new HttpsError('permission-denied', 'A URL única do serviço fiscal é exclusiva do perfil Dono.');
+        }
+        if (protectedFields.length && requester.role !== 'dono') {
+          throw new HttpsError('permission-denied', 'Configurações fiscais da plataforma são exclusivas do perfil Dono.');
+        }
+        const sanitized = requester.role === ROLE_BROKER
+          ? sanitizeBrokerFiscalConfiguration({issuer: rawIssuer, settings: rawSettings})
+          : {issuer: rawIssuer, settings: rawSettings};
+        const issuer = sanitized.issuer;
+        const settings = sanitized.settings;
+        const issuerRef = db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('issuer');
+        const settingsRef = db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings');
+        const [previousIssuer, previousSettings] = await Promise.all([issuerRef.get(), settingsRef.get()]);
         await Promise.all([
-          db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('issuer').set({
+          issuerRef.set({
             ...issuer,
             taxRegime: Number(issuer.taxRegime || 1),
             updatedAt: FieldValue.serverTimestamp(),
             updatedByUid: uid,
           }, {merge: true}),
-          db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').set({
+          settingsRef.set({
             environment: cleanText(settings.environment || 'homologation'),
             nfeSeries: Number(settings.nfeSeries || 1),
             nfceSeries: Number(settings.nfceSeries || 1),
@@ -1440,17 +1524,82 @@ const createFiscalFunctions = ({
             updatedAt: FieldValue.serverTimestamp(),
             updatedByUid: uid,
           }, {merge: true}),
+          requester.role === 'dono' && Object.prototype.hasOwnProperty.call(rawSettings, 'serviceUrl')
+            ? db.collection('integrations').doc('fiscal').set({
+                serviceUrl: cleanText(rawSettings.serviceUrl),
+                updatedAt: FieldValue.serverTimestamp(),
+                updatedByUid: uid,
+              }, {merge: true})
+            : Promise.resolve(),
         ]);
-        return {ok: true};
+        await writeFiscalAuditSafely({
+          uid,
+          requester,
+          lojaId,
+          action: 'configuracao-fiscal-alterada',
+          documentId: 'issuer/settings',
+          before: sanitizeBrokerFiscalConfiguration({
+            issuer: previousIssuer.data() || {},
+            settings: previousSettings.data() || {},
+          }),
+          after: sanitizeBrokerFiscalConfiguration({issuer, settings}),
+        });
+        return {ok: true, allowedFieldsApplied: {issuer: Object.keys(issuer), settings: Object.keys(settings)}};
       } catch (error) {
         logger.error('fiscalSaveConfiguration failed', error);
         throw normalizeHttpsError(error);
       }
     }),
 
+    fiscalSaveProducts: onCall(async (request) => {
+      try {
+        const {uid, lojaId, requester} = await requireCallableContext(request, 'save-configuration');
+        const items = Array.isArray(request.data?.items) ? request.data.items : [];
+        if (!items.length || items.length > 450) {
+          throw new HttpsError('invalid-argument', 'Envie entre 1 e 450 produtos fiscais por operação.');
+        }
+        const allowedFields = [
+          'productId', 'code', 'description', 'ncm', 'cfop', 'cfopNfe', 'cfopNfce',
+          'unit', 'origin', 'csosn', 'cst', 'pisCst', 'cofinsCst', 'ipiCst', 'cest', 'cBenef',
+        ];
+        const normalizedItems = items.map((item) => {
+          const id = cleanText(item?.id);
+          if (!id) throw new HttpsError('invalid-argument', 'Produto fiscal sem identificador.');
+          const source = item?.data && typeof item.data === 'object' ? item.data : {};
+          const data = allowedFields.reduce((result, field) => {
+            if (Object.prototype.hasOwnProperty.call(source, field)) result[field] = source[field];
+            return result;
+          }, {});
+          return {id, data};
+        });
+        const batch = db.batch();
+        normalizedItems.forEach(({id, data}) => {
+          batch.set(db.collection('lojas').doc(lojaId).collection('fiscalProducts').doc(id), {
+            ...data,
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedByUid: uid,
+          }, {merge: true});
+        });
+        await batch.commit();
+        await writeFiscalAuditSafely({
+          uid,
+          requester,
+          lojaId,
+          action: 'produtos-fiscais-configurados',
+          documentId: normalizedItems.length === 1 ? normalizedItems[0].id : 'lote-fiscalProducts',
+          after: {productIds: normalizedItems.map((item) => item.id).slice(0, 100)},
+          details: {quantidade: normalizedItems.length, idsAuditados: Math.min(normalizedItems.length, 100)},
+        });
+        return {ok: true, count: normalizedItems.length};
+      } catch (error) {
+        logger.error('fiscalSaveProducts failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
     fiscalValidateOrder: onCall(async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId} = await requireCallableContext(request, 'validate');
         const orderId = String(request.data?.orderId || '').trim();
         if (!orderId) throw new HttpsError('invalid-argument', 'orderId obrigatório.');
         const prepared = await buildPreparedPayload({
@@ -1466,13 +1615,14 @@ const createFiscalFunctions = ({
           ...prepared.payload,
           invoice: {...prepared.payload.invoice, number: nextNumber},
         };
+        const serviceConfig = await loadPlatformServiceConfig();
 
         const localResult = {
           ok: prepared.errors.length === 0,
           errors: prepared.errors,
           itemIssues: collectFiscalItemIssues(payload),
           warnings: [
-            ...(getServiceConfig(prepared.settings).serviceUrl ? [] : ['Serviço fiscal ainda não configurado; validação feita apenas localmente.']),
+            ...(serviceConfig.serviceUrl ? [] : ['Serviço fiscal ainda não configurado; validação feita apenas localmente.']),
             ...(prepared.certificate.ready ? [] : ['Certificado A1 da loja ainda não foi enviado.']),
             ...(prepared.model === 65 && (!prepared.certificate.nfceCscSecretVersion || !prepared.certificate.nfceCscIdSecretVersion) ? ['CSC e ID CSC da NFC-e ainda não foram cadastrados.'] : []),
           ],
@@ -1490,8 +1640,8 @@ const createFiscalFunctions = ({
           totals: payload.totals,
         };
 
-        if (prepared.errors.length || !getServiceConfig(prepared.settings).serviceUrl) return localResult;
-        return await callFiscalService('/validate', payload, prepared.settings);
+        if (prepared.errors.length || !serviceConfig.serviceUrl) return localResult;
+        return await callFiscalService('/validate', payload, serviceConfig);
       } catch (error) {
         logger.error('fiscalValidateOrder failed', error);
         throw normalizeHttpsError(error);
@@ -1500,7 +1650,7 @@ const createFiscalFunctions = ({
 
     fiscalUploadCertificate: onCall({timeoutSeconds: 120, memory: '512MiB'}, async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId, requester} = await requireCallableContext(request, 'upload-certificate');
         const certificateBase64 = cleanText(request.data?.certificateBase64).replace(/^data:.*;base64,/, '');
         const password = String(request.data?.password || '');
         const filename = cleanText(request.data?.filename || 'certificado-a1.pfx');
@@ -1590,6 +1740,16 @@ const createFiscalFunctions = ({
           updatedAt: FieldValue.serverTimestamp(),
         }, {merge: true});
 
+        await writeFiscalAuditSafely({
+          uid,
+          requester,
+          lojaId,
+          action: 'certificado-fiscal-configurado',
+          documentId: 'certificate',
+          before: publicCertificateInfo(previous),
+          after: publicCertificateInfo(certificate),
+        });
+
         return {
           ok: true,
           certificate: publicCertificateInfo({
@@ -1606,7 +1766,7 @@ const createFiscalFunctions = ({
 
     fiscalIssueInvoice: onCall({timeoutSeconds: 540, memory: '1GiB'}, async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId, requester} = await requireCallableContext(request, 'issue');
         const orderId = String(request.data?.orderId || '').trim();
         if (!orderId) throw new HttpsError('invalid-argument', 'orderId obrigatório.');
 
@@ -1621,7 +1781,8 @@ const createFiscalFunctions = ({
         if (prepared.errors.length) {
           throw new HttpsError('failed-precondition', prepared.errors.join(' '));
         }
-        if (!getServiceConfig(prepared.settings).serviceUrl) {
+        const serviceConfig = await loadPlatformServiceConfig();
+        if (!serviceConfig.serviceUrl) {
           throw new HttpsError('failed-precondition', 'A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
         }
         if (!prepared.certificate.ready) {
@@ -1651,14 +1812,16 @@ const createFiscalFunctions = ({
         };
 
         try {
-          const result = await callFiscalService('/issue', payload, prepared.settings);
-          return await updateInvoiceAfterIssue({
+          const result = await callFiscalService('/issue', payload, serviceConfig);
+          const issued = await updateInvoiceAfterIssue({
             lojaId,
             invoiceId: reservation.invoiceId,
             orderId,
             uid,
             result,
           });
+          await writeFiscalAuditSafely({uid, requester, lojaId, action: 'nota-fiscal-emitida', documentId: reservation.invoiceId, after: {status: issued.status || null, number: issued.number || reservation.number || null, key: issued.key || null}, details: {numero: issued.number || reservation.number || null, chave: issued.key || null}});
+          return issued;
         } catch (error) {
           const statusAfterError = error?.fiscalServiceResponded ? INVOICE_STATUS.REJECTED : INVOICE_STATUS.PENDING_RETURN;
           const messageAfterError = statusAfterError === INVOICE_STATUS.PENDING_RETURN
@@ -1683,6 +1846,15 @@ const createFiscalFunctions = ({
               });
             }
           });
+          await writeFiscalAuditSafely({
+            uid,
+            requester,
+            lojaId,
+            action: 'emissao-nota-fiscal-falhou',
+            documentId: reservation.invoiceId,
+            result: statusAfterError,
+            after: {status: statusAfterError, message: messageAfterError},
+          });
           throw error;
         }
       } catch (error) {
@@ -1693,7 +1865,7 @@ const createFiscalFunctions = ({
 
     fiscalIssueManualInvoice: onCall({timeoutSeconds: 540, memory: '1GiB'}, async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId, requester} = await requireCallableContext(request, 'issue-manual');
         const manualInvoice = request.data?.manualInvoice || {};
 
         const prepared = await buildManualPreparedPayload({
@@ -1707,7 +1879,8 @@ const createFiscalFunctions = ({
         if (prepared.errors.length) {
           throw new HttpsError('failed-precondition', prepared.errors.join(' '));
         }
-        if (!getServiceConfig(prepared.settings).serviceUrl) {
+        const serviceConfig = await loadPlatformServiceConfig();
+        if (!serviceConfig.serviceUrl) {
           throw new HttpsError('failed-precondition', 'A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
         }
         if (!prepared.certificate.ready) {
@@ -1737,14 +1910,16 @@ const createFiscalFunctions = ({
         };
 
         try {
-          const result = await callFiscalService('/issue', payload, prepared.settings);
-          return await updateInvoiceAfterIssue({
+          const result = await callFiscalService('/issue', payload, serviceConfig);
+          const issued = await updateInvoiceAfterIssue({
             lojaId,
             invoiceId: reservation.invoiceId,
             orderId: null,
             uid,
             result,
           });
+          await writeFiscalAuditSafely({uid, requester, lojaId, action: 'nota-fiscal-manual-emitida', documentId: reservation.invoiceId, after: {status: issued.status || null, number: issued.number || reservation.number || null, key: issued.key || null}, details: {numero: issued.number || reservation.number || null, chave: issued.key || null}});
+          return issued;
         } catch (error) {
           const statusAfterError = error?.fiscalServiceResponded ? INVOICE_STATUS.REJECTED : INVOICE_STATUS.PENDING_RETURN;
           const messageAfterError = statusAfterError === INVOICE_STATUS.PENDING_RETURN
@@ -1761,6 +1936,15 @@ const createFiscalFunctions = ({
               message: messageAfterError,
             }),
           }, {merge: true});
+          await writeFiscalAuditSafely({
+            uid,
+            requester,
+            lojaId,
+            action: 'emissao-nota-fiscal-manual-falhou',
+            documentId: reservation.invoiceId,
+            result: statusAfterError,
+            after: {status: statusAfterError, message: messageAfterError},
+          });
           throw error;
         }
       } catch (error) {
@@ -1771,7 +1955,7 @@ const createFiscalFunctions = ({
 
     fiscalCancelInvoice: onCall({timeoutSeconds: 180, memory: '512MiB'}, async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId} = await requireCallableContext(request, 'cancel');
         const invoiceId = String(request.data?.invoiceId || '').trim();
         const reason = String(request.data?.reason || '').trim();
         if (!invoiceId) throw new HttpsError('invalid-argument', 'invoiceId obrigatório.');
@@ -1793,7 +1977,8 @@ const createFiscalFunctions = ({
           loadSettings(lojaId),
           loadIssuer(lojaId),
         ]);
-        if (!getServiceConfig(settings).serviceUrl) {
+        const serviceConfig = await loadPlatformServiceConfig();
+        if (!serviceConfig.serviceUrl) {
           throw new HttpsError('failed-precondition', 'A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
         }
         const certificate = await loadCertificate(lojaId);
@@ -1810,7 +1995,7 @@ const createFiscalFunctions = ({
           environment: environmentCode(settings.environment),
           issuer,
           fiscalSecrets: certificate.fiscalSecrets,
-        }, settings);
+        }, serviceConfig);
 
         const cancellationAccepted = result.status === INVOICE_STATUS.CANCELLED;
         const invoiceStatus = cancellationAccepted ? INVOICE_STATUS.CANCELLED : INVOICE_STATUS.AUTHORIZED;
@@ -1839,7 +2024,7 @@ const createFiscalFunctions = ({
 
     fiscalRefreshInvoice: onCall({timeoutSeconds: 240, memory: '1GiB'}, async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId} = await requireCallableContext(request, 'refresh');
         const invoiceId = String(request.data?.invoiceId || '').trim();
         if (!invoiceId) throw new HttpsError('invalid-argument', 'invoiceId obrigatório.');
 
@@ -1868,11 +2053,12 @@ const createFiscalFunctions = ({
           additionalInfo: invoice.additionalInfo,
           operationCfop: invoice.operationCfop,
         });
+        const serviceConfig = await loadPlatformServiceConfig();
         const result = await callFiscalService('/receipt', {
           ...prepared.payload,
           receipt: invoice.receipt,
           signedXml,
-        }, prepared.settings);
+        }, serviceConfig);
         return await updateInvoiceAfterIssue({
           lojaId,
           invoiceId,
