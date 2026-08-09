@@ -39,6 +39,7 @@ import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceW
 import { updateStock as updateStockService } from './services/stockService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
+import FinancialControlPanel from './components/financeiro/FinancialControlPanel';
 import IfoodHub from './components/ifood/IfoodHub';
 import Food99Hub from './components/food99/Food99Hub';
 import CaixaTab from './components/caixa/CaixaTab';
@@ -18265,12 +18266,23 @@ const handleSubmit = async (e) => {
           storeInfoMap={storeInfoMap}
         />
       ) : <PaginaInicial />;
-      case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
+      case 'financeiro': return userHasPermission('financeiro') ? (
+        <FinancialControlPanel
+          data={data}
+          addItem={addItem}
+          updateItem={updateItem}
+          deleteItem={deleteItem}
+          setConfirmDelete={setConfirmDelete}
+          availableStores={availableStores}
+          storeInfoMap={storeInfoMap}
+          currentStoreId={currentStoreIdForDisplay}
+          user={user}
+        />
+      ) : <PaginaInicial />;
       case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial />;
       case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
       case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
       case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} /> : <PaginaInicial />;
-      case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
       default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;
     }

@@ -19,6 +19,7 @@ const {createFiscalFunctions} = require('./fiscal');
 const {createIfoodFunctions} = require('./ifood');
 const {createFood99Functions} = require('./food99');
 const {createCaixaFunctions} = require('./caixa');
+const {createFinanceiroFunctions} = require('./financeiro');
 const {
   defaultCashPermissions,
   sanitizeCashPermissions,
@@ -2521,6 +2522,16 @@ Object.assign(exports, createCaixaFunctions({
     onDocumentWritten,
     HttpsError,
     logger,
+}));
+
+Object.assign(exports, createFinanceiroFunctions({
+    admin,
+    db,
+    onCall,
+    HttpsError,
+    verifyManagementAccess,
+    userHasAccessToStores,
+    ROLE_OWNER,
 }));
 
 Object.assign(exports, createFiscalFunctions({
