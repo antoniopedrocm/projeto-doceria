@@ -205,6 +205,19 @@ function validTransferenciaEntreLojasStatuses() {
   ];
 }
 
+function destinationVisibleTransferenciaEntreLojasStatuses() {
+  return [
+    'aguardando_conferencia',
+    'conferencia_sem_divergencia',
+    'conferencia_com_divergencia',
+    'pagamento_informado',
+    'pagamento_confirmado',
+    'pagamento_contestado',
+    'cancelado',
+    'cancelada'
+  ];
+}
+
 function currentUserHasEntreLojasModule() {
   return isEntreLojasOwnerUser()
     || currentUserData().get('permissions', {}).get('entre-lojas', true);
@@ -229,7 +242,20 @@ function canReadTransferenciaEntreLojasDoc() {
     && (
       isEntreLojasOwnerUser()
       || currentUserHasStore(resource.data.lojaOrigemId)
-      || (resource.data.status != 'rascunho' && currentUserHasStore(resource.data.lojaDestinoId))
+      || (
+        currentUserHasStore(resource.data.lojaDestinoId)
+        && resource.data.status in destinationVisibleTransferenciaEntreLojasStatuses()
+      )
+    );
+}
+
+function canReadFechamentoEntreLojasDoc() {
+  return isSignedIn()
+    && currentUserHasEntreLojasModule()
+    && (
+      isEntreLojasOwnerUser()
+      || currentUserHasStore(resource.data.lojaOrigemId)
+      || currentUserHasStore(resource.data.lojaDestinoId)
     );
 }
 
@@ -772,7 +798,8 @@ match /transferenciasEntreLojas/{transferenciaId} {
 }
 
 match /fechamentosEntreLojas/{fechamentoId} {
-  allow read: if isSignedIn();
+  allow get: if canReadFechamentoEntreLojasDoc();
+  allow list: if canReadFechamentoEntreLojasDoc();
   allow create: if canCreateFechamentoEntreLojas();
   allow update: if canUpdateFechamentoEntreLojas();
   allow delete: if canDeleteFechamentoEntreLojas();
