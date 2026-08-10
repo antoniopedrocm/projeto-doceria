@@ -44,6 +44,15 @@ function accountantHasStore(lojaId) {
     || lojaId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lojaIds;
 }
 
+function accountantCanReadFiscalClient() {
+  return accountantHasModule('nota-fiscal')
+    && resource.data.lojasVisitadas is list
+    && (
+      resource.data.lojasVisitadas.hasAny(currentUserData().get('lojaIds', []))
+      || currentUserData().get('lojaId', '') in resource.data.lojasVisitadas
+    );
+}
+
 function currentUserData() {
   return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
 }
@@ -579,7 +588,11 @@ match /cupons/{cupomId} {
 // Apenas usuários autenticados (CRM) podem ler documentos de clientes.
 match /clientes/{clienteId} {
   allow create: if isCreatingOwnClient();
-  allow read: if isSignedIn() && (!isReadOnlyAccountant() || accountantHasModule('clientes'));
+  allow read: if isSignedIn() && (
+    !isReadOnlyAccountant()
+    || accountantHasModule('clientes')
+    || accountantCanReadFiscalClient()
+  );
   allow update: if isOwnerByUid() && request.resource.data.uid == resource.data.uid;
   allow delete: if isOwnerByUid();
 }

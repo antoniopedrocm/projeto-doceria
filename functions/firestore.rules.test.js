@@ -103,6 +103,14 @@ const seedFirestore = async () => {
         status: "inativo",
       }),
       setDoc(doc(db, "users", "client"), userProfile("cliente")),
+      setDoc(doc(db, "users", "accountant-fiscal-a"), {
+        ...userProfile("contador", [STORE_A]),
+        permissions: {"nota-fiscal": true},
+      }),
+      setDoc(doc(db, "users", "accountant-no-fiscal"), {
+        ...userProfile("contador", [STORE_A]),
+        permissions: {"nota-fiscal": false},
+      }),
       setDoc(doc(db, "customProfiles", "attendant-a"), {
         role: "atendente",
         permissions: {},
@@ -111,6 +119,14 @@ const seedFirestore = async () => {
       setDoc(doc(db, "lojas", STORE_A), {nome: "Loja A"}),
       setDoc(doc(db, "lojas", STORE_B), {nome: "Loja B"}),
       setDoc(doc(db, "lojas", STORE_C), {nome: "Loja C"}),
+      setDoc(doc(db, "clientes", "cliente-a"), {nome: "Cliente A", lojasVisitadas: [STORE_A]}),
+      setDoc(doc(db, "clientes", "cliente-b"), {nome: "Cliente B", lojasVisitadas: [STORE_B]}),
+      setDoc(doc(db, "lojas", STORE_A, "pedidos", "pedido-fiscal"), {total: 10}),
+      setDoc(doc(db, "lojas", STORE_B, "pedidos", "pedido-fiscal"), {total: 20}),
+      setDoc(doc(db, "lojas", STORE_A, "invoices", "nota-fiscal"), {status: "authorized"}),
+      setDoc(doc(db, "lojas", STORE_A, "fiscalProducts", "produto-fiscal"), {ncm: "19059090"}),
+      setDoc(doc(db, "lojas", STORE_A, "fiscalConfig", "settings"), {environment: "production"}),
+      setDoc(doc(db, "integrations", "fiscal"), {serviceUrl: "https://service.example"}),
       setDoc(doc(db, "transferenciasEntreLojas", "remessa-origem"), {
         lojaOrigemId: STORE_A,
         lojaDestinoId: STORE_B,
@@ -282,6 +298,35 @@ beforeEach(async () => {
 
 after(async () => {
   await testEnv.cleanup();
+});
+
+describe("Contador administrador do modulo Nota Fiscal", () => {
+  test("le dados fiscais e clientes somente da loja vinculada", async () => {
+    const db = testEnv.authenticatedContext("accountant-fiscal-a").firestore();
+
+    await assertSucceeds(getDoc(doc(db, "lojas", STORE_A, "pedidos", "pedido-fiscal")));
+    await assertFails(getDoc(doc(db, "lojas", STORE_B, "pedidos", "pedido-fiscal")));
+    await assertSucceeds(getDoc(doc(db, "lojas", STORE_A, "invoices", "nota-fiscal")));
+    await assertSucceeds(getDoc(doc(db, "clientes", "cliente-a")));
+    await assertFails(getDoc(doc(db, "clientes", "cliente-b")));
+  });
+
+  test("nao libera leitura fiscal sem permissao do modulo", async () => {
+    const db = testEnv.authenticatedContext("accountant-no-fiscal").firestore();
+    await assertFails(getDoc(doc(db, "lojas", STORE_A, "invoices", "nota-fiscal")));
+    await assertFails(getDoc(doc(db, "clientes", "cliente-a")));
+  });
+
+  test("mantem escritas fiscais diretas e configuracao global bloqueadas", async () => {
+    const db = testEnv.authenticatedContext("accountant-fiscal-a").firestore();
+
+    await assertFails(setDoc(doc(db, "lojas", STORE_A, "fiscalProducts", "novo"), {ncm: "19059090"}));
+    await assertFails(updateDoc(doc(db, "lojas", STORE_A, "pedidos", "pedido-fiscal"), {total: 99}));
+    await assertFails(getDoc(doc(db, "lojas", STORE_A, "fiscalConfig", "settings")));
+    await assertFails(setDoc(doc(db, "lojas", STORE_A, "fiscalConfig", "settings"), {environment: "homologation"}));
+    await assertFails(getDoc(doc(db, "integrations", "fiscal")));
+    await assertFails(setDoc(doc(db, "integrations", "fiscal"), {serviceUrl: "https://evil.example"}));
+  });
 });
 
 describe("regras de caixa por perfil e loja", () => {

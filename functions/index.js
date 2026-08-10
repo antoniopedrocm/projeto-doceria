@@ -402,14 +402,14 @@ const verifyStoreReadAccess = async (uid) => {
   const permissions = await getUserPermissions(uid, role);
 
   if (role === ROLE_OWNER) {
-    return {role, stores, allStores: stores.length === 0, permissions};
+    return {role, stores, allStores: stores.length === 0, permissions, profile};
   }
 
   if ([ROLE_MANAGER, ROLE_ACCOUNTANT].includes(role)) {
     if (!stores.length) {
       throw new HttpsError('permission-denied', 'Este usuário precisa estar associado a pelo menos uma loja.');
     }
-    return {role, stores, allStores: false, permissions};
+    return {role, stores, allStores: false, permissions, profile};
   }
 
   throw new HttpsError('permission-denied', 'Você não tem permissão para consultar esta operação.');

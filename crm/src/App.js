@@ -17282,7 +17282,8 @@ const handleSubmit = async (e) => {
       cscId: '',
       csc: ''
     });
-    const isReadOnly = currentUser?.role === ROLE_ACCOUNTANT;
+    const isAccountant = currentUser?.role === ROLE_ACCOUNTANT;
+    const isReadOnly = false;
     const isPlatformAdmin = currentUser?.role === ROLE_OWNER;
     const canViewFullFiscalDocument = [ROLE_OWNER, ROLE_MANAGER, ROLE_ACCOUNTANT].includes(currentUser?.role);
 
@@ -18152,7 +18153,12 @@ const handleSubmit = async (e) => {
           cupom: null,
           updatedAt: new Date()
         };
-        await updateItem('pedidos', orderToEditBeforeInvoice.id, payload, effectiveStoreId);
+        if (isAccountant) {
+          const updatePreInvoiceOrder = httpsCallable(functions, 'fiscalUpdatePreInvoiceOrder');
+          await updatePreInvoiceOrder(callablePayload({orderId: orderToEditBeforeInvoice.id, order: payload}));
+        } else {
+          await updateItem('pedidos', orderToEditBeforeInvoice.id, payload, effectiveStoreId);
+        }
         setOrderToEditBeforeInvoice(null);
         setOrderEditProductSearch('');
         setOrderEditError('');
@@ -19528,12 +19534,21 @@ const handleSubmit = async (e) => {
 
         const summary = { created: 0, updated: 0, errors: 0 };
         for (const chunk of chunks) {
-          const batch = writeBatch(db);
-          chunk.forEach((item) => {
-            batch.set(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', item.id), item.payload, { merge: true });
-          });
           try {
-            await batch.commit();
+            if (isAccountant) {
+              const saveProducts = httpsCallable(functions, 'fiscalSaveProducts');
+              const products = chunk.map((item) => ({
+                id: item.id,
+                ...Object.fromEntries(Object.entries(item.payload).filter(([field]) => !['createdAt', 'updatedAt'].includes(field)))
+              }));
+              await saveProducts(callablePayload({ products }));
+            } else {
+              const batch = writeBatch(db);
+              chunk.forEach((item) => {
+                batch.set(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', item.id), item.payload, { merge: true });
+              });
+              await batch.commit();
+            }
             chunk.forEach((item) => {
               if (item.action === 'created') summary.created += 1;
               if (item.action === 'updated') summary.updated += 1;
@@ -19560,6 +19575,17 @@ const handleSubmit = async (e) => {
       } finally {
         setSavingFiscalProducts(false);
       }
+    };
+
+    const handleDeleteFiscalProduct = async (row) => {
+      if (!row?.id || !effectiveStoreId) return;
+      if (isAccountant) {
+        const deleteProduct = httpsCallable(functions, 'fiscalDeleteProduct');
+        await deleteProduct(callablePayload({ productId: row.id }));
+        setMessage({ type: 'success', text: 'Produto fiscal excluído.' });
+        return;
+      }
+      await deleteItem('fiscalProducts', row.id, effectiveStoreId);
     };
 
     const orderColumns = [
@@ -19629,7 +19655,7 @@ const handleSubmit = async (e) => {
 
     const productActions = isReadOnly ? [] : [
       { icon: Edit, label: 'Editar', onClick: handleEditFiscalProduct },
-      { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('fiscalProducts', row.id, effectiveStoreId) }) }
+      { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => handleDeleteFiscalProduct(row) }) }
     ];
 
     const DetailSection = ({ title, children }) => (
@@ -19671,7 +19697,7 @@ const handleSubmit = async (e) => {
           </div>
           <div className="flex items-center gap-2 px-4 py-2 bg-white border rounded-xl shadow-sm text-sm text-gray-700">
             <CheckCircle className="w-4 h-4 text-green-600" />
-            {isReadOnly ? 'Consulta contábil' : `Ambiente: ${settingsForm.environment === 'production' ? 'Produção' : 'Homologação'}`}
+            {isAccountant ? 'Administração fiscal (Contador)' : `Ambiente: ${settingsForm.environment === 'production' ? 'Produção' : 'Homologação'}`}
           </div>
         </div>
 
@@ -19923,9 +19949,9 @@ const handleSubmit = async (e) => {
 
         {activeTab === 'configuracao' && (
           <form onSubmit={handleSaveFiscalConfig} className="space-y-6">
-            {isReadOnly && (
+            {isAccountant && (
               <div className="p-4 rounded-xl border border-blue-200 bg-blue-50 text-sm text-blue-800">
-                Perfil Contador: consulta habilitada. Alterações fiscais, emissão e cancelamento não estão disponíveis.
+                Perfil Contador: administração fiscal habilitada para as lojas vinculadas. A URL global do serviço permanece exclusiva do Dono.
               </div>
             )}
             <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
@@ -20000,10 +20026,10 @@ const handleSubmit = async (e) => {
                 <Input disabled={isReadOnly} label="Natureza da operação" value={settingsForm.operationNature || ''} onChange={(e) => setSettingsForm({ ...settingsForm, operationNature: e.target.value })} />
                 <Input disabled={isReadOnly} label="Pagamento padrão" value={settingsForm.defaultPaymentMethodCode || '99'} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPaymentMethodCode: e.target.value })} />
                 <Input disabled={isReadOnly} label="Indicador de presença" type="number" value={settingsForm.defaultPresence || 2} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPresence: e.target.value })} />
-                {isPlatformAdmin && (
+                {(isPlatformAdmin || isAccountant) && (
                   <div className="md:col-span-3">
                     <Input
-                      disabled={isReadOnly}
+                      disabled={isAccountant}
                       label="URL única do serviço fiscal (Cloud Run) - plataforma"
                       value={settingsForm.serviceUrl || ''}
                       placeholder="https://fiscal-service-xxxxx-rj.a.run.app"
@@ -20012,6 +20038,7 @@ const handleSubmit = async (e) => {
                     <p className="mt-1 text-xs text-gray-500">
                       Configuração global protegida; não pertence a uma loja.
                       {platformService?.configured ? ` Origem atual: ${platformService.source || 'backend'}.` : ' Ainda não configurada.'}
+                      {isAccountant ? ' Configuração exclusiva do Dono.' : ''}
                     </p>
                   </div>
                 )}
