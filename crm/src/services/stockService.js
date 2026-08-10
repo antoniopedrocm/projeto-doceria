@@ -25,11 +25,17 @@ export const updateStock = async (
   await runTransaction(db, async (transaction) => {
     const productRef = doc(db, 'lojas', storeId, 'produtos', productId);
     const stockRef = doc(db, 'lojas', storeId, 'estoque', productId);
+    const movementRef = options?.idempotencyKey
+      ? doc(db, 'lojas', storeId, 'kardex', options.idempotencyKey)
+      : doc(collection(db, 'lojas', storeId, 'kardex'));
 
-    const [productSnap, stockSnap] = await Promise.all([
+    const [productSnap, stockSnap, movementSnap] = await Promise.all([
       transaction.get(productRef),
       transaction.get(stockRef),
+      transaction.get(movementRef),
     ]);
+
+    if (movementSnap.exists()) return;
 
     if (!productSnap.exists() && !stockSnap.exists()) {
       throw new Error('Item de estoque não encontrado.');
@@ -56,7 +62,6 @@ export const updateStock = async (
       });
     }
 
-    const movementRef = doc(collection(db, 'lojas', storeId, 'kardex'));
     const quickSaleOrder = options?.quickSaleOrder || null;
     const quickSaleOrderRef = quickSaleOrder ? doc(collection(db, 'lojas', storeId, 'pedidos')) : null;
 
@@ -72,7 +77,10 @@ export const updateStock = async (
       estoqueAnterior: currentQuantity,
       estoquePosterior: newQuantity,
       lojaId: storeId,
-      pedidoId: quickSaleOrderRef?.id || null,
+      pedidoId: options?.pedidoCompraId || quickSaleOrderRef?.id || null,
+      pedidoCompraId: options?.pedidoCompraId || null,
+      origem: options?.origem || (options?.pedidoCompraId ? 'pedido_compra' : 'movimentacao_manual'),
+      idempotencyKey: options?.idempotencyKey || null,
     });
 
     if (quickSaleOrderRef) {

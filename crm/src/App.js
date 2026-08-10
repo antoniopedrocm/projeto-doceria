@@ -55,7 +55,12 @@ import {
 import { obterRegistroDiarioCaixa, registrarRetiradaDespesaCaixa } from './services/caixaService';
 import PostClosingConfirmation from './components/caixa/PostClosingConfirmation';
 import {
+  PURCHASE_PAYMENT_METHOD,
+  PURCHASE_PAYMENT_TYPE,
+  buildPurchaseOrderFinancialEntries,
   buildPurchaseOrderMoneyFields,
+  buildPurchaseOrderStockMovementId,
+  buildSuggestedPaymentSchedule,
   calculateItemsSubtotalCents,
   cleanSupplierName,
   findEquivalentSupplier,
@@ -63,9 +68,12 @@ import {
   hydratePurchaseOrder,
   moneyInputToCents,
   normalizeSupplierName,
+  paymentConfigurationSignature,
+  resolvePurchaseOrderPaymentSchedule,
   resolvePurchaseOrderSubtotalCents,
   resolvePurchaseOrderTotalCents,
-  searchSuppliers
+  searchSuppliers,
+  validatePurchaseOrderPayment
 } from './fornecedores/purchaseOrderCore';
 
 // --- importação para Android
@@ -1722,6 +1730,24 @@ const maskCpfCnpj = (value) => {
 
 // --- NOVOS COMPONENTES ---
 
+const createNewPurchaseOrderFormData = () => hydratePurchaseOrder({
+    fornecedorId: '',
+    itens: [],
+    valorTotal: 0,
+    dataPedido: new Date().toISOString().split('T')[0],
+    dataPrevistaEntrega: '',
+    status: 'Pendente',
+    observacaoGeral: '',
+    formaPagamento: PURCHASE_PAYMENT_METHOD.CREDIT_CARD,
+    tipoPagamento: PURCHASE_PAYMENT_TYPE.SINGLE,
+    diaVencimentoCartao: '',
+    primeiroVencimento: '',
+    quantidadeParcelas: 1,
+    cronogramaPagamento: [],
+    mercadoriaEmMaos: false,
+    configuracaoPagamentoDefinida: true
+});
+
 const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser, availableStores, storeInfoMap }) => {
     const [activeTab, setActiveTab] = usePersistentState('fornecedores_activeTab', 'fornecedores');
     
@@ -1734,7 +1760,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     
     const [showPedidoModal, setShowPedidoModal] = useState(false);
     const [editingPedido, setEditingPedido] = useState(null);
-    const [pedidoFormData, setPedidoFormData] = useState(() => hydratePurchaseOrder({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente', observacaoGeral: '' }));
+    const [pedidoFormData, setPedidoFormData] = useState(createNewPurchaseOrderFormData);
     const [fornecedorPedidoBusca, setFornecedorPedidoBusca] = useState('');
     const [fornecedorPedidoDropdownOpen, setFornecedorPedidoDropdownOpen] = useState(false);
     const [showQuickFornecedorModal, setShowQuickFornecedorModal] = useState(false);
@@ -1743,6 +1769,8 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     const [fornecedorCriadoNoPedido, setFornecedorCriadoNoPedido] = useState(false);
     const [isSavingPedido, setIsSavingPedido] = useState(false);
     const receivingPedidoIdsRef = useRef(new Set());
+    const pedidoSavingRef = useRef(false);
+    const pedidoDocumentIdRef = useRef(createIdempotencyKey('pedido-compra').replace(/:/g, '_'));
 
     const [showEstoqueModal, setShowEstoqueModal] = useState(false);
     const [editingEstoque, setEditingEstoque] = useState(null);
@@ -1781,10 +1809,11 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         setPreviousFornecedorCategoria('');
     };
     const resetPedidoForm = () => {
-        setPedidoFormData(hydratePurchaseOrder({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente', observacaoGeral: '' }));
+        setPedidoFormData(createNewPurchaseOrderFormData());
         setFornecedorPedidoBusca('');
         setFornecedorPedidoDropdownOpen(false);
         setFornecedorCriadoNoPedido(false);
+        pedidoDocumentIdRef.current = createIdempotencyKey('pedido-compra').replace(/:/g, '_');
     };
     const resetEstoqueForm = () => setEstoqueFormData({ nome: '', categoria: DEFAULT_FORNECEDOR_CATEGORIES[0], fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' });
     const resetPerdaForm = () => setPerdaFormData({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: new Date().toISOString().split('T')[0], motivo: 'Vencimento', outroMotivo: '' });
@@ -1875,7 +1904,25 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                 && previous.valorNaoDetalhadoCentavos === moneyFields.valorNaoDetalhadoCentavos
             ) return previous;
 
-            return { ...previous, ...moneyFields };
+            const next = { ...previous, ...moneyFields };
+            if (
+                previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO
+                && previous.valorTotalCentavos !== moneyFields.valorTotalCentavos
+            ) {
+                const suggested = buildSuggestedPaymentSchedule({
+                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
+                    paymentType: previous.tipoPagamento,
+                    totalCents: moneyFields.valorTotalCentavos,
+                    installmentCount: previous.quantidadeParcelas,
+                    purchaseDate: previous.dataPedido,
+                    firstDueDate: previous.primeiroVencimento
+                });
+                next.cronogramaPagamento = suggested.map((entry, index) => ({
+                    ...entry,
+                    dueDate: previous.cronogramaPagamento?.[index]?.dueDate || entry.dueDate
+                }));
+            }
+            return next;
         });
     }, [pedidoFormData.itens]);
 
@@ -1916,6 +1963,22 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         () => findEquivalentSupplier(data.fornecedores || [], fornecedorPedidoBusca),
         [data.fornecedores, fornecedorPedidoBusca]
     );
+    const pedidoPaymentSchedule = useMemo(
+        () => pedidoFormData.configuracaoPagamentoDefinida
+            ? resolvePurchaseOrderPaymentSchedule(pedidoFormData)
+            : [],
+        [pedidoFormData]
+    );
+    const pedidoBoletoScheduleTotal = useMemo(
+        () => pedidoPaymentSchedule.reduce((sum, entry) => sum + Number(entry.valueCents || 0), 0),
+        [pedidoPaymentSchedule]
+    );
+    const editingPedidoFinancialEntries = useMemo(() => {
+        if (!editingPedido?.id) return [];
+        return (data.contas_a_pagar || [])
+            .filter((account) => account.pedidoCompraId === editingPedido.id || account.id === `pedidoCompra_${editingPedido.id}`)
+            .sort((left, right) => Number(left.parcelaNumero || 1) - Number(right.parcelaNumero || 1));
+    }, [data.contas_a_pagar, editingPedido]);
     const estoqueComNomes = useMemo(() => (data.estoque || []).map(item => ({ ...item, fornecedorNome: data.fornecedores.find(f => f.id === item.fornecedorId)?.nome || 'N/A' })), [data.estoque, data.fornecedores]);
     const estoqueFornecedores = useMemo(() => {
         const fornecedores = new Set();
@@ -2152,8 +2215,79 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         setFornecedorCriadoNoPedido(false);
         setShowPedidoModal(true);
     };
+
+    const getPedidoFinancialEntries = (pedidoId) => (data.contas_a_pagar || [])
+        .filter((account) => account.pedidoCompraId === pedidoId || account.id === `pedidoCompra_${pedidoId}`);
+
+    const createPurchaseOrderFinancialEntries = async (pedido, pedidoId) => {
+        const existingEntries = getPedidoFinancialEntries(pedidoId);
+        const hasConfiguredPayment = pedido.configuracaoPagamentoDefinida === true
+            && Object.values(PURCHASE_PAYMENT_METHOD).includes(pedido.formaPagamento);
+
+        if (!hasConfiguredPayment) {
+            if (existingEntries.length > 0) return existingEntries.map((entry) => entry.id);
+            const legacyAccountId = `pedidoCompra_${pedidoId}`;
+            const valorCentavos = resolvePurchaseOrderTotalCents(pedido);
+            await addItem('contas_a_pagar', {
+                descricao: `Compra de ${pedido.fornecedorNome}`,
+                valor: valorCentavos / 100,
+                valorCentavos,
+                dataVencimento: new Date().toISOString().split('T')[0],
+                status: 'Pendente',
+                categoria: 'Fornecedores',
+                pedidoCompraId: pedidoId,
+                fornecedorId: pedido.fornecedorId || '',
+                fornecedorNome: pedido.fornecedorNome || '',
+                lojaId: effectiveStoreId,
+                origem: 'pedido_compra',
+                createdBy: getCurrentUserId(),
+                createdByNome: getCurrentUserName()
+            }, effectiveStoreId, legacyAccountId, { createOnly: true });
+            return [legacyAccountId];
+        }
+
+        const entries = buildPurchaseOrderFinancialEntries(pedido, pedidoId, {
+            storeId: effectiveStoreId,
+            userId: getCurrentUserId(),
+            userName: getCurrentUserName()
+        });
+        for (const entry of entries) {
+            const { id: accountId, ...accountPayload } = entry;
+            await addItem('contas_a_pagar', accountPayload, effectiveStoreId, accountId, { createOnly: true });
+        }
+        return entries.map((entry) => entry.id);
+    };
+
+    const processPurchaseOrderStock = async (pedido, pedidoId) => {
+        if (pedido.estoqueProcessadoAt) return false;
+        const detailedItems = (pedido.itens || []).filter((item) => (
+            (item.id || item.produtoId) && Number(item.quantidade) > 0
+        ));
+
+        for (let index = 0; index < detailedItems.length; index += 1) {
+            const item = detailedItems[index];
+            const itemId = item.id || item.produtoId;
+            const movementId = buildPurchaseOrderStockMovementId(pedidoId, itemId, index);
+            await updateStock(
+                itemId,
+                'entrada',
+                Number(item.quantidade),
+                `Recebimento do Pedido de Compra #${pedidoId}`,
+                currentUser,
+                effectiveStoreId,
+                {
+                    idempotencyKey: movementId,
+                    pedidoCompraId: pedidoId,
+                    origem: 'pedido_compra'
+                }
+            );
+        }
+        return true;
+    };
+
     const handlePedidoSubmit = async (event) => {
         event.preventDefault();
+        if (pedidoSavingRef.current) return;
         if (!pedidoFormData.fornecedorId) {
             alert('Selecione um fornecedor.');
             return;
@@ -2174,7 +2308,36 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             && !window.confirm('O valor total informado é menor que a soma dos itens detalhados. Deseja continuar?')
         ) return;
 
+        const hasConfiguredPayment = Object.values(PURCHASE_PAYMENT_METHOD).includes(pedidoFormData.formaPagamento);
+        const isLegacyEditWithoutPayment = Boolean(editingPedido) && !hasConfiguredPayment
+            && editingPedido.configuracaoPagamentoDefinida !== true;
+        const paymentValidation = isLegacyEditWithoutPayment
+            ? { valid: true, errors: [], schedule: editingPedido.cronogramaPagamento || [] }
+            : validatePurchaseOrderPayment({ ...pedidoFormData, ...moneyFields });
+        if (!paymentValidation.valid) {
+            alert(paymentValidation.errors.join('\n'));
+            return;
+        }
+
+        if (editingPedido) {
+            const existingFinancialEntries = getPedidoFinancialEntries(editingPedido.id);
+            const paymentChanged = paymentConfigurationSignature({ ...editingPedido })
+                !== paymentConfigurationSignature({ ...pedidoFormData, ...moneyFields, cronogramaPagamento: paymentValidation.schedule });
+            if (existingFinancialEntries.length > 0 && paymentChanged) {
+                const hasPaidEntry = existingFinancialEntries.some((entry) => entry.status === 'Pago');
+                alert(hasPaidEntry
+                    ? 'Este pedido possui parcela paga. A configuração financeira não pode ser alterada por esta tela.'
+                    : 'Este pedido já possui despesas vinculadas. Para evitar exclusão ou recriação silenciosa, ajuste somente pelo fluxo financeiro apropriado.');
+                return;
+            }
+            if (editingPedido.status === 'Recebido' && pedidoFormData.mercadoriaEmMaos !== editingPedido.mercadoriaEmMaos) {
+                alert('O recebimento já foi processado e não pode ser revertido por esta tela.');
+                return;
+            }
+        }
+
         const timestamp = new Date();
+        const shouldReceiveImmediately = pedidoFormData.mercadoriaEmMaos === true;
         const auditEntry = {
             acao: editingPedido ? 'pedido_atualizado' : 'pedido_criado',
             data: timestamp,
@@ -2187,24 +2350,41 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             subtotalItensCentavos: moneyFields.subtotalItensCentavos,
             valorTotalCentavos: moneyFields.valorTotalCentavos,
             valorTotalAnteriorCentavos: editingPedido ? resolvePurchaseOrderTotalCents(editingPedido) : null,
-            observacaoGeral: pedidoFormData.observacaoGeral || ''
+            observacaoGeral: pedidoFormData.observacaoGeral || '',
+            formaPagamento: pedidoFormData.formaPagamento || '',
+            tipoPagamento: pedidoFormData.tipoPagamento || '',
+            quantidadeParcelas: paymentValidation.schedule.length,
+            cronogramaPagamento: paymentValidation.schedule,
+            mercadoriaEmMaos: shouldReceiveImmediately,
+            recebimentoAutomatico: shouldReceiveImmediately && editingPedido?.status !== 'Recebido'
         };
         const formWithoutId = { ...pedidoFormData };
         delete formWithoutId.id;
         const payload = {
             ...formWithoutId,
             ...moneyFields,
+            cronogramaPagamento: paymentValidation.schedule,
+            configuracaoPagamentoDefinida: hasConfiguredPayment,
             observacaoGeral: (pedidoFormData.observacaoGeral || '').trim(),
             fornecedorCriadoDurantePedido: fornecedorCriadoNoPedido
                 || editingPedido?.fornecedorCriadoDurantePedido === true,
             historico: [...(editingPedido?.historico || []), auditEntry],
+            status: shouldReceiveImmediately || editingPedido?.status === 'Recebido' ? 'Recebido' : (pedidoFormData.status || 'Pendente'),
+            dataPrevistaEntrega: shouldReceiveImmediately ? '' : (pedidoFormData.dataPrevistaEntrega || ''),
+            ...(shouldReceiveImmediately && editingPedido?.status !== 'Recebido' ? {
+                receivedAt: timestamp,
+                receivedBy: getCurrentUserId(),
+                receivedByNome: getCurrentUserName()
+            } : {}),
             updatedAt: timestamp,
             updatedBy: getCurrentUserId(),
             updatedByNome: getCurrentUserName()
         };
 
         try {
+            pedidoSavingRef.current = true;
             setIsSavingPedido(true);
+            const pedidoId = editingPedido?.id || pedidoDocumentIdRef.current;
             if (editingPedido) {
                 await updateItem('pedidosCompra', editingPedido.id, payload);
             } else {
@@ -2213,10 +2393,40 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     createdBy: getCurrentUserId(),
                     createdByNome: getCurrentUserName(),
                     createdByEmail: currentUser?.auth?.email || currentUser?.email || ''
-                });
+                }, effectiveStoreId, pedidoId, { createOnly: true });
             }
+
+            const financialEntryIds = isLegacyEditWithoutPayment
+                ? getPedidoFinancialEntries(pedidoId).map((entry) => entry.id)
+                : await createPurchaseOrderFinancialEntries(payload, pedidoId);
+            let stockProcessed = false;
+            if (shouldReceiveImmediately && editingPedido?.status !== 'Recebido') {
+                stockProcessed = await processPurchaseOrderStock(payload, pedidoId);
+            }
+            const completionTimestamp = new Date();
+            await updateItem('pedidosCompra', pedidoId, {
+                financialEntryIds,
+                ...(financialEntryIds[0] ? { contaPagarId: financialEntryIds[0] } : {}),
+                ...(financialEntryIds.length > 0 ? { financialEntriesCreatedAt: completionTimestamp } : {}),
+                ...(shouldReceiveImmediately ? {
+                    estoqueProcessadoAt: completionTimestamp,
+                    estoqueProcessadoPor: getCurrentUserId()
+                } : {}),
+                historico: [...payload.historico, {
+                    acao: 'integracoes_processadas',
+                    data: completionTimestamp,
+                    usuarioUid: getCurrentUserId(),
+                    usuarioNome: getCurrentUserName(),
+                    despesasCriadas: financialEntryIds.length,
+                    idsDespesas: financialEntryIds,
+                    estoqueProcessado: stockProcessed,
+                    mercadoriaRecebida: shouldReceiveImmediately
+                }],
+                updatedAt: completionTimestamp
+            });
             setShowPedidoModal(false);
         } finally {
+            pedidoSavingRef.current = false;
             setIsSavingPedido(false);
         }
     };
@@ -2229,46 +2439,44 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         receivingPedidoIdsRef.current.add(pedido.id);
 
         try {
-            let financialAccount = (data.contas_a_pagar || []).find((account) => account.pedidoCompraId === pedido.id)
-                || (pedido.contaPagarId ? { id: pedido.contaPagarId } : null);
-            if (status === 'Recebido' && !financialAccount) {
-                const valorCentavos = resolvePurchaseOrderTotalCents(pedido);
-                const accountId = `pedidoCompra_${pedido.id}`;
-                const accountRef = await addItem('contas_a_pagar', {
-                    descricao: `Compra de ${pedido.fornecedorNome}`,
-                    valor: valorCentavos / 100,
-                    valorCentavos,
-                    dataVencimento: new Date().toISOString().split('T')[0],
-                    status: 'Pendente',
-                    categoria: 'Fornecedores',
-                    pedidoCompraId: pedido.id,
-                    lojaId: effectiveStoreId,
-                    createdAt: new Date(),
-                    createdBy: getCurrentUserId(),
-                    createdByNome: getCurrentUserName()
-                }, effectiveStoreId, accountId);
-                financialAccount = { id: accountRef.id };
-            }
+            const financialEntryIds = status === 'Recebido'
+                ? await createPurchaseOrderFinancialEntries(pedido, pedido.id)
+                : getPedidoFinancialEntries(pedido.id).map((entry) => entry.id);
+            const stockProcessed = status === 'Recebido'
+                ? await processPurchaseOrderStock(pedido, pedido.id)
+                : false;
+            const timestamp = new Date();
 
             await updateItem('pedidosCompra', pedido.id, {
                 status,
-                ...(financialAccount?.id ? { contaPagarId: financialAccount.id } : {}),
-                updatedAt: new Date(),
+                ...(financialEntryIds[0] ? { contaPagarId: financialEntryIds[0] } : {}),
+                financialEntryIds,
+                ...(status === 'Recebido' ? {
+                    receivedAt: timestamp,
+                    receivedBy: getCurrentUserId(),
+                    receivedByNome: getCurrentUserName(),
+                    estoqueProcessadoAt: timestamp,
+                    estoqueProcessadoPor: getCurrentUserId(),
+                    financialEntriesCreatedAt: pedido.financialEntriesCreatedAt || timestamp
+                } : {}),
+                updatedAt: timestamp,
                 updatedBy: getCurrentUserId(),
                 updatedByNome: getCurrentUserName(),
                 historico: [...(pedido.historico || []), {
                     acao: 'status_atualizado',
                     statusAnterior: pedido.status || '',
                     statusNovo: status,
-                    data: new Date(),
+                    data: timestamp,
                     usuarioUid: getCurrentUserId(),
                     usuarioNome: getCurrentUserName(),
                     subtotalItensCentavos: resolvePurchaseOrderSubtotalCents(pedido),
                     valorTotalCentavos: resolvePurchaseOrderTotalCents(pedido),
-                    observacaoGeral: pedido.observacaoGeral || ''
+                    observacaoGeral: pedido.observacaoGeral || '',
+                    despesasVinculadas: financialEntryIds.length,
+                    estoqueProcessado: stockProcessed
                 }]
             });
-            if (status === 'Recebido') alert('Pedido recebido e conta a pagar vinculada ao financeiro.');
+            if (status === 'Recebido') alert('Pedido recebido, estoque processado e despesas vinculadas ao Financeiro.');
         } finally {
             receivingPedidoIdsRef.current.delete(pedido.id);
         }
@@ -2284,13 +2492,118 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     };
     const handlePedidoTotalChange = (event) => {
         const valorTotalCentavos = moneyInputToCents(event.target.value);
-        setPedidoFormData((previous) => ({
-            ...previous,
-            ...buildPurchaseOrderMoneyFields({
+        setPedidoFormData((previous) => {
+            const moneyFields = buildPurchaseOrderMoneyFields({
                 items: previous.itens || [],
                 totalCents: valorTotalCentavos,
                 manuallyDefined: true
-            })
+            });
+            const next = { ...previous, ...moneyFields };
+            if (previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO) {
+                const suggested = buildSuggestedPaymentSchedule({
+                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
+                    paymentType: previous.tipoPagamento,
+                    totalCents: valorTotalCentavos,
+                    installmentCount: previous.quantidadeParcelas,
+                    purchaseDate: previous.dataPedido,
+                    firstDueDate: previous.primeiroVencimento
+                });
+                next.cronogramaPagamento = suggested.map((entry, index) => ({
+                    ...entry,
+                    dueDate: previous.cronogramaPagamento?.[index]?.dueDate || entry.dueDate
+                }));
+            }
+            return next;
+        });
+    };
+    const handlePedidoPaymentMethodChange = (formaPagamento) => {
+        setPedidoFormData((previous) => {
+            const next = {
+                ...previous,
+                formaPagamento,
+                tipoPagamento: PURCHASE_PAYMENT_TYPE.SINGLE,
+                quantidadeParcelas: 1,
+                configuracaoPagamentoDefinida: true
+            };
+            if (formaPagamento === PURCHASE_PAYMENT_METHOD.CASH) {
+                next.diaVencimentoCartao = '';
+                next.primeiroVencimento = '';
+                next.cronogramaPagamento = [];
+            } else if (formaPagamento === PURCHASE_PAYMENT_METHOD.CREDIT_CARD) {
+                next.cronogramaPagamento = [];
+            } else {
+                next.diaVencimentoCartao = '';
+                next.primeiroVencimento = '';
+                next.cronogramaPagamento = buildSuggestedPaymentSchedule({
+                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
+                    paymentType: PURCHASE_PAYMENT_TYPE.SINGLE,
+                    totalCents: resolvePurchaseOrderTotalCents(previous),
+                    installmentCount: 1,
+                    purchaseDate: previous.dataPedido,
+                    firstDueDate: ''
+                });
+            }
+            return next;
+        });
+    };
+    const handlePedidoPaymentTypeChange = (tipoPagamento) => {
+        setPedidoFormData((previous) => {
+            const quantidadeParcelas = tipoPagamento === PURCHASE_PAYMENT_TYPE.INSTALLMENTS ? 2 : 1;
+            const next = { ...previous, tipoPagamento, quantidadeParcelas };
+            if (previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO) {
+                next.cronogramaPagamento = buildSuggestedPaymentSchedule({
+                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
+                    paymentType: tipoPagamento,
+                    totalCents: resolvePurchaseOrderTotalCents(previous),
+                    installmentCount: quantidadeParcelas,
+                    purchaseDate: previous.dataPedido,
+                    firstDueDate: previous.primeiroVencimento
+                });
+            }
+            return next;
+        });
+    };
+    const handlePedidoFirstDueDateChange = (firstDueDate) => {
+        setPedidoFormData((previous) => {
+            const next = { ...previous, primeiroVencimento: firstDueDate };
+            if (previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO) {
+                next.cronogramaPagamento = buildSuggestedPaymentSchedule({
+                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
+                    paymentType: previous.tipoPagamento,
+                    totalCents: resolvePurchaseOrderTotalCents(previous),
+                    installmentCount: previous.quantidadeParcelas,
+                    purchaseDate: previous.dataPedido,
+                    firstDueDate
+                });
+            }
+            return next;
+        });
+    };
+    const handlePedidoInstallmentCountChange = (value) => {
+        const parsedCount = value === '' ? '' : Math.max(1, Math.trunc(Number(value) || 1));
+        setPedidoFormData((previous) => {
+            const next = { ...previous, quantidadeParcelas: parsedCount };
+            if (previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO && Number(parsedCount) >= 1) {
+                next.cronogramaPagamento = buildSuggestedPaymentSchedule({
+                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
+                    paymentType: previous.tipoPagamento,
+                    totalCents: resolvePurchaseOrderTotalCents(previous),
+                    installmentCount: parsedCount,
+                    purchaseDate: previous.dataPedido,
+                    firstDueDate: previous.primeiroVencimento
+                });
+            }
+            return next;
+        });
+    };
+    const handleBoletoScheduleChange = (index, field, value) => {
+        setPedidoFormData((previous) => ({
+            ...previous,
+            cronogramaPagamento: (previous.cronogramaPagamento || []).map((entry, entryIndex) => (
+                entryIndex === index
+                    ? { ...entry, [field]: field === 'valueCents' ? moneyInputToCents(value) : value }
+                    : entry
+            ))
         }));
     };
     const handleAddItemToPedido = (item) => {
@@ -2473,7 +2786,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             {activeTab === 'pedidos' && (
                  <div>
                     <div className="flex justify-end mb-6"><Button onClick={handleNewPedido}><Plus className="w-4 h-4" /> Novo Pedido de Compra</Button></div>
-                    <Table columns={[{ header: 'Fornecedor', key: 'fornecedorNome' }, { header: 'Data do Pedido', render: (row) => getJSDate(row.dataPedido)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Previsão de Entrega', render: (row) => getJSDate(row.dataPrevistaEntrega)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Valor Total', render: (row) => formatCentsAsCurrency(resolvePurchaseOrderTotalCents(row)) }, { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'Recebido' ? 'bg-green-100 text-green-800' : row.status === 'Pendente' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>{row.status}</span> }]} data={pedidosComNomes} actions={[{ icon: Eye, label: "Abrir/Editar", onClick: handleEditPedido }, { icon: Truck, label: "Receber", onClick: (row) => handleUpdatePedidoStatus(row, 'Recebido') }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidosCompra', row.id) }) }]} />
+                    <Table columns={[{ header: 'Fornecedor', key: 'fornecedorNome' }, { header: 'Data do Pedido', render: (row) => getJSDate(row.dataPedido)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Previsão de Entrega', render: (row) => row.mercadoriaEmMaos ? 'Mercadoria em mãos' : (getJSDate(row.dataPrevistaEntrega)?.toLocaleDateString('pt-BR') || '-') }, { header: 'Valor Total', render: (row) => formatCentsAsCurrency(resolvePurchaseOrderTotalCents(row)) }, { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'Recebido' ? 'bg-green-100 text-green-800' : row.status === 'Pendente' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>{row.status}</span> }]} data={pedidosComNomes} actions={[{ icon: Eye, label: "Abrir/Editar", onClick: handleEditPedido }, { icon: Truck, label: "Receber", onClick: (row) => handleUpdatePedidoStatus(row, 'Recebido') }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidosCompra', row.id) }) }]} />
                 </div>
             )}
              {activeTab === 'estoque' && (
@@ -2679,7 +2992,32 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                             )}
                         </div>
                         <Input label="Data do Pedido" type="date" value={pedidoFormData.dataPedido || ''} onChange={e => setPedidoFormData({...pedidoFormData, dataPedido: e.target.value})} required/>
-                        <Input label="Previsão de Entrega" type="date" value={pedidoFormData.dataPrevistaEntrega || ''} onChange={e => setPedidoFormData({...pedidoFormData, dataPrevistaEntrega: e.target.value})} />
+                        <div className="space-y-3">
+                            <Input
+                                label="Previsão de Entrega"
+                                type="date"
+                                value={pedidoFormData.dataPrevistaEntrega || ''}
+                                onChange={e => setPedidoFormData({...pedidoFormData, dataPrevistaEntrega: e.target.value})}
+                                disabled={pedidoFormData.mercadoriaEmMaos}
+                            />
+                            <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="mt-1 h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                                    checked={pedidoFormData.mercadoriaEmMaos === true}
+                                    onChange={(event) => setPedidoFormData((previous) => ({
+                                        ...previous,
+                                        mercadoriaEmMaos: event.target.checked,
+                                        ...(event.target.checked ? { dataPrevistaEntrega: '' } : {})
+                                    }))}
+                                    disabled={editingPedido?.status === 'Recebido'}
+                                />
+                                <span>
+                                    <span className="block text-sm font-semibold text-gray-800">Estou com a mercadoria / Compra realizada no mercado</span>
+                                    <span className="block text-xs text-gray-500 mt-1">Marque quando a mercadoria já estiver sendo retirada/comprada no local e não houver uma entrega futura.</span>
+                                </span>
+                            </label>
+                        </div>
                         <Input
                             label="Valor total do pedido"
                             type="text"
@@ -2690,6 +3028,148 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                             required={(pedidoFormData.itens || []).length === 0}
                         />
                     </div>
+                    <section className="rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
+                        <div>
+                            <h3 className="font-semibold text-gray-900">Pagamento</h3>
+                            <p className="text-xs text-gray-500">O recebimento da mercadoria e a situação financeira são controlados separadamente.</p>
+                        </div>
+                        {!pedidoFormData.configuracaoPagamentoDefinida && editingPedido && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                                Pedido antigo sem configuração detalhada de pagamento. Selecione uma forma somente se desejar iniciar o novo fluxo financeiro.
+                            </div>
+                        )}
+                        <div className="space-y-2">
+                            <span className="block text-sm font-medium text-gray-700">Forma de pagamento</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                {[
+                                    [PURCHASE_PAYMENT_METHOD.CASH, 'À vista'],
+                                    [PURCHASE_PAYMENT_METHOD.CREDIT_CARD, 'Cartão de crédito'],
+                                    [PURCHASE_PAYMENT_METHOD.BOLETO, 'Boleto']
+                                ].map(([value, label]) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        onClick={() => handlePedidoPaymentMethodChange(value)}
+                                        className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${pedidoFormData.formaPagamento === value ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        {label}{pedidoFormData.formaPagamento === value ? ' ✓' : ''}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.CASH && (
+                            <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+                                Será criada uma única despesa de {formatCentsAsCurrency(resolvePurchaseOrderTotalCents(pedidoFormData))}, registrada como paga na data da compra.
+                            </div>
+                        )}
+
+                        {[PURCHASE_PAYMENT_METHOD.CREDIT_CARD, PURCHASE_PAYMENT_METHOD.BOLETO].includes(pedidoFormData.formaPagamento) && (
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <span className="block text-sm font-medium text-gray-700">Tipo da compra</span>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {[
+                                            [PURCHASE_PAYMENT_TYPE.SINGLE, pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO ? 'À vista / 1 boleto' : 'À vista / 1x'],
+                                            [PURCHASE_PAYMENT_TYPE.INSTALLMENTS, 'Parcelado']
+                                        ].map(([value, label]) => (
+                                            <button
+                                                key={value}
+                                                type="button"
+                                                onClick={() => handlePedidoPaymentTypeChange(value)}
+                                                className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${pedidoFormData.tipoPagamento === value ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                                            >
+                                                {label}{pedidoFormData.tipoPagamento === value ? ' ✓' : ''}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.CREDIT_CARD && (
+                                        <Input
+                                            label="Dia do vencimento do cartão"
+                                            type="number"
+                                            min="1"
+                                            max="31"
+                                            value={pedidoFormData.diaVencimentoCartao || ''}
+                                            onChange={(event) => setPedidoFormData((previous) => ({ ...previous, diaVencimentoCartao: event.target.value }))}
+                                            required
+                                        />
+                                    )}
+                                    <Input
+                                        label={pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO && pedidoFormData.tipoPagamento === PURCHASE_PAYMENT_TYPE.SINGLE ? 'Data de vencimento do boleto' : 'Primeiro vencimento'}
+                                        type="date"
+                                        value={pedidoFormData.primeiroVencimento || ''}
+                                        onChange={(event) => handlePedidoFirstDueDateChange(event.target.value)}
+                                        required
+                                    />
+                                    {pedidoFormData.tipoPagamento === PURCHASE_PAYMENT_TYPE.INSTALLMENTS && (
+                                        <Input
+                                            label="Quantidade de parcelas"
+                                            type="number"
+                                            min="2"
+                                            step="1"
+                                            value={pedidoFormData.quantidadeParcelas || ''}
+                                            onChange={(event) => handlePedidoInstallmentCountChange(event.target.value)}
+                                            required
+                                        />
+                                    )}
+                                </div>
+
+                                {pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.CREDIT_CARD && pedidoFormData.primeiroVencimento && (
+                                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 space-y-2">
+                                        <p className="text-sm font-semibold text-blue-900">Prévia das parcelas do cartão</p>
+                                        {pedidoPaymentSchedule.map((entry) => (
+                                            <div key={entry.installmentNumber} className="flex flex-wrap justify-between gap-2 text-sm text-blue-800">
+                                                <span>{entry.installmentNumber}/{entry.installmentCount}</span>
+                                                <strong>{formatCentsAsCurrency(entry.valueCents)}</strong>
+                                                <span>{entry.dueDate ? new Date(`${entry.dueDate}T12:00:00`).toLocaleDateString('pt-BR') : '-'}</span>
+                                            </div>
+                                        ))}
+                                        <p className="text-xs text-blue-700">Revise o primeiro vencimento: ele define a primeira fatura. Datas inexistentes usam o último dia válido do mês.</p>
+                                    </div>
+                                )}
+
+                                {pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO && (
+                                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <p className="text-sm font-semibold text-amber-900">Parcelas do boleto</p>
+                                            <span className={`text-xs font-medium ${pedidoBoletoScheduleTotal === resolvePurchaseOrderTotalCents(pedidoFormData) ? 'text-green-700' : 'text-red-700'}`}>
+                                                Soma: {formatCentsAsCurrency(pedidoBoletoScheduleTotal)}
+                                            </span>
+                                        </div>
+                                        {(pedidoFormData.cronogramaPagamento || []).map((entry, index) => (
+                                            <div key={index} className="grid grid-cols-1 sm:grid-cols-[70px_1fr_1fr] gap-3 items-end rounded-lg border border-amber-200 bg-white p-3">
+                                                <strong className="pb-3 text-sm text-gray-700">{index + 1}/{pedidoFormData.cronogramaPagamento.length}</strong>
+                                                <Input
+                                                    label="Valor"
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={formatCentsAsCurrency(entry.valueCents)}
+                                                    onChange={(event) => handleBoletoScheduleChange(index, 'valueCents', event.target.value)}
+                                                    onFocus={(event) => event.target.select()}
+                                                    required
+                                                />
+                                                <Input
+                                                    label="Vencimento"
+                                                    type="date"
+                                                    value={entry.dueDate || ''}
+                                                    onChange={(event) => handleBoletoScheduleChange(index, 'dueDate', event.target.value)}
+                                                    required
+                                                />
+                                            </div>
+                                        ))}
+                                        {pedidoBoletoScheduleTotal !== resolvePurchaseOrderTotalCents(pedidoFormData) && (
+                                            <p className="text-sm font-medium text-red-700">
+                                                Diferença para o total: {formatCentsAsCurrency(resolvePurchaseOrderTotalCents(pedidoFormData) - pedidoBoletoScheduleTotal)}. Corrija antes de salvar.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </section>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-2">
                             <h3 className="font-semibold">Adicionar Itens do Estoque</h3>
@@ -2737,7 +3217,33 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <p><span className="text-gray-500">Responsável:</span> {editingPedido.createdByNome || editingPedido.createdByEmail || '-'}</p>
                                 <p><span className="text-gray-500">Criado em:</span> {getJSDate(editingPedido.createdAt)?.toLocaleString('pt-BR') || '-'}</p>
+                                <p><span className="text-gray-500">Mercadoria:</span> {editingPedido.status === 'Recebido' ? 'Recebida' : 'Entrega futura'}</p>
+                                <p><span className="text-gray-500">Pagamento:</span> {{
+                                    [PURCHASE_PAYMENT_METHOD.CASH]: 'À vista',
+                                    [PURCHASE_PAYMENT_METHOD.CREDIT_CARD]: 'Cartão de crédito',
+                                    [PURCHASE_PAYMENT_METHOD.BOLETO]: 'Boleto'
+                                }[editingPedido.formaPagamento] || 'Pedido antigo — não informado'}</p>
                             </div>
+                            {(editingPedidoFinancialEntries.length > 0 || pedidoPaymentSchedule.length > 0) && (
+                                <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+                                    <p className="font-medium text-gray-700">Cronograma financeiro</p>
+                                    {editingPedidoFinancialEntries.length > 0
+                                        ? editingPedidoFinancialEntries.map((entry, index) => (
+                                            <div key={entry.id || index} className="grid grid-cols-[auto_1fr_auto] gap-3 text-xs">
+                                                <span>{entry.parcelaNumero || index + 1}/{entry.parcelasTotal || editingPedidoFinancialEntries.length}</span>
+                                                <span>{formatCentsAsCurrency(Number.isInteger(entry.valorCentavos) ? entry.valorCentavos : Math.round(Number(entry.valor || 0) * 100))} · {getJSDate(entry.dataVencimento)?.toLocaleDateString('pt-BR') || '-'}</span>
+                                                <strong className={entry.status === 'Pago' ? 'text-green-700' : 'text-amber-700'}>{entry.status || 'Pendente'}</strong>
+                                            </div>
+                                        ))
+                                        : pedidoPaymentSchedule.map((entry) => (
+                                            <div key={entry.installmentNumber} className="grid grid-cols-[auto_1fr_auto] gap-3 text-xs">
+                                                <span>{entry.installmentNumber}/{entry.installmentCount}</span>
+                                                <span>{formatCentsAsCurrency(entry.valueCents)} · {entry.dueDate ? new Date(`${entry.dueDate}T12:00:00`).toLocaleDateString('pt-BR') : '-'}</span>
+                                                <strong className="text-gray-500">Ainda não vinculado</strong>
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
                             <details>
                                 <summary className="cursor-pointer font-medium text-gray-700">Histórico do pedido ({(editingPedido.historico || []).length})</summary>
                                 <div className="mt-2 space-y-2">
@@ -4877,7 +5383,7 @@ function App() {
     }
   };
 
-  const addItem = async (section, item, targetStoreId = null, documentId = null) => {
+  const addItem = async (section, item, targetStoreId = null, documentId = null, options = {}) => {
     try {
         assertWritableRole();
         const storeId = targetStoreId || resolveActiveStoreForWrite();
@@ -4907,11 +5413,22 @@ function App() {
         const docRef = documentId
             ? doc(getStoreCollectionRef(storeId, section), documentId)
             : null;
+        let createdDocument = true;
         const persistedRef = await runWithRetry(
             `addItem:${section}`,
-            () => documentId
-                ? setDoc(docRef, payload, { merge: true }).then(() => docRef)
-                : addDoc(getStoreCollectionRef(storeId, section), payload),
+            () => documentId && options.createOnly
+                ? runTransaction(db, async (transaction) => {
+                    const snapshot = await transaction.get(docRef);
+                    if (snapshot.exists()) {
+                        createdDocument = false;
+                        return docRef;
+                    }
+                    transaction.set(docRef, payload);
+                    return docRef;
+                })
+                : documentId
+                    ? setDoc(docRef, payload, { merge: true }).then(() => docRef)
+                    : addDoc(getStoreCollectionRef(storeId, section), payload),
             { route: currentPage, uid: currentAuthUser?.uid || userId, collection: section }
         );
         await waitForPendingWrites(db);
@@ -4923,7 +5440,7 @@ function App() {
             });
         }
 
-        if (user && section !== 'logs') {
+        if (user && section !== 'logs' && createdDocument) {
             await runWithRetry(
                 'addItem:logs',
                 () => addDoc(getStoreCollectionRef(storeId, 'logs'), {
