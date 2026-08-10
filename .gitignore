@@ -70,3 +70,6 @@ playstore-builds/
 
 # dataconnect generated files
 .dataconnect
+
+# Local archives consolidated under this workspace
+/_preservados/
