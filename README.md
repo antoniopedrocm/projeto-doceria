@@ -92,5 +92,4 @@ http-server
    > git push origin master
    > ```
    
-   firebase deploy --only hosting --project crmdoceria-9959e
-firebase deploy --only hosting --project ana-guimaraes
+   firebase deploy --only hosting --project ana-guimaraes

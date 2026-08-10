@@ -6,11 +6,11 @@
     "test": "node --test --experimental-test-isolation=none caixa-core.test.js user-status-core.test.js entre-lojas.test.js fiscal-permissions.test.js",
     "test:rules": "firebase emulators:exec --config ../firebase.json --project demo-caixa-rules --only firestore \"node --test --test-concurrency=1 --experimental-test-isolation=none firestore.rules.test.js caixa-functions.integration.test.js\"",
     "test:all": "npm test && npm run test:rules",
-    "serve": "firebase emulators:start --only functions",
-    "shell": "firebase functions:shell",
+    "serve": "firebase emulators:start --config ../firebase.json --project ana-guimaraes --only functions",
+    "shell": "firebase functions:shell --config ../firebase.json --project ana-guimaraes",
     "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "deploy": "firebase deploy --config ../firebase.json --project ana-guimaraes --only functions",
+    "logs": "firebase functions:log --project ana-guimaraes"
   },
   "engines": {
     "node": "22"
