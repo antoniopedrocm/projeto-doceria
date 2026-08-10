@@ -70,9 +70,15 @@ import {
 } from './caixa/caixaCore';
 import { registrarRetiradaDespesaCaixa } from './services/caixaService';
 import {
+  canViewEntreLojasClosing,
+  canViewEntreLojasTransfer,
+  deduplicateEntreLojasTransfers,
+  filterEntreLojasTransfers,
   getClosingActionPermissions,
   getEntreLojasStoreRelation,
-  getTransferActionPermissions
+  getEntreLojasVisibleTransferStatuses,
+  getTransferActionPermissions,
+  summarizeEntreLojasTransfers
 } from './utils/entreLojasPermissions';
 import {
   buildPurchaseOrderMoneyFields,
@@ -14195,17 +14201,13 @@ const handleSubmit = async (e) => {
     };
 
     const allowedStoreIds = useMemo(() => Array.from(new Set(userStoreIds.map(normalizeStoreId).filter(Boolean))), [userStoreIds]);
-    const allowedTransferStatuses = useMemo(() => (
-      canAccessAllTransfers
+    const allowedTransferStatuses = useMemo(() => getEntreLojasVisibleTransferStatuses({
+      user,
+      allowedStatuses: canAccessAllTransfers
         ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES]
         : getEntreLojasAllowedStatusesFromProfile(user)
-    ), [canAccessAllTransfers, user]);
+    }), [canAccessAllTransfers, user]);
     const allowedTransferStatusSet = useMemo(() => new Set(allowedTransferStatuses), [allowedTransferStatuses]);
-    const canViewTransferStatus = useCallback((transfer) => {
-      if (user?.role === ROLE_OWNER) return true;
-      const status = String(transfer?.status || '').trim();
-      return Boolean(status && allowedTransferStatusSet.has(status));
-    }, [allowedTransferStatusSet, user?.role]);
 
     const selectedStoreIdForView = useMemo(() => {
       if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) return null;
@@ -14220,30 +14222,13 @@ const handleSubmit = async (e) => {
       return allowedOriginStoreIds[0] || '';
     }, [allowedOriginStoreIds, currentStoreIdForDisplay]);
 
-    const isDraftHiddenForCurrentViewer = useCallback((transfer) => {
-      if (!transfer || transfer.status !== 'rascunho') return false;
-      const originId = normalizeStoreId(transfer.lojaOrigemId);
-      const destinationId = normalizeStoreId(transfer.lojaDestinoId);
-
-      if (selectedStoreIdForView) {
-        return destinationId === selectedStoreIdForView && originId !== selectedStoreIdForView;
-      }
-
-      if (canAccessAllTransfers) return false;
-      const canSeeAsOrigin = originId && allowedStoreIds.includes(originId);
-      const canSeeAsDestination = destinationId && allowedStoreIds.includes(destinationId);
-      return canSeeAsDestination && !canSeeAsOrigin;
-    }, [allowedStoreIds, canAccessAllTransfers, selectedStoreIdForView]);
-
     const canReadTransferForCurrentViewer = useCallback((transfer) => {
-      if (!transfer) return false;
-      if (!canViewTransferStatus(transfer)) return false;
-      if (isDraftHiddenForCurrentViewer(transfer)) return false;
-      if (canAccessAllTransfers) return true;
-      const originId = normalizeStoreId(transfer.lojaOrigemId);
-      const destinationId = normalizeStoreId(transfer.lojaDestinoId);
-      return allowedStoreIds.includes(originId) || allowedStoreIds.includes(destinationId);
-    }, [allowedStoreIds, canAccessAllTransfers, canViewTransferStatus, isDraftHiddenForCurrentViewer]);
+      return canViewEntreLojasTransfer({
+        user,
+        transfer,
+        allowedStatuses: allowedTransferStatusSet
+      });
+    }, [allowedTransferStatusSet, user]);
 
     const parseLocalDate = (value) => {
       if (!value) return null;
@@ -14353,15 +14338,12 @@ const handleSubmit = async (e) => {
 
         const originDocs = Array.from(originDocsByQuery.values()).flat();
         const destinationDocs = Array.from(destinationDocsByQuery.values()).flat();
-        const merged = new Map();
-
-        [...originDocs, ...destinationDocs].forEach((docSnap) => {
+        const visibleTransfers = [...originDocs, ...destinationDocs].map((docSnap) => {
           const transfer = { id: docSnap.id, ...docSnap.data() };
-          if (!canReadTransferForCurrentViewer(transfer)) return;
-          merged.set(docSnap.id, transfer);
-        });
+          return canReadTransferForCurrentViewer(transfer) ? transfer : null;
+        }).filter(Boolean);
 
-        const sortedRows = Array.from(merged.values()).sort((a, b) => {
+        const sortedRows = deduplicateEntreLojasTransfers(visibleTransfers).sort((a, b) => {
           const dateA = getJSDate(a.dataCriacao)?.getTime() || 0;
           const dateB = getJSDate(b.dataCriacao)?.getTime() || 0;
           return dateB - dateA;
@@ -15452,11 +15434,8 @@ const handleSubmit = async (e) => {
     };
 
     const canViewClosing = useCallback((closing) => {
-      if (canAccessAllTransfers) return true;
-      const originId = normalizeStoreId(closing?.lojaOrigemId);
-      const destinationId = normalizeStoreId(closing?.lojaDestinoId);
-      return allowedStoreIds.includes(originId) || allowedStoreIds.includes(destinationId);
-    }, [allowedStoreIds, canAccessAllTransfers]);
+      return canViewEntreLojasClosing({ user, closing });
+    }, [user]);
 
     const canCreateClosing = () => {
       if (!user) return false;
@@ -16053,13 +16032,6 @@ const handleSubmit = async (e) => {
       return canReadTransferForCurrentViewer(transfer);
     }, [canReadTransferForCurrentViewer]);
 
-    const matchesSelectedStoreView = useCallback((transfer) => {
-      if (!selectedStoreIdForView) return true;
-      const originId = normalizeStoreId(transfer?.lojaOrigemId);
-      const destinationId = normalizeStoreId(transfer?.lojaDestinoId);
-      return originId === selectedStoreIdForView || destinationId === selectedStoreIdForView;
-    }, [selectedStoreIdForView]);
-
     const matchesSelectedStoreClosingView = useCallback((closing) => {
       if (!selectedStoreIdForView) return true;
       const originId = normalizeStoreId(closing?.lojaOrigemId);
@@ -16102,48 +16074,21 @@ const handleSubmit = async (e) => {
       });
     }, [canViewClosing, closingDestinoFilter, closingEndDateFilter, closingMonthFilter, closingOrigemFilter, closingStartDateFilter, closingStatusFilter, fechamentos, matchesSelectedStoreClosingView]);
 
-    const filteredTransfers = useMemo(() => {
-      return (transferencias || []).filter((item) => {
-        const originId = normalizeStoreId(item.lojaOrigemId);
-        const destinationId = normalizeStoreId(item.lojaDestinoId);
-
-        if (!canViewTransfer(item)) {
-          entreLojasLog('Remessa removida por canViewTransfer', { id: item.id, originId, destinationId, allowedStoreIds });
-          return false;
-        }
-
-        if (!matchesSelectedStoreView(item)) {
-          entreLojasLog('Remessa removida por matchesSelectedStoreView', { id: item.id, originId, destinationId, selectedStoreIdForView });
-          return false;
-        }
-
-        const sentInCurrentView = selectedStoreIdForView
-          ? originId === selectedStoreIdForView
-          : Boolean(originId && (canAccessAllTransfers || allowedStoreIds.includes(originId)));
-        const receivedInCurrentView = selectedStoreIdForView
-          ? destinationId === selectedStoreIdForView
-          : Boolean(destinationId && (canAccessAllTransfers || allowedStoreIds.includes(destinationId)));
-
-        if (activeTab === 'enviadas' && !sentInCurrentView) {
-          entreLojasLog('Remessa removida por aba enviadas', { id: item.id, originId, selectedStoreIdForView });
-          return false;
-        }
-        if (activeTab === 'recebidas' && !receivedInCurrentView) {
-          entreLojasLog('Remessa removida por aba recebidas', { id: item.id, destinationId, selectedStoreIdForView });
-          return false;
-        }
-        if (activeTab === 'aguardando_conferencia' && item.status !== 'aguardando_conferencia') return false;
-        if (activeTab === 'aguardando_pagamento' && !ENTRE_LOJAS_PAYMENT_TAB_STATUS_VALUES.includes(item.status)) return false;
-        if (activeTab === 'historico' && !ENTRE_LOJAS_HISTORY_STATUS_VALUES.includes(item.status)) return false;
-        if (statusFilter !== 'todos' && item.status !== statusFilter) return false;
-        if (origemFilter !== 'todos' && item.lojaOrigemId !== origemFilter) return false;
-        if (destinoFilter !== 'todos' && item.lojaDestinoId !== destinoFilter) return false;
-        const createdAtDate = getJSDate(item.dataCriacao);
-        if (startDateFilter && createdAtDate && createdAtDate < new Date(`${startDateFilter}T00:00:00`)) return false;
-        if (endDateFilter && createdAtDate && createdAtDate > new Date(`${endDateFilter}T23:59:59`)) return false;
-        return true;
-      });
-    }, [activeTab, allowedStoreIds, canAccessAllTransfers, canViewTransfer, destinoFilter, endDateFilter, matchesSelectedStoreView, origemFilter, selectedStoreIdForView, startDateFilter, statusFilter, transferencias]);
+    const filteredTransfers = useMemo(() => filterEntreLojasTransfers({
+      transfers: transferencias,
+      user,
+      allowedStatuses: allowedTransferStatusSet,
+      selectedStoreId: selectedStoreIdForView,
+      activeTab,
+      statusFilter,
+      originFilter: origemFilter,
+      destinationFilter: destinoFilter,
+      startDateFilter,
+      endDateFilter,
+      paymentStatuses: ENTRE_LOJAS_PAYMENT_TAB_STATUS_VALUES,
+      historyStatuses: ENTRE_LOJAS_HISTORY_STATUS_VALUES,
+      resolveDate: getJSDate
+    }), [activeTab, allowedTransferStatusSet, destinoFilter, endDateFilter, origemFilter, selectedStoreIdForView, startDateFilter, statusFilter, transferencias, user]);
 
     useEffect(() => {
       entreLojasLog('Resultado após filtros', {
@@ -16157,14 +16102,7 @@ const handleSubmit = async (e) => {
       });
     }, [activeTab, destinoFilter, filteredTransfers.length, origemFilter, selectedStoreIdForView, statusFilter, transferencias.length]);
 
-    const summary = useMemo(() => filteredTransfers.reduce((acc, item) => {
-      acc.total += 1;
-      acc.totalRepasse += Number(item.totalRepasse) || 0;
-      acc.totalRevenda += Number(item.totalRevenda) || 0;
-      if (item.status === 'aguardando_conferencia') acc.aguardandoConferencia += 1;
-      if (item.status === 'pagamento_informado') acc.aguardandoConfirmacao += 1;
-      return acc;
-    }, { total: 0, totalRepasse: 0, totalRevenda: 0, aguardandoConferencia: 0, aguardandoConfirmacao: 0 }), [filteredTransfers]);
+    const summary = useMemo(() => summarizeEntreLojasTransfers(filteredTransfers), [filteredTransfers]);
 
     const closingSummary = useMemo(() => filteredClosings.reduce((acc, closing) => {
       acc.total += 1;

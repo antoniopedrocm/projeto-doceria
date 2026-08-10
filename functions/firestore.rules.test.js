@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const assert = require("node:assert/strict");
 const {after, before, beforeEach, describe, test} = require("node:test");
 
 const {
@@ -8,11 +9,15 @@ const {
   initializeTestEnvironment,
 } = require("@firebase/rules-unit-testing");
 const {
+  collection,
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  query,
   setDoc,
   updateDoc,
+  where,
 } = require("firebase/firestore");
 
 const PROJECT_ID = "demo-caixa-rules";
@@ -28,6 +33,15 @@ const userProfile = (role, storeIds = [], cashPermissions = {}) => ({
   lojaIds: storeIds,
   permissions: {},
   permissionDetails: {
+    "entre-lojas": {
+      statuses: [
+        "rascunho",
+        "aguardando_conferencia",
+        "conferencia_sem_divergencia",
+        "conferencia_com_divergencia",
+        "pagamento_informado",
+      ],
+    },
     caixa: cashPermissions,
   },
 });
@@ -125,6 +139,18 @@ const seedFirestore = async () => {
         lojaOrigemId: STORE_A,
         lojaDestinoId: STORE_B,
         status: "aguardando_conferencia",
+        historico: [],
+      }),
+      setDoc(doc(db, "transferenciasEntreLojas", "remessa-rascunho"), {
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "rascunho",
+        historico: [],
+      }),
+      setDoc(doc(db, "transferenciasEntreLojas", "remessa-confirmacao"), {
+        lojaOrigemId: STORE_A,
+        lojaDestinoId: STORE_B,
+        status: "pagamento_informado",
         historico: [],
       }),
       setDoc(doc(db, "fechamentosEntreLojas", "fechamento-aberto"), {
@@ -667,6 +693,131 @@ const confirmTransferPatch = (uid, status, relation) => ({
 });
 
 describe("regras de acao do modulo Entre Lojas", () => {
+  test("consultas de remessas autorizam gerente de origem e destino", async () => {
+    const originDb = testEnv.authenticatedContext("manager-a").firestore();
+    const destinationDb = testEnv.authenticatedContext("manager-b").firestore();
+    const thirdDb = testEnv.authenticatedContext("manager-c").firestore();
+    const transfers = (db) => collection(db, "transferenciasEntreLojas");
+
+    const originSnapshot = await assertSucceeds(getDocs(query(
+        transfers(originDb),
+        where("lojaOrigemId", "==", STORE_A),
+        where("status", "==", "aguardando_conferencia"),
+    )));
+    const destinationSnapshot = await assertSucceeds(getDocs(query(
+        transfers(destinationDb),
+        where("lojaDestinoId", "==", STORE_B),
+        where("status", "==", "aguardando_conferencia"),
+    )));
+
+    assert.equal(originSnapshot.size, 3);
+    assert.equal(destinationSnapshot.size, 3);
+    await assertFails(getDocs(query(
+        transfers(thirdDb),
+        where("lojaDestinoId", "==", STORE_B),
+        where("status", "==", "aguardando_conferencia"),
+    )));
+  });
+
+  test("rascunho permanece somente na origem e demais leituras respeitam a relacao", async () => {
+    const ownerDb = testEnv.authenticatedContext("owner").firestore();
+    const originDb = testEnv.authenticatedContext("manager-a").firestore();
+    const destinationDb = testEnv.authenticatedContext("manager-b").firestore();
+    const thirdDb = testEnv.authenticatedContext("manager-c").firestore();
+    const draftRef = (db) => entreLojasDoc(
+        db, "transferenciasEntreLojas", "remessa-rascunho",
+    );
+
+    await assertSucceeds(getDoc(draftRef(ownerDb)));
+    await assertSucceeds(getDoc(draftRef(originDb)));
+    await assertFails(getDoc(draftRef(destinationDb)));
+    await assertFails(getDoc(entreLojasDoc(
+        thirdDb, "transferenciasEntreLojas", "remessa-origem",
+    )));
+
+    const originDrafts = await assertSucceeds(getDocs(query(
+        collection(originDb, "transferenciasEntreLojas"),
+        where("lojaOrigemId", "==", STORE_A),
+        where("status", "==", "rascunho"),
+    )));
+    assert.equal(originDrafts.size, 1);
+    await assertFails(getDocs(query(
+        collection(destinationDb, "transferenciasEntreLojas"),
+        where("lojaDestinoId", "==", STORE_B),
+        where("status", "==", "rascunho"),
+    )));
+  });
+
+  test("pagamento confirmado permanece visivel apos a transicao para origem e destino", async () => {
+    const ownerDb = testEnv.authenticatedContext("owner").firestore();
+    const originDb = testEnv.authenticatedContext("manager-a").firestore();
+    const destinationDb = testEnv.authenticatedContext("manager-b").firestore();
+    const thirdDb = testEnv.authenticatedContext("manager-c").firestore();
+    const confirmedRef = (db) => entreLojasDoc(
+        db, "transferenciasEntreLojas", "remessa-confirmacao",
+    );
+
+    await assertSucceeds(updateDoc(confirmedRef(originDb), {
+      status: "pagamento_confirmado",
+      dataPagamentoConfirmado: "2026-08-09T12:00:00.000Z",
+      pagamentoConfirmadoPorUid: "manager-a",
+      pagamentoConfirmadoPorNome: "manager-a",
+      observacaoPagamento: "Pagamento confirmado",
+      dataAtualizacao: "2026-08-09T12:00:00.000Z",
+      historico: [entreLojasHistory(
+          "manager-a", "pagamento_confirmado", "pagamento_informado",
+          "pagamento_confirmado", "origem",
+      )],
+    }));
+
+    await assertSucceeds(getDoc(confirmedRef(ownerDb)));
+    await assertSucceeds(getDoc(confirmedRef(originDb)));
+    await assertSucceeds(getDoc(confirmedRef(destinationDb)));
+    await assertFails(getDoc(confirmedRef(thirdDb)));
+
+    const originSnapshot = await assertSucceeds(getDocs(query(
+        collection(originDb, "transferenciasEntreLojas"),
+        where("lojaOrigemId", "==", STORE_A),
+        where("status", "==", "pagamento_confirmado"),
+    )));
+    const destinationSnapshot = await assertSucceeds(getDocs(query(
+        collection(destinationDb, "transferenciasEntreLojas"),
+        where("lojaDestinoId", "==", STORE_B),
+        where("status", "==", "pagamento_confirmado"),
+    )));
+    assert.equal(originSnapshot.size, 1);
+    assert.equal(destinationSnapshot.size, 1);
+    await assertFails(getDocs(query(
+        collection(thirdDb, "transferenciasEntreLojas"),
+        where("lojaDestinoId", "==", STORE_B),
+        where("status", "==", "pagamento_confirmado"),
+    )));
+  });
+
+  test("consultas de fechamentos permitem origem e destino, mas bloqueiam terceira loja", async () => {
+    const originDb = testEnv.authenticatedContext("manager-a").firestore();
+    const destinationDb = testEnv.authenticatedContext("manager-b").firestore();
+    const thirdDb = testEnv.authenticatedContext("manager-c").firestore();
+
+    const originClosings = await assertSucceeds(getDocs(query(
+        collection(originDb, "fechamentosEntreLojas"),
+        where("lojaOrigemId", "in", [STORE_A]),
+    )));
+    const destinationClosings = await assertSucceeds(getDocs(query(
+        collection(destinationDb, "fechamentosEntreLojas"),
+        where("lojaDestinoId", "in", [STORE_B]),
+    )));
+    assert.equal(originClosings.size, 3);
+    assert.equal(destinationClosings.size, 3);
+    await assertFails(getDoc(entreLojasDoc(
+        thirdDb, "fechamentosEntreLojas", "fechamento-aberto",
+    )));
+    await assertFails(getDocs(query(
+        collection(thirdDb, "fechamentosEntreLojas"),
+        where("lojaDestinoId", "in", [STORE_B]),
+    )));
+  });
+
   test("origem e destino conferem; terceira loja e atendente sao bloqueados", async () => {
     const originDb = testEnv.authenticatedContext("manager-a").firestore();
     const destinationDb = testEnv.authenticatedContext("manager-b").firestore();

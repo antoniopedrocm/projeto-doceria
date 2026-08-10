@@ -216,6 +216,19 @@ function validTransferenciaEntreLojasStatuses() {
   ];
 }
 
+function destinationVisibleTransferenciaEntreLojasStatuses() {
+  return [
+    'aguardando_conferencia',
+    'conferencia_sem_divergencia',
+    'conferencia_com_divergencia',
+    'pagamento_informado',
+    'pagamento_confirmado',
+    'pagamento_contestado',
+    'cancelado',
+    'cancelada'
+  ];
+}
+
 function currentUserHasEntreLojasModule() {
   return isEntreLojasOwnerUser()
     || currentUserData().get('permissions', {}).get('entre-lojas', true);
@@ -226,21 +239,63 @@ function currentUserHasTransferenciaStatus(status) {
     || (
       currentUserHasEntreLojasModule()
       && (
-        !currentUserData().get('permissionDetails', {}).keys().hasAny(['entre-lojas'])
+        (isManagerUser() && status == 'pagamento_confirmado')
+        || !currentUserData().get('permissionDetails', {}).keys().hasAny(['entre-lojas'])
         || status in currentUserData().get('permissionDetails', {}).get('entre-lojas', {}).get('statuses', validTransferenciaEntreLojasStatuses())
       )
     );
 }
 
 function canReadTransferenciaEntreLojasDoc() {
+  let userData = currentUserData();
+  let role = userData.role;
+  let permissions = userData.get('permissions', {});
+  let permissionDetails = userData.get('permissionDetails', {});
+  let storeIds = userData.get('lojaIds', []);
+  let isOwner = role in [
+    'dono', 'Dono', 'DONO', 'owner', 'Owner', 'admin', 'Admin', 'adm', 'Adm',
+    'administrador', 'Administrador', 'administradora', 'Administradora',
+    'administrador_master', 'Administrador Master',
+    'administradora_master', 'Administradora Master',
+    'admin_master', 'Admin Master', 'master', 'Master', 'superadmin', 'Superadmin'
+  ];
+  let hasModule = isOwner || permissions.get('entre-lojas', true);
+  let hasStatus = isOwner
+    || (
+      hasModule
+      && (
+        (role == 'gerente' && resource.data.status == 'pagamento_confirmado')
+        || !permissionDetails.keys().hasAny(['entre-lojas'])
+        || resource.data.status in permissionDetails.get('entre-lojas', {}).get('statuses', validTransferenciaEntreLojasStatuses())
+      )
+    );
+
+  return isSignedIn()
+    && (role != 'contador' || permissions.get('entre-lojas', false))
+    && hasModule
+    && hasStatus
+    && (
+      isOwner
+      || userData.get('lojaId', null) == resource.data.lojaOrigemId
+      || resource.data.lojaOrigemId in storeIds
+      || (
+        (
+          userData.get('lojaId', null) == resource.data.lojaDestinoId
+          || resource.data.lojaDestinoId in storeIds
+        )
+        && resource.data.status in destinationVisibleTransferenciaEntreLojasStatuses()
+      )
+    );
+}
+
+function canReadFechamentoEntreLojasDoc() {
   return isSignedIn()
     && (!isReadOnlyAccountant() || accountantHasModule('entre-lojas'))
     && currentUserHasEntreLojasModule()
-    && currentUserHasTransferenciaStatus(resource.data.status)
     && (
       isEntreLojasOwnerUser()
       || currentUserHasStore(resource.data.lojaOrigemId)
-      || (resource.data.status != 'rascunho' && currentUserHasStore(resource.data.lojaDestinoId))
+      || currentUserHasStore(resource.data.lojaDestinoId)
     );
 }
 
@@ -736,7 +791,8 @@ match /transferenciasEntreLojas/{transferenciaId} {
 }
 
 match /fechamentosEntreLojas/{fechamentoId} {
-  allow read: if isSignedIn();
+  allow get: if canReadFechamentoEntreLojasDoc();
+  allow list: if canReadFechamentoEntreLojasDoc();
   allow create: if canCreateFechamentoEntreLojas();
   allow update: if canUpdateFechamentoEntreLojas();
   allow delete: if canDeleteFechamentoEntreLojas();

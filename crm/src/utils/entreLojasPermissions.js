@@ -14,6 +14,12 @@ const OWNER_ROLES = new Set([
 
 const normalizeValue = (value) => String(value || '').trim();
 const normalizeRole = (value) => normalizeValue(value).toLowerCase();
+const normalizeStatusSet = (statuses = []) => (
+  statuses instanceof Set
+    ? statuses
+    : new Set((Array.isArray(statuses) ? statuses : []).map(normalizeValue).filter(Boolean))
+);
+const MANAGER_ALWAYS_VISIBLE_TRANSFER_STATUSES = new Set(['pagamento_confirmado']);
 
 export const ENTRE_LOJAS_RELATION = Object.freeze({
   OWNER: 'dono',
@@ -29,6 +35,7 @@ export const getEntreLojasUserStoreIds = (user = {}) => {
 
   return Array.from(new Set(rawStoreIds.map(normalizeValue).filter(Boolean)));
 };
+
 export const getEntreLojasStoreRelation = ({ user, record }) => {
   const role = normalizeRole(user?.role);
   if (OWNER_ROLES.has(role)) return ENTRE_LOJAS_RELATION.OWNER;
@@ -49,6 +56,110 @@ const isRelatedManager = (relation) => (
   relation === ENTRE_LOJAS_RELATION.ORIGIN
   || relation === ENTRE_LOJAS_RELATION.DESTINATION
 );
+
+export const getEntreLojasVisibleTransferStatuses = ({ user, allowedStatuses = [] }) => {
+  const visibleStatuses = new Set(normalizeStatusSet(allowedStatuses));
+  if (normalizeRole(user?.role) === 'gerente') {
+    MANAGER_ALWAYS_VISIBLE_TRANSFER_STATUSES.forEach((status) => visibleStatuses.add(status));
+  }
+  return Array.from(visibleStatuses);
+};
+
+export const canViewEntreLojasTransfer = ({ user, transfer, allowedStatuses = [] }) => {
+  if (!user || !transfer) return false;
+
+  const relation = getEntreLojasStoreRelation({ user, record: transfer });
+  if (isOwnerRelation(relation)) return true;
+
+  const status = normalizeValue(transfer.status);
+  const visibleStatuses = getEntreLojasVisibleTransferStatuses({ user, allowedStatuses });
+  if (!status || !visibleStatuses.includes(status)) return false;
+
+  if (status === 'rascunho') return isOriginRelation(relation);
+  return isRelatedManager(relation);
+};
+
+export const canViewEntreLojasClosing = ({ user, closing }) => {
+  if (!user || !closing) return false;
+  const relation = getEntreLojasStoreRelation({ user, record: closing });
+  return isOwnerRelation(relation) || isRelatedManager(relation);
+};
+
+export const deduplicateEntreLojasTransfers = (transfers = []) => {
+  const uniqueTransfers = new Map();
+  transfers.forEach((transfer) => {
+    if (transfer?.id) uniqueTransfers.set(transfer.id, transfer);
+  });
+  return Array.from(uniqueTransfers.values());
+};
+
+export const filterEntreLojasTransfers = ({
+  transfers = [],
+  user,
+  allowedStatuses = [],
+  selectedStoreId = null,
+  activeTab = 'todas',
+  statusFilter = 'todos',
+  originFilter = 'todos',
+  destinationFilter = 'todos',
+  startDateFilter = '',
+  endDateFilter = '',
+  paymentStatuses = [],
+  historyStatuses = [],
+  resolveDate = (value) => value instanceof Date ? value : new Date(value)
+}) => {
+  const normalizedSelectedStoreId = normalizeValue(selectedStoreId);
+  const userStoreIds = getEntreLojasUserStoreIds(user);
+  const isOwner = OWNER_ROLES.has(normalizeRole(user?.role));
+
+  return deduplicateEntreLojasTransfers(transfers).filter((transfer) => {
+    if (!canViewEntreLojasTransfer({ user, transfer, allowedStatuses })) return false;
+
+    const originId = normalizeValue(transfer.lojaOrigemId);
+    const destinationId = normalizeValue(transfer.lojaDestinoId);
+    if (
+      normalizedSelectedStoreId
+      && originId !== normalizedSelectedStoreId
+      && destinationId !== normalizedSelectedStoreId
+    ) return false;
+
+    const sentInCurrentView = normalizedSelectedStoreId
+      ? originId === normalizedSelectedStoreId
+      : Boolean(originId && (isOwner || userStoreIds.includes(originId)));
+    const receivedInCurrentView = normalizedSelectedStoreId
+      ? destinationId === normalizedSelectedStoreId
+      : Boolean(destinationId && (isOwner || userStoreIds.includes(destinationId)));
+
+    if (activeTab === 'enviadas' && !sentInCurrentView) return false;
+    if (activeTab === 'recebidas' && !receivedInCurrentView) return false;
+    if (activeTab === 'aguardando_conferencia' && transfer.status !== 'aguardando_conferencia') return false;
+    if (activeTab === 'aguardando_pagamento' && !paymentStatuses.includes(transfer.status)) return false;
+    if (activeTab === 'historico' && !historyStatuses.includes(transfer.status)) return false;
+    if (statusFilter !== 'todos' && transfer.status !== statusFilter) return false;
+    if (originFilter !== 'todos' && originId !== normalizeValue(originFilter)) return false;
+    if (destinationFilter !== 'todos' && destinationId !== normalizeValue(destinationFilter)) return false;
+
+    const createdAtDate = resolveDate(transfer.dataCriacao);
+    if (startDateFilter && createdAtDate && createdAtDate < new Date(`${startDateFilter}T00:00:00`)) return false;
+    if (endDateFilter && createdAtDate && createdAtDate > new Date(`${endDateFilter}T23:59:59`)) return false;
+    return true;
+  });
+};
+
+export const summarizeEntreLojasTransfers = (transfers = []) => transfers.reduce((summary, transfer) => {
+  summary.total += 1;
+  summary.totalRepasse += Number(transfer.totalRepasse) || 0;
+  summary.totalRevenda += Number(transfer.totalRevenda) || 0;
+  if (transfer.status === 'aguardando_conferencia') summary.aguardandoConferencia += 1;
+  if (transfer.status === 'pagamento_informado') summary.aguardandoConfirmacao += 1;
+  return summary;
+}, {
+  total: 0,
+  totalRepasse: 0,
+  totalRevenda: 0,
+  aguardandoConferencia: 0,
+  aguardandoConfirmacao: 0
+});
 
 export const getTransferActionPermissions = ({
   user,
@@ -99,6 +210,7 @@ export const getTransferActionPermissions = ({
       && !['pagamento_confirmado', 'cancelado', 'cancelada'].includes(status)
   };
 };
+
 export const getClosingActionPermissions = ({ user, closing }) => {
   const role = normalizeRole(user?.role);
   const relation = getEntreLojasStoreRelation({ user, record: closing });
