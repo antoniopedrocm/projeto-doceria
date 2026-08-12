@@ -1,4 +1,11 @@
 import {
+  PURCHASE_PAYMENT_METHOD,
+  PURCHASE_PAYMENT_TYPE,
+  addMonthsClamped,
+  buildPurchaseOrderFinancialEntryId,
+  buildPurchaseOrderFinancialEntries,
+  buildPurchaseOrderStockMovementId,
+  buildSuggestedPaymentSchedule,
   buildPurchaseOrderMoneyFields,
   calculateItemsSubtotalCents,
   cleanSupplierName,
@@ -7,8 +14,11 @@ import {
   hydratePurchaseOrder,
   moneyInputToCents,
   normalizeSupplierName,
+  paymentConfigurationSignature,
   resolvePurchaseOrderTotalCents,
-  searchSuppliers
+  searchSuppliers,
+  splitCentsIntoInstallments,
+  validatePurchaseOrderPayment
 } from './purchaseOrderCore';
 
 describe('purchaseOrderCore', () => {
@@ -83,7 +93,191 @@ describe('purchaseOrderCore', () => {
       subtotalItensCentavos: 20000,
       valorTotalCentavos: 20000,
       valorNaoDetalhadoCentavos: 0,
-      totalDefinidoManualmente: false
+      totalDefinidoManualmente: false,
+      formaPagamento: '',
+      configuracaoPagamentoDefinida: false
     });
+  });
+
+  test('divide centavos sem perda e joga o residuo na ultima parcela', () => {
+    expect(splitCentsIntoInstallments(10000, 3)).toEqual([3333, 3333, 3334]);
+    expect(splitCentsIntoInstallments(100000, 3)).toEqual([33333, 33333, 33334]);
+  });
+
+  test('gera cartao parcelado com vencimentos mensais e limita dia 31 ao ultimo dia', () => {
+    expect(addMonthsClamped('2027-01-31', 1, 31)).toBe('2027-02-28');
+    expect(addMonthsClamped('2028-01-31', 1, 31)).toBe('2028-02-29');
+
+    expect(buildSuggestedPaymentSchedule({
+      paymentMethod: PURCHASE_PAYMENT_METHOD.CREDIT_CARD,
+      paymentType: PURCHASE_PAYMENT_TYPE.INSTALLMENTS,
+      totalCents: 10000,
+      installmentCount: 3,
+      firstDueDate: '2027-01-31',
+      cardDueDay: 31
+    })).toEqual([
+      { installmentNumber: 1, installmentCount: 3, valueCents: 3333, dueDate: '2027-01-31' },
+      { installmentNumber: 2, installmentCount: 3, valueCents: 3333, dueDate: '2027-02-28' },
+      { installmentNumber: 3, installmentCount: 3, valueCents: 3334, dueDate: '2027-03-31' }
+    ]);
+  });
+
+  test('preserva datas e valores personalizados do boleto quando a soma confere', () => {
+    const order = {
+      formaPagamento: PURCHASE_PAYMENT_METHOD.BOLETO,
+      tipoPagamento: PURCHASE_PAYMENT_TYPE.INSTALLMENTS,
+      quantidadeParcelas: 3,
+      valorTotalCentavos: 100000,
+      cronogramaPagamento: [
+        { valueCents: 33333, dueDate: '2026-08-15' },
+        { valueCents: 33333, dueDate: '2026-09-22' },
+        { valueCents: 33334, dueDate: '2026-10-18' }
+      ]
+    };
+
+    expect(validatePurchaseOrderPayment(order)).toMatchObject({ valid: true });
+    expect(validatePurchaseOrderPayment(order).schedule.map((entry) => entry.dueDate)).toEqual([
+      '2026-08-15', '2026-09-22', '2026-10-18'
+    ]);
+  });
+
+  test('bloqueia boleto cuja soma difere do total', () => {
+    const validation = validatePurchaseOrderPayment({
+      formaPagamento: PURCHASE_PAYMENT_METHOD.BOLETO,
+      tipoPagamento: PURCHASE_PAYMENT_TYPE.INSTALLMENTS,
+      quantidadeParcelas: 3,
+      valorTotalCentavos: 100000,
+      cronogramaPagamento: [
+        { valueCents: 33333, dueDate: '2026-08-20' },
+        { valueCents: 33333, dueDate: '2026-09-20' },
+        { valueCents: 33333, dueDate: '2026-10-20' }
+      ]
+    });
+
+    expect(validation.valid).toBe(false);
+    expect(validation.errors.join(' ')).toContain('R$ 0,01');
+  });
+
+  test('valida cartao 1x e exige dia e primeiro vencimento', () => {
+    const invalid = validatePurchaseOrderPayment({
+      formaPagamento: PURCHASE_PAYMENT_METHOD.CREDIT_CARD,
+      tipoPagamento: PURCHASE_PAYMENT_TYPE.SINGLE,
+      valorTotalCentavos: 10000,
+      diaVencimentoCartao: 32,
+      primeiroVencimento: ''
+    });
+    expect(invalid.valid).toBe(false);
+
+    const valid = validatePurchaseOrderPayment({
+      formaPagamento: PURCHASE_PAYMENT_METHOD.CREDIT_CARD,
+      tipoPagamento: PURCHASE_PAYMENT_TYPE.SINGLE,
+      valorTotalCentavos: 10000,
+      diaVencimentoCartao: 10,
+      primeiroVencimento: '2026-09-10'
+    });
+    expect(valid).toMatchObject({ valid: true });
+    expect(valid.schedule).toEqual([
+      { installmentNumber: 1, installmentCount: 1, valueCents: 10000, dueDate: '2026-09-10' }
+    ]);
+  });
+
+  test('gera chaves deterministicas para impedir duplicidade financeira e de estoque', () => {
+    expect(buildPurchaseOrderFinancialEntryId('PC123', 2)).toBe('pedidoCompra_PC123_parcela_2');
+    expect(buildPurchaseOrderFinancialEntryId('PC123', 2)).toBe(buildPurchaseOrderFinancialEntryId('PC123', 2));
+    expect(buildPurchaseOrderStockMovementId('PC123', 'item/abc', 0)).toBe('pedidoCompra_PC123_item_item_abc');
+  });
+
+  test('gera somente uma despesa paga para compra à vista', () => {
+    const entries = buildPurchaseOrderFinancialEntries({
+      fornecedorNome: 'Assaí',
+      fornecedorId: 'fornecedor-1',
+      formaPagamento: PURCHASE_PAYMENT_METHOD.CASH,
+      tipoPagamento: PURCHASE_PAYMENT_TYPE.SINGLE,
+      dataPedido: '2026-08-10',
+      valorTotalCentavos: 10000
+    }, 'PC100', { storeId: 'loja-1', userId: 'user-1' });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      id: 'pedidoCompra_PC100_parcela_1',
+      valorCentavos: 10000,
+      dataVencimento: '2026-08-10',
+      dataPagamento: '2026-08-10',
+      status: 'Pago',
+      pedidoCompraId: 'PC100',
+      lojaId: 'loja-1'
+    });
+  });
+
+  test('cartão e boleto geram apenas parcelas pendentes cuja soma é o total', () => {
+    const cardEntries = buildPurchaseOrderFinancialEntries({
+      fornecedorNome: 'Assaí',
+      formaPagamento: PURCHASE_PAYMENT_METHOD.CREDIT_CARD,
+      tipoPagamento: PURCHASE_PAYMENT_TYPE.INSTALLMENTS,
+      quantidadeParcelas: 3,
+      diaVencimentoCartao: 10,
+      primeiroVencimento: '2026-09-10',
+      valorTotalCentavos: 10000
+    }, 'PC-CARD');
+    expect(cardEntries).toHaveLength(3);
+    expect(cardEntries.map((entry) => entry.valorCentavos)).toEqual([3333, 3333, 3334]);
+    expect(cardEntries.every((entry) => entry.status === 'Pendente')).toBe(true);
+    expect(cardEntries.reduce((sum, entry) => sum + entry.valorCentavos, 0)).toBe(10000);
+
+    const boletoEntries = buildPurchaseOrderFinancialEntries({
+      fornecedorNome: 'Fornecedor X',
+      formaPagamento: PURCHASE_PAYMENT_METHOD.BOLETO,
+      tipoPagamento: PURCHASE_PAYMENT_TYPE.INSTALLMENTS,
+      quantidadeParcelas: 3,
+      valorTotalCentavos: 100000,
+      cronogramaPagamento: [
+        { valueCents: 33333, dueDate: '2026-08-15' },
+        { valueCents: 33333, dueDate: '2026-09-22' },
+        { valueCents: 33334, dueDate: '2026-10-18' }
+      ]
+    }, 'PC-BOLETO');
+    expect(boletoEntries).toHaveLength(3);
+    expect(boletoEntries.map((entry) => entry.dataVencimento)).toEqual(['2026-08-15', '2026-09-22', '2026-10-18']);
+    expect(boletoEntries.reduce((sum, entry) => sum + entry.valorCentavos, 0)).toBe(100000);
+    expect(new Set(boletoEntries.map((entry) => entry.id)).size).toBe(3);
+  });
+
+  test('boleto único gera somente uma despesa pendente no vencimento informado', () => {
+    const entries = buildPurchaseOrderFinancialEntries({
+      fornecedorNome: 'Fornecedor X',
+      formaPagamento: PURCHASE_PAYMENT_METHOD.BOLETO,
+      tipoPagamento: PURCHASE_PAYMENT_TYPE.SINGLE,
+      primeiroVencimento: '2026-08-25',
+      valorTotalCentavos: 50000,
+      cronogramaPagamento: [{ valueCents: 50000, dueDate: '2026-08-25' }]
+    }, 'PC-UNICO');
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      valorCentavos: 50000,
+      dataVencimento: '2026-08-25',
+      status: 'Pendente',
+      parcelaNumero: 1,
+      parcelasTotal: 1
+    });
+  });
+
+  test('assinatura financeira detecta alteração posterior de valor ou vencimento', () => {
+    const base = {
+      formaPagamento: PURCHASE_PAYMENT_METHOD.BOLETO,
+      tipoPagamento: PURCHASE_PAYMENT_TYPE.SINGLE,
+      quantidadeParcelas: 1,
+      valorTotalCentavos: 50000,
+      cronogramaPagamento: [{ valueCents: 50000, dueDate: '2026-08-25' }]
+    };
+    expect(paymentConfigurationSignature(base)).not.toBe(paymentConfigurationSignature({
+      ...base,
+      cronogramaPagamento: [{ valueCents: 50000, dueDate: '2026-08-26' }]
+    }));
+    expect(paymentConfigurationSignature(base)).not.toBe(paymentConfigurationSignature({
+      ...base,
+      valorTotalCentavos: 51000,
+      cronogramaPagamento: [{ valueCents: 51000, dueDate: '2026-08-25' }]
+    }));
   });
 });
