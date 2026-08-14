@@ -43,6 +43,7 @@ import IfoodHub from './components/ifood/IfoodHub';
 import Food99Hub from './components/food99/Food99Hub';
 import CaixaTab from './components/caixa/CaixaTab';
 import AlertasNotificacoesTab from './components/configuracoes/AlertasNotificacoesTab';
+import EntreLojasReport from './components/relatorios/EntreLojasReport';
 import NotificationsBell from './components/notifications/NotificationsBell';
 import {
   CAIXA_PERMISSION_KEYS,
@@ -2942,7 +2943,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 // --- FIM DOS NOVOS COMPONENTES ---
 
 // Componente Relatorios adicionado no mesmo arquivo App.js para correção do erro
-const Relatorios = ({ data }) => {
+const Relatorios = ({ data, user, availableStores, storeInfoMap }) => {
   const getInitialDateRange = () => {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -2968,6 +2969,40 @@ const Relatorios = ({ data }) => {
   const [reportTotals, setReportTotals] = useState(null);
   const [perdasColumns, setPerdasColumns] = useState([]);
   const [perdasData, setPerdasData] = useState([]);
+
+  if (reportType === 'remessasEntreLojas') {
+    return (
+      <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Relatórios</h1>
+          <p className="text-gray-600 mt-1">Analise o desempenho da sua doceria</p>
+        </div>
+        <div className="max-w-xl rounded-2xl border border-gray-100 bg-white p-4 shadow-lg">
+          <Select
+            id="report-select"
+            label="Tipo de Relatório"
+            value={reportType}
+            onChange={(event) => setReportType(event.target.value)}
+          >
+            <option value="vendasPorPeriodo">Vendas por Período</option>
+            <option value="produtosMaisVendidos">Produtos Mais Vendidos</option>
+            <option value="clientesMaisCompram">Clientes que Mais Compram</option>
+            <option value="usoCupons">Uso de Cupons</option>
+            <option value="estoqueBaixo">Estoque Baixo (Produtos Finais)</option>
+            <option value="comprasInsumos">Compras de Insumos</option>
+            <option value="receitaPorPagamento">Receita por Forma de Pagamento</option>
+            <option value="custoProducao">Custo de Produção</option>
+            <option value="remessasEntreLojas">Remessas entre Lojas</option>
+          </Select>
+        </div>
+        <EntreLojasReport
+          currentUser={user}
+          availableStores={availableStores}
+          storeInfoMap={storeInfoMap}
+        />
+      </div>
+    );
+  }
 
   const formatCurrency = (value) =>
     (Number(value) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -3343,6 +3378,7 @@ const Relatorios = ({ data }) => {
                     <option value="comprasInsumos">Compras de Insumos</option>
                     <option value="receitaPorPagamento">Receita por Forma de Pagamento</option>
                     <option value="custoProducao">Custo de Produção</option>
+                    <option value="remessasEntreLojas">Remessas entre Lojas</option>
                 </Select>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -17863,7 +17899,14 @@ const handleSubmit = async (e) => {
       case 'entre-lojas': return userHasPermission('entre-lojas') ? <EntreLojas /> : <PaginaInicial />;
       case 'agenda': return userHasPermission('agenda') ? <Agenda /> : <PaginaInicial />;
       case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} /> : <PaginaInicial />;
-      case 'relatorios': return userHasPermission('relatorios') ? <Relatorios data={data} /> : <PaginaInicial />;
+      case 'relatorios': return userHasPermission('relatorios') ? (
+        <Relatorios
+          data={data}
+          user={user}
+          availableStores={availableStores}
+          storeInfoMap={storeInfoMap}
+        />
+      ) : <PaginaInicial />;
       case 'meu-espaco': return userHasPermission('meu-espaco') ? (
         <MeuEspaco
           user={user}

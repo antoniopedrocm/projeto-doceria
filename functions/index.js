@@ -19,6 +19,7 @@ const {createFiscalFunctions} = require('./fiscal');
 const {createIfoodFunctions} = require('./ifood');
 const {createFood99Functions} = require('./food99');
 const {createCaixaFunctions} = require('./caixa');
+const {createEntreLojasReportFunctions} = require('./entre-lojas-report');
 const {
   defaultCashPermissions,
   sanitizeCashPermissions,
@@ -2514,11 +2515,39 @@ exports.notifyNewOrder = onDocumentCreated({
     }
 });
 
+const onActiveEntreLojasReportCall = (options, handler) => onCall(
+    options,
+    async (request) => {
+      const uid = request.auth?.uid;
+      if (!uid) {
+        throw new HttpsError('unauthenticated', 'Autenticação obrigatória.');
+      }
+      const profileSnapshot = await db.collection('users').doc(uid).get();
+      const profile = profileSnapshot.exists ? profileSnapshot.data() || {} : {};
+      const status = String(profile.status || '').trim().toLowerCase();
+      if (!profileSnapshot.exists || profile.ativo === false ||
+        profile.authDisabled === true || status === 'inativo') {
+        throw new HttpsError(
+            'permission-denied',
+            'Sua conta está inativa ou não possui perfil válido.',
+        );
+      }
+      return handler(request);
+    },
+);
+
 Object.assign(exports, createCaixaFunctions({
     admin,
     db,
     onCall,
     onDocumentWritten,
+    HttpsError,
+    logger,
+}));
+
+Object.assign(exports, createEntreLojasReportFunctions({
+    db,
+    onCall: onActiveEntreLojasReportCall,
     HttpsError,
     logger,
 }));

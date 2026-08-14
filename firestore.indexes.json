@@ -162,6 +162,22 @@
         { "fieldPath": "tipo", "order": "ASCENDING" },
         { "fieldPath": "criadoEm", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "transferenciasEntreLojas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lojaOrigemId", "order": "ASCENDING" },
+        { "fieldPath": "dataRemessa", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transferenciasEntreLojas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lojaDestinoId", "order": "ASCENDING" },
+        { "fieldPath": "dataRemessa", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
