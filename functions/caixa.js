@@ -4,6 +4,7 @@ const {
   ROLE_MANAGER,
   ROLE_OWNER,
   assertSafeIntegerCents,
+  canAdjustCashAfterClosing,
   calculateCashConference,
   calculateCashRefundsCents,
   calculateCashRemovalsCents,
@@ -156,8 +157,11 @@ const publicRemoval = (snapshotOrData, fallbackId = '') => {
     dataMovimentacao: data.dataMovimentacao || data.dataOperacional || '',
     horaMovimentacao: data.horaMovimentacao || '',
     lancamentoPosEncerramento: data.lancamentoPosEncerramento === true,
+    postCloseAdjustment: data.postCloseAdjustment === true ||
+      data.lancamentoPosEncerramento === true,
     caixaJaEncerrado: data.caixaJaEncerrado === true,
     perfilResponsavel: data.perfilResponsavel || '',
+    permissaoUtilizada: data.permissaoUtilizada || '',
     auditoriaPosEncerramento: data.auditoriaPosEncerramento || null,
     criadoEm: data.criadoEm || null,
     atualizadoEm: data.atualizadoEm || null,
@@ -184,8 +188,11 @@ const publicWithdrawal = (snapshotOrData, fallbackId = '') => {
       data.dataRetirada || '',
     horaMovimentacao: data.horaMovimentacao || '',
     lancamentoPosEncerramento: data.lancamentoPosEncerramento === true,
+    postCloseAdjustment: data.postCloseAdjustment === true ||
+      data.lancamentoPosEncerramento === true,
     caixaJaEncerrado: data.caixaJaEncerrado === true,
     perfilResponsavel: data.perfilResponsavel || '',
+    permissaoUtilizada: data.permissaoUtilizada || '',
     auditoriaPosEncerramento: data.auditoriaPosEncerramento || null,
     registradoEm: data.registradoEm || data.createdAt || null,
   };
@@ -799,6 +806,7 @@ const createCaixaFunctions = ({
       usuarioUid: actor.uid,
       usuarioNome: actor.nome,
       perfil: actor.role,
+      permissaoUtilizada: adjustment.permissaoUtilizada || '',
       dataOperacional: dateKey,
       valorEsperadoAntesCentavos: previousExpectedCents,
       valorEsperadoDepoisCentavos: calculated.expectedCents,
@@ -1468,10 +1476,16 @@ const createCaixaFunctions = ({
         const daily = documentData(recordSnap);
         const isPostClosing = daily.temValorEncerramento === true ||
           Number.isSafeInteger(daily.valorEncerramentoCentavos);
-        if (isPostClosing && actor.role !== ROLE_OWNER) {
+        if (isPostClosing && !canAdjustCashAfterClosing(
+            actor.role,
+            actor.permissions,
+        )) {
+          const isUnauthorizedManager = actor.role === ROLE_MANAGER;
           throw new HttpsError(
-            'failed-precondition',
-            'Nao e possivel registrar retirada depois do encerramento do dia.',
+            isUnauthorizedManager ? 'permission-denied' : 'failed-precondition',
+            isUnauthorizedManager ?
+              'Este caixa ja foi encerrado. Seu usuario nao possui permissao para realizar ajustes apos o encerramento.' :
+              'Nao e possivel registrar retirada depois do encerramento do dia.',
           );
         }
 
@@ -1511,11 +1525,15 @@ const createCaixaFunctions = ({
             horaMovimentacao: movementTime,
             dataOperacionalAfetada: dateKey,
             motivo: reason,
+            observacao: observation,
             usuarioUid: actor.uid,
             usuarioNome: actor.nome,
             usuarioEmail: actor.email || '',
             perfil: actor.role,
             caixaJaEncerrado: true,
+            permissaoUtilizada: actor.role === ROLE_OWNER ?
+              'perfil_dono' :
+              'ajustarCaixaAposEncerramento',
             valorEsperadoAntesCentavos:
               recalculation.before.expectedCents,
             valorEsperadoDepoisCentavos:
@@ -1549,8 +1567,14 @@ const createCaixaFunctions = ({
           dataMovimentacao: dateKey,
           horaMovimentacao: movementTime,
           lancamentoPosEncerramento: isPostClosing,
+          postCloseAdjustment: isPostClosing,
           caixaJaEncerrado: isPostClosing,
           perfilResponsavel: actor.role,
+          permissaoUtilizada: isPostClosing ? (
+            actor.role === ROLE_OWNER ?
+              'perfil_dono' :
+              'ajustarCaixaAposEncerramento'
+          ) : '',
           dataLancamento: FieldValue.serverTimestamp(),
           auditoriaPosEncerramento: adjustment,
           registradoPorUid: actor.uid,
@@ -1667,10 +1691,16 @@ const createCaixaFunctions = ({
         }
         const isPostClosing = daily.temValorEncerramento === true ||
           Number.isSafeInteger(daily.valorEncerramentoCentavos);
-        if (isPostClosing && actor.role !== ROLE_OWNER) {
+        if (isPostClosing && !canAdjustCashAfterClosing(
+            actor.role,
+            actor.permissions,
+        )) {
+          const isUnauthorizedManager = actor.role === ROLE_MANAGER;
           throw new HttpsError(
-            'failed-precondition',
-            'Nao e possivel registrar sangria depois do encerramento do dia.',
+            isUnauthorizedManager ? 'permission-denied' : 'failed-precondition',
+            isUnauthorizedManager ?
+              'Este caixa ja foi encerrado. Seu usuario nao possui permissao para realizar ajustes apos o encerramento.' :
+              'Nao e possivel registrar sangria depois do encerramento deste dia.',
           );
         }
         if (isPostClosing && !reason) {
@@ -1716,12 +1746,16 @@ const createCaixaFunctions = ({
             horaMovimentacao: movementTime,
             dataOperacionalAfetada: dateKey,
             motivo: reason,
+            observacao: observation,
             destino: destination,
             usuarioUid: actor.uid,
             usuarioNome: actor.nome,
             usuarioEmail: actor.email || '',
             perfil: actor.role,
             caixaJaEncerrado: true,
+            permissaoUtilizada: actor.role === ROLE_OWNER ?
+              'perfil_dono' :
+              'ajustarCaixaAposEncerramento',
             valorEsperadoAntesCentavos:
               recalculation.before.expectedCents,
             valorEsperadoDepoisCentavos:
@@ -1748,8 +1782,14 @@ const createCaixaFunctions = ({
           dataMovimentacao: dateKey,
           horaMovimentacao: movementTime,
           lancamentoPosEncerramento: isPostClosing,
+          postCloseAdjustment: isPostClosing,
           caixaJaEncerrado: isPostClosing,
           perfilResponsavel: actor.role,
+          permissaoUtilizada: isPostClosing ? (
+            actor.role === ROLE_OWNER ?
+              'perfil_dono' :
+              'ajustarCaixaAposEncerramento'
+          ) : '',
           dataLancamento: FieldValue.serverTimestamp(),
           auditoriaPosEncerramento: adjustment,
           responsavelUid: actor.uid,

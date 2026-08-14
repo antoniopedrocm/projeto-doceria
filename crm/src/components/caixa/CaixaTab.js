@@ -10,6 +10,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import {
+  canAdjustCaixaAfterClosing,
   createIdempotencyKey,
   formatCentsBRL,
   getDocumentCents,
@@ -135,7 +136,6 @@ const ValueSummary = ({ label, cents, registrant, timestamp, observation }) => (
 
 const CaixaTab = ({
   currentUser,
-  isOwner = false,
   effectiveStoreId,
   availableStores = [],
   storeInfoMap = {},
@@ -148,6 +148,10 @@ const CaixaTab = ({
     currentUser?.permissionDetails?.caixa || currentUser?.customPermissionDetails?.caixa,
     currentUser?.role,
   ), [currentUser]);
+  const canAdjustAfterClosing = useMemo(() => canAdjustCaixaAfterClosing(
+    currentUser?.role,
+    permissions,
+  ), [currentUser?.role, permissions]);
 
   const storeOptions = useMemo(() => {
     const ids = new Set((availableStores || []).filter(Boolean));
@@ -413,8 +417,11 @@ const CaixaTab = ({
       setSangriaFeedback({ type: 'error', text: 'Informe um valor de sangria maior que zero.' });
       return;
     }
-    if (hasClosing && !isOwner) {
-      setSangriaFeedback({ type: 'error', text: 'Somente o Dono pode registrar sangria depois do encerramento.' });
+    if (hasClosing && !canAdjustAfterClosing) {
+      setSangriaFeedback({
+        type: 'error',
+        text: 'Este caixa já foi encerrado. Seu usuário não possui permissão para realizar ajustes após o encerramento.',
+      });
       return;
     }
     if (hasClosing && !sangriaReason.trim()) {
@@ -651,7 +658,7 @@ const CaixaTab = ({
             <button
               type="button"
               onClick={() => onNewRetirada(storeId, operationalDate, hasClosing)}
-              disabled={!storeId || (hasClosing && !isOwner)}
+              disabled={!storeId || (hasClosing && !canAdjustAfterClosing)}
               className={primaryButtonClassName}
             >
               <Plus className="h-4 w-4" /> Nova retirada para despesa
@@ -659,14 +666,14 @@ const CaixaTab = ({
           )}
         </div>
 
-        {hasClosing && isOwner && (
+        {hasClosing && canAdjustAfterClosing && (
           <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             Este caixa já possui encerramento. O lançamento será registrado como ajuste pós-encerramento e a conferência será recalculada.
           </p>
         )}
-        {hasClosing && !isOwner && permissions.registrarRetiradaDespesa && (
+        {hasClosing && !canAdjustAfterClosing && permissions.registrarRetiradaDespesa && (
           <p className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
-            Este dia já foi encerrado. Somente o Dono pode registrar uma retirada retroativa.
+            Este caixa já foi encerrado. Seu usuário não possui permissão para realizar ajustes após o encerramento.
           </p>
         )}
 
@@ -767,17 +774,17 @@ const CaixaTab = ({
               </label>
             </div>
             {!hasInitial && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Informe primeiro o valor inicial deste dia.</p>}
-            {hasClosing && isOwner && (
+            {hasClosing && canAdjustAfterClosing && (
               <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 Este caixa já possui encerramento. O lançamento será registrado como ajuste pós-encerramento e a conferência será recalculada. O motivo é obrigatório.
               </p>
             )}
-            {hasClosing && !isOwner && (
+            {hasClosing && !canAdjustAfterClosing && (
               <p className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
-                Não é possível registrar sangria depois do encerramento deste dia.
+                Este caixa já foi encerrado. Seu usuário não possui permissão para realizar ajustes após o encerramento.
               </p>
             )}
-            <button type="submit" disabled={savingSangria || !hasInitial || (hasClosing && !isOwner)} className={primaryButtonClassName}>
+            <button type="submit" disabled={savingSangria || !hasInitial || (hasClosing && !canAdjustAfterClosing)} className={primaryButtonClassName}>
               <Save className="h-4 w-4" /> {savingSangria ? 'Registrando...' : 'Registrar sangria'}
             </button>
           </form>
@@ -979,7 +986,13 @@ const CaixaTab = ({
                           <p>Movimentação: {formatDate(adjustment.dataMovimentacao || adjustment.dataOperacionalAfetada)}{adjustment.horaMovimentacao ? ` às ${adjustment.horaMovimentacao}` : ''}</p>
                           <p>Lançada em: {formatDateTime(adjustment.registradoEm)}</p>
                           <p>Responsável pelo lançamento: {adjustment.usuarioNome || adjustment.usuarioEmail || adjustment.usuarioUid || '-'}</p>
+                          <p>Perfil: {adjustment.perfil || '-'}</p>
+                          <p>Caixa já estava encerrado: Sim</p>
+                          {adjustment.permissaoUtilizada && (
+                            <p>Permissão utilizada: {adjustment.permissaoUtilizada === 'perfil_dono' ? 'Perfil Dono' : 'Ajustes após encerramento'}</p>
+                          )}
                           <p>Motivo: {adjustment.motivo || '-'}</p>
+                          <p>Observação: {adjustment.observacao || '-'}</p>
                           {permissions.visualizarValoresCalculados && (
                             <p>
                               Valor esperado: {formatCentsBRL(adjustment.valorEsperadoAntesCentavos)} → {formatCentsBRL(adjustment.valorEsperadoDepoisCentavos)}

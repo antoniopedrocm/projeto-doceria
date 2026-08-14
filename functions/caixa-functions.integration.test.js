@@ -666,7 +666,7 @@ test('somente dono registra retirada pos-encerramento e resolve divergencia', as
         ...blockedPayload,
         idempotencyKey: `${storeId}-gerente-bloqueado`,
       })),
-      expectHttpsCode('failed-precondition'),
+      expectHttpsCode('permission-denied'),
   );
 
   const ownerPayload = {
@@ -725,6 +725,148 @@ test('somente dono registra retirada pos-encerramento e resolve divergencia', as
   )));
 });
 
+test('gerente autorizado ajusta caixa encerrado somente nas proprias lojas', async () => {
+  const storeId = 'ajuste-gerente-autorizado';
+  const otherStoreId = 'ajuste-gerente-outra-loja';
+  const authorizedPermissions = {
+    ...defaultCashPermissions('gerente'),
+    ajustarCaixaAposEncerramento: true,
+  };
+  await Promise.all([seedStore(storeId), seedStore(otherStoreId)]);
+  await Promise.all([
+    seedUser('owner', 'dono'),
+    seedUser('manager-allowed', 'gerente', [storeId], authorizedPermissions),
+    seedUser('manager-blocked', 'gerente', [storeId]),
+    seedUser(
+        'manager-other-store',
+        'gerente',
+        [otherStoreId],
+        authorizedPermissions,
+    ),
+    seedUser('attendant', 'atendente', [storeId]),
+  ]);
+  await caixa.registrarValorInicialCaixa(requestFor('attendant', {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 10000,
+    idempotencyKey: `${storeId}-inicio`,
+  }));
+  await seedCashOrder(
+      storeId,
+      'venda-200',
+      200,
+      admin.firestore.Timestamp.fromDate(
+          new Date('2026-07-27T15:00:00.000Z'),
+      ),
+  );
+  await caixa.registrarEncerramentoCaixa(requestFor('attendant', {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 30000,
+    observacao: 'Fechamento original do dia',
+    idempotencyKey: `${storeId}-encerramento`,
+  }));
+  const dailyRef = db.collection('lojas').doc(storeId)
+    .collection('caixas').doc('2026-07-27');
+  const originalDaily = (await dailyRef.get()).data();
+  const withdrawalPayload = {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 2000,
+    motivo: 'Despesa identificada posteriormente',
+    observacao: 'Ajuste autorizado pelo Dono',
+    idempotencyKey: `${storeId}-retirada-gerente`,
+  };
+
+  await assert.rejects(
+      caixa.registrarRetiradaDespesaCaixa(requestFor(
+          'manager-blocked',
+          {...withdrawalPayload, idempotencyKey: `${storeId}-bloqueada`},
+      )),
+      expectHttpsCode('permission-denied'),
+  );
+  await assert.rejects(
+      caixa.registrarRetiradaDespesaCaixa(requestFor(
+          'manager-other-store',
+          {...withdrawalPayload, idempotencyKey: `${storeId}-outra-loja`},
+      )),
+      expectHttpsCode('permission-denied'),
+  );
+
+  await caixa.registrarRetiradaDespesaCaixa(
+      requestFor('manager-allowed', withdrawalPayload),
+  );
+  await caixa.registrarRetiradaDespesaCaixa(
+      requestFor('manager-allowed', withdrawalPayload),
+  );
+  const sangriaPayload = {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorCentavos: 3000,
+    motivo: 'Numerario depositado posteriormente',
+    destino: 'Banco',
+    observacao: 'Sangria retroativa autorizada',
+    idempotencyKey: `${storeId}-sangria-gerente`,
+  };
+  await assert.rejects(
+      caixa.registrarSangriaCaixa(requestFor(
+          'manager-blocked',
+          {...sangriaPayload, idempotencyKey: `${storeId}-sangria-bloqueada`},
+      )),
+      expectHttpsCode('permission-denied'),
+  );
+  await caixa.registrarSangriaCaixa(
+      requestFor('manager-allowed', sangriaPayload),
+  );
+  await caixa.registrarSangriaCaixa(
+      requestFor('manager-allowed', sangriaPayload),
+  );
+
+  const payables = await db.collection('lojas').doc(storeId)
+    .collection('contas_a_pagar')
+    .where('origem', '==', 'retirada_despesa_caixa').get();
+  assert.equal(payables.size, 1);
+  const withdrawal = payables.docs[0].data();
+  assert.equal(withdrawal.perfilResponsavel, 'gerente');
+  assert.equal(
+      withdrawal.permissaoUtilizada,
+      'ajustarCaixaAposEncerramento',
+  );
+  assert.equal(withdrawal.postCloseAdjustment, true);
+  assert.equal(
+      withdrawal.auditoriaPosEncerramento.permissaoUtilizada,
+      'ajustarCaixaAposEncerramento',
+  );
+
+  const removals = await db.collection('lojas').doc(storeId)
+    .collection('sangriasCaixa').get();
+  assert.equal(removals.size, 1);
+  const removal = removals.docs[0].data();
+  assert.equal(removal.perfilResponsavel, 'gerente');
+  assert.equal(removal.permissaoUtilizada, 'ajustarCaixaAposEncerramento');
+  assert.equal(removal.postCloseAdjustment, true);
+
+  const conference = (await db.collection('lojas').doc(storeId)
+    .collection('conferenciasCaixa').doc('2026-07-27').get()).data();
+  assert.equal(conference.retiradasDespesaCentavos, 2000);
+  assert.equal(conference.sangriasCentavos, 3000);
+  assert.equal(conference.valorEsperadoCentavos, 25000);
+  assert.equal(conference.diferencaCentavos, 5000);
+  assert.equal(conference.ajustesPosEncerramento.length, 2);
+
+  const preservedDaily = (await dailyRef.get()).data();
+  assert.equal(preservedDaily.temValorEncerramento, true);
+  assert.equal(preservedDaily.valorEncerramentoCentavos, 30000);
+  assert.equal(preservedDaily.responsavelEncerramentoUid, 'attendant');
+  assert.equal(preservedDaily.observacaoEncerramento, 'Fechamento original do dia');
+  assert.equal(
+      preservedDaily.valorEncerramentoRegistradoEm.toMillis(),
+      originalDaily.valorEncerramentoRegistradoEm.toMillis(),
+  );
+  assert.equal((await db.collection('lojas').doc(storeId)
+    .collection('alertas').get()).size, 1);
+});
+
 test('dono registra sangria pos-encerramento e cria uma nova divergencia', async () => {
   const storeId = 'ajuste-sangria-pos-encerramento';
   await seedStore(storeId);
@@ -765,7 +907,7 @@ test('dono registra sangria pos-encerramento e cria uma nova divergencia', async
         motivo: 'Tentativa do gerente',
         idempotencyKey: `${storeId}-gerente-bloqueado`,
       })),
-      expectHttpsCode('failed-precondition'),
+      expectHttpsCode('permission-denied'),
   );
   await assert.rejects(
       caixa.registrarSangriaCaixa(requestFor('owner', {

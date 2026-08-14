@@ -12,6 +12,7 @@ const CASH_PERMISSION_KEYS = [
   'registrarEncerramento',
   'registrarRetiradaDespesa',
   'registrarSangria',
+  'ajustarCaixaAposEncerramento',
   'visualizarSangrias',
   'visualizarConferencia',
   'visualizarValoresCalculados',
@@ -79,10 +80,14 @@ const defaultCashPermissions = (role) => {
   }, {});
 
   if ([ROLE_OWNER, ROLE_MANAGER].includes(normalizedRole)) {
-    return CASH_PERMISSION_KEYS.reduce((result, key) => {
+    const permissions = CASH_PERMISSION_KEYS.reduce((result, key) => {
       result[key] = true;
       return result;
     }, {});
+    if (normalizedRole === ROLE_MANAGER) {
+      permissions.ajustarCaixaAposEncerramento = false;
+    }
+    return permissions;
   }
 
   if (normalizedRole === ROLE_ATTENDANT) {
@@ -134,6 +139,14 @@ const resolveCashPermissions = (profile = {}, customProfile = {}) => (
     profile.role || customProfile.role,
   )
 );
+
+const canAdjustCashAfterClosing = (role, permissions = {}) => {
+  const normalizedRole = normalizeRole(role);
+  return normalizedRole === ROLE_OWNER || (
+    normalizedRole === ROLE_MANAGER &&
+    permissions.ajustarCaixaAposEncerramento === true
+  );
+};
 
 const normalizeOperationalDate = (value) => {
   const text = String(value || '').trim();
@@ -576,6 +589,7 @@ module.exports = {
   ROLE_MANAGER,
   ROLE_OWNER,
   assertSafeIntegerCents,
+  canAdjustCashAfterClosing,
   calculateCashConference,
   calculateCashRefundsCents,
   calculateCashRemovalsCents,

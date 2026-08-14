@@ -1,8 +1,11 @@
+/* global globalThis */
+
 export const CAIXA_PERMISSION_KEYS = [
   'registrarInicio',
   'registrarEncerramento',
   'registrarRetiradaDespesa',
   'registrarSangria',
+  'ajustarCaixaAposEncerramento',
   'visualizarSangrias',
   'visualizarConferencia',
   'visualizarValoresCalculados',
@@ -14,6 +17,7 @@ export const CAIXA_PERMISSION_LABELS = {
   registrarEncerramento: 'Informar valor de encerramento',
   registrarRetiradaDespesa: 'Registrar retirada para despesa',
   registrarSangria: 'Registrar sangria',
+  ajustarCaixaAposEncerramento: 'Permitir ajustes no Caixa após encerramento',
   visualizarSangrias: 'Consultar sangrias',
   visualizarConferencia: 'Consultar histórico gerencial',
   visualizarValoresCalculados: 'Visualizar valores calculados',
@@ -42,10 +46,14 @@ export const getDefaultCaixaPermissionsForRole = (role) => {
   ].includes(normalizedRole);
 
   if (canManageCash) {
-    return CAIXA_PERMISSION_KEYS.reduce((permissions, key) => ({
-      ...permissions,
+    const permissions = CAIXA_PERMISSION_KEYS.reduce((result, key) => ({
+      ...result,
       [key]: true,
     }), {});
+    if (['gerente', 'manager', 'gestor', 'gestora'].includes(normalizedRole)) {
+      permissions.ajustarCaixaAposEncerramento = false;
+    }
+    return permissions;
   }
 
   const isAttendant = [
@@ -108,6 +116,15 @@ export const getEmptyCaixaPermissions = () => CAIXA_PERMISSION_KEYS.reduce((perm
   ...permissions,
   [key]: false,
 }), {});
+
+export const canAdjustCaixaAfterClosing = (role, permissions = {}) => {
+  const normalizedRole = normalizeRole(role);
+  return ['dono', 'owner', 'admin', 'adm', 'administrador', 'administradora']
+    .includes(normalizedRole) || (
+    ['gerente', 'manager', 'gestor', 'gestora'].includes(normalizedRole) &&
+    permissions.ajustarCaixaAposEncerramento === true
+  );
+};
 
 export const getLocalOperationalDate = (date = new Date()) => {
   const year = date.getFullYear();

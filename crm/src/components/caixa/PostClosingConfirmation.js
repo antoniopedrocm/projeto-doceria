@@ -26,12 +26,11 @@ const PostClosingConfirmation = ({
               Lançamento após encerramento
             </h2>
             <div className="mt-3 space-y-3 text-sm leading-6 text-gray-600">
-              <p>Este dia já possui valor de encerramento registrado.</p>
               <p>
-                O lançamento será incluído na data selecionada e o valor esperado, a diferença e os alertas do caixa serão recalculados.
+                Este caixa já foi encerrado. O lançamento será registrado como um ajuste posterior e poderá alterar a conferência deste dia. Deseja continuar?
               </p>
+              <p>O valor esperado, a diferença e os alertas do caixa serão recalculados.</p>
               <p>O valor de encerramento originalmente informado será preservado.</p>
-              <p className="font-semibold text-gray-800">Deseja continuar?</p>
             </div>
           </div>
         </div>
@@ -50,7 +49,7 @@ const PostClosingConfirmation = ({
             disabled={isSaving}
             className="rounded-xl bg-gradient-to-r from-pink-500 to-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:from-pink-600 hover:to-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSaving ? 'Registrando...' : 'Confirmar lançamento'}
+            {isSaving ? 'Registrando...' : 'Confirmar ajuste'}
           </button>
         </div>
       </div>

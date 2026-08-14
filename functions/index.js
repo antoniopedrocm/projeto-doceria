@@ -36,6 +36,7 @@ const ROLE_MANAGER = 'gerente';
 const ROLE_ATTENDANT = 'atendente';
 const ROLE_ACCOUNTANT = 'contador';
 const ROLE_CLIENT = 'cliente';
+const CASH_POST_CLOSING_PERMISSION = 'ajustarCaixaAposEncerramento';
 const MENU_PERMISSION_KEYS = [
   'pagina-inicial',
   'dashboard',
@@ -299,6 +300,76 @@ const assertManagerCannotGrantOwnerAccess = (requester, targetRole, permissionsI
   if (normalizeRole(targetRole) === ROLE_OWNER || grantsOwnerEquivalentPermissions(targetRole, permissionsInput, targetStores)) {
     throw new HttpsError('permission-denied', 'Gerentes não podem conceder perfil ou permissões de dono.');
   }
+};
+
+const getPostClosingCashPermissionDetails = (permissionDetails) => {
+  if (!permissionDetails || typeof permissionDetails !== 'object') return {};
+  const caixaDetails = permissionDetails.caixa || permissionDetails.cash;
+  return caixaDetails && typeof caixaDetails === 'object' ? caixaDetails : {};
+};
+
+const hasExplicitPostClosingCashPermission = (permissionDetails) => (
+  Object.prototype.hasOwnProperty.call(
+      getPostClosingCashPermissionDetails(permissionDetails),
+      CASH_POST_CLOSING_PERMISSION,
+  )
+);
+
+const readsPostClosingCashPermission = (permissionDetails) => (
+  getPostClosingCashPermissionDetails(permissionDetails)
+      [CASH_POST_CLOSING_PERMISSION] === true
+);
+
+const withPostClosingCashPermission = (permissionDetails, enabled) => {
+  const details = permissionDetails && typeof permissionDetails === 'object' ?
+    permissionDetails : {};
+  return {
+    ...details,
+    caixa: {
+      ...getPostClosingCashPermissionDetails(details),
+      [CASH_POST_CLOSING_PERMISSION]: enabled === true,
+    },
+  };
+};
+
+const preparePostClosingCashPermissionDetails = async ({
+  requester,
+  targetUid = '',
+  targetRole,
+  existingProfile = {},
+  requestedPermissionDetails = null,
+}) => {
+  let existingPermissionDetails = existingProfile.permissionDetails || {};
+  if (targetUid) {
+    const existingCustomProfile = await db.collection('customProfiles')
+        .doc(targetUid).get();
+    if (existingCustomProfile.exists) {
+      existingPermissionDetails = existingCustomProfile.data()
+          ?.permissionDetails || existingPermissionDetails;
+    }
+  }
+
+  const existingRole = normalizeRole(existingProfile.role);
+  const normalizedTargetRole = normalizeRole(targetRole);
+  const existingEnabled = existingRole === ROLE_MANAGER &&
+    readsPostClosingCashPermission(existingPermissionDetails);
+  const requestedEnabled = normalizedTargetRole === ROLE_MANAGER ? (
+    hasExplicitPostClosingCashPermission(requestedPermissionDetails) ?
+      readsPostClosingCashPermission(requestedPermissionDetails) :
+      existingEnabled
+  ) : false;
+
+  if (requester.role === ROLE_MANAGER && requestedEnabled !== existingEnabled) {
+    throw new HttpsError(
+        'permission-denied',
+        'Somente um Dono pode conceder ou remover a permissao de ajustar o Caixa apos o encerramento.',
+    );
+  }
+
+  const detailsToPersist = requestedPermissionDetails &&
+    typeof requestedPermissionDetails === 'object' ?
+    requestedPermissionDetails : existingPermissionDetails;
+  return withPostClosingCashPermission(detailsToPersist, requestedEnabled);
 };
 
 const rethrowHttpsError = (error) => {
@@ -2188,6 +2259,12 @@ exports.createUser = onCall(async (request) => {
             }
         }
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
+        const permissionDetailsToPersist =
+          await preparePostClosingCashPermissionDetails({
+            requester,
+            targetRole: normalizedRole,
+            requestedPermissionDetails,
+          });
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho);
         const sanitizedBankStartDate = normalizePointBankStartDate(dataInicioBancoHoras);
 
@@ -2200,7 +2277,7 @@ exports.createUser = onCall(async (request) => {
             userRecord.uid,
             normalizedRole,
             requestedPermissions,
-            requestedPermissionDetails,
+            permissionDetailsToPersist,
         );
 
         await db.collection("users").doc(userRecord.uid).set({
@@ -2284,6 +2361,14 @@ exports.updateUser = onCall(async (request) => {
         }
 
         assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
+        const permissionDetailsToPersist =
+          await preparePostClosingCashPermissionDetails({
+            requester,
+            targetUid: uid,
+            targetRole: normalizedRole,
+            existingProfile,
+            requestedPermissionDetails,
+          });
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
         const hasBankStartDatePayload = Object.prototype.hasOwnProperty.call(request.data || {}, "dataInicioBancoHoras");
         const sanitizedBankStartDate = hasBankStartDatePayload
@@ -2306,7 +2391,7 @@ exports.updateUser = onCall(async (request) => {
             uid,
             normalizedRole,
             requestedPermissions || existingPermissions,
-            requestedPermissionDetails,
+            permissionDetailsToPersist,
         );
 
         // **CORREÇÃO APLICADA AQUI**

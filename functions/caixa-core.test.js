@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  canAdjustCashAfterClosing,
   calculateCashConference,
   calculateCashRefundsCents,
   calculateCashRemovalsCents,
@@ -54,13 +55,22 @@ test('defaults granulares preservam operacao da atendente', () => {
     registrarEncerramento: true,
     registrarRetiradaDespesa: true,
     registrarSangria: false,
+    ajustarCaixaAposEncerramento: false,
     visualizarSangrias: false,
     visualizarConferencia: false,
     visualizarValoresCalculados: false,
     visualizarDivergencias: false,
   });
-  assert.ok(Object.values(defaultCashPermissions('gerente')).every(Boolean));
+  const manager = defaultCashPermissions('gerente');
+  assert.equal(manager.registrarSangria, true);
+  assert.equal(manager.ajustarCaixaAposEncerramento, false);
+  assert.equal(canAdjustCashAfterClosing('gerente', manager), false);
+  assert.equal(canAdjustCashAfterClosing('gerente', {
+    ...manager,
+    ajustarCaixaAposEncerramento: true,
+  }), true);
   assert.ok(Object.values(defaultCashPermissions('dono')).every(Boolean));
+  assert.equal(canAdjustCashAfterClosing('dono', {}), true);
   assert.ok(Object.values(defaultCashPermissions('contador')).every((v) => !v));
 });
 

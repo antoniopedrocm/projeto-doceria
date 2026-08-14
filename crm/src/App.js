@@ -47,6 +47,7 @@ import NotificationsBell from './components/notifications/NotificationsBell';
 import {
   CAIXA_PERMISSION_KEYS,
   CAIXA_PERMISSION_LABELS,
+  canAdjustCaixaAfterClosing,
   getDefaultCaixaPermissionsForRole,
   getEmptyCaixaPermissions,
   sanitizeCaixaPermissions,
@@ -1711,6 +1712,14 @@ const maskCpfCnpj = (value) => {
 
 const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser, availableStores, storeInfoMap }) => {
     const [activeTab, setActiveTab] = usePersistentState('fornecedores_activeTab', 'fornecedores');
+    const currentCashPermissions = useMemo(() => sanitizeCaixaPermissions(
+        currentUser?.permissionDetails?.caixa || currentUser?.customPermissionDetails?.caixa,
+        currentUser?.role
+    ), [currentUser]);
+    const canAdjustAfterClosing = useMemo(() => canAdjustCaixaAfterClosing(
+        currentUser?.role,
+        currentCashPermissions
+    ), [currentCashPermissions, currentUser?.role]);
     
     // States
     const [searchTerm, setSearchTerm] = usePersistentState('fornecedores_searchTerm', '');
@@ -2138,8 +2147,8 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                 || Number.isSafeInteger(daily?.valorEncerramentoCentavos);
             setRetiradaCaixaPostClosing(isPostClosing);
             if (isPostClosing) {
-                if (normalizeRole(currentUser?.role) !== ROLE_OWNER) {
-                    alert('Somente o Dono pode registrar retirada depois do encerramento do dia.');
+                if (!canAdjustAfterClosing) {
+                    alert('Este caixa já foi encerrado. Seu usuário não possui permissão para realizar ajustes após o encerramento.');
                     return;
                 }
                 setPendingPostClosingRetirada(payload);
@@ -2266,7 +2275,6 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             {activeTab === 'caixa' && (
                 <CaixaTab
                     currentUser={currentUser}
-                    isOwner={normalizeRole(currentUser?.role) === ROLE_OWNER}
                     effectiveStoreId={effectiveStoreId}
                     availableStores={availableStores}
                     storeInfoMap={storeInfoMap}
@@ -2453,7 +2461,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-800">
                         Esta retirada para despesa será registrada automaticamente como paga no Financeiro.
                     </div>
-                    {retiradaCaixaPostClosing && normalizeRole(currentUser?.role) === ROLE_OWNER && (
+                    {retiradaCaixaPostClosing && canAdjustAfterClosing && (
                         <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
                             Este caixa já possui encerramento. O lançamento será registrado como ajuste pós-encerramento e a conferência será recalculada. O encerramento original será preservado.
                         </div>
@@ -10378,7 +10386,9 @@ const effectiveStoreName = useMemo(() => {
                                                 </div>
                                                 {supportsCashPermissions ? (
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                        {CAIXA_PERMISSION_KEYS.map((permissionKey) => (
+                                                        {CAIXA_PERMISSION_KEYS
+                                                            .filter((permissionKey) => permissionKey !== 'ajustarCaixaAposEncerramento')
+                                                            .map((permissionKey) => (
                                                             <label key={permissionKey} className="flex items-start gap-2 text-xs text-gray-700">
                                                                 <input
                                                                     type="checkbox"
@@ -10409,6 +10419,46 @@ const effectiveStoreName = useMemo(() => {
                                                     <p className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-700">
                                                         Este perfil não pode acessar operações ou informações do caixa.
                                                     </p>
+                                                )}
+                                                {normalizeRole(userFormData.role) === ROLE_MANAGER && (
+                                                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-800">Ajustes após encerramento</p>
+                                                            <p className="text-xs text-gray-600">
+                                                                Permite registrar retiradas para despesas e sangrias mesmo depois do encerramento do caixa do dia.
+                                                            </p>
+                                                        </div>
+                                                        <label className="flex items-start gap-2 text-xs text-gray-700">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-0.5"
+                                                                checked={Boolean(selectedCaixaPermissions.ajustarCaixaAposEncerramento)}
+                                                                disabled={normalizeRole(user?.role) !== ROLE_OWNER}
+                                                                onChange={(event) => {
+                                                                    setUserFormData((prev) => {
+                                                                        const currentPermissions = sanitizePermissions(prev.permissions, prev.role);
+                                                                        const currentDetails = sanitizePermissionDetails(prev.permissionDetails, prev.role, currentPermissions);
+                                                                        return {
+                                                                            ...prev,
+                                                                            permissionDetails: {
+                                                                                ...currentDetails,
+                                                                                caixa: {
+                                                                                    ...currentDetails.caixa,
+                                                                                    ajustarCaixaAposEncerramento: event.target.checked,
+                                                                                },
+                                                                            },
+                                                                        };
+                                                                    });
+                                                                }}
+                                                            />
+                                                            <span>Permitir ajustes no Caixa após encerramento</span>
+                                                        </label>
+                                                        {normalizeRole(user?.role) !== ROLE_OWNER && (
+                                                            <p className="text-xs text-gray-500">
+                                                                Somente um Dono pode conceder ou remover esta autorização.
+                                                            </p>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         )}

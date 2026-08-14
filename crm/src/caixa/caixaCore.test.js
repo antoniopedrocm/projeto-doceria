@@ -1,4 +1,5 @@
 import {
+  canAdjustCaixaAfterClosing,
   formatCentsBRL,
   getDocumentCents,
   getDefaultCaixaPermissionsForRole,
@@ -13,6 +14,7 @@ describe('permissões do caixa', () => {
       registrarEncerramento: true,
       registrarRetiradaDespesa: true,
       registrarSangria: false,
+      ajustarCaixaAposEncerramento: false,
       visualizarSangrias: false,
       visualizarConferencia: false,
       visualizarValoresCalculados: false,
@@ -20,20 +22,40 @@ describe('permissões do caixa', () => {
     });
   });
 
-  test.each(['gerente', 'dono'])('%s recebe todas as permissões gerenciais', (role) => {
-    expect(Object.values(getDefaultCaixaPermissionsForRole(role)).every(Boolean)).toBe(true);
+  test('gerente precisa de autorização individual para ajustes após encerramento', () => {
+    const permissions = getDefaultCaixaPermissionsForRole('gerente');
+    expect(permissions.registrarSangria).toBe(true);
+    expect(permissions.ajustarCaixaAposEncerramento).toBe(false);
+    expect(canAdjustCaixaAfterClosing('gerente', permissions)).toBe(false);
+    expect(canAdjustCaixaAfterClosing('gerente', {
+      ...permissions,
+      ajustarCaixaAposEncerramento: true,
+    })).toBe(true);
+  });
+
+  test('dono sempre pode ajustar após encerramento', () => {
+    const permissions = getDefaultCaixaPermissionsForRole('dono');
+    expect(Object.values(permissions).every(Boolean)).toBe(true);
+    expect(canAdjustCaixaAfterClosing('dono', {})).toBe(true);
   });
 
   test('permissões personalizadas preservam defaults de campos novos', () => {
     expect(sanitizeCaixaPermissions({ registrarSangria: false }, 'gerente')).toMatchObject({
       registrarInicio: true,
       registrarSangria: false,
+      ajustarCaixaAposEncerramento: false,
       visualizarConferencia: true,
     });
   });
 
   test('flags forjadas não elevam atendente nem contador', () => {
-    expect(sanitizeCaixaPermissions({ visualizarDivergencias: true }, 'atendente').visualizarDivergencias).toBe(false);
+    expect(sanitizeCaixaPermissions({
+      visualizarDivergencias: true,
+      ajustarCaixaAposEncerramento: true,
+    }, 'atendente')).toMatchObject({
+      visualizarDivergencias: false,
+      ajustarCaixaAposEncerramento: false,
+    });
     expect(Object.values(sanitizeCaixaPermissions({ registrarInicio: true }, 'contador')).every((value) => value === false)).toBe(true);
   });
 
