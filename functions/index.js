@@ -23,6 +23,13 @@ const {
   defaultCashPermissions,
   sanitizeCashPermissions,
 } = require('./caixa-core');
+const {
+  canModifyPointStore,
+  canViewEmployeePoint,
+  canViewPointStore,
+  employeeBelongsToStore,
+  sanitizePointEmployee,
+} = require('./point-access');
 
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
@@ -122,6 +129,7 @@ const getDefaultPermissionsForRole = (role) => {
       'pagina-inicial': true,
       dashboard: true,
       relatorios: true,
+      'meu-espaco': true,
       financeiro: true,
       'nota-fiscal': true,
     };
@@ -156,6 +164,10 @@ const sanitizePermissions = (permissions, role) => {
   return MENU_PERMISSION_KEYS.reduce((acc, key) => {
     if (normalizeRole(role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(key)) {
       acc[key] = false;
+      return acc;
+    }
+    if (normalizeRole(role) === ROLE_ACCOUNTANT && key === 'meu-espaco') {
+      acc[key] = true;
       return acc;
     }
     if (normalizeRole(role) === ROLE_ATTENDANT && key === 'fornecedores') {
@@ -341,13 +353,43 @@ const verifyPointStoreAccess = async (uid, lojaId) => {
   const role = normalizeRole(profile.role);
   const stores = extractStoreIds(profile);
 
-  if (role === ROLE_OWNER && stores.length === 0) {
-    return {profile, role, stores, allStores: true};
-  }
-  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT].includes(role) && stores.includes(lojaId)) {
-    return {profile, role, stores, allStores: false};
+  const allStores = role === ROLE_OWNER && stores.length === 0;
+  if (canModifyPointStore({
+    role,
+    allowedStoreIds: stores,
+    requestedStoreId: lojaId,
+    allStores,
+  })) {
+    return {profile, role, stores, allStores};
   }
   throw new HttpsError('permission-denied', 'Você não tem permissão para registrar ponto nesta loja.');
+};
+
+const verifyPointReadStoreAccess = async (uid, lojaId) => {
+  if (!uid) {
+    throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
+  }
+  if (!lojaId || lojaId === STORE_ALL_KEY) {
+    throw new HttpsError(
+        'failed-precondition',
+        'Selecione uma loja específica para consultar o ponto.',
+    );
+  }
+
+  const access = await verifyStoreReadAccess(uid);
+  if (!canViewPointStore({
+    role: access.role,
+    allowedStoreIds: access.stores,
+    requestedStoreId: lojaId,
+    allStores: access.allStores,
+  })) {
+    throw new HttpsError(
+        'permission-denied',
+        'Você não tem permissão para consultar o ponto desta loja.',
+    );
+  }
+
+  return access;
 };
 
 const POINT_DEFAULT_EXPECTED_MINUTES = 8 * 60;
@@ -1939,6 +1981,72 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
       ? 'Saída registrada sem entrada correspondente. Este ponto necessita de análise ou ajuste.'
       : `Ponto de ${actionMap[type]} registrado com sucesso!`,
   };
+});
+
+exports.listPointEmployees = onCall(async (request) => {
+  const lojaId = String(request.data?.lojaId || '').trim();
+  await verifyPointReadStoreAccess(request.auth?.uid, lojaId);
+
+  const usersSnapshot = await db.collection('users').get();
+  const employees = usersSnapshot.docs
+      .filter((userDoc) => employeeBelongsToStore(userDoc.data(), lojaId))
+      .map((userDoc) => {
+        const employee = userDoc.data() || {};
+        const sanitized = sanitizePointEmployee(employee, userDoc.id);
+        return {
+          ...sanitized,
+          jornadaTrabalho: sanitizeEmployeeWorkSchedule(
+              employee.jornadaTrabalho ||
+              employee.escalaTrabalho ||
+              employee.workSchedule,
+          ),
+          dataInicioBancoHoras: normalizePointBankStartDate(
+              employee.dataInicioBancoHoras ||
+              employee.inicioBancoHoras ||
+              employee.jornadaTrabalho?.dataInicioBancoHoras,
+          ),
+        };
+      })
+      .sort((first, second) => (
+        first.nome || first.email || first.id
+      ).localeCompare(
+          second.nome || second.email || second.id,
+          'pt-BR',
+      ));
+
+  return {lojaId, employees};
+});
+
+exports.authorizePointSheetAccess = onCall(async (request) => {
+  const lojaId = String(request.data?.lojaId || '').trim();
+  const employeeId = String(request.data?.employeeId || '').trim();
+  const access = await verifyPointReadStoreAccess(request.auth?.uid, lojaId);
+
+  if (!employeeId) {
+    throw new HttpsError(
+        'invalid-argument',
+        'Selecione um colaborador para gerar a folha de ponto.',
+    );
+  }
+
+  const employeeSnapshot = await db.collection('users').doc(employeeId).get();
+  if (!employeeSnapshot.exists) {
+    throw new HttpsError('not-found', 'Colaborador não encontrado.');
+  }
+  if (!canViewEmployeePoint({
+    role: access.role,
+    allowedStoreIds: access.stores,
+    requestedStoreId: lojaId,
+    allStores: access.allStores,
+    employee: employeeSnapshot.data(),
+  })) {
+    throw new HttpsError(
+        'permission-denied',
+        'Você não tem permissão para gerar a folha deste colaborador.',
+    );
+  }
+
+  return {authorized: true, lojaId, employeeId};
 });
 
 // Exporta o app Express como uma Cloud Function HTTP

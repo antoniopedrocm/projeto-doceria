@@ -3,7 +3,7 @@
   "description": "Cloud Functions for Firebase",
   "scripts": {
     "lint": "eslint .",
-    "test": "node --test --experimental-test-isolation=none caixa-core.test.js food99-core.test.js food99-platform-config.test.js food99-integration-contract.test.js",
+    "test": "node --test --experimental-test-isolation=none caixa-core.test.js point-access.test.js food99-core.test.js food99-platform-config.test.js food99-integration-contract.test.js",
     "test:rules": "firebase emulators:exec --config ../firebase.json --project demo-caixa-rules --only firestore \"node --test --test-concurrency=1 --experimental-test-isolation=none firestore.rules.test.js caixa-functions.integration.test.js\"",
     "test:all": "npm test && npm run test:rules",
     "serve": "firebase emulators:start --only functions",

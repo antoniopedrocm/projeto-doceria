@@ -26,6 +26,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:point-access": "node --experimental-default-type=module --test --experimental-test-isolation=none src/meuEspaco/pointAccess.node.test.mjs",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
