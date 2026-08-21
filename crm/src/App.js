@@ -39,6 +39,7 @@ import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceW
 import { updateStock as updateStockService } from './services/stockService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
+import ProducaoVitrine from './components/fornecedores/ProducaoVitrine';
 import IfoodHub from './components/ifood/IfoodHub';
 import Food99Hub from './components/food99/Food99Hub';
 import CaixaTab from './components/caixa/CaixaTab';
@@ -2176,9 +2177,9 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
             <div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Fornecedores/Estoque</h1><p className="text-gray-600 mt-1">Organize seus parceiros, compras e insumos</p></div>
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2"><div className="flex flex-wrap gap-2">
-                {['fornecedores', 'pedidos', 'estoque', 'caixa', 'receitas', 'perdas'].map(tab => (
+                {['fornecedores', 'pedidos', 'estoque', 'producao-vitrine', 'caixa', 'receitas', 'perdas'].map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
-                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'caixa' && 'Caixa'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
+                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'producao-vitrine' && 'Produção / Vitrine'}{tab === 'caixa' && 'Caixa'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
                     </button>
                 ))}
             </div></div>
@@ -2262,6 +2263,14 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                         <div className="px-4 py-6 text-center text-gray-500">Nenhum item encontrado</div>
                     )}
                 </div>
+            )}
+
+            {activeTab === 'producao-vitrine' && (
+                <ProducaoVitrine
+                    currentUser={currentUser}
+                    availableStores={availableStores}
+                    storeInfoMap={storeInfoMap}
+                />
             )}
 
             {activeTab === 'caixa' && (

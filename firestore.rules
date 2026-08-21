@@ -555,6 +555,12 @@ match /transferenciasEntreLojas/{transferenciaId} {
   allow create, update, delete: if canStaffWrite();
 }
 
+// Produção / Vitrine é manipulada exclusivamente pelas Functions para que
+// autorização, auditoria e entrada idempotente de estoque sejam atômicas.
+match /producoesVitrine/{producaoId} {
+  allow read, write: if false;
+}
+
 // --- REGRAS PARA OUTRAS COLEÇÕES (Acesso somente para usuários autenticados no CRM) ---
 match /{collection}/{document=**} {
   allow read: if isSignedIn()
@@ -563,13 +569,15 @@ match /{collection}/{document=**} {
     && collection != 'users'
     && collection != 'customProfiles'
     && collection != 'transferenciasEntreLojas'
+    && collection != 'producoesVitrine'
     && (!isReadOnlyAccountant()
       || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
   allow write: if canStaffWrite()
     && collection != 'lojas'
     && collection != 'integrations'
     && collection != 'users'
-    && collection != 'customProfiles';
+    && collection != 'customProfiles'
+    && collection != 'producoesVitrine';
 }
 
 }

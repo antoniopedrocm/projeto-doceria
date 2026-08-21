@@ -20,6 +20,7 @@ const {createIfoodFunctions} = require('./ifood');
 const {createFood99Functions} = require('./food99');
 const {createCaixaFunctions} = require('./caixa');
 const {createEntreLojasReportFunctions} = require('./entre-lojas-report');
+const {createProductionShowcaseFunctions} = require('./producao-vitrine');
 const {
   createCustomerPurchaseMetricsFunctions,
 } = require('./customer-purchase-metrics');
@@ -2567,6 +2568,14 @@ Object.assign(exports, createCaixaFunctions({
     db,
     onCall,
     onDocumentWritten,
+    HttpsError,
+    logger,
+}));
+
+Object.assign(exports, createProductionShowcaseFunctions({
+    admin,
+    db,
+    onCall,
     HttpsError,
     logger,
 }));
