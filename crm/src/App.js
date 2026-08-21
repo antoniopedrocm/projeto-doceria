@@ -3565,6 +3565,7 @@ function App() {
   const initialDataLoaded = useRef(false);
   const storeCollectionsDataRef = useRef({});
   const clientesDataRef = useRef([]);
+  const customerMetricsEnsuredStoresRef = useRef(new Set());
   const pushTokenRef = useRef(null);
   const configMigrationStatusRef = useRef(new Set());
   // --- REMOVIDO: audioRef e alarmIntervalRef ---
@@ -7686,6 +7687,31 @@ function App() {
     const defaultClientFormData = { nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", bairro: "", cidade: "Goiania", uf: "GO", codigoIbge: "5208707", aniversario: "", status: "Ativo" };
     const [formData, setFormData] = useState(defaultClientFormData);
 
+    useEffect(() => {
+      const storeIds = isGeneralViewSelected
+        ? availableStores
+        : [selectedStoreIdForAlarm].filter(Boolean);
+      storeIds.forEach((storeId) => {
+        if (customerMetricsEnsuredStoresRef.current.has(storeId)) return;
+        customerMetricsEnsuredStoresRef.current.add(storeId);
+        const ensureMetrics = httpsCallable(functions, 'ensureCustomerPurchaseMetrics');
+        ensureMetrics({ lojaId: storeId }).catch((error) => {
+          customerMetricsEnsuredStoresRef.current.delete(storeId);
+          console.error('[Clientes] Falha ao sincronizar histórico de compras:', error);
+        });
+      });
+    }, []);
+
+    const getPurchaseMetrics = (client) => {
+      if (!isGeneralViewSelected && selectedStoreIdForAlarm) {
+        return client.metricasComprasPorLoja?.[selectedStoreIdForAlarm] || {
+          valorEmCompras: 0,
+          ultimaCompra: null
+        };
+      }
+      return client;
+    };
+
     const filteredClients = useMemo(() => {
       const term = searchTerm.toLowerCase();
       const digitsTerm = searchTerm.replace(/\D/g, '');
@@ -7768,8 +7794,8 @@ function App() {
             return `${day}/${month}`;
           }
         },
-        { header: "Valor em Compras", render: (row) => (<span className="font-semibold text-green-600">R$ {(row.valorEmCompras || 0).toFixed(2)}</span>) },
-        { header: "Última Compra", render: (row) => row.ultimaCompra ? getJSDate(row.ultimaCompra)?.toLocaleDateString('pt-BR') : '-' },
+        { header: "Valor em Compras", render: (row) => { const metrics = getPurchaseMetrics(row); return (<span className="font-semibold text-green-600">R$ {(metrics.valorEmCompras || 0).toFixed(2)}</span>); } },
+        { header: "Última Compra", render: (row) => { const metrics = getPurchaseMetrics(row); return metrics.ultimaCompra ? getJSDate(metrics.ultimaCompra)?.toLocaleDateString('pt-BR') : '-'; } },
         { header: "Status", render: (row) => (<span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'VIP' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>{row.status}</span>) }
     ];
     const actions = [ { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('clientes', row.id) }) } ];
