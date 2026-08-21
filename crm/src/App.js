@@ -17933,7 +17933,7 @@ const handleSubmit = async (e) => {
       case 'pedidos': return userHasPermission('pedidos') ? <Pedidos /> : <PaginaInicial />;
       case 'entre-lojas': return userHasPermission('entre-lojas') ? <EntreLojas /> : <PaginaInicial />;
       case 'agenda': return userHasPermission('agenda') ? <Agenda /> : <PaginaInicial />;
-      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} /> : <PaginaInicial />;
+      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} availableStores={availableStores} storeInfoMap={storeInfoMap} /> : <PaginaInicial />;
       case 'relatorios': return userHasPermission('relatorios') ? (
         <Relatorios
           data={data}
