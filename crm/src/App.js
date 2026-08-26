@@ -60,6 +60,13 @@ import PostClosingConfirmation from './components/caixa/PostClosingConfirmation'
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
 import { Capacitor } from '@capacitor/core';
+import { Car as RideCar } from 'lucide-react';
+import {
+  build99OpenUrl,
+  buildRideAddresses,
+  buildUberRideUrl,
+  isDeliveryOrder
+} from './utils/rideService';
 
 // ✅ CORREÇÃO: URL local para evitar erro de pré-condição no Firebase Storage
 const ALARM_SOUND_URL = '/audio/alarm.mp3';
@@ -1634,6 +1641,53 @@ const toDateInputValue = (date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const RideConfirmationModal = ({ request, onClose, onConfirm }) => {
+  if (!request) return null;
+
+  const isUber = request.service === 'uber';
+  const serviceName = isUber ? 'Uber' : '99';
+
+  return (
+    <Modal isOpen={!!request} onClose={onClose} title="Solicitar corrida" size="md">
+      <div className="space-y-4 text-sm text-gray-700">
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Origem</p>
+          <p className="font-semibold text-gray-900">{request.addresses.origin.name}</p>
+          <p className="mt-1">{request.addresses.origin.address}</p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Destino</p>
+          <p className="font-semibold text-gray-900">{request.addresses.destination.name}</p>
+          <p className="mt-1">{request.addresses.destination.address}</p>
+        </div>
+
+        {!isUber && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
+            A 99 não publica atualmente parâmetros oficiais para preencher origem e destino. O aplicativo será aberto pelo link oficial; confira os endereços acima antes de solicitar a corrida.
+          </p>
+        )}
+
+        <p className="text-xs text-gray-500">
+          A corrida não será solicitada automaticamente. Confira categoria e preço no aplicativo antes de confirmar.
+        </p>
+
+        <div className="flex flex-col-reverse justify-end gap-3 pt-2 sm:flex-row">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            onClick={onConfirm}
+            className={isUber
+              ? 'bg-gradient-to-r from-gray-800 to-black text-white hover:from-black hover:to-gray-900'
+              : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900 hover:from-yellow-500 hover:to-amber-600'}
+          >
+            <RideCar className="h-4 w-4" /> Abrir {serviceName}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
 };
 
 const normalizePointBankStartDate = (value) => {
@@ -10561,9 +10615,11 @@ const effectiveStoreName = useMemo(() => {
     const [editingOrder, setEditingOrder] = useState(null);
     const [isSavingOrder, setIsSavingOrder] = useState(false);
     const [saveOrderError, setSaveOrderError] = useState('');
-    const [formData, setFormData] = useState({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
+    const [formData, setFormData] = useState({ clienteId: '', clienteNome: '', clienteEndereco: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
     const [viewingOrder, setViewingOrder] = useState(null);
-            const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
+    const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
+    const [rideRequest, setRideRequest] = useState(null);
+    const [rideFeedback, setRideFeedback] = useState('');
     const [descontoValor, setDescontoValor] = useState('');
     const [descontoPercentual, setDescontoPercentual] = useState('');
     const [productSearchTerm, setProductSearchTerm] = useState('');
@@ -10580,6 +10636,48 @@ const effectiveStoreName = useMemo(() => {
             return false;
         }
         return deliveryProviders.length > 0;
+    };
+
+    const getRideAddressesForOrder = (order) => {
+        const store = storeInfoMap[order?.lojaId] || {};
+        return buildRideAddresses(order, store);
+    };
+
+    const prepareRideRequest = (order, service) => {
+        setRideFeedback('');
+        const addresses = getRideAddressesForOrder(order);
+
+        if (!addresses.destination.address) {
+            setRideFeedback('Este pedido não possui endereço de entrega válido para solicitar uma corrida.');
+            return;
+        }
+        if (!addresses.origin.address) {
+            setRideFeedback('A loja não possui endereço completo cadastrado para utilizar esta função.');
+            return;
+        }
+
+        setRideRequest({ service, addresses });
+    };
+
+    const openPreparedRide = () => {
+        if (!rideRequest) return;
+
+        try {
+            const url = rideRequest.service === 'uber'
+                ? buildUberRideUrl({
+                    ...rideRequest.addresses,
+                    clientId: process.env.REACT_APP_UBER_CLIENT_ID || ''
+                })
+                : build99OpenUrl();
+            const openedWindow = window.open(url, '_blank');
+            if (openedWindow) openedWindow.opener = null;
+            else window.location.assign(url);
+            setRideRequest(null);
+        } catch (error) {
+            console.error('[Ride] Não foi possível abrir o serviço de mobilidade.', error);
+            setRideFeedback(`Não foi possível abrir o aplicativo ${rideRequest.service === 'uber' ? 'Uber' : '99'} neste dispositivo.`);
+            setRideRequest(null);
+        }
     };
 
     const pedidosComNomes = (data.pedidos || []).map(pedido => {
@@ -10640,7 +10738,7 @@ const effectiveStoreName = useMemo(() => {
     const resetForm = () => {
         setEditingOrder(null);
         setSaveOrderError('');
-        setFormData({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
+        setFormData({ clienteId: '', clienteNome: '', clienteEndereco: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
         setDescontoValor('');
         setDescontoPercentual('');
         setProductSearchTerm('');
@@ -10738,9 +10836,11 @@ const handleSubmit = async (e) => {
     });
     // Garante que clienteNome seja definido mesmo se não for encontrado
     const clienteSelecionado = data.clientes.find(c => c.id === formData.clienteId);
-    const orderData = { 
-        ...formData, 
-        clienteNome: clienteSelecionado ? clienteSelecionado.nome : 'Cliente não selecionado' 
+    const orderAddressSnapshot = formData.clienteEndereco || getClientPrimaryAddressText(clienteSelecionado);
+    const orderData = {
+        ...formData,
+        clienteNome: clienteSelecionado ? clienteSelecionado.nome : 'Cliente não selecionado',
+        clienteEndereco: orderAddressSnapshot || ''
     };
 
     try {
@@ -10879,6 +10979,7 @@ const handleSubmit = async (e) => {
         const defaultOrderData = {
             clienteId: '',
             clienteNome: '',
+            clienteEndereco: '',
             itens: [],
             subtotal: 0,
             desconto: 0,
@@ -10947,7 +11048,22 @@ const handleSubmit = async (e) => {
             <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingOrder ? "Editar Pedido" : "Novo Pedido"} size="xl">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Select label="Cliente" value={formData.clienteId} onChange={(e) => setFormData({...formData, clienteId: e.target.value})} required><option value="">Selecione um cliente</option>{data.clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</Select>
+                        <Select
+                            label="Cliente"
+                            value={formData.clienteId}
+                            onChange={(e) => {
+                                const selectedClient = data.clientes.find((client) => client.id === e.target.value);
+                                setFormData({
+                                    ...formData,
+                                    clienteId: e.target.value,
+                                    clienteEndereco: getClientPrimaryAddressText(selectedClient)
+                                });
+                            }}
+                            required
+                        >
+                            <option value="">Selecione um cliente</option>
+                            {data.clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                        </Select>
                         <Select label="Status" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})} required><option>Pendente</option><option>Em Produção</option><option>Pronto para Entrega</option><option>Finalizado</option><option>Cancelado</option></Select>
                         <Select label="Categoria do Pedido" value={formData.categoria} onChange={(e) => setFormData({...formData, categoria: e.target.value, itens: [], total: 0})} required>
                             <option value="Delivery">Delivery</option>
@@ -11018,12 +11134,14 @@ const handleSubmit = async (e) => {
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit" disabled={isSavingOrder}><Save className="w-4 h-4" />{isSavingOrder ? "Salvando..." : (editingOrder ? "Salvar Alterações" : "Criar Pedido")}</Button></div>
                 </form>
             </Modal>
-            <Modal isOpen={!!viewingOrder} onClose={() => setViewingOrder(null)} title="Detalhes do Pedido" size="lg">
+            <Modal isOpen={!!viewingOrder} onClose={() => { setViewingOrder(null); setRideRequest(null); setRideFeedback(''); }} title="Detalhes do Pedido" size="lg">
                 {viewingOrder && (() => {
                     const cliente = data.clientes.find(c => c.id === viewingOrder.clienteId);
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
                     const cpfCliente = viewingOrder.clienteDocumento || cliente?.cpf || cliente?.documento || '';
+                    const rideAddresses = getRideAddressesForOrder(viewingOrder);
+                    const showRideActions = isDeliveryOrder(viewingOrder);
                     const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
 					const frete = parseFloat(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0) || 0;
 
@@ -11203,7 +11321,37 @@ const handleSubmit = async (e) => {
                                     <Truck className="w-4 h-4" />
                                     Enviar Endereço para Entregador
                                 </Button>
+                                {showRideActions && rideAddresses.destination.address && (
+                                    <>
+                                        <Button
+                                            onClick={() => prepareRideRequest(viewingOrder, 'uber')}
+                                            className="bg-gradient-to-r from-gray-800 to-black text-white hover:from-black hover:to-gray-900"
+                                            size="sm"
+                                        >
+                                            <RideCar className="w-4 h-4" />
+                                            Chamar Uber
+                                        </Button>
+                                        <Button
+                                            onClick={() => prepareRideRequest(viewingOrder, '99')}
+                                            className="bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900 hover:from-yellow-500 hover:to-amber-600"
+                                            size="sm"
+                                        >
+                                            <RideCar className="w-4 h-4" />
+                                            Chamar 99
+                                        </Button>
+                                    </>
+                                )}
                             </div>
+                            {showRideActions && !rideAddresses.destination.address && (
+                                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                                    Este pedido não possui endereço de entrega válido para solicitar uma corrida.
+                                </p>
+                            )}
+                            {rideFeedback && (
+                                <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                    {rideFeedback}
+                                </p>
+                            )}
                         </div>
                     );
                 })()}
@@ -11214,6 +11362,11 @@ const handleSubmit = async (e) => {
                 clientes={data.clientes}
                 fornecedores={data.fornecedores}
                 onClose={() => setOrderToSendToDeliverer(null)}
+            />
+            <RideConfirmationModal
+                request={rideRequest}
+                onClose={() => setRideRequest(null)}
+                onConfirm={openPreparedRide}
             />
         </div>
     );
