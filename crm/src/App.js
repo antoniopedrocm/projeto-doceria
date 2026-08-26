@@ -1113,7 +1113,13 @@ const getOrderItemProductId = (item) => item?.produtoId || item?.productId || it
 
 const getClientPrimaryAddressText = (cliente = {}) => {
   if (typeof cliente.endereco === 'string' && cliente.endereco.trim()) {
-    return cliente.endereco.trim();
+    return [
+      [cliente.endereco.trim(), cliente.numero].filter(Boolean).join(', '),
+      cliente.complemento,
+      cliente.bairro,
+      [cliente.cidade, cliente.uf || cliente.estado].filter(Boolean).join(' - '),
+      cliente.cep ? `CEP ${cliente.cep}` : ''
+    ].filter(Boolean).join(', ');
   }
 
   const firstAddress = Array.isArray(cliente.enderecos) ? cliente.enderecos[0] : null;
@@ -1126,8 +1132,8 @@ const getClientPrimaryAddressText = (cliente = {}) => {
     firstAddress.numero,
     firstAddress.complemento,
     firstAddress.bairro,
-    firstAddress.cidade,
-    firstAddress.cep,
+    [firstAddress.cidade, firstAddress.uf || firstAddress.estado].filter(Boolean).join(' - '),
+    firstAddress.cep ? `CEP ${firstAddress.cep}` : '',
   ].filter(Boolean).join(', ');
 };
 
