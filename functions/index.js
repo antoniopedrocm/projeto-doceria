@@ -18,6 +18,16 @@ const crypto = require('crypto');
 const {createFiscalFunctions} = require('./fiscal');
 const {createIfoodFunctions} = require('./ifood');
 const {createFood99Functions} = require('./food99');
+const {createCaixaFunctions} = require('./caixa');
+const {createEntreLojasReportFunctions} = require('./entre-lojas-report');
+const {createProductionShowcaseFunctions} = require('./producao-vitrine');
+const {
+  createCustomerPurchaseMetricsFunctions,
+} = require('./customer-purchase-metrics');
+const {
+  defaultCashPermissions,
+  sanitizeCashPermissions,
+} = require('./caixa-core');
 
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
@@ -137,6 +147,7 @@ const getDefaultPermissionsForRole = (role) => {
     pedidos: true,
     'entre-lojas': true,
     agenda: true,
+    fornecedores: true,
     'meu-espaco': true,
   };
 };
@@ -150,6 +161,10 @@ const sanitizePermissions = (permissions, role) => {
   return MENU_PERMISSION_KEYS.reduce((acc, key) => {
     if (normalizeRole(role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(key)) {
       acc[key] = false;
+      return acc;
+    }
+    if (normalizeRole(role) === ROLE_ATTENDANT && key === 'fornecedores') {
+      acc[key] = true;
       return acc;
     }
     if (Object.prototype.hasOwnProperty.call(permissions, key)) {
@@ -167,39 +182,40 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
     'entre-lojas': {
       statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : [],
     },
+    caixa: permissions?.fornecedores ?
+      defaultCashPermissions(role) :
+      defaultCashPermissions(ROLE_ACCOUNTANT),
   };
 };
 
 const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = null) => {
   const permissions = permissionsInput || getDefaultPermissionsForRole(role);
-
-  if (!permissions?.['entre-lojas']) {
-    return {'entre-lojas': {statuses: []}};
-  }
-
   const details = permissionDetails && typeof permissionDetails === 'object' ? permissionDetails : null;
   const entreLojasDetails = details?.['entre-lojas'] || details?.entreLojas || null;
+  const rawStatuses = permissions?.['entre-lojas'] && entreLojasDetails ?
+    (Array.isArray(entreLojasDetails.statuses) ?
+      entreLojasDetails.statuses :
+      (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : [])) :
+    (permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : []);
+  const statuses = Array.from(new Set(rawStatuses
+      .map((status) => String(status || '').trim())
+      .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status))));
+  const caixaDetails = details?.caixa || details?.cash || null;
 
-  if (!entreLojasDetails) {
-    return getDefaultPermissionDetailsForRole(role, permissions);
-  }
-
-  const rawStatuses = Array.isArray(entreLojasDetails.statuses)
-    ? entreLojasDetails.statuses
-    : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []);
-
-  const statuses = Array.from(new Set(
-      rawStatuses
-          .map((status) => String(status || '').trim())
-          .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status)),
-  ));
-
-  return {'entre-lojas': {statuses}};
+  return {
+    'entre-lojas': {statuses},
+    caixa: permissions?.fornecedores ?
+      sanitizeCashPermissions(caixaDetails, role) :
+      defaultCashPermissions(ROLE_ACCOUNTANT),
+  };
 };
 
 const ensureCustomProfile = async (uid, role, permissionsInput = null, permissionDetailsInput = null) => {
   const permissions = sanitizePermissions(permissionsInput, role);
-  const permissionDetails = sanitizePermissionDetails(permissionDetailsInput, role, permissions);
+  const permissionDetails = permissionDetailsInput &&
+    typeof permissionDetailsInput === 'object' ?
+    sanitizePermissionDetails(permissionDetailsInput, role, permissions) :
+    getDefaultPermissionDetailsForRole(role, permissions);
   await db.collection('customProfiles').doc(uid).set({
     uid,
     permissions,
@@ -337,6 +353,29 @@ const verifyPointStoreAccess = async (uid, lojaId) => {
     return {profile, role, stores, allStores: false};
   }
   throw new HttpsError('permission-denied', 'Você não tem permissão para registrar ponto nesta loja.');
+};
+
+const verifyCustomerMetricsStoreAccess = async (uid, lojaId) => {
+  if (!uid) {
+    throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
+  }
+  const profile = await getUserProfile(uid);
+  if (!Object.keys(profile).length) {
+    throw new HttpsError('permission-denied', 'Perfil de usuário não encontrado.');
+  }
+  const role = normalizeRole(profile.role);
+  const stores = extractStoreIds(profile);
+  if (role === ROLE_OWNER && stores.length === 0) return;
+  if (
+    [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT].includes(role) &&
+    stores.includes(lojaId)
+  ) {
+    return;
+  }
+  throw new HttpsError(
+      'permission-denied',
+      'Você não tem permissão para sincronizar clientes desta loja.',
+  );
 };
 
 const POINT_DEFAULT_EXPECTED_MINUTES = 8 * 60;
@@ -2502,6 +2541,61 @@ exports.notifyNewOrder = onDocumentCreated({
         logger.error("Erro ao enviar notificações de novo pedido:", error);
     }
 });
+
+const onActiveEntreLojasReportCall = (options, handler) => onCall(
+    options,
+    async (request) => {
+      const uid = request.auth?.uid;
+      if (!uid) {
+        throw new HttpsError('unauthenticated', 'Autenticação obrigatória.');
+      }
+      const profileSnapshot = await db.collection('users').doc(uid).get();
+      const profile = profileSnapshot.exists ? profileSnapshot.data() || {} : {};
+      const status = String(profile.status || '').trim().toLowerCase();
+      if (!profileSnapshot.exists || profile.ativo === false ||
+        profile.authDisabled === true || status === 'inativo') {
+        throw new HttpsError(
+            'permission-denied',
+            'Sua conta está inativa ou não possui perfil válido.',
+        );
+      }
+      return handler(request);
+    },
+);
+
+Object.assign(exports, createCaixaFunctions({
+    admin,
+    db,
+    onCall,
+    onDocumentWritten,
+    HttpsError,
+    logger,
+}));
+
+Object.assign(exports, createProductionShowcaseFunctions({
+    admin,
+    db,
+    onCall,
+    HttpsError,
+    logger,
+}));
+
+Object.assign(exports, createEntreLojasReportFunctions({
+    db,
+    onCall: onActiveEntreLojasReportCall,
+    HttpsError,
+    logger,
+}));
+
+Object.assign(exports, createCustomerPurchaseMetricsFunctions({
+    admin,
+    db,
+    onCall,
+    onDocumentWritten,
+    HttpsError,
+    logger,
+    verifyStoreAccess: verifyCustomerMetricsStoreAccess,
+}));
 
 Object.assign(exports, createFiscalFunctions({
     admin,

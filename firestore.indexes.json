@@ -1,5 +1,185 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "caixas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "temValorEncerramento", "order": "ASCENDING" },
+        { "fieldPath": "dataOperacional", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "conferenciasCaixa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "responsavelEncerramentoUid", "order": "ASCENDING" },
+        { "fieldPath": "dataOperacional", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "conferenciasCaixa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "temDivergencia", "order": "ASCENDING" },
+        { "fieldPath": "dataOperacional", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "conferenciasCaixa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "responsavelEncerramentoUid", "order": "ASCENDING" },
+        { "fieldPath": "temDivergencia", "order": "ASCENDING" },
+        { "fieldPath": "dataOperacional", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sangriasCaixa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dataOperacional", "order": "DESCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sangriasCaixa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "responsavelUid", "order": "ASCENDING" },
+        { "fieldPath": "dataOperacional", "order": "DESCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "alertas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "alertas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "alertas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "situacao", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "alertas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "severidade", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "categoria", "order": "ASCENDING" },
+        { "fieldPath": "lida", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "categoria", "order": "ASCENDING" },
+        { "fieldPath": "lida", "order": "ASCENDING" },
+        { "fieldPath": "lojaId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lida", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lojaId", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lida", "order": "ASCENDING" },
+        { "fieldPath": "lojaId", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lida", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lojaId", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notificacoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lida", "order": "ASCENDING" },
+        { "fieldPath": "lojaId", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transferenciasEntreLojas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lojaOrigemId", "order": "ASCENDING" },
+        { "fieldPath": "dataRemessa", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transferenciasEntreLojas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lojaDestinoId", "order": "ASCENDING" },
+        { "fieldPath": "dataRemessa", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": [
     {
       "collectionGroup": "invoices",

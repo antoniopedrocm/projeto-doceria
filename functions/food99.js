@@ -1,15 +1,49 @@
 const crypto = require('crypto');
 const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
+const {
+  CURRENT_FOOD99_HOST,
+  FOOD99_ENVIRONMENTS,
+  alertFingerprint,
+  canRunAuthorizedOperation,
+  catalogQueueKey,
+  classifyFood99Failure,
+  constantTimeEqual,
+  dedupeIds,
+  environmentDocId,
+  extractFood99AppIdFromRawBody,
+  findBoundFood99Shop,
+  friendlyFood99Error,
+  jitteredBackoffMs,
+  lockKey,
+  mappingDocId,
+  nextCatalogAttemptAt,
+  normalizeFood99Environment,
+  parseFood99JsonPreservingLargeIntegers,
+  resolveFood99BaseUrl,
+  safeKeyPart,
+  sanitizeLogContext,
+  secretSafePublicConfig,
+  shouldRefreshToken,
+  signFood99Params,
+  signFood99Webhook,
+  tokenCacheKey,
+  validateAuthorizationUrl,
+  validateFood99ApiBaseUrl,
+  validatePublicWebhookUrl,
+} = require('./food99-core');
 
 const secretManager = new SecretManagerServiceClient();
 const tokenCache = new Map();
+const tokenFlights = new Map();
 
 const PROVIDER = 'food99';
-const DEFAULT_API_URL = 'https://openapi.didi-food.com';
-const DEFAULT_AUTH_URL = 'https://openapi.didi-food.com';
-const DEFAULT_FOOD99_ENVIRONMENT = 'production';
+const DEFAULT_API_URL = CURRENT_FOOD99_HOST;
+const DEFAULT_AUTH_URL = CURRENT_FOOD99_HOST;
+const DEFAULT_FOOD99_ENVIRONMENT = FOOD99_ENVIRONMENTS.DEVELOPMENT;
 const AUTH_TOKEN_GET_PATH = '/v1/auth/authtoken/get';
 const AUTH_TOKEN_REFRESH_PATH = '/v1/auth/authtoken/refresh';
+const AUTHORIZATION_PAGE_PATH = '/v1/auth/authorizationpage/getUrl';
+const BOUND_SHOPS_LIST_PATH = '/v1/shop/shop/list';
 const ORDER_DETAIL_PATH = '/v1/order/order/detail';
 const ORDER_CONFIRM_PATH = '/v1/order/order/confirm';
 const ORDER_CANCEL_PATH = '/v1/order/order/cancel';
@@ -21,6 +55,10 @@ const CATALOG_UPLOAD_PATH = '/v3/item/item/upload';
 const ITEM_STATUS_PATH = '/v3/item/item/updateItemStatus';
 const CATALOG_CACHE_DOC_ID = 'catalogCache';
 const CATALOG_CACHE_TTL_MS = 120 * 1000;
+const AUTH_LOCK_TTL_MS = 120 * 1000;
+const BOUND_SHOPS_RATE_WINDOW_MS = 20 * 1000;
+const CATALOG_LOCK_TTL_MS = 90 * 1000;
+const HTTP_TIMEOUT_MS = 15 * 1000;
 const ACTIVE_EXTERNAL_STATUSES = new Set([
   'PLACED',
   'CONFIRMED',
@@ -30,7 +68,6 @@ const ACTIVE_EXTERNAL_STATUSES = new Set([
 ]);
 const TERMINAL_EXTERNAL_STATUSES = new Set(['CONCLUDED', 'CANCELLED']);
 const LIFECYCLE_EXTERNAL_STATUSES = new Set([...ACTIVE_EXTERNAL_STATUSES, ...TERMINAL_EXTERNAL_STATUSES]);
-const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 const DEFAULT_TIMEZONE = 'America/Sao_Paulo';
 const COMPLETED_APP_STATUSES = new Set(['finalizado', 'concluido', 'concluído', 'completed', 'complete', 'finished', 'delivered']);
 const CANCELLED_APP_STATUSES = new Set(['cancelado', 'cancelled', 'canceled']);
@@ -127,55 +164,13 @@ const isCancelledOrderStatus = (order = {}) => {
   return CANCELLED_APP_STATUSES.has(status);
 };
 
-const maskSecret = (value) => {
-  const text = cleanText(value);
-  if (!text) return '';
-  if (text.length <= 4) return '*'.repeat(text.length);
-  return `****${text.slice(-4)}`;
-};
-
 const fingerprintSecret = (value) => {
   const text = String(value || '');
   return text ? crypto.createHash('sha256').update(text).digest('hex').slice(0, 16) : '';
 };
 
-const describeValue = (value) => {
-  if (value == null || value === '') return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) return value.map(describeValue).filter(Boolean).join(', ');
-  if (typeof value === 'object') {
-    const preferred = [
-      value.message,
-      value.error,
-      value.description,
-      value.detail,
-      value.details,
-      value.reason,
-      value.code,
-    ].map(describeValue).filter(Boolean);
-    const knownLists = [
-      value.unauthorizedMerchants && `merchants sem permissao: ${describeValue(value.unauthorizedMerchants)}`,
-      value.errors && `erros: ${describeValue(value.errors)}`,
-      value.violations && `violacoes: ${describeValue(value.violations)}`,
-    ].filter(Boolean);
-    const combined = [...preferred, ...knownLists].join(' | ');
-    return combined || JSON.stringify(value);
-  }
-  return String(value);
-};
-
-const food99ErrorDetail = (payload = {}) => {
-  const detail = describeValue(payload);
-  return detail || 'sem detalhe';
-};
-
-const normalizeEnvironment = (value) => {
-  const normalized = cleanText(value).toLowerCase();
-  if (['sandbox', 'homologacao', 'homologação', 'test', 'teste'].includes(normalized)) return 'sandbox';
-  if (['production', 'producao', 'produção', 'prod'].includes(normalized)) return 'production';
-  return DEFAULT_FOOD99_ENVIRONMENT;
-};
+const normalizeEnvironment = (value) => normalizeFood99Environment(value, DEFAULT_FOOD99_ENVIRONMENT);
+const strictEnvironment = (value) => normalizeFood99Environment(value, '');
 
 const getRequestIp = (request) => {
   const raw = request.rawRequest || {};
@@ -192,7 +187,6 @@ const hasGlobalConfigPayload = (payload = {}) => [
   'apiBaseUrl',
   'authUrl',
   'webhookUrl',
-  'environment',
   'inventoryEndpointTemplate',
   'inventoryMethod',
 ].some((field) => isNonEmptyString(payload[field]));
@@ -260,6 +254,11 @@ const addSecretVersion = async (resourceName, value) => {
     payload: {data: Buffer.from(String(value), 'utf8')},
   });
   return version.name;
+};
+
+const destroySecretVersion = async (versionName) => {
+  if (!versionName) return;
+  await secretManager.destroySecretVersion({name: versionName});
 };
 
 const accessSecret = async (versionName) => {
@@ -355,6 +354,85 @@ const extractOrderIds = (payload) => {
   visit(payload);
   return [...found];
 };
+
+const secretValuesEqual = (left, right) => {
+  const leftBuffer = Buffer.from(String(left || ''), 'utf8');
+  const rightBuffer = Buffer.from(String(right || ''), 'utf8');
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const extractAppShopIds = (payload) => {
+  const found = new Set();
+  const visit = (node, key = '') => {
+    if (node == null) return;
+    if (Array.isArray(node)) {
+      node.forEach((value) => visit(value, key));
+      return;
+    }
+    if (typeof node === 'object') {
+      Object.entries(node).forEach(([childKey, value]) => visit(value, childKey));
+      return;
+    }
+    const normalizedKey = cleanText(key).toLowerCase().replace(/_/g, '');
+    if (['appshopid', 'appshopidlist'].includes(normalizedKey)) {
+      const value = cleanText(node);
+      if (value) found.add(value);
+    }
+  };
+  visit(payload);
+  return [...found];
+};
+
+const isShopBindStatusEvent = (payload = {}) => cleanText(
+  payload.event_type
+  || payload.eventType
+  || payload.event
+  || payload.type
+  || payload.biz_type
+  || payload.data?.event_type
+  || payload.data?.eventType
+  || payload.data?.event
+  || payload.data?.type
+).toLowerCase().replace(/[^a-z]/g, '').includes('shopbindstatus');
+
+const isAuthorizedBindStatus = (payload = {}) => {
+  const raw = payload.bindStatus ?? payload.bind_status ?? payload.data?.bindStatus ?? payload.data?.bind_status;
+  const normalized = cleanText(raw).toLowerCase();
+  return raw === true || Number(raw) === 1 || ['bound', 'bind', 'authorized', 'success'].includes(normalized);
+};
+
+const bindStatusDecision = (payload = {}) => {
+  const raw = payload.bindStatus ?? payload.bind_status ?? payload.data?.bindStatus ?? payload.data?.bind_status;
+  const normalized = cleanText(raw).toLowerCase();
+  if (isAuthorizedBindStatus(payload)) return true;
+  if (raw === false
+    || (normalized && Number(raw) === 0)
+    || ['unbound', 'unbind', 'revoked', 'revoke'].includes(normalized)) return false;
+  return null;
+};
+
+const bindEventTimestampMs = (payload = {}) => {
+  const raw = payload.timestamp
+    ?? payload.event_timestamp
+    ?? payload.eventTimestamp
+    ?? payload.data?.timestamp
+    ?? payload.data?.event_timestamp
+    ?? payload.data?.eventTimestamp;
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return numeric > 100000000000 ? Math.floor(numeric) : Math.floor(numeric * 1000);
+};
+
+const bindEventFingerprint = ({appId, environment, appShopIds, authorized, timestampMs}) => crypto
+  .createHash('sha256')
+  .update(JSON.stringify({
+    appId: cleanText(appId),
+    environment: strictEnvironment(environment),
+    appShopIds: dedupeIds(appShopIds).sort(),
+    authorized: Boolean(authorized),
+    timestampMs: Math.max(0, Number(timestampMs) || 0),
+  }), 'utf8')
+  .digest('hex');
 
 const normalizeOrderDetail = (event, detail, mappingIndex) => {
   const data = detail.data || detail;
@@ -464,6 +542,11 @@ const createFood99Functions = ({
   verifyManagementAccess,
   userHasAccessToStores,
   STORE_ALL_KEY,
+  food99SecretAccess = accessSecret,
+  food99SecretEnsure = ensureSecret,
+  food99SecretAddVersion = addSecretVersion,
+  food99SecretDestroyVersion = destroySecretVersion,
+  food99Fetch = fetch,
 }) => {
   const FieldValue = admin.firestore.FieldValue;
 
@@ -491,8 +574,6 @@ const createFood99Functions = ({
     const code = String(error.code || '').toUpperCase();
     logger.error('[99Food] platform secret save failed', {
       code: error.code,
-      message: error.message,
-      details: error.details,
     });
     if (code === '7' || code === 'PERMISSION_DENIED') {
       throw new HttpsError(
@@ -518,42 +599,183 @@ const createFood99Functions = ({
     );
   };
 
-  const configRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99').doc('config');
+  const legacyConfigRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99').doc('config');
+  const configRef = (lojaId, environment) => db.collection('lojas').doc(lojaId).collection('food99')
+    .doc(`config_${normalizeEnvironment(environment)}`);
   const platformConfigRef = () => db.collection('integrations').doc('food99');
+  const platformEnvironmentConfigRef = (environment) => platformConfigRef().collection('environments')
+    .doc(normalizeEnvironment(environment));
   const platformAuditCollection = () => platformConfigRef().collection('audit');
-  const healthRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99Health').doc('status');
+  const healthRef = (lojaId, environment) => db.collection('lojas').doc(lojaId).collection('food99Health')
+    .doc(`status_${normalizeEnvironment(environment)}`);
+  const legacyHealthRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99Health').doc('status');
   const auditCollection = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99Audit');
   const alertCollection = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99Alerts');
-  const catalogCacheRef = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99').doc(CATALOG_CACHE_DOC_ID);
+  const catalogCacheRef = (lojaId, environment, appKey = 'app') => db.collection('lojas').doc(lojaId)
+    .collection('food99').doc(environmentDocId(CATALOG_CACHE_DOC_ID, environment, appKey));
+  const authorizationRef = (lojaId, environment, appKey = 'app') => db.collection('lojas').doc(lojaId)
+    .collection('food99').doc(environmentDocId('authorization', environment, appKey));
+  const authorizationCheckRateRef = (environment, appKey = 'app') => platformConfigRef()
+    .collection('rateLimits').doc(environmentDocId('shop_list', environment, appKey));
+  const authorizationSearchRef = (lojaId, environment, appKey = 'app') => db.collection('lojas').doc(lojaId)
+    .collection('food99').doc(environmentDocId('authorization_search', environment, appKey));
+  const platformLockRef = (key) => platformConfigRef().collection('locks').doc(key);
+  const catalogQueueRef = (environment, appKey) => platformConfigRef().collection('catalogQueues')
+    .doc(catalogQueueKey({environment, appKey}));
+  const mappingCollection = (lojaId) => db.collection('lojas').doc(lojaId).collection('food99ProductMappings');
+  const scopedMappingRef = (lojaId, productId, environment) => mappingCollection(lojaId)
+    .doc(mappingDocId(environment, productId));
+
+  const mappingBelongsToEnvironment = (mapping = {}, environment) => {
+    const recordEnvironment = strictEnvironment(mapping.environment);
+    return recordEnvironment
+      ? recordEnvironment === environment
+      : environment === FOOD99_ENVIRONMENTS.PRODUCTION;
+  };
+
+  const readProductMapping = async (lojaId, productId, environment) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
+    const writeRef = scopedMappingRef(lojaId, productId, effectiveEnvironment);
+    const scopedSnap = await writeRef.get();
+    if (scopedSnap.exists || effectiveEnvironment !== FOOD99_ENVIRONMENTS.PRODUCTION) {
+      return {snapshot: scopedSnap, writeRef, legacy: false};
+    }
+    const legacySnap = await mappingCollection(lojaId).doc(productId).get();
+    return {snapshot: legacySnap, writeRef, legacy: legacySnap.exists};
+  };
+
+  const dedupeMappingDocs = (docs = [], environment) => {
+    const byProductId = new Map();
+    docs
+      .filter((doc) => mappingBelongsToEnvironment(doc.data() || {}, environment))
+      .sort((left, right) => Number(Boolean(strictEnvironment(left.get('environment'))))
+        - Number(Boolean(strictEnvironment(right.get('environment')))))
+      .forEach((doc) => {
+        const productId = cleanText(doc.get('productId')) || doc.id;
+        byProductId.set(productId, doc);
+      });
+    return [...byProductId.values()];
+  };
+
+  const requestEnvironment = (request) => {
+    const environment = strictEnvironment(request.data?.environment);
+    if (!environment) {
+      throw new HttpsError('invalid-argument', 'Selecione explicitamente o ambiente Desenvolvimento ou Produção.');
+    }
+    return environment;
+  };
+
+  const dateMillis = (value) => {
+    if (!value) return 0;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    if (typeof value.toDate === 'function') return value.toDate().getTime();
+    if (value instanceof Date) return value.getTime();
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+
+  const readPlatformConfig = async (environment) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
+    const scopedSnap = await platformEnvironmentConfigRef(effectiveEnvironment).get();
+    if (effectiveEnvironment !== FOOD99_ENVIRONMENTS.PRODUCTION) {
+      return scopedSnap.exists
+        ? {id: scopedSnap.id, ...scopedSnap.data(), environment: effectiveEnvironment}
+        : {environment: effectiveEnvironment};
+    }
+    const legacySnap = await platformConfigRef().get();
+    if (scopedSnap.exists) {
+      return {
+        ...(legacySnap.exists ? legacySnap.data() : {}),
+        id: scopedSnap.id,
+        ...scopedSnap.data(),
+        environment: effectiveEnvironment,
+        legacyFallback: legacySnap.exists,
+      };
+    }
+    return legacySnap.exists
+      ? {id: legacySnap.id, ...legacySnap.data(), environment: effectiveEnvironment, legacyFallback: true}
+      : {environment: effectiveEnvironment};
+  };
+
+  const readStoreConfig = async (lojaId, environment) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
+    const scopedSnap = await configRef(lojaId, effectiveEnvironment).get();
+    if (scopedSnap.exists) return {exists: true, data: {id: scopedSnap.id, ...scopedSnap.data(), environment: effectiveEnvironment}};
+    if (effectiveEnvironment !== FOOD99_ENVIRONMENTS.PRODUCTION) return {exists: false, data: {environment: effectiveEnvironment}};
+    const legacySnap = await legacyConfigRef(lojaId).get();
+    return legacySnap.exists
+      ? {exists: true, data: {id: legacySnap.id, ...legacySnap.data(), environment: effectiveEnvironment, legacyFallback: true}}
+      : {exists: false, data: {environment: effectiveEnvironment}};
+  };
+
+  const readHealth = async (lojaId, environment) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
+    const scopedSnap = await healthRef(lojaId, effectiveEnvironment).get();
+    if (scopedSnap.exists) return scopedSnap.data() || {};
+    if (effectiveEnvironment === FOOD99_ENVIRONMENTS.PRODUCTION) {
+      const legacySnap = await legacyHealthRef(lojaId).get();
+      if (legacySnap.exists) return {...legacySnap.data(), environment: effectiveEnvironment, legacyFallback: true};
+    }
+    return {status: 'not_configured', environment: effectiveEnvironment};
+  };
 
   const isPlatformAdmin = (requester = {}) => requester.role === 'dono' && requester.allStores === true;
+
+  const setNoStoreHeaders = (request) => {
+    const response = request.rawRequest?.res;
+    if (!response || typeof response.setHeader !== 'function') return;
+    response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    response.setHeader('Pragma', 'no-cache');
+  };
+
+  const requireCallablePost = (request) => {
+    const method = cleanText(request.rawRequest?.method || 'POST').toUpperCase();
+    if (method !== 'POST') {
+      throw new HttpsError('invalid-argument', 'Metodo nao permitido para esta operacao.');
+    }
+  };
+
+  const actorFromRequest = (request, uid) => truncate(
+    request.auth?.token?.name || request.auth?.token?.email || uid,
+    200
+  );
 
   const requirePlatformAdmin = async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
     const requester = await verifyManagementAccess(uid);
     if (!isPlatformAdmin(requester)) {
-      throw new HttpsError('permission-denied', 'Somente Dono ou Administrador Master pode alterar a configuracao global do 99Food.');
+      throw new HttpsError('permission-denied', 'Informacao protegida - disponivel apenas para o perfil Dono.');
     }
-    return {uid, requester, ip: getRequestIp(request)};
+    return {
+      uid,
+      requester,
+      ip: getRequestIp(request),
+      actor: actorFromRequest(request, uid),
+    };
   };
 
-  const audit = async (lojaId, action, details = {}, severity = 'info') => {
+  const audit = async (lojaId, action, details = {}, severity = 'info', environment = details.environment) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
     await auditCollection(lojaId).add({
       provider: PROVIDER,
+      environment: effectiveEnvironment,
+      lojaId,
       action,
       severity,
-      details,
+      details: sanitizeLogContext({...details, environment: effectiveEnvironment}),
       createdAt: FieldValue.serverTimestamp(),
     });
   };
 
-  const auditPlatform = async (action, details = {}, severity = 'info') => {
+  const auditPlatform = async (action, details = {}, severity = 'info', environment = details.environment) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
     await platformAuditCollection().add({
       provider: PROVIDER,
+      environment: effectiveEnvironment,
       action,
       severity,
-      ...details,
+      ...sanitizeLogContext(details),
       createdAt: FieldValue.serverTimestamp(),
     });
   };
@@ -567,22 +789,46 @@ const createFood99Functions = ({
     return acc;
   }, {});
 
-  const createAlert = async (lojaId, type, message, context = {}) => {
-    const fingerprint = context.orderId
-      || context.productId
-      || context.eventId
-      || context.fingerprint
-      || crypto.createHash('sha1').update(`${type}:${message}`).digest('hex').slice(0, 16);
+  const createAlert = async (lojaId, type, message, context = {}, environment = context.environment) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
+    const classification = classifyFood99Failure({errno: context.errno, httpStatus: context.httpStatus});
+    const cause = cleanText(context.cause || classification.cause || type);
+    const endpoint = cleanText(context.endpoint || context.path || 'internal');
+    const fingerprint = alertFingerprint({
+      integration: PROVIDER,
+      lojaId,
+      environment: effectiveEnvironment,
+      endpoint,
+      errno: context.errno,
+      cause,
+    });
     const key = safeId(`${type}_${fingerprint}`);
-    await alertCollection(lojaId).doc(key).set({
-      provider: PROVIDER,
-      type,
-      message,
-      context,
-      status: 'open',
-      updatedAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-    }, {merge: true});
+    const ref = alertCollection(lojaId).doc(key);
+    await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(ref);
+      const previous = existing.exists ? existing.data() || {} : {};
+      transaction.set(ref, {
+        provider: PROVIDER,
+        lojaId,
+        environment: effectiveEnvironment,
+        type,
+        message,
+        endpoint,
+        errno: Number(context.errno || 0) || null,
+        requestId: cleanText(context.requestId),
+        cause,
+        context: sanitizeLogContext({...context, environment: effectiveEnvironment}),
+        fingerprint,
+        status: 'open',
+        count: Math.max(0, asNumber(previous.count)) + 1,
+        firstSeenAt: previous.firstSeenAt || FieldValue.serverTimestamp(),
+        lastSeenAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdAt: previous.createdAt || FieldValue.serverTimestamp(),
+        resolvedAt: FieldValue.delete(),
+      }, {merge: true});
+    });
+    return key;
   };
 
   const catalogCacheFromSnap = (snap) => {
@@ -600,7 +846,9 @@ const createFood99Functions = ({
     };
   };
 
-  const loadCatalogCache = async (lojaId) => catalogCacheFromSnap(await catalogCacheRef(lojaId).get());
+  const loadCatalogCache = async (lojaId, config) => catalogCacheFromSnap(
+    await catalogCacheRef(lojaId, config.environment, config.appKey).get()
+  );
 
   const catalogCacheAgeMs = (cache) => {
     if (!cache?.loadedAt) return Number.POSITIVE_INFINITY;
@@ -609,8 +857,12 @@ const createFood99Functions = ({
 
   const isFreshCatalogCache = (cache) => catalogCacheAgeMs(cache) <= CATALOG_CACHE_TTL_MS;
 
-  const saveCatalogCache = async (lojaId, catalogData) => {
-    await catalogCacheRef(lojaId).set({
+  const saveCatalogCache = async (lojaId, config, catalogData) => {
+    await catalogCacheRef(lojaId, config.environment, config.appKey).set({
+      provider: PROVIDER,
+      lojaId,
+      environment: config.environment,
+      appKey: config.appKey,
       products: catalogData.products || [],
       categories: catalogData.categories || [],
       menuState: catalogData.menuState || {categories: catalogData.categories || [], items: []},
@@ -619,11 +871,12 @@ const createFood99Functions = ({
     }, {merge: true});
   };
 
-  const isCatalogRateLimitError = (error) => (
-    error?.food99Errno === 10005
-    || String(error?.message || '').includes('calling frequency exceeds')
-    || String(error?.message || '').includes('errno":10005')
-  );
+  const isCatalogRateLimitError = (error) => classifyFood99Failure({
+    errno: error?.food99Errno,
+    httpStatus: error?.httpStatus,
+    endpoint: error?.food99Path,
+    errmsg: error?.food99Errmsg,
+  }).cause === 'rate_limited';
 
   const catalogCacheResponse = (cache, stale = false, warning = '') => ({
     categories: cache.categories || [],
@@ -637,12 +890,15 @@ const createFood99Functions = ({
     warning,
   });
 
-  const resolveAlertsByType = async (lojaId, type) => {
+  const resolveAlertsByType = async (lojaId, type, environment, predicate = () => true) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
     const snap = await alertCollection(lojaId).where('type', '==', type).limit(50).get();
     const batch = db.batch();
     let count = 0;
     snap.docs.forEach((doc) => {
-      if (doc.get('status') !== 'resolved') {
+      const data = doc.data() || {};
+      const recordEnvironment = normalizeEnvironment(data.environment);
+      if (recordEnvironment === effectiveEnvironment && data.status !== 'resolved' && predicate(data)) {
         batch.set(doc.ref, {
           status: 'resolved',
           resolvedAt: FieldValue.serverTimestamp(),
@@ -655,11 +911,71 @@ const createFood99Functions = ({
     return count;
   };
 
+  const setHealth = async (lojaId, environment, patch = {}) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
+    await healthRef(lojaId, effectiveEnvironment).set({
+      provider: PROVIDER,
+      lojaId,
+      environment: effectiveEnvironment,
+      ...sanitizeLogContext(patch),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+  };
+
+  const acquireDistributedLock = async (key, ttlMs) => {
+    const ref = platformLockRef(key);
+    const owner = crypto.randomUUID();
+    const now = Date.now();
+    const acquired = await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(ref);
+      const existing = snap.exists ? snap.data() || {} : {};
+      if (dateMillis(existing.leaseUntil) > now && existing.owner && existing.owner !== owner) return false;
+      transaction.set(ref, {
+        owner,
+        leaseUntil: new Date(now + ttlMs),
+        acquiredAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return true;
+    });
+    return acquired ? {key, owner, ref} : null;
+  };
+
+  const releaseDistributedLock = async (lock) => {
+    if (!lock) return;
+    await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(lock.ref);
+      if (!snap.exists || snap.get('owner') !== lock.owner) return;
+      transaction.set(lock.ref, {
+        owner: FieldValue.delete(),
+        leaseUntil: new Date(0),
+        releasedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+    });
+  };
+
+  const runSingleFlight = async (key, operation) => {
+    const existing = tokenFlights.get(key);
+    if (existing) return existing;
+    const flight = Promise.resolve().then(operation).finally(() => tokenFlights.delete(key));
+    tokenFlights.set(key, flight);
+    return flight;
+  };
+
   const normalizePlatformConfig = (platformConfig = {}) => ({
     ...platformConfig,
     environment: normalizeEnvironment(platformConfig.environment),
-    apiBaseUrl: cleanText(platformConfig.apiBaseUrl) || DEFAULT_API_URL,
-    authUrl: cleanText(platformConfig.authUrl) || DEFAULT_AUTH_URL,
+    apiBaseUrl: resolveFood99BaseUrl({
+      environment: platformConfig.environment,
+      savedUrl: platformConfig.apiBaseUrl,
+      allowLegacyProduction: Boolean(platformConfig.legacyFallback),
+    }),
+    authUrl: resolveFood99BaseUrl({
+      environment: platformConfig.environment,
+      savedUrl: platformConfig.authUrl,
+      allowLegacyProduction: Boolean(platformConfig.legacyFallback),
+    }),
     webhookUrl: cleanText(platformConfig.webhookUrl),
     webhookEnabled: Boolean(platformConfig.webhookEnabled),
     inventoryEndpointTemplate: cleanText(platformConfig.inventoryEndpointTemplate),
@@ -669,12 +985,18 @@ const createFood99Functions = ({
   const mergePlatformCredentials = (storeConfig = {}, platformConfigInput = {}) => {
     const platformConfig = normalizePlatformConfig(platformConfigInput);
     const platformReady = Boolean(platformConfig.clientIdSecretVersion && platformConfig.clientSecretSecretVersion);
-    const storeReady = Boolean(storeConfig.clientIdSecretVersion && storeConfig.clientSecretSecretVersion);
+    const storeReady = platformConfig.environment === FOOD99_ENVIRONMENTS.PRODUCTION
+      && Boolean(storeConfig.clientIdSecretVersion && storeConfig.clientSecretSecretVersion);
     return {
       ...storeConfig,
-      clientIdSecretVersion: platformReady ? platformConfig.clientIdSecretVersion : storeConfig.clientIdSecretVersion,
-      clientSecretSecretVersion: platformReady ? platformConfig.clientSecretSecretVersion : storeConfig.clientSecretSecretVersion,
-      webhookSecretVersion: platformConfig.webhookSecretVersion || storeConfig.webhookSecretVersion,
+      clientIdSecretVersion: platformReady
+        ? platformConfig.clientIdSecretVersion
+        : (storeReady ? storeConfig.clientIdSecretVersion : ''),
+      clientSecretSecretVersion: platformReady
+        ? platformConfig.clientSecretSecretVersion
+        : (storeReady ? storeConfig.clientSecretSecretVersion : ''),
+      webhookSecretVersion: platformConfig.webhookSecretVersion
+        || (storeReady ? storeConfig.webhookSecretVersion : ''),
       apiBaseUrl: platformConfig.apiBaseUrl,
       authUrl: platformConfig.authUrl,
       environment: platformConfig.environment,
@@ -682,19 +1004,61 @@ const createFood99Functions = ({
       webhookUrl: platformConfig.webhookUrl,
       inventoryEndpointTemplate: platformConfig.inventoryEndpointTemplate,
       inventoryMethod: platformConfig.inventoryMethod,
+      clientIdFingerprint: platformConfig.clientIdFingerprint
+        || (storeReady ? storeConfig.clientIdFingerprint : '')
+        || '',
+      clientIdSuffix: platformConfig.clientIdSuffix
+        || cleanText(platformConfig.clientIdMasked).slice(-4)
+        || (storeReady ? cleanText(storeConfig.clientIdMasked).slice(-4) : ''),
       credentialScope: platformReady ? 'platform' : (storeReady ? 'legacy_store' : ''),
       platformCredentialsReady: platformReady,
       platformWebhookSecretReady: Boolean(platformConfig.webhookSecretVersion),
+      credentialsReady: platformReady || storeReady,
+      legacyFallback: Boolean(platformConfig.legacyFallback || storeConfig.legacyFallback),
     };
   };
 
-  const loadConfig = async (lojaId, requireStoreConfiguration = true) => {
-    const [snap, platformSnap] = await Promise.all([configRef(lojaId).get(), platformConfigRef().get()]);
-    if (!snap.exists && requireStoreConfiguration) {
+  const loadConfig = async (lojaId, requireStoreConfiguration = true, environment = DEFAULT_FOOD99_ENVIRONMENT) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
+    const [storeResult, platformConfig] = await Promise.all([
+      readStoreConfig(lojaId, effectiveEnvironment),
+      readPlatformConfig(effectiveEnvironment),
+    ]);
+    if (!storeResult.exists && requireStoreConfiguration) {
       throw new HttpsError('failed-precondition', 'Configure a integracao 99Food desta loja primeiro.');
     }
+    const merged = mergePlatformCredentials(storeResult.data, platformConfig);
+    const appKey = merged.clientIdFingerprint || merged.clientIdSuffix || 'app';
+    const authSnap = await authorizationRef(lojaId, effectiveEnvironment, appKey).get();
+    const authorization = authSnap.exists ? authSnap.data() || {} : {};
+    const authorizationRevision = crypto.createHash('sha256').update(JSON.stringify({
+      exists: authSnap.exists,
+      status: cleanText(authorization.status),
+      merchantId: cleanText(authorization.merchantId),
+      tokenSecretVersion: cleanText(authorization.tokenSecretVersion),
+      tokenExpiresAt: dateMillis(authorization.tokenExpiresAt),
+      lastBindEventTimestampMs: asNumber(authorization.lastBindEventTimestampMs),
+      lastBindEventKey: cleanText(authorization.lastBindEventKey),
+      updatedAt: dateMillis(authorization.updatedAt),
+    })).digest('hex');
+    const authorizationStatus = !storeResult.exists && !merged.credentialsReady
+      ? 'not_configured'
+      : (!merged.credentialsReady || !merged.merchantId
+        ? 'configuration_incomplete'
+        : (authorization.status || merged.authorizationStatus || 'awaiting_authorization'));
     return {
-      ...mergePlatformCredentials(snap.exists ? {id: snap.id, ...snap.data()} : {}, platformSnap.exists ? platformSnap.data() : {}),
+      ...merged,
+      environment: effectiveEnvironment,
+      appKey,
+      authorizationStatus,
+      tokenSecretVersion: authorization.tokenSecretVersion || '',
+      tokenExpiresAt: authorization.tokenExpiresAt || null,
+      tokenRecoveryRequired: Boolean(authorization.tokenRecoveryRequired),
+      tokenRecoveryMode: cleanText(authorization.tokenRecoveryMode),
+      tokenRecoveryAttempts: asNumber(authorization.tokenRecoveryAttempts),
+      authorizationUpdatedAt: authorization.updatedAt || null,
+      authorizationRevision,
+      pollingSuspendedReason: authorization.suspendReason || merged.pollingSuspendedReason || '',
     };
   };
 
@@ -707,43 +1071,39 @@ const createFood99Functions = ({
       credentialsReady,
       clientIdReady: Boolean(platformConfig.clientIdSecretVersion),
       clientSecretReady: Boolean(platformConfig.clientSecretSecretVersion),
-      webhookEnabled: Boolean(platformConfig.webhookEnabled),
-      webhookSecretReady: Boolean(platformConfig.webhookSecretVersion),
-      updatedAt: platformConfig.updatedAt || null,
-      updatedByUid: platformConfig.updatedByUid || '',
-    };
-    if (!canManagePlatform) return base;
-    return {
-      ...base,
       apiBaseUrl: platformConfig.apiBaseUrl,
       authUrl: platformConfig.authUrl,
       webhookUrl: platformConfig.webhookUrl,
       inventoryEndpointTemplate: platformConfig.inventoryEndpointTemplate,
       inventoryMethod: platformConfig.inventoryMethod,
-      clientIdMasked: platformConfig.clientIdMasked || (platformConfig.clientIdSecretVersion ? '********' : ''),
-      clientSecretMasked: platformConfig.clientSecretMasked || (platformConfig.clientSecretSecretVersion ? '********' : ''),
-      webhookSecretMasked: platformConfig.webhookSecretMasked || (platformConfig.webhookSecretVersion ? '********' : ''),
+      webhookEnabled: Boolean(platformConfig.webhookEnabled),
+      updatedAt: platformConfig.updatedAt || null,
+      updatedByUid: platformConfig.updatedByUid || '',
     };
+    if (!canManagePlatform) return base;
+    return {...base, webhookSecretReady: Boolean(platformConfig.webhookSecretVersion)};
   };
 
-  const publicConfig = (config = {}, canManagePlatform = false) => ({
+  const publicConfig = (config = {}, canManagePlatform = false) => secretSafePublicConfig({
     provider: PROVIDER,
+    environment: normalizeEnvironment(config.environment),
+    apiBaseUrl: config.apiBaseUrl || DEFAULT_API_URL,
+    authUrl: config.authUrl || DEFAULT_AUTH_URL,
     enabled: Boolean(config.enabled),
     merchantId: config.merchantId || '',
     merchantName: config.merchantName || '',
-    status: config.status || (config.enabled ? 'active' : 'inactive'),
+    status: config.authorizationStatus || config.status || (config.enabled ? 'configuration_incomplete' : 'not_configured'),
+    authorizationStatus: config.authorizationStatus || 'awaiting_authorization',
+    pollingSuspendedReason: config.pollingSuspendedReason || '',
     pollingEnabled: Boolean(config.pollingEnabled),
     ordersSyncEnabled: config.ordersSyncEnabled !== false,
     stockSyncEnabled: config.stockSyncEnabled !== false,
     catalogSyncEnabled: config.catalogSyncEnabled !== false,
-    credentialsReady: Boolean(config.clientIdSecretVersion && config.clientSecretSecretVersion),
+    credentialsReady: Boolean(config.credentialsReady || (config.clientIdSecretVersion && config.clientSecretSecretVersion)),
     platformCredentialsReady: Boolean(config.platformCredentialsReady),
     credentialScope: config.credentialScope || '',
     platformWebhookSecretReady: Boolean(config.platformWebhookSecretReady),
     ...(canManagePlatform ? {
-      apiBaseUrl: config.apiBaseUrl || DEFAULT_API_URL,
-      authUrl: config.authUrl || DEFAULT_AUTH_URL,
-      environment: config.environment || DEFAULT_FOOD99_ENVIRONMENT,
       webhookEnabled: Boolean(config.webhookEnabled),
     } : {}),
     autoConfirm: Boolean(config.autoConfirm),
@@ -751,26 +1111,54 @@ const createFood99Functions = ({
     updatedAt: config.updatedAt || null,
   });
 
-  const parseApiResponse = async (response, providerPath) => {
+  const safeProviderError = (payload = {}) => ({
+    errno: asNumber(payload.errno) || null,
+    errmsg: truncate(payload.errmsg || payload.message || payload.error || '', 500),
+    requestId: truncate(payload.requestId || payload.request_id || '', 160),
+  });
+
+  const parseApiResponse = async (response, providerPath, {
+    preserveLargeIntegers = false,
+    requireJson = false,
+  } = {}) => {
     const textPayload = await response.text().catch(() => '');
     let payload = {};
     try {
-      payload = textPayload ? JSON.parse(textPayload) : {};
+      payload = textPayload
+        ? (preserveLargeIntegers
+          ? parseFood99JsonPreservingLargeIntegers(textPayload)
+          : JSON.parse(textPayload))
+        : {};
     } catch (parseError) {
+      if (requireJson) {
+        const error = new HttpsError('failed-precondition', `A 99Food retornou JSON inválido em ${providerPath}.`);
+        error.httpStatus = 502;
+        error.food99Path = providerPath;
+        throw error;
+      }
       payload = {message: textPayload};
     }
+    const providerError = safeProviderError(payload);
     if (!response.ok) {
-      const error = new HttpsError('failed-precondition', `99Food ${providerPath} falhou (${response.status}): ${food99ErrorDetail(payload)}`);
+      const error = new HttpsError('failed-precondition', `99Food ${providerPath} falhou (${response.status}).`);
       error.httpStatus = response.status;
-      error.food99Payload = payload;
+      error.food99Errno = providerError.errno;
+      error.food99RequestId = providerError.requestId;
+      error.food99Errmsg = providerError.errmsg;
       error.food99Path = providerPath;
       throw error;
     }
     if (Object.prototype.hasOwnProperty.call(payload, 'errno') && asNumber(payload.errno) !== 0) {
-      const error = new HttpsError('failed-precondition', `99Food ${providerPath} retornou erro ${payload.errno}: ${food99ErrorDetail(payload)}`);
+      const error = new HttpsError('failed-precondition', friendlyFood99Error({
+        errno: providerError.errno,
+        requestId: providerError.requestId,
+        endpoint: providerPath,
+        errmsg: providerError.errmsg,
+      }));
       error.httpStatus = 200;
-      error.food99Payload = payload;
-      error.food99Errno = asNumber(payload.errno);
+      error.food99Errno = providerError.errno;
+      error.food99RequestId = providerError.requestId;
+      error.food99Errmsg = providerError.errmsg;
       error.food99Path = providerPath;
       throw error;
     }
@@ -778,9 +1166,13 @@ const createFood99Functions = ({
   };
 
   const buildUrl = (baseUrl, path, params = {}) => {
-    const url = path.startsWith('http')
-      ? new URL(path)
-      : new URL(path, `${baseUrl || DEFAULT_API_URL}/`);
+    if (!String(path || '').startsWith('/') || String(path || '').startsWith('//')) {
+      throw new HttpsError('invalid-argument', 'Endpoint 99Food inválido.');
+    }
+    const url = new URL(path, `${baseUrl || DEFAULT_API_URL}/`);
+    if (url.origin !== CURRENT_FOOD99_HOST) {
+      throw new HttpsError('failed-precondition', 'Host 99Food fora da allowlist do backend.');
+    }
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && cleanText(value) !== '') {
         url.searchParams.set(key, String(value));
@@ -789,69 +1181,355 @@ const createFood99Functions = ({
     return url.toString();
   };
 
-  const tokenForStore = async (lojaId, config) => {
-    const cacheKey = `${lojaId}:${config.merchantId || ''}`;
-    const cached = tokenCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now() + 60000) return cached.token;
+  const fetchWithTimeout = async (url, options = {}) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+    try {
+      return await food99Fetch(url, {...options, signal: controller.signal, redirect: 'error'});
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        const timeoutError = new HttpsError('deadline-exceeded', 'A 99Food não respondeu dentro do tempo limite.');
+        timeoutError.httpStatus = 408;
+        throw timeoutError;
+      }
+      const networkError = new HttpsError('unavailable', 'Falha de rede ao acessar a 99Food.');
+      networkError.httpStatus = 503;
+      throw networkError;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
 
+  const credentialsForConfig = async (config) => {
     const [clientId, clientSecret] = await Promise.all([
-      accessSecret(config.clientIdSecretVersion),
-      accessSecret(config.clientSecretSecretVersion),
+      food99SecretAccess(config.clientIdSecretVersion),
+      food99SecretAccess(config.clientSecretSecretVersion),
     ]);
     if (!clientId || !clientSecret) {
-      throw new HttpsError('failed-precondition', 'Credenciais 99Food nao cadastradas.');
+      throw new HttpsError('failed-precondition', 'App ID/App Secret não cadastrados para o ambiente selecionado.');
     }
-    if (!config.merchantId) {
-      throw new HttpsError('failed-precondition', 'Informe o app_shop_id da loja 99Food.');
-    }
+    return {clientId, clientSecret};
+  };
 
-    const authParams = {
-      app_id: clientId,
-      app_secret: clientSecret,
-      app_shop_id: config.merchantId,
-    };
-    const authBaseUrl = config.authUrl || config.apiBaseUrl || DEFAULT_AUTH_URL;
-    let payload;
-    try {
-      const response = await fetch(buildUrl(authBaseUrl, AUTH_TOKEN_GET_PATH, authParams), {
-        method: 'GET',
-        headers: {Accept: 'application/json'},
-      });
-      payload = await parseApiResponse(response, AUTH_TOKEN_GET_PATH);
-    } catch (error) {
-      const refreshResponse = await fetch(buildUrl(authBaseUrl, AUTH_TOKEN_REFRESH_PATH, authParams), {
-        method: 'GET',
-        headers: {Accept: 'application/json'},
-      });
-      await parseApiResponse(refreshResponse, AUTH_TOKEN_REFRESH_PATH);
-      const retryResponse = await fetch(buildUrl(authBaseUrl, AUTH_TOKEN_GET_PATH, authParams), {
-        method: 'GET',
-        headers: {Accept: 'application/json'},
-      });
-      payload = await parseApiResponse(retryResponse, AUTH_TOKEN_GET_PATH);
-    }
-    const tokenData = payload.data || {};
-    const token = tokenData.auth_token;
-    if (!token) throw new HttpsError('failed-precondition', 'Autenticacao 99Food nao retornou auth_token.');
+  const persistAuthToken = async (lojaId, config, tokenData, {
+    authorizationPatch = {},
+    persistAuthorization = true,
+    cacheToken = true,
+  } = {}) => {
+    const token = cleanText(tokenData.auth_token);
+    if (!token) throw new HttpsError('failed-precondition', 'A autenticação 99Food não retornou auth_token.');
+    const projectId = getProjectId();
+    if (!projectId) throw new HttpsError('failed-precondition', 'Projeto Google Cloud não identificado para proteger o token.');
     const expiresAtSeconds = asNumber(tokenData.token_expiration_time);
-    const expiresAt = expiresAtSeconds > 0 ? expiresAtSeconds * 1000 : Date.now() + (55 * 60 * 1000);
-    tokenCache.set(cacheKey, {token, expiresAt});
+    const expiresAt = expiresAtSeconds > 0
+      ? new Date(expiresAtSeconds > 100000000000 ? expiresAtSeconds : expiresAtSeconds * 1000)
+      : new Date(Date.now() + (55 * 60 * 1000));
+    const secretId = safeId([
+      'food99_auth_token',
+      config.environment,
+      config.appKey,
+      lojaId,
+      config.merchantId,
+    ].join('_')).slice(0, 240);
+    const resourceName = await food99SecretEnsure(projectId, secretId, {
+      app: 'doceria',
+      provider: PROVIDER,
+      environment: config.environment,
+      store: lojaId,
+    });
+    const tokenSecretVersion = await food99SecretAddVersion(resourceName, token);
+    if (persistAuthorization) {
+      await authorizationRef(lojaId, config.environment, config.appKey).set({
+        provider: PROVIDER,
+        recordType: 'authorization',
+        lojaId,
+        environment: config.environment,
+        appKey: config.appKey,
+        merchantId: config.merchantId,
+        status: 'authorized',
+        tokenSecretVersion,
+        tokenExpiresAt: expiresAt,
+        tokenRecoveryRequired: FieldValue.delete(),
+        tokenRecoveryMode: FieldValue.delete(),
+        tokenRecoveryReason: FieldValue.delete(),
+        tokenRecoveryRequestedAt: FieldValue.delete(),
+        suspendReason: FieldValue.delete(),
+        authorizedAt: FieldValue.serverTimestamp(),
+        ...authorizationPatch,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+    }
+    const cacheKey = tokenCacheKey({
+      environment: config.environment,
+      lojaId,
+      appKey: config.appKey,
+      merchantId: config.merchantId,
+    });
+    if (cacheToken) tokenCache.set(cacheKey, {token, expiresAt: expiresAt.getTime()});
+    config.tokenSecretVersion = tokenSecretVersion;
+    config.tokenExpiresAt = expiresAt;
+    config.tokenRecoveryRequired = false;
     return token;
   };
 
-  const request99Food = async (lojaId, config, path, {method = 'GET', body, attempts = 4, headers = {}, query = {}} = {}) => {
+  const suspendAuthorization = async (lojaId, config, status, error) => {
+    await authorizationRef(lojaId, config.environment, config.appKey).set({
+      provider: PROVIDER,
+      recordType: 'authorization',
+      lojaId,
+      environment: config.environment,
+      appKey: config.appKey,
+      merchantId: config.merchantId || '',
+      status,
+      suspendReason: error?.food99Errno || error?.code || 'provider_error',
+      lastErrno: error?.food99Errno || null,
+      lastRequestId: error?.food99RequestId || '',
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    await setHealth(lojaId, config.environment, {
+      status,
+      authorizationStatus: status,
+      lastErrno: error?.food99Errno || null,
+      lastRequestId: error?.food99RequestId || '',
+      lastError: error?.message || '',
+    });
+  };
+
+  const prepareTokenRecovery = async (lojaId, config, mode, error, cacheKey) => {
+    tokenCache.delete(cacheKey);
+    const ref = authorizationRef(lojaId, config.environment, config.appKey);
+    const expectedVersion = cleanText(config.tokenSecretVersion);
+    const prepared = await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists) return false;
+      const currentVersion = cleanText(snap.get('tokenSecretVersion'));
+      if (expectedVersion && currentVersion && currentVersion !== expectedVersion) return 'already_rotated';
+      const recoveryAttempts = asNumber(snap.get('tokenRecoveryAttempts'));
+      if (recoveryAttempts >= 3) return false;
+      transaction.set(ref, {
+        tokenExpiresAt: new Date(0),
+        tokenRecoveryRequired: true,
+        tokenRecoveryMode: mode,
+        tokenRecoveryReason: Number(error.food99Errno) || Number(error.httpStatus) || 'provider_rejected_token',
+        tokenRecoveryAttempts: recoveryAttempts + 1,
+        tokenRecoveryRequestedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return true;
+    });
+    if (prepared === true) {
+      config.tokenExpiresAt = new Date(0);
+      config.tokenRecoveryRequired = true;
+      config.tokenRecoveryMode = mode;
+      config.tokenRecoveryAttempts = asNumber(config.tokenRecoveryAttempts) + 1;
+    }
+    if (prepared) error.food99TokenRecoveryPrepared = true;
+    return Boolean(prepared);
+  };
+
+  const clearTokenRecoveryHistory = async (lojaId, config) => {
+    if (asNumber(config.tokenRecoveryAttempts) <= 0) return;
+    await authorizationRef(lojaId, config.environment, config.appKey).set({
+      tokenRecoveryAttempts: FieldValue.delete(),
+      tokenRecoveryReason: FieldValue.delete(),
+      tokenRecoveryRequestedAt: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    config.tokenRecoveryAttempts = 0;
+  };
+
+  const getTokenPayload = async (config, credentials) => {
+    const response = await fetchWithTimeout(buildUrl(config.authUrl, AUTH_TOKEN_GET_PATH, {
+      app_id: credentials.clientId,
+      app_secret: credentials.clientSecret,
+      app_shop_id: config.merchantId,
+    }), {method: 'GET', headers: {Accept: 'application/json'}});
+    return parseApiResponse(response, AUTH_TOKEN_GET_PATH);
+  };
+
+  const refreshTokenPayload = async (config, credentials) => {
+    const response = await fetchWithTimeout(buildUrl(config.authUrl, AUTH_TOKEN_REFRESH_PATH, {
+      app_id: credentials.clientId,
+      app_secret: credentials.clientSecret,
+      app_shop_id: config.merchantId,
+    }), {method: 'GET', headers: {Accept: 'application/json'}});
+    return parseApiResponse(response, AUTH_TOKEN_REFRESH_PATH);
+  };
+
+  const tokenForStore = async (lojaId, config, {
+    allowDisabled = false,
+    forceReload = false,
+    forceRefresh = false,
+  } = {}) => {
+    const eligible = canRunAuthorizedOperation(config)
+      || (allowDisabled && config.credentialsReady && config.merchantId && config.authorizationStatus === 'authorized');
+    if (!eligible) {
+      throw new HttpsError('failed-precondition', 'A loja precisa estar habilitada e autorizada neste ambiente antes desta operação.');
+    }
+    const cacheKey = tokenCacheKey({
+      environment: config.environment,
+      lojaId,
+      appKey: config.appKey,
+      merchantId: config.merchantId,
+    });
+    const cached = tokenCache.get(cacheKey);
+    if (!forceReload && !forceRefresh && !config.tokenRecoveryRequired
+      && cached && cached.expiresAt > Date.now() + 60000) return cached.token;
+
+    return runSingleFlight(cacheKey, async () => {
+      const current = tokenCache.get(cacheKey);
+      if (!forceReload && !forceRefresh && !config.tokenRecoveryRequired
+        && current && current.expiresAt > Date.now() + 60000) return current.token;
+      if (!forceReload && !forceRefresh && !config.tokenRecoveryRequired
+        && config.tokenSecretVersion && dateMillis(config.tokenExpiresAt) > Date.now() + 60000) {
+        const persistedToken = await food99SecretAccess(config.tokenSecretVersion);
+        if (persistedToken) {
+          tokenCache.set(cacheKey, {token: persistedToken, expiresAt: dateMillis(config.tokenExpiresAt)});
+          return persistedToken;
+        }
+      }
+
+      const distributedKey = lockKey({
+        environment: config.environment,
+        appKey: config.appKey,
+        lojaId,
+        operation: 'auth_token_refresh',
+      });
+      const lock = await acquireDistributedLock(distributedKey, AUTH_LOCK_TTL_MS);
+      if (!lock) {
+        const lockError = new HttpsError('aborted', 'A obtenção do token já está em andamento. Tente novamente em instantes.');
+        lockError.httpStatus = 425;
+        throw lockError;
+      }
+      try {
+        const latestAuthorizationSnap = await authorizationRef(lojaId, config.environment, config.appKey).get();
+        const latestAuthorization = latestAuthorizationSnap.exists ? latestAuthorizationSnap.data() || {} : {};
+        const lockedConfig = {
+          ...config,
+          authorizationStatus: latestAuthorization.status || config.authorizationStatus,
+          tokenSecretVersion: latestAuthorization.tokenSecretVersion || config.tokenSecretVersion,
+          tokenExpiresAt: latestAuthorization.tokenExpiresAt || config.tokenExpiresAt,
+          tokenRecoveryRequired: Boolean(latestAuthorization.tokenRecoveryRequired),
+          tokenRecoveryMode: cleanText(latestAuthorization.tokenRecoveryMode),
+          tokenRecoveryAttempts: asNumber(latestAuthorization.tokenRecoveryAttempts),
+        };
+        if (lockedConfig.authorizationStatus !== 'authorized') {
+          throw new HttpsError('failed-precondition', 'A loja ainda não confirmou a autorização neste ambiente.');
+        }
+        const requestedRecoveryMode = forceRefresh
+          ? 'refresh'
+          : (forceReload ? 'reload' : (lockedConfig.tokenRecoveryRequired ? lockedConfig.tokenRecoveryMode : ''));
+        const anotherWorkerRotatedToken = (forceReload || forceRefresh)
+          && Boolean(latestAuthorization.tokenSecretVersion)
+          && latestAuthorization.tokenSecretVersion !== config.tokenSecretVersion;
+        if ((!requestedRecoveryMode || anotherWorkerRotatedToken)
+          && lockedConfig.tokenSecretVersion
+          && dateMillis(lockedConfig.tokenExpiresAt) > Date.now() + 60000) {
+          const latestToken = await food99SecretAccess(lockedConfig.tokenSecretVersion);
+          if (latestToken) {
+            tokenCache.set(cacheKey, {token: latestToken, expiresAt: dateMillis(lockedConfig.tokenExpiresAt)});
+            config.tokenSecretVersion = lockedConfig.tokenSecretVersion;
+            config.tokenExpiresAt = lockedConfig.tokenExpiresAt;
+            config.tokenRecoveryRequired = false;
+            config.tokenRecoveryAttempts = lockedConfig.tokenRecoveryAttempts;
+            return latestToken;
+          }
+        }
+
+        const credentials = await credentialsForConfig(lockedConfig);
+        let payload;
+        try {
+          if (requestedRecoveryMode === 'refresh') {
+            const refreshAllowed = shouldRefreshToken({
+              errno: 10102,
+              expiresAtMs: dateMillis(lockedConfig.tokenExpiresAt),
+              hasPersistedToken: Boolean(lockedConfig.tokenSecretVersion),
+              authorizationStatus: lockedConfig.authorizationStatus,
+            });
+            if (!refreshAllowed) {
+              throw new HttpsError('failed-precondition', 'Não existe token autorizado persistido para renovar nesta loja.');
+            }
+            await refreshTokenPayload(lockedConfig, credentials);
+            payload = await getTokenPayload(lockedConfig, credentials);
+          } else {
+            try {
+              payload = await getTokenPayload(lockedConfig, credentials);
+            } catch (error) {
+              const refreshAllowed = shouldRefreshToken({
+                errno: error.food99Errno,
+                expiresAtMs: dateMillis(lockedConfig.tokenExpiresAt),
+                hasPersistedToken: Boolean(lockedConfig.tokenSecretVersion),
+                authorizationStatus: lockedConfig.authorizationStatus,
+              });
+              if (!refreshAllowed) throw error;
+              await refreshTokenPayload(lockedConfig, credentials);
+              payload = await getTokenPayload(lockedConfig, credentials);
+            }
+          }
+        } catch (error) {
+          logger.warn('[99Food] token request failed', sanitizeLogContext({
+            environment: lockedConfig.environment,
+            host: lockedConfig.authUrl,
+            endpoint: error.food99Path || AUTH_TOKEN_GET_PATH,
+            lojaId,
+            merchantId: lockedConfig.merchantId,
+            errno: error.food99Errno || null,
+            requestId: error.food99RequestId || '',
+            attempt: 1,
+          }));
+          if (Number(error.food99Errno) === 10101) {
+            await suspendAuthorization(lojaId, lockedConfig, 'awaiting_authorization', error);
+          } else if ([14105, 14106].includes(Number(error.food99Errno))) {
+            await suspendAuthorization(lojaId, lockedConfig, 'credentials_invalid', error);
+          }
+          throw error;
+        }
+        const token = await persistAuthToken(lojaId, lockedConfig, payload.data || {});
+        config.tokenSecretVersion = lockedConfig.tokenSecretVersion;
+        config.tokenExpiresAt = lockedConfig.tokenExpiresAt;
+        config.tokenRecoveryRequired = false;
+        config.tokenRecoveryMode = '';
+        config.tokenRecoveryAttempts = lockedConfig.tokenRecoveryAttempts;
+        return token;
+      } finally {
+        await releaseDistributedLock(lock);
+      }
+    });
+  };
+
+  const request99Food = async (lojaId, config, path, {
+    method = 'GET',
+    body,
+    attempts = 4,
+    headers = {},
+    query = {},
+    allowDisabled = false,
+  } = {}) => {
     let lastError;
+    let tokenRecoveryMode = '';
+    let tokenRecoveryAttempted = false;
+    const cacheKey = tokenCacheKey({
+      environment: config.environment,
+      lojaId,
+      appKey: config.appKey,
+      merchantId: config.merchantId,
+    });
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
-        const token = await tokenForStore(lojaId, config);
+        const token = await tokenForStore(lojaId, config, {
+          allowDisabled,
+          forceReload: tokenRecoveryMode === 'reload',
+          forceRefresh: tokenRecoveryMode === 'refresh',
+        });
+        tokenRecoveryMode = '';
         const upperMethod = cleanText(method || 'GET').toUpperCase();
         const params = upperMethod === 'GET' ? {...query, auth_token: token} : query;
         const url = buildUrl(config.apiBaseUrl || DEFAULT_API_URL, path, params);
         const requestBody = upperMethod === 'GET'
           ? undefined
           : JSON.stringify({auth_token: token, ...(body || {})});
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
           method: upperMethod,
           headers: {
             Accept: 'application/json',
@@ -860,30 +1538,74 @@ const createFood99Functions = ({
           },
           body: requestBody,
         });
-        if (response.status === 401 && attempt === 0) {
-          tokenCache.delete(`${lojaId}:${config.merchantId || ''}`);
-          continue;
-        }
-        return await parseApiResponse(response, `${upperMethod} ${path}`);
+        const payload = await parseApiResponse(response, `${upperMethod} ${path}`);
+        await clearTokenRecoveryHistory(lojaId, config);
+        return payload;
       } catch (error) {
         lastError = error;
-        if (!RETRYABLE_STATUS.has(error.httpStatus) || attempt === attempts - 1) throw error;
-        await delay(Math.min(8000, 500 * (2 ** attempt)));
+        const classification = classifyFood99Failure({
+          errno: error.food99Errno,
+          httpStatus: error.httpStatus,
+          endpoint: path,
+          errmsg: error.food99Errmsg,
+        });
+        const providerPath = cleanText(error.food99Path);
+        const cameFromTokenEndpoint = providerPath.includes('/v1/auth/authtoken/');
+        const tokenExpired = Number(error.food99Errno) === 10102 && !cameFromTokenEndpoint;
+        const tokenRejected = Number(error.httpStatus) === 401 && !cameFromTokenEndpoint;
+        if (tokenExpired || tokenRejected) {
+          await prepareTokenRecovery(
+            lojaId,
+            config,
+            tokenExpired ? 'refresh' : 'reload',
+            error,
+            cacheKey
+          );
+        }
+        const canRecoverToken = (tokenExpired || tokenRejected)
+          && !tokenRecoveryAttempted
+          && attempt < attempts - 1;
+        if (canRecoverToken) {
+          tokenRecoveryMode = tokenExpired ? 'refresh' : 'reload';
+          tokenRecoveryAttempted = true;
+        }
+        const willRetry = canRecoverToken
+          || ((!tokenExpired && !tokenRejected) && classification.retryable && attempt < attempts - 1);
+        const retryDelayMs = willRetry
+          ? (canRecoverToken ? 250 : jitteredBackoffMs(attempt, {baseMs: 500, capMs: 8000}))
+          : 0;
+        logger.warn('[99Food] request failed', sanitizeLogContext({
+          environment: config.environment,
+          host: config.apiBaseUrl,
+          endpoint: path,
+          lojaId,
+          merchantId: config.merchantId,
+          errno: error.food99Errno || null,
+          requestId: error.food99RequestId || '',
+          attempt: attempt + 1,
+          nextRetryAt: willRetry ? new Date(Date.now() + retryDelayMs).toISOString() : '',
+        }));
+        if (!willRetry) throw error;
+        await delay(retryDelayMs);
       }
     }
     throw lastError || new HttpsError('internal', 'Falha inesperada na API 99Food.');
   };
 
-  const loadMappings = async (lojaId) => {
-    const snap = await db.collection('lojas').doc(lojaId).collection('food99ProductMappings').get();
+  const loadMappings = async (lojaId, config) => {
+    const snap = await mappingCollection(lojaId).get();
     const index = new Map();
-    snap.docs.forEach((mappingDoc) => {
-      const mapping = {id: mappingDoc.id, productId: mappingDoc.id, ...mappingDoc.data()};
-      [mapping.food99ProductId, mapping.externalCode, mapping.catalogItemId]
-        .map(cleanText)
-        .filter(Boolean)
-        .forEach((externalId) => index.set(externalId, mapping));
-    });
+    snap.docs
+      .map((mappingDoc) => ({id: mappingDoc.id, productId: mappingDoc.id, ...mappingDoc.data()}))
+      .filter((mapping) => mappingBelongsToEnvironment(mapping, config.environment))
+      .sort((left, right) => Number(Boolean(strictEnvironment(left.environment)))
+        - Number(Boolean(strictEnvironment(right.environment))))
+      .forEach((mapping) => {
+        [mapping.food99ProductId, mapping.externalCode, mapping.catalogItemId]
+          .map(cleanText)
+          .filter(Boolean)
+          .forEach((externalId) => index.set(externalId, mapping));
+      });
     return index;
   };
 
@@ -903,11 +1625,14 @@ const createFood99Functions = ({
     throw lastError;
   };
 
-  const persistOrderEvent = async (lojaId, event, normalizedOrder) => {
+  const persistOrderEvent = async (lojaId, config, event, normalizedOrder) => {
     const eventId = cleanText(event.id || `${normalizedOrder.food99OrderId}_${normalizedOrder.externalStatus}_${event.createdAt || ''}`);
-    const eventRef = db.collection('lojas').doc(lojaId).collection('food99Events').doc(eventId);
-    const externalOrderRef = db.collection('lojas').doc(lojaId).collection('food99Orders').doc(normalizedOrder.food99OrderId);
-    const orderRef = db.collection('lojas').doc(lojaId).collection('pedidos').doc(`food99_${normalizedOrder.food99OrderId}`);
+    const eventRef = db.collection('lojas').doc(lojaId).collection('food99Events')
+      .doc(environmentDocId('event', config.environment, eventId));
+    const externalOrderRef = db.collection('lojas').doc(lojaId).collection('food99Orders')
+      .doc(environmentDocId('order', config.environment, normalizedOrder.food99OrderId));
+    const orderRef = db.collection('lojas').doc(lojaId).collection('pedidos')
+      .doc(`food99_${config.environment}_${safeId(normalizedOrder.food99OrderId)}`);
     const unmapped = normalizedOrder.items.filter((item) => !item.productId);
 
     const transactionResult = await db.runTransaction(async (transaction) => {
@@ -949,7 +1674,7 @@ const createFood99Functions = ({
         const product = productSnaps.get(change.productId);
         const stock = stockSnaps.get(change.productId);
         const movementRef = db.collection('lojas').doc(lojaId).collection('kardex').doc(
-          safeId(`food99_${eventId}_${change.productId}`)
+          environmentDocId('food99_movement', config.environment, eventId, change.productId)
         );
         if (product.snap.exists) {
           transaction.update(product.ref, {estoque: FieldValue.increment(delta), updatedAt: FieldValue.serverTimestamp()});
@@ -965,6 +1690,7 @@ const createFood99Functions = ({
           motivo: normalizedOrder.externalStatus === 'CANCELLED' ? 'Estorno de cancelamento 99Food' : 'Venda 99Food',
           origem: '99Food',
           lojaId,
+          environment: config.environment,
           food99OrderId: normalizedOrder.food99OrderId,
           food99EventId: eventId,
           createdAt: FieldValue.serverTimestamp(),
@@ -996,6 +1722,7 @@ const createFood99Functions = ({
         canalVenda: '99Food',
         status: unmapped.length ? 'Atencao 99Food' : normalizedOrder.status,
         lojaId,
+        food99Environment: config.environment,
         food99OrderId: normalizedOrder.food99OrderId,
         food99DisplayId: normalizedOrder.displayId,
         food99Status: normalizedOrder.externalStatus,
@@ -1008,6 +1735,9 @@ const createFood99Functions = ({
       }, {merge: true});
       transaction.set(externalOrderRef, {
         ...normalizedOrder,
+        provider: PROVIDER,
+        lojaId,
+        environment: config.environment,
         stockTarget: nextTarget,
         hasUnmappedItems: unmapped.length > 0,
         unmappedItems: unmapped.map((item) => ({food99ItemId: item.food99ItemId, nome: item.nome})),
@@ -1018,6 +1748,9 @@ const createFood99Functions = ({
         createdAt: existing.createdAt || FieldValue.serverTimestamp(),
       }, {merge: true});
       transaction.set(eventRef, {
+        provider: PROVIDER,
+        lojaId,
+        environment: config.environment,
         eventId,
         orderId: normalizedOrder.food99OrderId,
         code: event.code || normalizedOrder.externalStatus,
@@ -1031,14 +1764,16 @@ const createFood99Functions = ({
     });
 
     if (transactionResult.stockError) {
-      await createAlert(lojaId, 'insufficient_stock', transactionResult.message, {orderId: normalizedOrder.food99OrderId});
+      await createAlert(lojaId, 'insufficient_stock', transactionResult.message, {
+        orderId: normalizedOrder.food99OrderId,
+      }, config.environment);
       throw new Error(transactionResult.message);
     }
     if (unmapped.length) {
       await createAlert(lojaId, 'unmapped_product', 'Pedido 99Food recebido com item sem mapeamento interno.', {
         orderId: normalizedOrder.food99OrderId,
         items: unmapped.map((item) => ({id: item.food99ItemId, nome: item.nome})),
-      });
+      }, config.environment);
     }
     return transactionResult;
   };
@@ -1070,19 +1805,21 @@ const createFood99Functions = ({
       body: operation.body,
       query: operation.query,
     });
-    await audit(lojaId, `order.${action}`, {orderId, result});
-    return result;
+    await audit(lojaId, `order.${action}`, {orderId}, 'info', config.environment);
+    return secretSafePublicConfig(result);
   };
 
   const issueAutomatedCommand = async (lojaId, config, orderId, action) => {
     const commandRef = db.collection('lojas').doc(lojaId).collection('food99Commands').doc(
-      safeId(`${orderId}_${action}`)
+      environmentDocId('command', config.environment, orderId, action)
     );
     const existing = await commandRef.get();
     if (existing.exists && existing.get('status') === 'accepted') return existing.get('result') || {};
     try {
       const result = await issueOrderCommand(lojaId, config, orderId, action);
       await commandRef.set({
+        provider: PROVIDER,
+        environment: config.environment,
         orderId,
         action,
         status: 'accepted',
@@ -1092,6 +1829,8 @@ const createFood99Functions = ({
       return result;
     } catch (error) {
       await commandRef.set({
+        provider: PROVIDER,
+        environment: config.environment,
         orderId,
         action,
         status: 'failed',
@@ -1106,7 +1845,8 @@ const createFood99Functions = ({
     const orderId = cleanText(event.orderId || event.order_id || event.metadata?.id);
     if (!orderId) throw new Error('Evento 99Food sem orderId.');
     const status = normalizeExternalStatus(event, event.metadata || {});
-    const existing = await db.collection('lojas').doc(lojaId).collection('food99Orders').doc(orderId).get();
+    const existing = await db.collection('lojas').doc(lojaId).collection('food99Orders')
+      .doc(environmentDocId('order', config.environment, orderId)).get();
     let detail = event.metadata || {};
     if (!TERMINAL_EXTERNAL_STATUSES.has(status) || !existing.exists) {
       try {
@@ -1116,15 +1856,26 @@ const createFood99Functions = ({
         const exceededDetailWindow = Number.isFinite(eventCreatedAt)
           && Date.now() - eventCreatedAt >= 10 * 60 * 1000;
         if (error.httpStatus === 404 && exceededDetailWindow && event.id) {
-          await db.collection('lojas').doc(lojaId).collection('food99Events').doc(safeId(event.id)).set({
+          await db.collection('lojas').doc(lojaId).collection('food99Events')
+            .doc(environmentDocId('event', config.environment, event.id)).set({
+            provider: PROVIDER,
+            lojaId,
+            environment: config.environment,
             eventId: event.id,
             orderId,
             payload: event,
             status: 'dead_letter_detail_unavailable',
             processedAt: FieldValue.serverTimestamp(),
           }, {merge: true});
-          await createAlert(lojaId, 'order_detail_unavailable', 'Detalhes do pedido nao ficaram disponiveis em 10 minutos.', {orderId, eventId: event.id});
-          await audit(lojaId, 'event.dead_letter', {eventId: event.id, orderId, reason: 'detail_unavailable'}, 'warning');
+          await createAlert(lojaId, 'order_detail_unavailable', 'Detalhes do pedido nao ficaram disponiveis em 10 minutos.', {
+            orderId,
+            eventId: event.id,
+          }, config.environment);
+          await audit(lojaId, 'event.dead_letter', {
+            eventId: event.id,
+            orderId,
+            reason: 'detail_unavailable',
+          }, 'warning', config.environment);
           return {acknowledge: true, deadLetter: true};
         }
         throw error;
@@ -1132,9 +1883,9 @@ const createFood99Functions = ({
     } else if (existing.exists) {
       detail = existing.data().detail || detail;
     }
-    const mappingIndex = await loadMappings(lojaId);
+    const mappingIndex = await loadMappings(lojaId, config);
     const order = normalizeOrderDetail(event, detail, mappingIndex);
-    const persisted = await persistOrderEvent(lojaId, event, order);
+    const persisted = await persistOrderEvent(lojaId, config, event, order);
     if (persisted.pendingMapping) {
       throw new Error('Pedido aguardando mapeamento de produto 99Food antes do processamento.');
     }
@@ -1147,11 +1898,11 @@ const createFood99Functions = ({
         await audit(lojaId, 'order.preparation_auto_start_not_supported', {
           orderId,
           message: '99Food OpenAPI nao possui comando separado de inicio de preparo.',
-        }, 'warning');
+        }, 'warning', config.environment);
       }
     }
     if (persisted.duplicate) return {acknowledge: true, duplicate: true};
-    await audit(lojaId, 'event.processed', {eventId: event.id, orderId, status});
+    await audit(lojaId, 'event.processed', {eventId: event.id, orderId, status}, 'info', config.environment);
     return {acknowledge: true, duplicate: false};
   };
 
@@ -1164,8 +1915,20 @@ const createFood99Functions = ({
         if (result.acknowledge && event.id) acknowledgedEventIds.push(event.id);
       } catch (error) {
         failures.push({eventId: event.id || null, orderId: event.orderId || null, message: error.message});
-        await createAlert(lojaId, 'event_processing_failure', error.message, {eventId: event.id, orderId: event.orderId});
-        logger.error('[99Food] event processing failed', {lojaId, event, error});
+        await createAlert(lojaId, 'event_processing_failure', error.message, {
+          eventId: event.id,
+          orderId: event.orderId,
+          endpoint: ORDER_DETAIL_PATH,
+          errno: error.food99Errno,
+          requestId: error.food99RequestId,
+        }, config.environment);
+        logger.error('[99Food] event processing failed', sanitizeLogContext({
+          lojaId,
+          environment: config.environment,
+          endpoint: ORDER_DETAIL_PATH,
+          errno: error.food99Errno,
+          requestId: error.food99RequestId,
+        }));
       }
     }
     await audit(lojaId, 'events.batch', {
@@ -1173,11 +1936,11 @@ const createFood99Functions = ({
       received: events.length,
       acknowledged: acknowledgedEventIds.length,
       failures,
-    }, failures.length ? 'warning' : 'info');
+    }, failures.length ? 'warning' : 'info', config.environment);
     return {received: events.length, acknowledged: acknowledgedEventIds.length, failures};
   };
 
-  const buildDailyDashboardSummary = async (lojaId, interval = todayIntervalInTimezone()) => {
+  const buildDailyDashboardSummary = async (lojaId, environment, interval = todayIntervalInTimezone()) => {
     const [externalSnap, internalSnap] = await Promise.all([
       db.collection('lojas').doc(lojaId).collection('food99Orders').get(),
       db.collection('lojas').doc(lojaId).collection('pedidos').get(),
@@ -1185,6 +1948,9 @@ const createFood99Functions = ({
     const byOrderId = new Map();
     externalSnap.docs.forEach((orderDoc) => {
       const order = {id: orderDoc.id, ...orderDoc.data()};
+      const recordEnvironment = strictEnvironment(order.environment);
+      if (recordEnvironment && recordEnvironment !== environment) return;
+      if (!recordEnvironment && environment !== FOOD99_ENVIRONMENTS.PRODUCTION) return;
       const key = cleanText(order.food99OrderId || order.id || orderDoc.id);
       if (key) byOrderId.set(key, order);
     });
@@ -1194,6 +1960,9 @@ const createFood99Functions = ({
         || cleanText(data.canalVenda).toLowerCase() === '99food'
         || cleanText(data.food99OrderId);
       if (!isFood99) return;
+      const recordEnvironment = strictEnvironment(data.food99Environment || data.environment);
+      if (recordEnvironment && recordEnvironment !== environment) return;
+      if (!recordEnvironment && environment !== FOOD99_ENVIRONMENTS.PRODUCTION) return;
       const order = {id: orderDoc.id, ...data};
       const key = cleanText(order.food99OrderId || order.id || orderDoc.id);
       if (!key) return;
@@ -1235,6 +2004,7 @@ const createFood99Functions = ({
     };
     logger.info('[99Food] daily dashboard summary', {
       lojaId,
+      environment,
       interval,
       food99OrdersRead: externalSnap.size,
       internalOrdersRead: internalSnap.size,
@@ -1245,20 +2015,31 @@ const createFood99Functions = ({
     return {summary, interval, ordersRead: byOrderId.size};
   };
 
-  const syncProductAvailability = async (lojaId, productId, reason = 'stock_change') => {
-    const mappingSnap = await db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(productId).get();
+  const syncProductAvailability = async (lojaId, productId, reason = 'stock_change', environment = DEFAULT_FOOD99_ENVIRONMENT) => {
+    const effectiveEnvironment = normalizeEnvironment(environment);
+    const mappingRecord = await readProductMapping(lojaId, productId, effectiveEnvironment);
+    const mappingSnap = mappingRecord.snapshot;
     if (!mappingSnap.exists || !mappingSnap.get('stockSyncEnabled')) return {skipped: 'not_mapped'};
     const [config, productSnap] = await Promise.all([
-      loadConfig(lojaId),
+      loadConfig(lojaId, true, effectiveEnvironment),
       db.collection('lojas').doc(lojaId).collection('produtos').doc(productId).get(),
     ]);
     if (config.stockSyncEnabled === false) return {skipped: 'store_stock_sync_disabled'};
     const mapping = mappingSnap.data() || {};
+    const mappingWriteBase = mappingRecord.legacy ? {
+      ...mapping,
+      provider: PROVIDER,
+      environment: effectiveEnvironment,
+      productId,
+      migratedFromLegacyMapping: true,
+    } : {};
     const quantity = Math.max(0, asNumber(productSnap.data()?.estoque));
     const appItemId = cleanText(mapping.food99ProductId || mapping.externalCode || mapping.catalogItemId);
     if (!appItemId) return {skipped: 'missing_app_item_id'};
     if (!config.merchantId) {
-      await mappingSnap.ref.set({
+      await mappingRecord.writeRef.set({
+        ...mappingWriteBase,
+        environment: effectiveEnvironment,
         syncStatus: 'waiting_app_shop_id',
         pendingQuantity: quantity,
         updatedAt: FieldValue.serverTimestamp(),
@@ -1271,7 +2052,9 @@ const createFood99Functions = ({
         method: 'POST',
         body: {app_item_ids: [appItemId], status},
       });
-      await mappingSnap.ref.set({
+      await mappingRecord.writeRef.set({
+        ...mappingWriteBase,
+        environment: effectiveEnvironment,
         lastSyncedQuantity: quantity,
         lastSyncedAvailability: status,
         itemStatus: status,
@@ -1280,15 +2063,22 @@ const createFood99Functions = ({
         lastSyncReason: reason,
         syncError: FieldValue.delete(),
       }, {merge: true});
-      return {quantity, status, result};
+      return {quantity, status, result: secretSafePublicConfig(result)};
     } catch (error) {
-      await mappingSnap.ref.set({
+      await mappingRecord.writeRef.set({
+        ...mappingWriteBase,
         pendingQuantity: quantity,
         syncStatus: 'error',
         syncError: error.message,
         lastSyncAttemptAt: FieldValue.serverTimestamp(),
       }, {merge: true});
-      await createAlert(lojaId, 'stock_sync_failure', error.message, {productId, quantity});
+      await createAlert(lojaId, 'stock_sync_failure', error.message, {
+        productId,
+        quantity,
+        endpoint: ITEM_STATUS_PATH,
+        errno: error.food99Errno,
+        requestId: error.food99RequestId,
+      }, effectiveEnvironment);
       throw error;
     }
   };
@@ -1315,7 +2105,7 @@ const createFood99Functions = ({
     const force = Boolean(options.force);
     const allowStale = options.allowStale !== false;
     if (!config.merchantId) throw new HttpsError('failed-precondition', 'Informe o app_shop_id do 99Food.');
-    const cached = await loadCatalogCache(lojaId);
+    const cached = await loadCatalogCache(lojaId, config);
     if (!force && isFreshCatalogCache(cached)) {
       return catalogCacheResponse(cached, false);
     }
@@ -1347,14 +2137,14 @@ const createFood99Functions = ({
         };
       }).filter((item) => item.productId || item.itemId);
       const catalogData = {categories: menuState.categories, products, menuState};
-      await saveCatalogCache(lojaId, catalogData);
+      await saveCatalogCache(lojaId, config, catalogData);
       return {...catalogData, fromCache: false, stale: false, cacheAgeSeconds: 0, warning: ''};
     } catch (error) {
       if (allowStale && cached && isCatalogRateLimitError(error)) {
         await audit(lojaId, 'catalog.loaded_from_cache_rate_limited', {
           ageSeconds: Math.round(catalogCacheAgeMs(cached) / 1000),
           error: error.message,
-        }, 'warning');
+        }, 'warning', config.environment);
         return catalogCacheResponse(
           cached,
           true,
@@ -1370,22 +2160,23 @@ const createFood99Functions = ({
     return catalogData.menuState;
   };
 
-  const findExistingCatalogMapping = async (lojaId, catalogProduct) => {
-    const snap = await db.collection('lojas').doc(lojaId).collection('food99ProductMappings').get();
+  const findExistingCatalogMapping = async (lojaId, catalogProduct, environment) => {
+    const snap = await mappingCollection(lojaId).get();
     return snap.docs
       .map((doc) => ({id: doc.id, productId: doc.id, ...doc.data()}))
       .find((mapping) => (
-        cleanText(mapping.food99ProductId) === cleanText(catalogProduct.productId)
+        mappingBelongsToEnvironment(mapping, environment)
+        && (cleanText(mapping.food99ProductId) === cleanText(catalogProduct.productId)
         || cleanText(mapping.catalogItemId) === cleanText(catalogProduct.itemId)
-        || (catalogProduct.externalCode && cleanText(mapping.externalCode) === cleanText(catalogProduct.externalCode))
+        || (catalogProduct.externalCode && cleanText(mapping.externalCode) === cleanText(catalogProduct.externalCode)))
       )) || null;
   };
 
-  const findConflictingCatalogMappingRefs = async (lojaId, catalogProduct, keepProductId) => {
-    const snap = await db.collection('lojas').doc(lojaId).collection('food99ProductMappings').get();
+  const findConflictingCatalogMappingRefs = async (lojaId, catalogProduct, keepProductId, environment) => {
+    const snap = await mappingCollection(lojaId).get();
     return snap.docs.filter((mappingDoc) => {
-      if (mappingDoc.id === keepProductId) return false;
       const mapping = mappingDoc.data() || {};
+      if (strictEnvironment(mapping.environment) !== environment || mapping.productId === keepProductId) return false;
       return cleanText(mapping.food99ProductId) === cleanText(catalogProduct.productId)
         || cleanText(mapping.catalogItemId) === cleanText(catalogProduct.itemId)
         || (catalogProduct.externalCode && cleanText(mapping.externalCode) === cleanText(catalogProduct.externalCode));
@@ -1565,7 +2356,7 @@ const createFood99Functions = ({
     };
   };
 
-  const importCatalogProductFrom99Food = async (lojaId, uid, catalogProduct) => {
+  const importCatalogProductFrom99Food = async (lojaId, uid, config, catalogProduct) => {
     const itemKey = catalogProductSelectionKey(catalogProduct);
     const resultBase = {
       itemKey,
@@ -1577,7 +2368,7 @@ const createFood99Functions = ({
     };
 
     const existingProduct = await findExistingInternalProductForCatalog(lojaId, catalogProduct);
-    const existingMapping = await findExistingCatalogMapping(lojaId, catalogProduct);
+    const existingMapping = await findExistingCatalogMapping(lojaId, catalogProduct, config.environment);
     if (existingMapping?.productId && (!existingProduct?.exists || existingProduct.id === existingMapping.productId)) {
       await audit(lojaId, 'catalog.product_import_skipped', {
         uid,
@@ -1585,7 +2376,7 @@ const createFood99Functions = ({
         productId: existingMapping.productId,
         food99ProductId: catalogProduct.productId,
         catalogItemId: catalogProduct.itemId,
-      }, 'info');
+      }, 'info', config.environment);
       return {
         ...resultBase,
         ok: true,
@@ -1599,11 +2390,17 @@ const createFood99Functions = ({
     }
 
     if (existingProduct?.exists) {
-      const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(existingProduct.id);
-      const conflictRefs = await findConflictingCatalogMappingRefs(lojaId, catalogProduct, existingProduct.id);
+      const mappingRef = scopedMappingRef(lojaId, existingProduct.id, config.environment);
+      const conflictRefs = await findConflictingCatalogMappingRefs(
+        lojaId,
+        catalogProduct,
+        existingProduct.id,
+        config.environment
+      );
       await db.runTransaction(async (transaction) => {
         transaction.set(existingProduct.ref, food99ProductLinkPatch(catalogProduct), {merge: true});
         transaction.set(mappingRef, catalogMappingData(existingProduct.id, catalogProduct, {
+          environment: config.environment,
           importStatus: 'existing_product_linked',
           syncStatus: 'waiting_internal_stock_review',
         }), {merge: true});
@@ -1616,7 +2413,7 @@ const createFood99Functions = ({
         replacedMappingProductId: existingMapping?.productId || '',
         food99ProductId: catalogProduct.productId,
         catalogItemId: catalogProduct.itemId,
-      }, 'info');
+      }, 'info', config.environment);
       return {
         ...resultBase,
         ok: true,
@@ -1632,11 +2429,13 @@ const createFood99Functions = ({
     const productRef = await nextAvailableProductRef(lojaId, baseId);
     const internalProductId = productRef.id;
     const productData = importedProductDataFromCatalog(catalogProduct, uid);
-    const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(internalProductId);
+    const mappingRef = scopedMappingRef(lojaId, internalProductId, config.environment);
 
     await db.runTransaction(async (transaction) => {
       transaction.set(productRef, productData, {merge: false});
-      transaction.set(mappingRef, catalogMappingData(internalProductId, catalogProduct), {merge: true});
+      transaction.set(mappingRef, catalogMappingData(internalProductId, catalogProduct, {
+        environment: config.environment,
+      }), {merge: true});
     });
 
     await audit(lojaId, 'catalog.product_imported', {
@@ -1644,7 +2443,7 @@ const createFood99Functions = ({
       productId: internalProductId,
       food99ProductId: catalogProduct.productId,
       catalogItemId: catalogProduct.itemId,
-    });
+    }, 'info', config.environment);
     return {
       ...resultBase,
       ok: true,
@@ -1655,7 +2454,7 @@ const createFood99Functions = ({
     };
   };
 
-  const linkCatalogProductToExistingInternalProduct = async (lojaId, uid, catalogProduct) => {
+  const linkCatalogProductToExistingInternalProduct = async (lojaId, uid, config, catalogProduct) => {
     const itemKey = catalogProductSelectionKey(catalogProduct);
     const resultBase = {
       itemKey,
@@ -1673,7 +2472,7 @@ const createFood99Functions = ({
         food99ProductId: catalogProduct.productId,
         catalogItemId: catalogProduct.itemId,
         name: catalogProduct.name,
-      }, 'warning');
+      }, 'warning', config.environment);
       return {
         ...resultBase,
         ok: false,
@@ -1683,12 +2482,18 @@ const createFood99Functions = ({
       };
     }
 
-    const existingMapping = await findExistingCatalogMapping(lojaId, catalogProduct);
-    const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(existingProduct.id);
-    const conflictRefs = await findConflictingCatalogMappingRefs(lojaId, catalogProduct, existingProduct.id);
+    const existingMapping = await findExistingCatalogMapping(lojaId, catalogProduct, config.environment);
+    const mappingRef = scopedMappingRef(lojaId, existingProduct.id, config.environment);
+    const conflictRefs = await findConflictingCatalogMappingRefs(
+      lojaId,
+      catalogProduct,
+      existingProduct.id,
+      config.environment
+    );
     await db.runTransaction(async (transaction) => {
       transaction.set(existingProduct.ref, food99ProductLinkPatch(catalogProduct), {merge: true});
       transaction.set(mappingRef, catalogMappingData(existingProduct.id, catalogProduct, {
+        environment: config.environment,
         importStatus: 'manual_batch_linked',
         syncStatus: 'waiting_internal_stock_review',
       }), {merge: true});
@@ -1700,7 +2505,7 @@ const createFood99Functions = ({
       replacedMappingProductId: existingMapping?.productId || '',
       food99ProductId: catalogProduct.productId,
       catalogItemId: catalogProduct.itemId,
-    });
+    }, 'info', config.environment);
     return {
       ...resultBase,
       ok: true,
@@ -1727,16 +2532,14 @@ const createFood99Functions = ({
     return {id: category.app_category_id, name: categoryName, category};
   };
 
-  const publishProductTo99Food = async (lojaId, config, productId, product, menuState, reason) => {
-    if (config.catalogSyncEnabled === false) {
-      throw new Error('Sincronizacao de catalogo desabilitada para esta loja.');
-    }
+  const applyProductToMenu = async (lojaId, config, productId, product, menuState) => {
     const price = money(product.preco99Food);
     if (!(price > 0)) {
       throw new Error(`Informe o Preco 99Food de ${product.nome || productId} antes de publicar.`);
     }
-    const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(productId);
-    const mappingSnap = await mappingRef.get();
+    const mappingRecord = await readProductMapping(lojaId, productId, config.environment);
+    const mappingRef = mappingRecord.writeRef;
+    const mappingSnap = mappingRecord.snapshot;
     const mapping = mappingSnap.exists ? mappingSnap.data() || {} : {};
     const category = ensureCatalogCategory(menuState, product);
     const categoryRecord = category.category || category;
@@ -1774,18 +2577,11 @@ const createFood99Functions = ({
       categoryRecord.app_category_id,
     ]));
     menuState.menus[0] = menu;
-
-    const uploadResult = await request99Food(lojaId, config, CATALOG_UPLOAD_PATH, {
-      method: 'POST',
-      body: {
-        menus: menuState.menus,
-        categories: menuState.categories,
-        items: menuState.items,
-        modifier_groups: menuState.modifierGroups || [],
-      },
-    });
-
-    await mappingRef.set({
+    return {
+      mappingRef,
+      mappingPatch: {
+        provider: PROVIDER,
+        environment: config.environment,
       productId,
       catalogItemId,
       food99ProductId,
@@ -1798,47 +2594,273 @@ const createFood99Functions = ({
       lastSyncedQuantity: quantity,
       stockSyncEnabled: true,
       catalogManaged: true,
-      publishStatus: 'synced',
+      },
+      result: {productId, externalCode, catalogItemId, food99ProductId, price},
+    };
+  };
+
+  const publishConsolidatedCatalog = async (lojaId, config, productIds, reason) => {
+    if (!canRunAuthorizedOperation(config) || config.catalogSyncEnabled === false) {
+      throw new HttpsError('failed-precondition', 'Catálogo suspenso: habilite e autorize a loja neste ambiente.');
+    }
+    const collection = db.collection('lojas').doc(lojaId).collection('produtos');
+    const requestedIds = dedupeIds(productIds);
+    const productDocs = requestedIds.length
+      ? (await Promise.all(requestedIds.map((id) => collection.doc(id).get()))).filter((snap) => snap.exists)
+      : (await collection.get()).docs;
+    if (!productDocs.length) throw new HttpsError('not-found', 'Nenhum produto interno foi encontrado para publicar.');
+
+    const menuState = await loadCatalogCategories(lojaId, config);
+    const prepared = [];
+    for (const productDoc of productDocs) {
+      prepared.push(await applyProductToMenu(lojaId, config, productDoc.id, productDoc.data() || {}, menuState));
+    }
+    const uploadResult = await request99Food(lojaId, config, CATALOG_UPLOAD_PATH, {
+      method: 'POST',
+      attempts: 1,
+      body: {
+        menus: menuState.menus,
+        categories: menuState.categories,
+        items: menuState.items,
+        modifier_groups: menuState.modifierGroups || [],
+      },
+    });
+    const batch = db.batch();
+    prepared.forEach(({mappingRef, mappingPatch}) => batch.set(mappingRef, {
+      ...mappingPatch,
+      publishStatus: 'submitted',
       lastUploadTask: uploadResult.data || null,
       lastPublishReason: reason,
       lastPublishAt: FieldValue.serverTimestamp(),
       publishError: FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
-    }, {merge: true});
-    await syncProductAvailability(lojaId, productId, `${reason}_inventory`);
-    return {productId, externalCode, catalogItemId, food99ProductId, price};
+    }, {merge: true}));
+    await batch.commit();
+    await resolveAlertsByType(lojaId, 'catalog_publish_failure', config.environment);
+    return {
+      published: prepared.length,
+      task: uploadResult.data || null,
+      results: prepared.map(({result}) => result),
+    };
   };
 
-  const reconcileFailedAvailability = async (lojaId) => {
-    const failed = await db.collection('lojas').doc(lojaId).collection('food99ProductMappings')
-      .where('syncStatus', '==', 'error').limit(10).get();
-    const results = [];
-    for (const mapping of failed.docs) {
+  const enqueueCatalogPublish = async (lojaId, config, productIds, reason, uid = '') => {
+    if (!canRunAuthorizedOperation(config) || config.catalogSyncEnabled === false) {
+      throw new HttpsError('failed-precondition', 'A loja precisa estar autorizada para enfileirar o catálogo.');
+    }
+    const queueRef = catalogQueueRef(config.environment, config.appKey);
+    const jobRef = queueRef.collection('jobs').doc(safeKeyPart(lojaId));
+    const requestedIds = dedupeIds(productIds);
+    const queued = await db.runTransaction(async (transaction) => {
+      const [queueSnap, jobSnap] = await Promise.all([
+        transaction.get(queueRef),
+        transaction.get(jobRef),
+      ]);
+      const queue = queueSnap.exists ? queueSnap.data() || {} : {};
+      const job = jobSnap.exists ? jobSnap.data() || {} : {};
+      transaction.set(queueRef, {
+        provider: PROVIDER,
+        environment: config.environment,
+        appKey: config.appKey,
+        endpoint: CATALOG_UPLOAD_PATH,
+        nextAllowedAt: queue.nextAllowedAt || new Date(0),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      transaction.set(jobRef, {
+        provider: PROVIDER,
+        environment: config.environment,
+        appKey: config.appKey,
+        lojaId,
+        merchantId: config.merchantId,
+        productIds: dedupeIds([...(job.productIds || []), ...requestedIds]),
+        reasons: dedupeIds([...(job.reasons || []), reason]),
+        requestedByUid: uid || job.requestedByUid || '',
+        status: 'queued',
+        generation: asNumber(job.generation) + 1,
+        scheduledAt: queue.nextAllowedAt || new Date(0),
+        attempt: asNumber(job.attempt),
+        createdAt: job.createdAt || FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {
+        status: dateMillis(queue.nextAllowedAt) > Date.now() ? 'scheduled' : 'queued',
+        nextAllowedAt: dateMillis(queue.nextAllowedAt)
+          ? new Date(dateMillis(queue.nextAllowedAt)).toISOString()
+          : null,
+      };
+    });
+    return {queued: true, ...queued};
+  };
+
+  const processCatalogQueue = async (environment, appKey, {preferredStoreId = ''} = {}) => {
+    const queueRef = catalogQueueRef(environment, appKey);
+    const lock = await acquireDistributedLock(lockKey({
+      environment,
+      appKey,
+      operation: CATALOG_UPLOAD_PATH,
+    }), CATALOG_LOCK_TTL_MS);
+    if (!lock) return {queued: true, status: 'queued', reason: 'dispatcher_locked'};
+    try {
+      const queueSnap = await queueRef.get();
+      const queue = queueSnap.exists ? queueSnap.data() || {} : {};
+      const nextAllowedMs = dateMillis(queue.nextAllowedAt);
+      if (nextAllowedMs > Date.now()) {
+        return {queued: true, status: 'scheduled', nextAllowedAt: new Date(nextAllowedMs).toISOString()};
+      }
+      const jobsSnap = await queueRef.collection('jobs').where('status', '==', 'queued').limit(20).get();
+      const jobs = jobsSnap.docs.sort((left, right) => {
+        if (left.id === safeKeyPart(preferredStoreId)) return -1;
+        if (right.id === safeKeyPart(preferredStoreId)) return 1;
+        return dateMillis(left.get('createdAt')) - dateMillis(right.get('createdAt'));
+      });
+      const jobSnap = jobs[0];
+      if (!jobSnap) return {queued: false, status: 'empty'};
+      const job = jobSnap.data() || {};
+      const config = await loadConfig(job.lojaId, true, environment);
+      if (config.appKey !== appKey || !canRunAuthorizedOperation(config)) {
+        await jobSnap.ref.set({
+          status: 'suspended',
+          suspendReason: 'authorization_or_application_mismatch',
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        return {queued: false, status: 'suspended'};
+      }
+
+      await jobSnap.ref.set({
+        status: 'running',
+        attempt: FieldValue.increment(1),
+        startedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
       try {
-        results.push(await syncProductAvailability(lojaId, mapping.id, 'automatic_retry'));
+        const result = await publishConsolidatedCatalog(
+          job.lojaId,
+          config,
+          job.productIds || [],
+          (job.reasons || []).join(',') || 'queued_publish'
+        );
+        const nextAllowedAt = new Date(nextCatalogAttemptAt());
+        const persistedResult = {published: result.published, task: result.task || null};
+        await queueRef.set({
+          lastExecutedAt: FieldValue.serverTimestamp(),
+          nextAllowedAt,
+          lastStoreId: job.lojaId,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        await db.runTransaction(async (transaction) => {
+          const currentSnap = await transaction.get(jobSnap.ref);
+          const current = currentSnap.exists ? currentSnap.data() || {} : {};
+          const changedWhileRunning = asNumber(current.generation) > asNumber(job.generation);
+          transaction.set(jobSnap.ref, changedWhileRunning ? {
+            status: 'queued',
+            scheduledAt: nextAllowedAt,
+            result: persistedResult,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          } : {
+            status: 'completed',
+            productIds: [],
+            reasons: [],
+            result: persistedResult,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, {merge: true});
+        });
+        return {queued: false, status: 'submitted', nextAllowedAt: nextAllowedAt.toISOString(), ...result};
       } catch (error) {
-        results.push({productId: mapping.id, error: error.message});
+        const classification = classifyFood99Failure({
+          errno: error.food99Errno,
+          httpStatus: error.httpStatus,
+          endpoint: CATALOG_UPLOAD_PATH,
+          errmsg: error.food99Errmsg,
+        });
+        if ([10101, 14105, 14106].includes(Number(error.food99Errno))) {
+          await jobSnap.ref.set({
+            status: 'suspended',
+            suspendReason: classification.cause,
+            lastErrno: error.food99Errno,
+            lastRequestId: error.food99RequestId || '',
+            updatedAt: FieldValue.serverTimestamp(),
+          }, {merge: true});
+          return {queued: false, status: 'suspended', reason: classification.cause};
+        }
+        if (classification.cause === 'rate_limited' || classification.retryable || error.food99TokenRecoveryPrepared) {
+          const nextAllowedAt = new Date(nextCatalogAttemptAt());
+          await Promise.all([
+            queueRef.set({nextAllowedAt, updatedAt: FieldValue.serverTimestamp()}, {merge: true}),
+            jobSnap.ref.set({
+              status: 'queued',
+              scheduledAt: nextAllowedAt,
+              lastErrno: error.food99Errno || null,
+              lastRequestId: error.food99RequestId || '',
+              lastError: error.message,
+              updatedAt: FieldValue.serverTimestamp(),
+            }, {merge: true}),
+          ]);
+          await createAlert(job.lojaId, 'catalog_publish_failure', error.message, {
+            endpoint: CATALOG_UPLOAD_PATH,
+            errno: error.food99Errno,
+            requestId: error.food99RequestId,
+            cause: classification.cause,
+          }, environment);
+          return {queued: true, status: 'scheduled', nextAllowedAt: nextAllowedAt.toISOString()};
+        }
+        await jobSnap.ref.set({
+          status: 'suspended',
+          lastErrno: error.food99Errno || null,
+          lastRequestId: error.food99RequestId || '',
+          lastError: error.message,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        await createAlert(job.lojaId, 'catalog_publish_failure', error.message, {
+          endpoint: CATALOG_UPLOAD_PATH,
+          errno: error.food99Errno,
+          requestId: error.food99RequestId,
+          cause: classification.cause,
+        }, environment);
+        throw error;
+      }
+    } finally {
+      await releaseDistributedLock(lock);
+    }
+  };
+
+  const reconcileFailedAvailability = async (lojaId, environment) => {
+    const failed = await mappingCollection(lojaId).where('syncStatus', '==', 'error').limit(20).get();
+    const results = [];
+    for (const mapping of dedupeMappingDocs(failed.docs, environment).slice(0, 10)) {
+      const productId = cleanText(mapping.get('productId')) || mapping.id;
+      if (!strictEnvironment(mapping.get('environment')) && environment === FOOD99_ENVIRONMENTS.PRODUCTION) {
+        const scopedSnap = await scopedMappingRef(lojaId, productId, environment).get();
+        if (scopedSnap.exists) continue;
+      }
+      try {
+        results.push(await syncProductAvailability(lojaId, productId, 'automatic_retry', environment));
+      } catch (error) {
+        results.push({productId, error: error.message});
       }
     }
     return results;
   };
 
-  const runPoll = async (lojaId, origin) => {
-    const config = await loadConfig(lojaId);
-    if (!config.enabled || !config.pollingEnabled || config.ordersSyncEnabled === false) return {skipped: true};
+  const runPoll = async (lojaId, origin, environment) => {
+    const config = await loadConfig(lojaId, true, environment);
+    if (!canRunAuthorizedOperation(config) || !config.pollingEnabled || config.ordersSyncEnabled === false) {
+      return {skipped: true, reason: config.authorizationStatus || 'disabled'};
+    }
     if (!config.merchantId) {
       throw new HttpsError('failed-precondition', 'Informe o app_shop_id da loja antes de consultar a 99Food.');
     }
     const started = Date.now();
     try {
       await tokenForStore(lojaId, config);
-      const inventoryRetries = await reconcileFailedAvailability(lojaId);
+      const inventoryRetries = await reconcileFailedAvailability(lojaId, config.environment);
       const interval = todayIntervalInTimezone();
-      const dashboard = await buildDailyDashboardSummary(lojaId, interval);
+      const dashboard = await buildDailyDashboardSummary(lojaId, config.environment, interval);
       const result = {received: 0, acknowledged: 0, failures: []};
-      await healthRef(lojaId).set({
-        provider: PROVIDER,
-        status: 'online',
+      await setHealth(lojaId, config.environment, {
+        status: 'authorized',
+        authorizationStatus: 'authorized',
         lastPollAt: FieldValue.serverTimestamp(),
         latencyMs: Date.now() - started,
         lastBatch: result,
@@ -1846,10 +2868,13 @@ const createFood99Functions = ({
         lastDashboardInterval: dashboard.interval,
         lastDashboardOrdersRead: dashboard.ordersRead,
         lastInventoryRetryCount: inventoryRetries.length,
+        consecutiveFailures: 0,
         lastError: FieldValue.delete(),
-      }, {merge: true});
+      });
       logger.info('[99Food] poll completed', {
         lojaId,
+        environment: config.environment,
+        host: config.apiBaseUrl,
         origin,
         interval: dashboard.interval,
         eventsReceived: result.received,
@@ -1865,8 +2890,8 @@ const createFood99Functions = ({
         ordersUpdated: result.acknowledged,
         completedToday: dashboard.summary.finalizados,
         ordersRead: dashboard.ordersRead,
-      }, 'info');
-      await resolveAlertsByType(lojaId, 'api_poll_failure');
+      }, 'info', config.environment);
+      await resolveAlertsByType(lojaId, 'api_poll_failure', config.environment);
       return {
         ...result,
         inventoryRetries: inventoryRetries.length,
@@ -1874,179 +2899,1138 @@ const createFood99Functions = ({
         interval: dashboard.interval,
       };
     } catch (error) {
-      let message = error.message;
-      await healthRef(lojaId).set({
-        provider: PROVIDER,
-        status: 'offline',
+      const message = error.message;
+      const classification = classifyFood99Failure({
+        errno: error.food99Errno,
+        httpStatus: error.httpStatus,
+        endpoint: error.food99Path,
+        errmsg: error.food99Errmsg,
+      });
+      const previousHealth = await readHealth(lojaId, config.environment);
+      const consecutiveFailures = asNumber(previousHealth.consecutiveFailures) + 1;
+      const status = Number(error.food99Errno) === 10101
+        ? 'awaiting_authorization'
+        : ([14105, 14106].includes(Number(error.food99Errno))
+          ? 'credentials_invalid'
+          : (classification.retryable && consecutiveFailures < 3 ? 'degraded' : 'offline'));
+      await setHealth(lojaId, config.environment, {
+        status,
+        authorizationStatus: status,
         lastPollAt: FieldValue.serverTimestamp(),
         latencyMs: Date.now() - started,
         lastError: message,
-      }, {merge: true});
-      await resolveAlertsByType(lojaId, 'api_poll_failure');
+        lastErrno: error.food99Errno || null,
+        lastRequestId: error.food99RequestId || '',
+        consecutiveFailures,
+      });
+      if (['awaiting_authorization', 'credentials_invalid'].includes(status)) {
+        return {skipped: true, reason: status};
+      }
       await createAlert(lojaId, 'api_poll_failure', message, {
         httpStatus: error.httpStatus || null,
         merchantId: config.merchantId || '',
-        fingerprint: error.httpStatus ? `${error.httpStatus}_${config.merchantId || 'shop'}` : undefined,
-      });
+        endpoint: error.food99Path || 'poll',
+        errno: error.food99Errno,
+        requestId: error.food99RequestId,
+        cause: classification.cause,
+      }, config.environment);
       throw new HttpsError(error.code || 'failed-precondition', message);
     }
   };
 
-  return {
+  const validateStoreConnection = async (lojaId, config, environment) => {
+    const started = Date.now();
+    await setHealth(lojaId, environment, {
+      status: 'connecting',
+      authorizationStatus: 'connecting',
+    });
+    try {
+      await request99Food(lojaId, config, SHOP_DETAIL_PATH, {allowDisabled: true, attempts: 2});
+      const latencyMs = Date.now() - started;
+      await setHealth(lojaId, environment, {
+        status: 'authorized',
+        authorizationStatus: 'authorized',
+        authValidatedAt: FieldValue.serverTimestamp(),
+        latencyMs,
+        consecutiveFailures: 0,
+        lastError: FieldValue.delete(),
+        lastErrno: FieldValue.delete(),
+        lastRequestId: FieldValue.delete(),
+      });
+      await resolveAlertsByType(lojaId, 'api_poll_failure', environment);
+      return latencyMs;
+    } catch (error) {
+      const classification = classifyFood99Failure({
+        errno: error.food99Errno,
+        httpStatus: error.httpStatus,
+        endpoint: error.food99Path || SHOP_DETAIL_PATH,
+        errmsg: error.food99Errmsg,
+      });
+      const previousHealth = await readHealth(lojaId, environment);
+      const consecutiveFailures = asNumber(previousHealth.consecutiveFailures) + 1;
+      const status = Number(error.food99Errno) === 10101
+        ? 'awaiting_authorization'
+        : ([14105, 14106].includes(Number(error.food99Errno))
+          ? 'credentials_invalid'
+          : (consecutiveFailures >= 3 ? 'offline' : 'degraded'));
+      await setHealth(lojaId, environment, {
+        status,
+        authorizationStatus: status,
+        latencyMs: Date.now() - started,
+        consecutiveFailures,
+        lastError: error.message,
+        lastErrno: error.food99Errno || null,
+        lastRequestId: error.food99RequestId || '',
+        failureCause: classification.cause,
+      });
+      throw error;
+    }
+  };
+
+  const validateStoreToken = async (config, token) => {
+    const started = Date.now();
+    const cleanToken = cleanText(token);
+    if (!cleanToken) throw new HttpsError('failed-precondition', 'A autenticação 99Food não retornou auth_token.');
+    const response = await fetchWithTimeout(buildUrl(
+      config.apiBaseUrl || DEFAULT_API_URL,
+      SHOP_DETAIL_PATH,
+      {auth_token: cleanToken}
+    ), {method: 'GET', headers: {Accept: 'application/json'}});
+    await parseApiResponse(response, `GET ${SHOP_DETAIL_PATH}`);
+    return Date.now() - started;
+  };
+
+  const claimBoundShopsRateWindow = async (config) => {
+    const ref = authorizationCheckRateRef(config.environment, config.appKey);
+    const now = Date.now();
+    return db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(ref);
+      const current = snap.exists ? snap.data() || {} : {};
+      const nextAllowedMs = dateMillis(current.nextAllowedAt);
+      if (nextAllowedMs > now) {
+        return {
+          claimed: false,
+          retryAfterSeconds: Math.max(1, Math.ceil((nextAllowedMs - now) / 1000)),
+        };
+      }
+      transaction.set(ref, {
+        provider: PROVIDER,
+        environment: config.environment,
+        appKey: config.appKey,
+        endpoint: BOUND_SHOPS_LIST_PATH,
+        nextAllowedAt: new Date(now + BOUND_SHOPS_RATE_WINDOW_MS),
+        lastRequestedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {claimed: true, retryAfterSeconds: 0};
+    });
+  };
+
+  const fetchBoundShopForConfig = async (lojaId, config) => {
+    const rateWindow = await claimBoundShopsRateWindow(config);
+    if (!rateWindow.claimed) return {rateLimited: true, ...rateWindow};
+
+    const searchRef = authorizationSearchRef(lojaId, config.environment, config.appKey);
+    const searchSnap = await searchRef.get();
+    const savedMerchantId = searchSnap.exists ? cleanText(searchSnap.get('merchantId')) : '';
+    const savedPage = searchSnap.exists && savedMerchantId === cleanText(config.merchantId)
+      ? Math.floor(asNumber(searchSnap.get('nextPage')))
+      : 0;
+    const pageNo = Math.max(1, Math.min(100000, savedPage || 1));
+
+    const credentials = await credentialsForConfig(config);
+    const appId = cleanText(credentials.clientId);
+    if (!/^\d+$/.test(appId)) {
+      throw new HttpsError('failed-precondition', 'O App ID protegido da 99Food deve conter somente dígitos.');
+    }
+    const unsignedBody = {
+      app_id: appId,
+      page_no: pageNo,
+      page_size: 100,
+      timestamp: Math.floor(Date.now() / 1000),
+    };
+    const signedBody = {
+      ...unsignedBody,
+      sign: signFood99Params(unsignedBody, credentials.clientSecret),
+    };
+    // app_id is a 64-bit JSON integer in the official contract. Keep it
+    // unquoted without ever converting it to a JavaScript Number.
+    const serializedBody = JSON.stringify(signedBody).replace(
+      `"app_id":${JSON.stringify(appId)}`,
+      `"app_id":${appId}`
+    );
+    const response = await fetchWithTimeout(buildUrl(config.apiBaseUrl, BOUND_SHOPS_LIST_PATH), {
+      method: 'POST',
+      headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+      body: serializedBody,
+    });
+    const payload = await parseApiResponse(response, `POST ${BOUND_SHOPS_LIST_PATH}`, {
+      preserveLargeIntegers: true,
+      requireJson: true,
+    });
+    const data = payload.data;
+    const totalPagesValue = Number(data?.total_page);
+    const responsePageValue = Number(data?.page_no);
+    const validSchema = data
+      && typeof data === 'object'
+      && !Array.isArray(data)
+      && Array.isArray(data.shops)
+      && Number.isInteger(totalPagesValue)
+      && totalPagesValue >= 0
+      && Number.isInteger(responsePageValue)
+      && responsePageValue === pageNo
+      && data.shops.every((shop) => (
+        shop
+        && typeof shop === 'object'
+        && !Array.isArray(shop)
+        && typeof shop.app_shop_id === 'string'
+        && cleanText(shop.app_shop_id) !== ''
+        && [0, 1].includes(Number(shop.bound_flag))
+        && Number.isInteger(Number(shop.bound_flag))
+      ));
+    if (!validSchema) {
+      const schemaError = new HttpsError(
+        'failed-precondition',
+        'A 99Food retornou uma lista de lojas incompleta; nenhuma autorização foi alterada.'
+      );
+      schemaError.httpStatus = 502;
+      schemaError.food99Path = `POST ${BOUND_SHOPS_LIST_PATH}`;
+      throw schemaError;
+    }
+    const shops = data.shops;
+    const totalPages = Math.max(1, totalPagesValue);
+    const responsePage = responsePageValue;
+    const cursorInvalidated = responsePage > totalPages;
+    const match = cursorInvalidated ? null : findBoundFood99Shop(shops, config.merchantId);
+    const searchComplete = !cursorInvalidated && (Boolean(match) || responsePage >= totalPages);
+    const nextPage = searchComplete || cursorInvalidated ? 1 : responsePage + 1;
+    await searchRef.set({
+      provider: PROVIDER,
+      recordType: 'authorization_search',
+      lojaId,
+      environment: config.environment,
+      appKey: config.appKey,
+      merchantId: config.merchantId,
+      lastPage: responsePage,
+      nextPage,
+      totalPages,
+      searchComplete,
+      cursorInvalidated,
+      lastCheckedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    return {
+      match,
+      pageNo: responsePage,
+      nextPage,
+      totalPages,
+      searchComplete,
+      cursorInvalidated,
+    };
+  };
+
+  const assertReconciliationConfigUnchanged = async (
+    transaction,
+    lojaId,
+    config,
+    environment,
+    {checkAuthorization = true} = {}
+  ) => {
+    const [scopedStoreSnap, scopedPlatformSnap, legacyStoreSnap, legacyPlatformSnap, currentAuthSnap] = await Promise.all([
+      transaction.get(configRef(lojaId, environment)),
+      transaction.get(platformEnvironmentConfigRef(environment)),
+      environment === FOOD99_ENVIRONMENTS.PRODUCTION
+        ? transaction.get(legacyConfigRef(lojaId))
+        : Promise.resolve(null),
+      environment === FOOD99_ENVIRONMENTS.PRODUCTION
+        ? transaction.get(platformConfigRef())
+        : Promise.resolve(null),
+      checkAuthorization
+        ? transaction.get(authorizationRef(lojaId, environment, config.appKey))
+        : Promise.resolve(null),
+    ]);
+    const storeData = scopedStoreSnap.exists
+      ? scopedStoreSnap.data() || {}
+      : (legacyStoreSnap?.exists ? legacyStoreSnap.data() || {} : null);
+    if (!storeData) {
+      throw new HttpsError('aborted', 'A configuração da loja mudou durante a verificação. Atualize a tela e tente novamente.');
+    }
+    const platformData = scopedPlatformSnap.exists
+      ? {
+        ...(legacyPlatformSnap?.exists ? legacyPlatformSnap.data() || {} : {}),
+        ...(scopedPlatformSnap.data() || {}),
+        environment,
+      }
+      : (legacyPlatformSnap?.exists
+        ? {...(legacyPlatformSnap.data() || {}), environment}
+        : {environment});
+    const current = mergePlatformCredentials({...storeData, environment}, platformData);
+    const currentAppKey = current.clientIdFingerprint || current.clientIdSuffix || 'app';
+    const unchanged = cleanText(current.merchantId) === cleanText(config.merchantId)
+      && cleanText(currentAppKey) === cleanText(config.appKey)
+      && cleanText(current.clientIdSecretVersion) === cleanText(config.clientIdSecretVersion)
+      && cleanText(current.clientSecretSecretVersion) === cleanText(config.clientSecretSecretVersion);
+    if (!unchanged) {
+      throw new HttpsError('aborted', 'A configuração da loja mudou durante a verificação. Atualize a tela e tente novamente.');
+    }
+    if (checkAuthorization) {
+      const currentAuthorization = currentAuthSnap.exists ? currentAuthSnap.data() || {} : {};
+      const currentRevision = crypto.createHash('sha256').update(JSON.stringify({
+        exists: currentAuthSnap.exists,
+        status: cleanText(currentAuthorization.status),
+        merchantId: cleanText(currentAuthorization.merchantId),
+        tokenSecretVersion: cleanText(currentAuthorization.tokenSecretVersion),
+        tokenExpiresAt: dateMillis(currentAuthorization.tokenExpiresAt),
+        lastBindEventTimestampMs: asNumber(currentAuthorization.lastBindEventTimestampMs),
+        lastBindEventKey: cleanText(currentAuthorization.lastBindEventKey),
+        updatedAt: dateMillis(currentAuthorization.updatedAt),
+      })).digest('hex');
+      if (currentRevision !== config.authorizationRevision) {
+        throw new HttpsError('aborted', 'A autorização mudou durante a verificação. Atualize a tela e tente novamente.');
+      }
+    }
+  };
+
+  const reconcileStoreAuthorization = async (lojaId, config, environment, uid) => {
+    const wasAuthorized = config.authorizationStatus === 'authorized';
+    let reconciliationMode = 'shop_list';
+    let lookup;
+    try {
+      lookup = await fetchBoundShopForConfig(lojaId, config);
+    } catch (error) {
+      const listRejectedParameters = Number(error.food99Errno) === 10002
+        && cleanText(error.food99Path).includes(BOUND_SHOPS_LIST_PATH);
+      if (!listRejectedParameters) throw error;
+      reconciliationMode = 'auth_token_fallback';
+      lookup = {
+        match: {appShopId: config.merchantId},
+        pageNo: 1,
+        nextPage: 1,
+        totalPages: 1,
+        searchComplete: true,
+        cursorInvalidated: false,
+      };
+      logger.warn('[99Food] bound-store list rejected parameters; using token verification fallback', sanitizeLogContext({
+        environment,
+        host: config.apiBaseUrl,
+        endpoint: error.food99Path || BOUND_SHOPS_LIST_PATH,
+        lojaId,
+        merchantId: config.merchantId,
+        errno: error.food99Errno,
+        requestId: error.food99RequestId || '',
+        attempt: 1,
+      }));
+    }
+    const reconciliationEndpoint = reconciliationMode === 'auth_token_fallback'
+      ? AUTH_TOKEN_GET_PATH
+      : BOUND_SHOPS_LIST_PATH;
+    const reconciliationSource = reconciliationMode === 'auth_token_fallback'
+      ? 'official_auth_token'
+      : 'official_bound_store_list';
+    const reconciliationAuthorizationSource = reconciliationMode === 'auth_token_fallback'
+      ? 'auth_token_reconciliation'
+      : 'shop_list_reconciliation';
+    const reconciliationMessage = reconciliationMode === 'auth_token_fallback'
+      ? 'Autorização confirmada pelo token oficial e pelos dados da loja na 99Food.'
+      : 'Vínculo confirmado pela lista oficial de lojas autorizadas da 99Food.';
+    if (lookup.rateLimited) {
+      return {
+        authorized: wasAuthorized,
+        authorizationStatus: wasAuthorized ? 'authorized' : 'awaiting_authorization',
+        retryAfterSeconds: lookup.retryAfterSeconds,
+        message: `A consulta oficial já foi executada. Aguarde ${lookup.retryAfterSeconds}s para verificar novamente.`,
+      };
+    }
+    if (!lookup.match) {
+      const message = lookup.cursorInvalidated
+        ? 'A lista oficial mudou durante a consulta. O cursor voltou à página 1; aguarde 20s e verifique novamente.'
+        : (!lookup.searchComplete
+          ? `A página ${lookup.pageNo} de ${lookup.totalPages} foi verificada. Aguarde 20s e use “Verificar autorização” para continuar na página ${lookup.nextPage}.`
+          : 'A busca oficial foi concluída, mas o app_shop_id salvo não consta como vinculado a este App ID.');
+      if (lookup.searchComplete) {
+        const pendingAuditRef = auditCollection(lojaId).doc(environmentDocId(
+          'authorization_pending',
+          environment,
+          crypto.randomUUID()
+        ));
+        await db.runTransaction(async (transaction) => {
+          await assertReconciliationConfigUnchanged(transaction, lojaId, config, environment);
+          transaction.set(authorizationRef(lojaId, environment, config.appKey), {
+            provider: PROVIDER,
+            recordType: 'authorization',
+            lojaId,
+            environment,
+            appKey: config.appKey,
+            merchantId: config.merchantId,
+            status: 'awaiting_authorization',
+            suspendReason: 'shop_not_bound',
+            tokenSecretVersion: FieldValue.delete(),
+            tokenExpiresAt: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, {merge: true});
+          transaction.set(healthRef(lojaId, environment), {
+            provider: PROVIDER,
+            lojaId,
+            environment,
+            status: 'awaiting_authorization',
+            authorizationStatus: 'awaiting_authorization',
+            lastAuthorizationCheckAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, {merge: true});
+          transaction.set(pendingAuditRef, {
+            provider: PROVIDER,
+            environment,
+            lojaId,
+            action: 'authorization.reconciliation_pending',
+            severity: 'warning',
+            details: {
+              environment,
+              uid,
+              endpoint: BOUND_SHOPS_LIST_PATH,
+              reason: 'shop_not_bound',
+              pageNo: lookup.pageNo,
+              totalPages: lookup.totalPages,
+            },
+            createdAt: FieldValue.serverTimestamp(),
+          });
+        });
+        tokenCache.delete(tokenCacheKey({
+          environment,
+          lojaId,
+          appKey: config.appKey,
+          merchantId: config.merchantId,
+        }));
+        return {authorized: false, authorizationStatus: 'awaiting_authorization', message};
+      }
+
+      await audit(lojaId, 'authorization.reconciliation_pending', {
+        uid,
+        endpoint: BOUND_SHOPS_LIST_PATH,
+        reason: lookup.cursorInvalidated ? 'cursor_invalidated' : 'additional_pages',
+        pageNo: lookup.pageNo,
+        totalPages: lookup.totalPages,
+      }, 'warning', environment);
+      return {
+        authorized: wasAuthorized,
+        authorizationStatus: wasAuthorized ? 'authorized' : 'awaiting_authorization',
+        message,
+      };
+    }
+
+    const hasReusableToken = wasAuthorized
+      && Boolean(config.tokenSecretVersion)
+      && !config.tokenRecoveryRequired
+      && dateMillis(config.tokenExpiresAt) > Date.now() + 60000;
+    if (hasReusableToken) {
+      const existingToken = await food99SecretAccess(config.tokenSecretVersion);
+      if (!existingToken) {
+        config.tokenSecretVersion = '';
+        config.tokenExpiresAt = null;
+      } else {
+      const latencyMs = await validateStoreToken(config, existingToken);
+      const verificationAuditRef = auditCollection(lojaId).doc(environmentDocId(
+        'authorization_verified',
+        environment,
+        crypto.randomUUID()
+      ));
+      await db.runTransaction(async (transaction) => {
+        await assertReconciliationConfigUnchanged(transaction, lojaId, config, environment);
+        transaction.set(authorizationRef(lojaId, environment, config.appKey), {
+          authorizationSource: reconciliationAuthorizationSource,
+          authorizationConfirmedAt: FieldValue.serverTimestamp(),
+          reconciliationEndpoint,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        transaction.set(healthRef(lojaId, environment), {
+          provider: PROVIDER,
+          lojaId,
+          environment,
+          status: 'authorized',
+          authorizationStatus: 'authorized',
+          authValidatedAt: FieldValue.serverTimestamp(),
+          latencyMs,
+          consecutiveFailures: 0,
+          lastError: FieldValue.delete(),
+          lastErrno: FieldValue.delete(),
+          lastRequestId: FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        transaction.set(verificationAuditRef, {
+          provider: PROVIDER,
+          environment,
+          lojaId,
+          action: 'authorization.verified',
+          severity: 'info',
+          details: {
+            environment,
+            uid,
+            endpoint: reconciliationEndpoint,
+            appShopId: lookup.match.appShopId,
+            source: reconciliationSource,
+          },
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      });
+      return {
+        authorized: true,
+        authorizationStatus: 'authorized',
+        source: reconciliationMode,
+        latencyMs,
+        message: reconciliationMessage,
+      };
+      }
+    }
+
+    const credentials = await credentialsForConfig(config);
+    let tokenPayload;
+    try {
+      tokenPayload = await getTokenPayload(config, credentials);
+    } catch (error) {
+      const errno = Number(error.food99Errno);
+      if (![10101, 14105, 14106].includes(errno)) throw error;
+      const status = errno === 10101 ? 'awaiting_authorization' : 'credentials_invalid';
+      const failureAuditRef = auditCollection(lojaId).doc(environmentDocId(
+        'authorization_verification_failed',
+        environment,
+        crypto.randomUUID()
+      ));
+      await db.runTransaction(async (transaction) => {
+        await assertReconciliationConfigUnchanged(transaction, lojaId, config, environment);
+        transaction.set(authorizationRef(lojaId, environment, config.appKey), {
+          provider: PROVIDER,
+          recordType: 'authorization',
+          lojaId,
+          environment,
+          appKey: config.appKey,
+          merchantId: config.merchantId,
+          status,
+          suspendReason: errno,
+          lastErrno: errno,
+          lastRequestId: error.food99RequestId || '',
+          tokenSecretVersion: FieldValue.delete(),
+          tokenExpiresAt: FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        transaction.set(healthRef(lojaId, environment), {
+          provider: PROVIDER,
+          lojaId,
+          environment,
+          status,
+          authorizationStatus: status,
+          lastErrno: errno,
+          lastRequestId: error.food99RequestId || '',
+          lastError: error.message,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        transaction.set(failureAuditRef, {
+          provider: PROVIDER,
+          environment,
+          lojaId,
+          action: 'authorization.verification_failed',
+          severity: 'warning',
+          details: {
+            environment,
+            uid,
+            endpoint: AUTH_TOKEN_GET_PATH,
+            errno,
+            requestId: error.food99RequestId || '',
+            source: reconciliationSource,
+          },
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      });
+      tokenCache.delete(tokenCacheKey({
+        environment,
+        lojaId,
+        appKey: config.appKey,
+        merchantId: config.merchantId,
+      }));
+      return {
+        authorized: false,
+        authorizationStatus: status,
+        source: reconciliationMode,
+        message: error.message,
+      };
+    }
+    const tokenData = tokenPayload.data || {};
+    if (reconciliationMode === 'auth_token_fallback'
+      && cleanText(tokenData.app_shop_id) !== cleanText(config.merchantId)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'A 99Food retornou um token para outra loja; nenhuma autorização foi alterada.'
+      );
+    }
+    const latencyMs = await validateStoreToken(config, tokenData.auth_token);
+    const token = await persistAuthToken(lojaId, config, tokenData, {
+      persistAuthorization: false,
+      cacheToken: false,
+    });
+    config.authorizationStatus = 'authorized';
+    const reconciliationAuditRef = auditCollection(lojaId).doc(environmentDocId(
+      'authorization_reconciled',
+      environment,
+      crypto.randomUUID()
+    ));
+    try {
+      await db.runTransaction(async (transaction) => {
+        await assertReconciliationConfigUnchanged(transaction, lojaId, config, environment);
+        transaction.set(authorizationRef(lojaId, environment, config.appKey), {
+        provider: PROVIDER,
+        recordType: 'authorization',
+        lojaId,
+        environment,
+        appKey: config.appKey,
+        merchantId: config.merchantId,
+        status: 'authorized',
+        tokenSecretVersion: config.tokenSecretVersion,
+        tokenExpiresAt: config.tokenExpiresAt,
+        tokenRecoveryRequired: FieldValue.delete(),
+        tokenRecoveryMode: FieldValue.delete(),
+        tokenRecoveryReason: FieldValue.delete(),
+        tokenRecoveryRequestedAt: FieldValue.delete(),
+        suspendReason: FieldValue.delete(),
+        authorizationSource: reconciliationAuthorizationSource,
+        authorizationConfirmedAt: FieldValue.serverTimestamp(),
+        reconciliationEndpoint,
+        authorizedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+        transaction.set(healthRef(lojaId, environment), {
+        provider: PROVIDER,
+        lojaId,
+        environment,
+        status: 'authorized',
+        authorizationStatus: 'authorized',
+        authValidatedAt: FieldValue.serverTimestamp(),
+        latencyMs,
+        consecutiveFailures: 0,
+        lastError: FieldValue.delete(),
+        lastErrno: FieldValue.delete(),
+        lastRequestId: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+        transaction.set(reconciliationAuditRef, {
+        provider: PROVIDER,
+        environment,
+        lojaId,
+        action: 'authorization.reconciled',
+        severity: 'info',
+        details: {
+          environment,
+          uid,
+          endpoint: reconciliationEndpoint,
+          appShopId: lookup.match.appShopId,
+          source: reconciliationSource,
+        },
+        createdAt: FieldValue.serverTimestamp(),
+        });
+      });
+    } catch (error) {
+      let versionReferenced = true;
+      try {
+        const latestAuthSnap = await authorizationRef(lojaId, environment, config.appKey).get();
+        versionReferenced = latestAuthSnap.exists
+          && cleanText(latestAuthSnap.get('tokenSecretVersion')) === cleanText(config.tokenSecretVersion);
+      } catch (referenceError) {
+        logger.error('[99Food] token version reference check failed', sanitizeLogContext({
+          environment,
+          lojaId,
+          merchantId: config.merchantId,
+          code: referenceError?.code || '',
+        }));
+      }
+      if (!versionReferenced) {
+        try {
+          await food99SecretDestroyVersion(config.tokenSecretVersion);
+          config.tokenSecretVersion = '';
+          config.tokenExpiresAt = null;
+        } catch (cleanupError) {
+          logger.error('[99Food] orphan token version cleanup failed', sanitizeLogContext({
+            environment,
+            lojaId,
+            merchantId: config.merchantId,
+            code: cleanupError?.code || '',
+          }));
+        }
+      }
+      throw error;
+    }
+    tokenCache.set(tokenCacheKey({
+      environment,
+      lojaId,
+      appKey: config.appKey,
+      merchantId: config.merchantId,
+    }), {token, expiresAt: dateMillis(config.tokenExpiresAt)});
+    return {
+      authorized: true,
+      authorizationStatus: 'authorized',
+      source: reconciliationMode,
+      latencyMs,
+      message: reconciliationMessage,
+    };
+  };
+
+  const buildPlatformSettings = (currentInput, incoming, environment) => {
+    const current = normalizePlatformConfig({...currentInput, environment});
+    const has = (field) => Object.prototype.hasOwnProperty.call(incoming, field);
+    const apiBaseInput = has('apiBaseUrl') ? cleanText(incoming.apiBaseUrl) : current.apiBaseUrl;
+    const authInput = has('authUrl') ? cleanText(incoming.authUrl) : current.authUrl;
+    const webhookInput = has('webhookUrl') ? cleanText(incoming.webhookUrl) : current.webhookUrl;
+
+    if (!apiBaseInput || !authInput) {
+      throw new HttpsError('invalid-argument', 'API base e URL de autenticacao sao obrigatorias.');
+    }
+    const apiBaseUrl = validateFood99ApiBaseUrl(apiBaseInput);
+    const authUrl = validateFood99ApiBaseUrl(authInput);
+    if (!apiBaseUrl || !authUrl) {
+      throw new HttpsError('invalid-argument', 'URL não autorizada para a integração 99Food.');
+    }
+    if (has('webhookUrl') && !webhookInput) {
+      throw new HttpsError('invalid-argument', 'A URL publica do webhook nao pode ficar vazia.');
+    }
+    const webhookUrl = webhookInput ? validatePublicWebhookUrl(webhookInput) : '';
+    if (webhookInput && !webhookUrl) {
+      throw new HttpsError('invalid-argument', 'URL publica do webhook invalida. Use HTTPS e um host publico.');
+    }
+
+    const inventoryMethod = cleanText(incoming.inventoryMethod || current.inventoryMethod || 'POST').toUpperCase();
+    if (!['POST', 'PUT', 'PATCH'].includes(inventoryMethod)) {
+      throw new HttpsError('invalid-argument', 'Metodo de disponibilidade invalido.');
+    }
+
+    const before = {
+      apiBaseUrl: current.apiBaseUrl,
+      authUrl: current.authUrl,
+      webhookUrl: current.webhookUrl,
+      webhookEnabled: Boolean(current.webhookEnabled),
+      inventoryEndpointTemplate: cleanText(current.inventoryEndpointTemplate),
+      inventoryMethod: cleanText(current.inventoryMethod || 'POST').toUpperCase(),
+    };
+    const after = {
+      apiBaseUrl,
+      authUrl,
+      webhookUrl,
+      webhookEnabled: has('webhookEnabled') ? Boolean(incoming.webhookEnabled) : before.webhookEnabled,
+      inventoryEndpointTemplate: has('inventoryEndpointTemplate')
+        ? cleanText(incoming.inventoryEndpointTemplate)
+        : before.inventoryEndpointTemplate,
+      inventoryMethod,
+    };
+    return {
+      before,
+      after,
+      changes: trackedChanges(before, after, Object.keys(after)),
+    };
+  };
+
+  const platformSecretDefinition = (kind, environment) => {
+    if (kind === 'app_id') {
+      return {
+        secretId: `food99_${environment}_platform_app_id`,
+        pointerField: 'clientIdSecretVersion',
+        patch: (value, version) => ({
+          clientIdSecretVersion: version,
+          clientIdSuffix: value.slice(-4),
+          clientIdMasked: '********',
+          clientIdFingerprint: fingerprintSecret(value),
+        }),
+      };
+    }
+    if (kind === 'app_secret') {
+      return {
+        secretId: `food99_${environment}_platform_app_secret`,
+        pointerField: 'clientSecretSecretVersion',
+        patch: (value, version) => ({
+          clientSecretSecretVersion: version,
+          clientSecretMasked: '********',
+          clientSecretFingerprint: fingerprintSecret(value),
+        }),
+      };
+    }
+    throw new HttpsError('invalid-argument', 'Credencial 99Food invalida.');
+  };
+
+  const mappedStoreIdsForAppShopIds = async (appShopIds, environment, hintedStoreId = '') => {
+    const matchedStoreIds = new Set(hintedStoreId ? [hintedStoreId] : []);
+    for (const appShopId of dedupeIds(appShopIds)) {
+      const snap = await db.collectionGroup('food99').where('merchantId', '==', appShopId).get();
+      snap.docs.forEach((doc) => {
+        const docEnvironment = doc.id === 'config_development'
+          ? FOOD99_ENVIRONMENTS.DEVELOPMENT
+          : (doc.id === 'config_production' || doc.id === 'config'
+            ? FOOD99_ENVIRONMENTS.PRODUCTION
+            : strictEnvironment(doc.get('environment')));
+        if (docEnvironment !== environment) return;
+        const storeId = extractStoreId(doc);
+        if (storeId) matchedStoreIds.add(storeId);
+      });
+    }
+    return [...matchedStoreIds];
+  };
+
+  const applyShopBindEvent = async ({
+    storeId,
+    config,
+    environment,
+    appId,
+    appShopIds,
+    authorized,
+    timestampMs,
+  }) => {
+    const eventKey = bindEventFingerprint({appId, environment, appShopIds, authorized, timestampMs});
+    const eventRef = db.collection('lojas').doc(storeId).collection('food99WebhookEvents')
+      .doc(environmentDocId('shop_bind', environment, eventKey));
+    const authRef = authorizationRef(storeId, environment, config.appKey);
+    const currentHealthRef = healthRef(storeId, environment);
+    const auditRef = auditCollection(storeId).doc(environmentDocId('shop_bind', environment, eventKey));
+    const eventTime = timestampMs > 0 ? new Date(timestampMs) : null;
+
+    const result = await db.runTransaction(async (transaction) => {
+      await assertReconciliationConfigUnchanged(transaction, storeId, config, environment, {
+        checkAuthorization: false,
+      });
+      const [eventSnap, authSnap] = await Promise.all([
+        transaction.get(eventRef),
+        transaction.get(authRef),
+      ]);
+      if (eventSnap.exists) return {duplicate: true, applied: false};
+
+      const previousTimestampMs = authSnap.exists
+        ? asNumber(authSnap.get('lastBindEventTimestampMs'))
+        : 0;
+      const outOfOrder = timestampMs > 0
+        && previousTimestampMs > 0
+        && previousTimestampMs > timestampMs;
+
+      transaction.set(eventRef, {
+        provider: PROVIDER,
+        recordType: 'shop_bind_event',
+        lojaId: storeId,
+        environment,
+        appKey: config.appKey,
+        appShopIds: dedupeIds(appShopIds),
+        authorized,
+        eventTimestampMs: timestampMs || null,
+        eventAt: eventTime || FieldValue.delete(),
+        eventKey,
+        status: outOfOrder ? 'ignored_out_of_order' : 'processed',
+        processedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      if (outOfOrder) return {duplicate: false, applied: false, outOfOrder: true};
+
+      transaction.set(authRef, {
+        provider: PROVIDER,
+        recordType: 'authorization',
+        lojaId: storeId,
+        environment,
+        appKey: config.appKey,
+        merchantId: config.merchantId,
+        status: authorized ? 'authorized' : 'awaiting_authorization',
+        suspendReason: authorized ? FieldValue.delete() : 'shop_unbound',
+        ...(authorized ? {} : {
+          tokenSecretVersion: FieldValue.delete(),
+          tokenExpiresAt: FieldValue.delete(),
+        }),
+        authorizationSource: 'shop_bind_webhook',
+        authorizationConfirmedAt: eventTime || FieldValue.serverTimestamp(),
+        ...(timestampMs > 0 ? {
+          lastBindEventAt: eventTime,
+          lastBindEventTimestampMs: timestampMs,
+        } : {}),
+        lastBindReceivedAt: FieldValue.serverTimestamp(),
+        lastBindEventKey: eventKey,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      transaction.set(currentHealthRef, {
+        provider: PROVIDER,
+        lojaId: storeId,
+        environment,
+        status: authorized ? 'authorized' : 'awaiting_authorization',
+        authorizationStatus: authorized ? 'authorized' : 'awaiting_authorization',
+        lastWebhookAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      transaction.set(auditRef, {
+        provider: PROVIDER,
+        environment,
+        lojaId: storeId,
+        action: authorized ? 'authorization.confirmed' : 'authorization.revoked',
+        severity: authorized ? 'info' : 'warning',
+        details: {
+          environment,
+          endpoint: 'shopBindStatus',
+          appShopId: config.merchantId,
+          eventKey,
+        },
+        createdAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {duplicate: false, applied: true};
+    });
+
+    if (!authorized && result.applied) {
+      tokenCache.delete(tokenCacheKey({
+        environment,
+        lojaId: storeId,
+        appKey: config.appKey,
+        merchantId: config.merchantId,
+      }));
+    }
+    return result;
+  };
+
+  const exportedFunctions = {
     food99GetConfiguration: onCall(async (request) => {
       const {lojaId, requester} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
       const canManagePlatform = isPlatformAdmin(requester);
-      const [config, platformSnap, healthSnap] = await Promise.all([
-        loadConfig(lojaId, false),
-        platformConfigRef().get(),
-        healthRef(lojaId).get(),
+      const [config, platformConfig, health] = await Promise.all([
+        loadConfig(lojaId, false, environment),
+        readPlatformConfig(environment),
+        readHealth(lojaId, environment),
       ]);
+      const queueSnap = await catalogQueueRef(environment, config.appKey).get();
+      const queue = queueSnap.exists ? secretSafePublicConfig(queueSnap.data() || {}) : {};
       return {
         config: publicConfig(config, canManagePlatform),
-        platform: publicPlatformConfig(platformSnap.exists ? platformSnap.data() || {} : {}, canManagePlatform),
+        platform: publicPlatformConfig(platformConfig, canManagePlatform),
+        environment,
+        effectiveApiBaseUrl: config.apiBaseUrl,
+        effectiveAuthUrl: config.authUrl,
+        platformEffectiveApiBaseUrl: config.apiBaseUrl,
+        platformEffectiveAuthUrl: config.authUrl,
+        authorizationStatus: config.authorizationStatus,
+        queue,
         permissions: {
           canManagePlatform,
           canConfigureStore: true,
         },
-        health: healthSnap.exists ? healthSnap.data() : {status: 'not_configured'},
+        health,
       };
     }),
 
     food99GetPlatformConfiguration: onCall(async (request) => {
-      const {requester} = await requirePlatformAdmin(request);
-      const snap = await platformConfigRef().get();
+      setNoStoreHeaders(request);
+      requireCallablePost(request);
+      const {requester, uid} = await requirePlatformAdmin(request);
+      const environment = requestEnvironment(request);
+      const platformConfig = await readPlatformConfig(environment);
+      let appId = '';
+      try {
+        appId = await food99SecretAccess(platformConfig.clientIdSecretVersion);
+      } catch (error) {
+        logger.error('[99Food] protected App ID read failed', {uid, environment, code: error.code});
+        throw new HttpsError('internal', 'Nao foi possivel carregar o App ID protegido.');
+      }
       return {
-        platform: publicPlatformConfig(snap.exists ? snap.data() || {} : {}, isPlatformAdmin(requester)),
+        platform: publicPlatformConfig(platformConfig, isPlatformAdmin(requester)),
+        appId,
       };
     }),
 
-    food99SavePlatformConfiguration: onCall({timeoutSeconds: 120}, async (request) => {
-      const {uid, ip} = await requirePlatformAdmin(request);
-      const incoming = request.data || {};
-      const existingSnap = await platformConfigRef().get();
-      const existing = existingSnap.exists ? existingSnap.data() || {} : {};
-      const projectId = getProjectId();
-      const clientId = cleanText(incoming.clientId);
-      const clientSecret = String(incoming.clientSecret || '');
-      const webhookSecret = String(incoming.webhookSecret || '');
-      const updateCredentials = Boolean(clientId || clientSecret);
-      const updateWebhookSecret = Boolean(webhookSecret);
-
-      if (updateCredentials && !(clientId && clientSecret)) {
-        throw new HttpsError('invalid-argument', 'Informe Client ID e Client Secret juntos para substituir a credencial central.');
+    food99RevealPlatformAppSecret: onCall(async (request) => {
+      setNoStoreHeaders(request);
+      requireCallablePost(request);
+      const {uid, actor, ip} = await requirePlatformAdmin(request);
+      const environment = requestEnvironment(request);
+      const platformConfig = await readPlatformConfig(environment);
+      if (!platformConfig.clientSecretSecretVersion) {
+        throw new HttpsError('failed-precondition', 'App Secret ainda nao cadastrado para este ambiente.');
       }
-      if ((updateCredentials || updateWebhookSecret) && !projectId) {
-        throw new HttpsError('failed-precondition', 'Projeto Google Cloud nao identificado.');
-      }
-
-      const beforeAudit = {
-        environment: normalizeEnvironment(existing.environment),
-        apiBaseUrl: cleanText(existing.apiBaseUrl) || DEFAULT_API_URL,
-        authUrl: cleanText(existing.authUrl) || DEFAULT_AUTH_URL,
-        webhookUrl: cleanText(existing.webhookUrl),
-        webhookEnabled: Boolean(existing.webhookEnabled),
-        inventoryEndpointTemplate: cleanText(existing.inventoryEndpointTemplate),
-        inventoryMethod: cleanText(existing.inventoryMethod || 'POST').toUpperCase(),
-        clientId: existing.clientIdMasked || (existing.clientIdSecretVersion ? '********' : ''),
-        clientSecret: existing.clientSecretMasked || (existing.clientSecretSecretVersion ? '********' : ''),
-        webhookSecret: existing.webhookSecretMasked || (existing.webhookSecretVersion ? '********' : ''),
-      };
-
-      const platformPatch = {
-        provider: PROVIDER,
-        environment: normalizeEnvironment(incoming.environment || existing.environment),
-        apiBaseUrl: cleanText(incoming.apiBaseUrl || existing.apiBaseUrl) || DEFAULT_API_URL,
-        authUrl: cleanText(incoming.authUrl || existing.authUrl) || DEFAULT_AUTH_URL,
-        webhookUrl: cleanText(incoming.webhookUrl ?? existing.webhookUrl),
-        webhookEnabled: Object.prototype.hasOwnProperty.call(incoming, 'webhookEnabled')
-          ? Boolean(incoming.webhookEnabled)
-          : Boolean(existing.webhookEnabled),
-        inventoryEndpointTemplate: cleanText(incoming.inventoryEndpointTemplate ?? existing.inventoryEndpointTemplate),
-        inventoryMethod: cleanText(incoming.inventoryMethod || existing.inventoryMethod || 'POST').toUpperCase(),
-        updatedByUid: uid,
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-
+      let appSecret = '';
       try {
-        if (updateCredentials) {
-          const [clientIdName, clientSecretName] = await Promise.all([
-            ensureSecret(projectId, 'food99_platform_client_id', {app: 'doceria', provider: PROVIDER, scope: 'platform'}),
-            ensureSecret(projectId, 'food99_platform_client_secret', {app: 'doceria', provider: PROVIDER, scope: 'platform'}),
-          ]);
-          const [clientIdSecretVersion, clientSecretSecretVersion] = await Promise.all([
-            addSecretVersion(clientIdName, clientId),
-            addSecretVersion(clientSecretName, clientSecret),
-          ]);
-          Object.assign(platformPatch, {
-            clientIdSecretVersion,
-            clientSecretSecretVersion,
-            clientIdMasked: maskSecret(clientId),
-            clientSecretMasked: maskSecret(clientSecret),
-            clientIdFingerprint: fingerprintSecret(clientId),
-            clientSecretFingerprint: fingerprintSecret(clientSecret),
-          });
-        }
+        appSecret = await food99SecretAccess(platformConfig.clientSecretSecretVersion);
+      } catch (error) {
+        logger.error('[99Food] protected App Secret read failed', {uid, environment, code: error.code});
+        throw new HttpsError('internal', 'Nao foi possivel revelar o App Secret protegido.');
+      }
+      await auditPlatform('platform.app_secret.revealed', {
+        uid,
+        user: actor,
+        ip,
+        contextLojaId: truncate(request.data?.lojaId, 120),
+        secretName: `food99_${environment}_platform_app_secret`,
+        version: cleanText(platformConfig.clientSecretSecretVersion).split('/').pop(),
+      }, 'info', environment);
+      return {appSecret};
+    }),
 
-        if (updateWebhookSecret) {
-          const webhookSecretName = await ensureSecret(projectId, 'food99_platform_webhook_secret', {
-            app: 'doceria',
-            provider: PROVIDER,
-            scope: 'platform',
-          });
-          Object.assign(platformPatch, {
-            webhookSecretVersion: await addSecretVersion(webhookSecretName, webhookSecret),
-            webhookSecretMasked: maskSecret(webhookSecret),
-            webhookSecretFingerprint: fingerprintSecret(webhookSecret),
-          });
-        }
+    food99AuditPlatformAppSecretCopy: onCall(async (request) => {
+      requireCallablePost(request);
+      const {uid, actor, ip} = await requirePlatformAdmin(request);
+      const environment = requestEnvironment(request);
+      const platformConfig = await readPlatformConfig(environment);
+      await auditPlatform('platform.app_secret.copied', {
+        uid,
+        user: actor,
+        ip,
+        contextLojaId: truncate(request.data?.lojaId, 120),
+        secretName: `food99_${environment}_platform_app_secret`,
+        version: cleanText(platformConfig.clientSecretSecretVersion).split('/').pop(),
+      }, 'info', environment);
+      return {recorded: true};
+    }),
+
+    food99ReplacePlatformSecret: onCall({timeoutSeconds: 120}, async (request) => {
+      setNoStoreHeaders(request);
+      requireCallablePost(request);
+      const {uid, actor, ip} = await requirePlatformAdmin(request);
+      const environment = requestEnvironment(request);
+      const incoming = request.data || {};
+      if (incoming.confirmed !== true) {
+        throw new HttpsError('failed-precondition', 'Confirme explicitamente a substituicao da credencial.');
+      }
+      const kind = cleanText(incoming.kind).toLowerCase();
+      const definition = platformSecretDefinition(kind, environment);
+      const rawValue = typeof incoming.value === 'string' ? incoming.value : '';
+      const value = kind === 'app_id' ? rawValue.trim() : rawValue;
+      if (!value.trim()) {
+        throw new HttpsError('invalid-argument', 'Informe o novo valor antes de substituir.');
+      }
+
+      const existing = await readPlatformConfig(environment);
+      let currentValue = '';
+      try {
+        currentValue = await food99SecretAccess(existing[definition.pointerField]);
+      } catch (error) {
+        logger.error('[99Food] protected credential comparison failed', {uid, environment, kind, code: error.code});
+        throw new HttpsError('internal', 'Nao foi possivel validar a credencial protegida atual.');
+      }
+      if (currentValue && secretValuesEqual(currentValue, value)) {
+        return {
+          changed: false,
+          secretName: definition.secretId,
+          version: cleanText(existing[definition.pointerField]).split('/').pop(),
+        };
+      }
+
+      const projectId = getProjectId();
+      if (!projectId) throw new HttpsError('failed-precondition', 'Projeto Google Cloud nao identificado.');
+      let secretVersion = '';
+      try {
+        const resourceName = await food99SecretEnsure(projectId, definition.secretId, {
+          app: 'doceria',
+          provider: PROVIDER,
+          scope: 'platform',
+          environment,
+        });
+        secretVersion = await food99SecretAddVersion(resourceName, value);
       } catch (error) {
         throwSecretManagerSaveError(error);
       }
 
-      await platformConfigRef().set(platformPatch, {merge: true});
+      const version = cleanText(secretVersion).split('/').pop();
+      const auditRef = platformAuditCollection().doc();
+      try {
+        await db.runTransaction(async (transaction) => {
+          transaction.set(platformEnvironmentConfigRef(environment), {
+            provider: PROVIDER,
+            environment,
+            ...definition.patch(value, secretVersion),
+            updatedByUid: uid,
+            updatedAt: FieldValue.serverTimestamp(),
+          }, {merge: true});
+          transaction.set(auditRef, {
+            provider: PROVIDER,
+            environment,
+            action: 'platform.secret.replaced',
+            severity: 'info',
+            uid,
+            user: actor,
+            ip,
+            contextLojaId: truncate(incoming.lojaId, 120),
+            secretName: definition.secretId,
+            version,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+        });
+      } catch (error) {
+        logger.error('[99Food] credential pointer update failed', {uid, environment, kind, code: error.code});
+        throw new HttpsError('internal', 'Nao foi possivel ativar a nova versao da credencial protegida.');
+      }
       tokenCache.clear();
+      return {changed: true, secretName: definition.secretId, version};
+    }),
 
-      const afterAudit = {
-        environment: platformPatch.environment,
-        apiBaseUrl: platformPatch.apiBaseUrl,
-        authUrl: platformPatch.authUrl,
-        webhookUrl: platformPatch.webhookUrl,
-        webhookEnabled: platformPatch.webhookEnabled,
-        inventoryEndpointTemplate: platformPatch.inventoryEndpointTemplate,
-        inventoryMethod: platformPatch.inventoryMethod,
-        clientId: platformPatch.clientIdMasked || beforeAudit.clientId,
-        clientSecret: platformPatch.clientSecretMasked || beforeAudit.clientSecret,
-        webhookSecret: platformPatch.webhookSecretMasked || beforeAudit.webhookSecret,
-      };
-      await auditPlatform('platform.configuration.saved', {
-        uid,
-        ip,
-        changes: trackedChanges(beforeAudit, afterAudit, Object.keys(afterAudit)),
-      });
+    food99SavePlatformConfiguration: onCall({timeoutSeconds: 120}, async (request) => {
+      requireCallablePost(request);
+      const {uid, actor, ip} = await requirePlatformAdmin(request);
+      const incoming = request.data || {};
+      const environment = requestEnvironment(request);
+      const existing = await readPlatformConfig(environment);
+      if (['clientId', 'clientSecret', 'webhookSecret', 'kind', 'value'].some((field) => (
+        Object.prototype.hasOwnProperty.call(incoming, field)
+      ))) {
+        throw new HttpsError('invalid-argument', 'Use a acao Substituir para alterar credenciais protegidas.');
+      }
 
-      const updatedSnap = await platformConfigRef().get();
+      const configRefForEnvironment = platformEnvironmentConfigRef(environment);
+      const auditRef = platformAuditCollection().doc();
+      let outcome;
+      try {
+        outcome = await db.runTransaction(async (transaction) => {
+          const scopedSnap = await transaction.get(configRefForEnvironment);
+          const current = scopedSnap.exists ? {...existing, ...scopedSnap.data()} : existing;
+          const settings = buildPlatformSettings(current, incoming, environment);
+          if (!Object.keys(settings.changes).length) return {changed: false};
+          transaction.set(configRefForEnvironment, {
+            provider: PROVIDER,
+            environment,
+            ...settings.after,
+            updatedByUid: uid,
+            updatedAt: FieldValue.serverTimestamp(),
+          }, {merge: true});
+          transaction.set(auditRef, {
+            provider: PROVIDER,
+            environment,
+            action: 'platform.configuration.saved',
+            severity: 'info',
+            uid,
+            user: actor,
+            ip,
+            contextLojaId: truncate(incoming.lojaId, 120),
+            fields: Object.keys(settings.changes),
+            changes: settings.changes,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+          return {changed: true};
+        });
+      } catch (error) {
+        if (error instanceof HttpsError) throw error;
+        logger.error('[99Food] platform configuration transaction failed', {uid, environment, code: error.code});
+        throw new HttpsError('internal', 'Nao foi possivel salvar a configuracao global do 99Food.');
+      }
+      if (outcome.changed) tokenCache.clear();
+      const updated = outcome.changed ? await readPlatformConfig(environment) : existing;
       return {
-        platform: publicPlatformConfig(updatedSnap.exists ? updatedSnap.data() || {} : {}, true),
+        platform: publicPlatformConfig(updated, true),
+        changed: outcome.changed,
       };
     }),
 
     food99SaveConfiguration: onCall({timeoutSeconds: 120}, async (request) => {
       const {uid, lojaId, requester} = await requireCallableStore(request);
       const incoming = request.data || {};
+      const environment = requestEnvironment(request);
       if (hasGlobalConfigPayload(incoming)) {
         throw new HttpsError('permission-denied', 'Configuracoes globais do 99Food devem ser alteradas somente em Configuracoes > Integracoes > 99Food Developer.');
       }
-      const [existingSnap, platformSnap] = await Promise.all([configRef(lojaId).get(), platformConfigRef().get()]);
-      const existing = existingSnap.exists ? existingSnap.data() || {} : {};
-      const platformExisting = platformSnap.exists ? platformSnap.data() || {} : {};
+      const [existingResult, platformExisting] = await Promise.all([
+        readStoreConfig(lojaId, environment),
+        readPlatformConfig(environment),
+      ]);
+      const existing = existingResult.data || {};
       const canManagePlatform = isPlatformAdmin(requester);
 
       const config = {
         provider: PROVIDER,
+        environment,
         merchantId: cleanText(incoming.merchantId || existing.merchantId),
         merchantName: cleanText(incoming.merchantName || existing.merchantName),
         enabled: Boolean(incoming.enabled),
-        status: incoming.enabled ? 'active' : 'inactive',
+        status: existing.authorizationStatus || 'awaiting_authorization',
+        authorizationStatus: existing.authorizationStatus || 'awaiting_authorization',
         pollingEnabled: incoming.pollingEnabled !== false,
         ordersSyncEnabled: incoming.ordersSyncEnabled !== false,
         stockSyncEnabled: incoming.stockSyncEnabled !== false,
@@ -2056,7 +4040,29 @@ const createFood99Functions = ({
         updatedByUid: uid,
         updatedAt: FieldValue.serverTimestamp(),
       };
-      await configRef(lojaId).set(config, {merge: true});
+      await configRef(lojaId, environment).set(config, {merge: true});
+      const mergedForAppKey = mergePlatformCredentials({...existing, ...config}, platformExisting);
+      const appKey = mergedForAppKey.clientIdFingerprint || mergedForAppKey.clientIdSuffix || 'app';
+      const merchantChanged = Boolean(existing.merchantId && existing.merchantId !== config.merchantId);
+      const currentAuthorizationSnap = await authorizationRef(lojaId, environment, appKey).get();
+      const currentAuthorizationStatus = currentAuthorizationSnap.exists
+        ? currentAuthorizationSnap.get('status')
+        : existing.authorizationStatus;
+      await authorizationRef(lojaId, environment, appKey).set({
+        provider: PROVIDER,
+        recordType: 'authorization',
+        lojaId,
+        environment,
+        appKey,
+        merchantId: config.merchantId,
+        status: merchantChanged ? 'awaiting_authorization' : (currentAuthorizationStatus || 'awaiting_authorization'),
+        ...(merchantChanged ? {
+          tokenSecretVersion: FieldValue.delete(),
+          tokenExpiresAt: FieldValue.delete(),
+          suspendReason: 'merchant_changed',
+        } : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
       tokenCache.clear();
 
       const beforeAudit = {
@@ -2087,26 +4093,35 @@ const createFood99Functions = ({
         changes: trackedChanges(beforeAudit, afterAudit, Object.keys(afterAudit)),
         enabled: config.enabled,
         pollingEnabled: config.pollingEnabled,
-      });
-      return publicConfig(mergePlatformCredentials({...existing, ...config}, platformExisting), canManagePlatform);
+      }, 'info', environment);
+      const saved = await loadConfig(lojaId, false, environment);
+      return {config: publicConfig(saved, canManagePlatform)};
     }),
 
     food99PromoteStoredCredentials: onCall(async (request) => {
       const {uid, lojaId, requester} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
       if (!isPlatformAdmin(requester)) {
         throw new HttpsError('permission-denied', 'Somente Dono ou Administrador Master pode ativar a credencial central do 99Food.');
       }
-      const storeSnap = await configRef(lojaId).get();
-      const storeConfig = storeSnap.exists ? storeSnap.data() || {} : {};
+      if (environment !== FOOD99_ENVIRONMENTS.PRODUCTION) {
+        throw new HttpsError('failed-precondition', 'Credenciais legadas de Produção não podem ser promovidas para Desenvolvimento.');
+      }
+      const storeResult = await readStoreConfig(lojaId, environment);
+      const storeConfig = storeResult.data || {};
       if (!storeConfig.clientIdSecretVersion || !storeConfig.clientSecretSecretVersion) {
         throw new HttpsError('failed-precondition', 'Esta loja nao possui credenciais salvas para reutilizar.');
       }
-      await platformConfigRef().set({
+      await platformEnvironmentConfigRef(environment).set({
+        provider: PROVIDER,
+        environment,
+        apiBaseUrl: CURRENT_FOOD99_HOST,
+        authUrl: CURRENT_FOOD99_HOST,
         clientIdSecretVersion: storeConfig.clientIdSecretVersion,
         clientSecretSecretVersion: storeConfig.clientSecretSecretVersion,
         migratedFromStoreId: lojaId,
-        clientIdMasked: storeConfig.clientIdMasked || '********',
-        clientSecretMasked: storeConfig.clientSecretMasked || '********',
+        clientIdMasked: '********',
+        clientSecretMasked: '********',
         updatedByUid: uid,
         updatedAt: FieldValue.serverTimestamp(),
       }, {merge: true});
@@ -2116,38 +4131,144 @@ const createFood99Functions = ({
         ip: getRequestIp(request),
         changes: {
           migratedFromStoreId: {before: null, after: lojaId},
-          clientId: {before: null, after: storeConfig.clientIdMasked || '********'},
-          clientSecret: {before: null, after: storeConfig.clientSecretMasked || '********'},
+          clientIdReady: {before: false, after: true},
+          clientSecretReady: {before: false, after: true},
         },
+      }, 'info', environment);
+      await audit(lojaId, 'configuration.credentials_promoted', {uid}, 'info', environment);
+      return {config: publicConfig(await loadConfig(lojaId, false, environment), true)};
+    }),
+
+    food99StartAuthorization: onCall(async (request) => {
+      const {uid, lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
+      const config = await loadConfig(lojaId, false, environment);
+      if (!config.credentialsReady) {
+        throw new HttpsError('failed-precondition', 'Cadastre App ID e App Secret deste ambiente antes de autorizar.');
+      }
+      if (!config.merchantId) {
+        throw new HttpsError('failed-precondition', 'Informe e salve o app_shop_id da loja antes de autorizar.');
+      }
+      const {clientId} = await credentialsForConfig(config);
+      // O contrato deste endpoint declara somente app_id; timestamp/sign não
+      // pertencem ao request. A própria 99Food devolve a URL temporária assinada.
+      const response = await fetchWithTimeout(buildUrl(config.authUrl, AUTHORIZATION_PAGE_PATH), {
+        method: 'POST',
+        headers: {Accept: 'application/json', 'Content-Type': 'application/json'},
+        body: JSON.stringify({app_id: clientId}),
       });
-      await audit(lojaId, 'configuration.credentials_promoted', {uid});
-      return publicConfig(await loadConfig(lojaId, false), true);
+      const payload = await parseApiResponse(response, AUTHORIZATION_PAGE_PATH);
+      const rawAuthorizationUrl = typeof payload.data === 'string'
+        ? payload.data
+        : (payload.data?.url || payload.data?.authorization_url || payload.url || '');
+      const authorizationUrl = validateAuthorizationUrl(rawAuthorizationUrl);
+      if (!authorizationUrl) {
+        throw new HttpsError('failed-precondition', 'A 99Food não retornou uma URL oficial de autorização válida.');
+      }
+      const authorizationRequestId = crypto.randomBytes(24).toString('hex');
+      const expiresAt = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000));
+      await authorizationRef(lojaId, environment, config.appKey).set({
+        provider: PROVIDER,
+        recordType: 'authorization',
+        lojaId,
+        environment,
+        appKey: config.appKey,
+        merchantId: config.merchantId,
+        status: 'awaiting_authorization',
+        authorizationRequestId,
+        requestedByUid: uid,
+        requestExpiresAt: expiresAt,
+        requestedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      await setHealth(lojaId, environment, {
+        status: 'awaiting_authorization',
+        authorizationStatus: 'awaiting_authorization',
+      });
+      await audit(lojaId, 'authorization.started', {
+        uid,
+        authorizationRequestId,
+        expiresAt: expiresAt.toISOString(),
+        endpoint: AUTHORIZATION_PAGE_PATH,
+        host: config.authUrl,
+      }, 'info', environment);
+      return {
+        authorizationUrl,
+        authorizationStatus: 'awaiting_authorization',
+        expiresAt: expiresAt.toISOString(),
+        message: 'Conclua a autorização no portal oficial e depois verifique o vínculo.',
+      };
+    }),
+
+    food99CheckAuthorization: onCall(async (request) => {
+      const {uid, lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
+      const config = await loadConfig(lojaId, false, environment);
+      if (!config.credentialsReady || !config.merchantId) {
+        return {
+          authorized: false,
+          authorizationStatus: 'configuration_incomplete',
+          message: 'Cadastre as credenciais e o app_shop_id deste ambiente.',
+        };
+      }
+      return reconcileStoreAuthorization(lojaId, config, environment, uid);
     }),
 
     food99TestConnection: onCall(async (request) => {
       const {lojaId} = await requireCallableStore(request);
-      const config = await loadConfig(lojaId, false);
-      const started = Date.now();
-      await tokenForStore(lojaId, config);
-      await healthRef(lojaId).set({
-        provider: PROVIDER,
-        status: 'online',
-        authValidatedAt: FieldValue.serverTimestamp(),
-        latencyMs: Date.now() - started,
-      }, {merge: true});
-      return {ok: true, latencyMs: Date.now() - started};
+      const environment = requestEnvironment(request);
+      const config = await loadConfig(lojaId, false, environment);
+      if (!config.credentialsReady) {
+        await setHealth(lojaId, environment, {status: 'configuration_incomplete'});
+        return {
+          ok: false,
+          authorizationStatus: 'configuration_incomplete',
+          message: 'App ID/App Secret ainda não foram cadastrados neste ambiente.',
+        };
+      }
+      await credentialsForConfig(config);
+      if (!config.merchantId) {
+        await setHealth(lojaId, environment, {status: 'configuration_incomplete'});
+        return {
+          ok: false,
+          credentialsStored: true,
+          authorizationStatus: 'configuration_incomplete',
+          message: 'Credenciais protegidas. Informe e salve o app_shop_id para continuar.',
+        };
+      }
+      if (config.authorizationStatus !== 'authorized') {
+        await setHealth(lojaId, environment, {
+          status: 'awaiting_authorization',
+          authorizationStatus: 'awaiting_authorization',
+        });
+        return {
+          ok: false,
+          credentialsStored: true,
+          authorizationStatus: 'awaiting_authorization',
+          message: 'Credenciais protegidas e host validados. A validação completa depende da autorização da loja.',
+        };
+      }
+      const latencyMs = await validateStoreConnection(lojaId, config, environment);
+      return {
+        ok: true,
+        authorized: true,
+        authorizationStatus: 'authorized',
+        latencyMs,
+        message: 'Credenciais, token e loja validados no ambiente selecionado.',
+      };
     }),
 
     food99LoadMerchants: onCall(async (request) => {
       const {lojaId} = await requireCallableStore(request);
-      const config = await loadConfig(lojaId, false);
+      const environment = requestEnvironment(request);
+      const config = await loadConfig(lojaId, false, environment);
       if (!config.clientIdSecretVersion || !config.clientSecretSecretVersion) {
         throw new HttpsError('failed-precondition', 'Cadastre a credencial central do 99Food antes de carregar a loja.');
       }
       if (!config.merchantId) {
         throw new HttpsError('failed-precondition', 'Informe o app_shop_id desta loja antes de carregar os dados da 99Food.');
       }
-      const payload = await request99Food(lojaId, config, SHOP_DETAIL_PATH);
+      const payload = await request99Food(lojaId, config, SHOP_DETAIL_PATH, {allowDisabled: true});
       const shop = payload.data || payload;
       const merchants = [{
         id: cleanText(shop.app_shop_id || config.merchantId),
@@ -2155,15 +4276,16 @@ const createFood99Functions = ({
         corporateName: cleanText(shop.poi_name || shop.name || shop.shop_name),
         document: onlyDigits(shop.cnpj || shop.document || ''),
       }].filter((merchant) => merchant.id);
-      await audit(lojaId, 'shop.loaded', {shopId: config.merchantId});
+      await audit(lojaId, 'shop.loaded', {shopId: config.merchantId}, 'info', environment);
       return {merchants};
     }),
 
     food99PollNow: onCall({timeoutSeconds: 120}, async (request) => {
       const {lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
       const orderId = cleanText(request.data?.orderId);
       if (orderId) {
-        const config = await loadConfig(lojaId);
+        const config = await loadConfig(lojaId, true, environment);
         const event = {
           id: safeId(`manual_${orderId}_${Date.now()}`),
           orderId,
@@ -2173,20 +4295,22 @@ const createFood99Functions = ({
         const result = await processEvents(lojaId, config, [event], 'manual_order_lookup');
         return result;
       }
-      return runPoll(lojaId, 'manual');
+      return runPoll(lojaId, 'manual', environment);
     }),
 
     food99OrderAction: onCall({timeoutSeconds: 120}, async (request) => {
       const {lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
       const orderId = cleanText(request.data?.orderId);
       const action = cleanText(request.data?.action);
       if (!orderId) throw new HttpsError('invalid-argument', 'orderId obrigatorio.');
-      const config = await loadConfig(lojaId);
+      const config = await loadConfig(lojaId, true, environment);
       return issueOrderCommand(lojaId, config, orderId, action, request.data || {});
     }),
 
     food99GetCancellationReasons: onCall({timeoutSeconds: 120}, async (request) => {
       await requireCallableStore(request);
+      requestEnvironment(request);
       const orderId = cleanText(request.data?.orderId);
       if (!orderId) throw new HttpsError('invalid-argument', 'orderId obrigatorio.');
       return {
@@ -2204,7 +4328,8 @@ const createFood99Functions = ({
 
     food99LoadCatalogProducts: onCall({timeoutSeconds: 120}, async (request) => {
       const {lojaId} = await requireCallableStore(request);
-      const config = await loadConfig(lojaId);
+      const environment = requestEnvironment(request);
+      const config = await loadConfig(lojaId, true, environment);
       const {categories, products, fromCache, stale, cacheAgeSeconds, warning} = await loadCatalogProductsFrom99Food(
         lojaId,
         config,
@@ -2216,18 +4341,19 @@ const createFood99Functions = ({
         fromCache,
         stale,
         cacheAgeSeconds,
-      }, stale ? 'warning' : 'info');
+      }, stale ? 'warning' : 'info', environment);
       return {products, fromCache, stale, cacheAgeSeconds, warning};
     }),
 
     food99ImportCatalogProduct: onCall({timeoutSeconds: 120}, async (request) => {
       const {uid, lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
       const itemId = cleanText(request.data?.itemId);
       const productId = cleanText(request.data?.productId);
       if (!itemId && !productId) {
         throw new HttpsError('invalid-argument', 'Informe o item ou produto do catalogo 99Food.');
       }
-      const config = await loadConfig(lojaId);
+      const config = await loadConfig(lojaId, true, environment);
       const clientCatalogProduct = catalogProductFromClient(request.data || {});
       let catalogProduct = null;
       let allowClientFallback = false;
@@ -2245,24 +4371,25 @@ const createFood99Functions = ({
           itemId,
           productId,
           error: error.message,
-        }, 'warning');
+        }, 'warning', environment);
       }
       if (!catalogProduct && allowClientFallback && clientCatalogProduct) {
         catalogProduct = clientCatalogProduct;
       }
       if (!catalogProduct) throw new HttpsError('not-found', 'Produto nao encontrado no catalogo 99Food atual.');
-      return importCatalogProductFrom99Food(lojaId, uid, catalogProduct);
+      return importCatalogProductFrom99Food(lojaId, uid, config, catalogProduct);
     }),
 
     food99ImportCatalogProducts: onCall({timeoutSeconds: 300, memory: '512MiB'}, async (request) => {
       const {uid, lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
       const requestedItems = Array.isArray(request.data?.items) ? request.data.items : [];
       const requestedKeys = new Set(requestedItems.map((item) => catalogProductSelectionKey(item)).filter(Boolean));
       if (!requestedKeys.size) {
         throw new HttpsError('invalid-argument', 'Selecione pelo menos um item do catalogo 99Food para importar.');
       }
 
-      const config = await loadConfig(lojaId);
+      const config = await loadConfig(lojaId, true, environment);
       let catalogProducts = [];
       let allowClientFallback = false;
       try {
@@ -2277,7 +4404,7 @@ const createFood99Functions = ({
           requested: requestedItems.length,
           availableSnapshots: catalogProducts.length,
           error: error.message,
-        }, 'warning');
+        }, 'warning', environment);
       }
       const catalogByKey = new Map();
       catalogProducts.forEach((item) => {
@@ -2313,12 +4440,12 @@ const createFood99Functions = ({
             uid,
             requested,
             error: failedResult.error,
-          }, 'warning');
+          }, 'warning', environment);
           continue;
         }
 
         try {
-          results.push(await importCatalogProductFrom99Food(lojaId, uid, catalogProduct));
+          results.push(await importCatalogProductFrom99Food(lojaId, uid, config, catalogProduct));
         } catch (error) {
           const failedResult = {
             itemKey: requestedKey,
@@ -2337,7 +4464,7 @@ const createFood99Functions = ({
             food99ProductId: catalogProduct.productId,
             catalogItemId: catalogProduct.itemId,
             error: error.message,
-          }, 'warning');
+          }, 'warning', environment);
         }
       }
 
@@ -2350,19 +4477,20 @@ const createFood99Functions = ({
         imported,
         ignored,
         failed,
-      }, failed ? 'warning' : 'info');
+      }, failed ? 'warning' : 'info', environment);
       return {requested: requestedItems.length, imported, ignored, failed, results};
     }),
 
     food99LinkCatalogProducts: onCall({timeoutSeconds: 300, memory: '512MiB'}, async (request) => {
       const {uid, lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
       const requestedItems = Array.isArray(request.data?.items) ? request.data.items : [];
       const requestedKeys = new Set(requestedItems.map((item) => catalogProductSelectionKey(item)).filter(Boolean));
       if (!requestedKeys.size) {
         throw new HttpsError('invalid-argument', 'Selecione pelo menos um item do catalogo 99Food para vincular.');
       }
 
-      const config = await loadConfig(lojaId);
+      const config = await loadConfig(lojaId, true, environment);
       let catalogProducts = [];
       let allowClientFallback = false;
       try {
@@ -2377,7 +4505,7 @@ const createFood99Functions = ({
           requested: requestedItems.length,
           availableSnapshots: catalogProducts.length,
           error: error.message,
-        }, 'warning');
+        }, 'warning', environment);
       }
 
       const catalogByKey = new Map();
@@ -2414,12 +4542,12 @@ const createFood99Functions = ({
             uid,
             requested,
             error: failedResult.error,
-          }, 'warning');
+          }, 'warning', environment);
           continue;
         }
 
         try {
-          results.push(await linkCatalogProductToExistingInternalProduct(lojaId, uid, catalogProduct));
+          results.push(await linkCatalogProductToExistingInternalProduct(lojaId, uid, config, catalogProduct));
         } catch (error) {
           const failedResult = {
             itemKey: requestedKey,
@@ -2438,7 +4566,7 @@ const createFood99Functions = ({
             food99ProductId: catalogProduct.productId,
             catalogItemId: catalogProduct.itemId,
             error: error.message,
-          }, 'warning');
+          }, 'warning', environment);
         }
       }
 
@@ -2449,49 +4577,38 @@ const createFood99Functions = ({
         requested: requestedItems.length,
         linked,
         failed,
-      }, failed ? 'warning' : 'info');
+      }, failed ? 'warning' : 'info', environment);
       return {requested: requestedItems.length, linked, failed, results};
     }),
 
     food99PublishProducts: onCall({timeoutSeconds: 300, memory: '512MiB'}, async (request) => {
-      const {lojaId} = await requireCallableStore(request);
-      const config = await loadConfig(lojaId);
+      const {uid, lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
+      const config = await loadConfig(lojaId, true, environment);
       if (!config.merchantId) throw new HttpsError('failed-precondition', 'Selecione a loja 99Food antes de publicar produtos.');
-      const requestedIds = Array.isArray(request.data?.productIds)
-        ? request.data.productIds.map(cleanText).filter(Boolean)
-        : [];
-      const collection = db.collection('lojas').doc(lojaId).collection('produtos');
-      const productDocs = requestedIds.length
-        ? (await Promise.all(requestedIds.map((id) => collection.doc(id).get()))).filter((snap) => snap.exists)
-        : (await collection.get()).docs;
-      if (!productDocs.length) throw new HttpsError('not-found', 'Nenhum produto interno foi encontrado para publicar.');
-      const categories = await loadCatalogCategories(lojaId, config);
-      const results = [];
-      for (const productDoc of productDocs) {
-        try {
-          const result = await publishProductTo99Food(lojaId, config, productDoc.id, productDoc.data() || {}, categories, 'manual_publish');
-          results.push({...result, ok: true});
-        } catch (error) {
-          const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(productDoc.id);
-          await mappingRef.set({
-            productId: productDoc.id,
-            publishStatus: 'error',
-            publishError: error.message,
-            lastPublishAttemptAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-          }, {merge: true});
-          await createAlert(lojaId, 'catalog_publish_failure', error.message, {productId: productDoc.id});
-          results.push({productId: productDoc.id, ok: false, error: error.message});
-        }
-      }
-      const published = results.filter((result) => result.ok).length;
-      const failed = results.length - published;
-      await audit(lojaId, 'catalog.published', {requested: productDocs.length, published, failed}, failed ? 'warning' : 'info');
-      return {requested: productDocs.length, published, failed, results};
+      const requestedIds = dedupeIds(request.data?.productIds || []);
+      const result = await enqueueCatalogPublish(lojaId, config, requestedIds, 'manual_publish', uid);
+      await audit(lojaId, 'catalog.queued', {
+        requested: requestedIds.length,
+        endpoint: CATALOG_UPLOAD_PATH,
+        queueStatus: result.status,
+        nextAllowedAt: result.nextAllowedAt || '',
+      }, 'info', environment);
+      return {
+        ...result,
+        queued: result.status === 'queued' || result.status === 'scheduled',
+        queuedCount: requestedIds.length,
+        requested: requestedIds.length,
+        queue: {
+          status: result.status,
+          nextAllowedAt: result.nextAllowedAt || null,
+        },
+      };
     }),
 
     food99SaveProductMapping: onCall({timeoutSeconds: 120}, async (request) => {
       const {lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
       const productId = cleanText(request.data?.productId);
       const food99ProductId = cleanText(request.data?.food99ProductId);
       if (!productId || !food99ProductId) {
@@ -2507,12 +4624,14 @@ const createFood99Functions = ({
         itemStatus: null,
         price: null,
       };
-      const conflictRefs = await findConflictingCatalogMappingRefs(lojaId, catalogProduct, productId);
+      const conflictRefs = await findConflictingCatalogMappingRefs(lojaId, catalogProduct, productId, environment);
       const productRef = db.collection('lojas').doc(lojaId).collection('produtos').doc(productId);
-      const mappingRef = db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(productId);
+      const mappingRef = scopedMappingRef(lojaId, productId, environment);
       await db.runTransaction(async (transaction) => {
         transaction.set(productRef, food99ProductLinkPatch(catalogProduct), {merge: true});
         transaction.set(mappingRef, {
+          provider: PROVIDER,
+          environment,
           productId,
           food99ProductId,
           externalCode: cleanText(request.data?.externalCode),
@@ -2531,22 +4650,29 @@ const createFood99Functions = ({
         conflictRefs.forEach((conflictRef) => transaction.delete(conflictRef));
       });
       try {
-        await syncProductAvailability(lojaId, productId, 'mapping_saved');
+        await syncProductAvailability(lojaId, productId, 'mapping_saved', environment);
       } catch (error) {
-        logger.warn('[99Food] initial mapping sync failed', {lojaId, productId, error: error.message});
+        logger.warn('[99Food] initial mapping sync deferred', sanitizeLogContext({
+          lojaId,
+          productId,
+          environment,
+          errno: error.food99Errno,
+          requestId: error.food99RequestId,
+        }));
       }
       return {ok: true};
     }),
 
     food99SyncStockNow: onCall({timeoutSeconds: 120}, async (request) => {
       const {lojaId} = await requireCallableStore(request);
+      const environment = requestEnvironment(request);
       const productId = cleanText(request.data?.productId);
-      if (productId) return syncProductAvailability(lojaId, productId, 'manual');
-      const mappings = await db.collection('lojas').doc(lojaId).collection('food99ProductMappings')
+      if (productId) return syncProductAvailability(lojaId, productId, 'manual', environment);
+      const mappings = await mappingCollection(lojaId)
         .where('stockSyncEnabled', '==', true).get();
       const results = [];
-      for (const mapping of mappings.docs) {
-        results.push(await syncProductAvailability(lojaId, mapping.id, 'manual'));
+      for (const mapping of dedupeMappingDocs(mappings.docs, environment)) {
+        results.push(await syncProductAvailability(lojaId, mapping.get('productId') || mapping.id, 'manual', environment));
       }
       return {synced: results.length, results};
     }),
@@ -2557,13 +4683,36 @@ const createFood99Functions = ({
       memory: '512MiB',
     }, async () => {
       const enabled = await db.collectionGroup('food99').where('pollingEnabled', '==', true).get();
-      for (const configDoc of enabled.docs.filter((doc) => doc.id === 'config' && doc.get('enabled') === true)) {
+      for (const configDoc of enabled.docs.filter((doc) => /^config(_development|_production)?$/.test(doc.id) && doc.get('enabled') === true)) {
         const lojaId = extractStoreId(configDoc);
         if (!lojaId) continue;
+        const environment = configDoc.id === 'config_development'
+          ? FOOD99_ENVIRONMENTS.DEVELOPMENT
+          : FOOD99_ENVIRONMENTS.PRODUCTION;
         try {
-          await runPoll(lojaId, 'scheduler');
+          await runPoll(lojaId, 'scheduler', environment);
         } catch (error) {
-          logger.error('[99Food] scheduled poll failed', {lojaId, error: error.message});
+          logger.error('[99Food] scheduled poll failed', sanitizeLogContext({
+            lojaId,
+            environment,
+            errno: error.food99Errno,
+            requestId: error.food99RequestId,
+          }));
+        }
+      }
+      const queues = await platformConfigRef().collection('catalogQueues').get();
+      for (const queueDoc of queues.docs) {
+        const queue = queueDoc.data() || {};
+        if (!strictEnvironment(queue.environment) || !queue.appKey) continue;
+        try {
+          await processCatalogQueue(queue.environment, queue.appKey);
+        } catch (error) {
+          logger.error('[99Food] catalog queue dispatch failed', sanitizeLogContext({
+            environment: queue.environment,
+            endpoint: CATALOG_UPLOAD_PATH,
+            errno: error.food99Errno,
+            requestId: error.food99RequestId,
+          }));
         }
       }
     }),
@@ -2578,55 +4727,134 @@ const createFood99Functions = ({
         'preco99Food', 'nome', 'descricao', 'categoria', 'subcategoria', 'status',
       ].some((field) => String(beforeData[field] ?? '') !== String(afterData[field] ?? ''));
       if (!stockChanged && !catalogChanged) return;
-      try {
-        const mappingSnap = await db.collection('lojas').doc(lojaId).collection('food99ProductMappings').doc(productId).get();
-        if (catalogChanged && mappingSnap.exists && mappingSnap.get('catalogManaged')) {
-          const config = await loadConfig(lojaId);
-          const categories = await loadCatalogCategories(lojaId, config);
-          await publishProductTo99Food(lojaId, config, productId, afterData, categories, 'internal_product_change');
-          return;
+      for (const environment of [FOOD99_ENVIRONMENTS.DEVELOPMENT, FOOD99_ENVIRONMENTS.PRODUCTION]) {
+        try {
+          const config = await loadConfig(lojaId, false, environment);
+          if (!canRunAuthorizedOperation(config)) continue;
+          const mappingRecord = await readProductMapping(lojaId, productId, environment);
+          const mappingSnap = mappingRecord.snapshot;
+          if (!mappingSnap.exists) continue;
+          if (catalogChanged && mappingSnap.get('catalogManaged')) {
+            await enqueueCatalogPublish(lojaId, config, [productId], 'internal_product_change');
+          }
+          if (stockChanged) {
+            await syncProductAvailability(lojaId, productId, 'internal_stock_change', environment);
+          }
+        } catch (error) {
+          logger.warn('[99Food] async product sync deferred', sanitizeLogContext({
+            lojaId,
+            productId,
+            environment,
+            errno: error.food99Errno,
+            requestId: error.food99RequestId,
+          }));
         }
-        if (stockChanged) await syncProductAvailability(lojaId, productId, 'internal_stock_change');
-      } catch (error) {
-        logger.warn('[99Food] async product sync deferred', {lojaId, productId, error: error.message});
       }
     }),
 
     food99Webhook: onRequest({timeoutSeconds: 120, memory: '512MiB'}, async (request, response) => {
       if (request.method !== 'POST') {
-        response.status(405).json({error: 'Method not allowed'});
+        response.status(405).json({errno: 1, errmsg: 'method not allowed'});
         return;
       }
+      const environment = strictEnvironment(request.query.environment);
       let lojaId = cleanText(request.query.lojaId);
       try {
-        if (!lojaId) {
-          const appShopId = cleanText(request.body?.app_shop_id || request.body?.shop?.app_shop_id || request.body?.data?.app_shop_id);
-          if (appShopId) {
-            const snap = await db.collectionGroup('food99').where('merchantId', '==', appShopId).limit(1).get();
-            lojaId = snap.docs[0]?.ref.parent.parent?.id || '';
-          }
-        }
-        if (!lojaId) {
-          response.status(400).json({error: 'lojaId ou app_shop_id obrigatorio'});
+        if (!environment) {
+          response.status(400).json({errno: 1, errmsg: 'environment required'});
           return;
         }
-        const config = await loadConfig(lojaId);
-        if (!config.webhookEnabled) {
-          response.status(409).json({error: 'Webhook desabilitado'});
+        const platformConfig = normalizePlatformConfig(await readPlatformConfig(environment));
+        if (!platformConfig.webhookEnabled
+          || !platformConfig.clientIdSecretVersion
+          || !platformConfig.clientSecretSecretVersion) {
+          response.status(409).json({errno: 1, errmsg: 'webhook disabled'});
           return;
         }
-        if (config.webhookSecretVersion) {
-          const secret = await accessSecret(config.webhookSecretVersion);
-          const sentSignature = cleanText(request.get('x-99Food-signature'));
-          const expected = crypto.createHmac('sha256', secret).update(request.rawBody || Buffer.from(JSON.stringify(request.body))).digest('hex');
-          const valid = sentSignature.length === expected.length
-            && crypto.timingSafeEqual(Buffer.from(sentSignature), Buffer.from(expected));
-          if (!valid) {
-            response.status(401).json({error: 'Assinatura invalida'});
-            return;
-          }
+        if (!Buffer.isBuffer(request.rawBody)) {
+          response.status(400).json({errno: 1, errmsg: 'raw body unavailable'});
+          return;
         }
-        const payloadEvents = Array.isArray(request.body?.events) ? request.body.events : [request.body || {}];
+        const [configuredAppId, appSecret] = await Promise.all([
+          food99SecretAccess(platformConfig.clientIdSecretVersion),
+          food99SecretAccess(platformConfig.clientSecretSecretVersion),
+        ]);
+        const sentSignature = cleanText(request.get('didi-header-sign'));
+        const expectedSignature = signFood99Webhook(request.rawBody, appSecret);
+        if (!sentSignature || !constantTimeEqual(sentSignature, expectedSignature)) {
+          response.status(401).json({errno: 1, errmsg: 'invalid signature'});
+          return;
+        }
+
+        let webhookPayload;
+        try {
+          webhookPayload = parseFood99JsonPreservingLargeIntegers(request.rawBody);
+        } catch (error) {
+          response.status(400).json({errno: 1, errmsg: 'invalid json'});
+          return;
+        }
+        const payloadEvents = Array.isArray(webhookPayload?.events)
+          ? webhookPayload.events
+          : [webhookPayload || {}];
+        const payloadAppId = extractFood99AppIdFromRawBody(request.rawBody);
+        if (!payloadAppId || !secretValuesEqual(payloadAppId, configuredAppId)) {
+          response.status(403).json({errno: 1, errmsg: 'application mismatch'});
+          return;
+        }
+
+        const bindEvents = payloadEvents.filter(isShopBindStatusEvent);
+        if (bindEvents.length) {
+          let handledStores = 0;
+          let recognizedEvents = 0;
+          for (const bindEvent of bindEvents) {
+            const authorized = bindStatusDecision(bindEvent);
+            if (authorized === null) continue;
+            recognizedEvents += 1;
+            const eventAppShopIds = dedupeIds(extractAppShopIds(bindEvent));
+            if (!eventAppShopIds.length) continue;
+            const timestampMs = bindEventTimestampMs(bindEvent)
+              || bindEventTimestampMs(webhookPayload);
+            if (!timestampMs) {
+              logger.warn('[99Food] shopBindStatus ignored without provider timestamp', {environment});
+              continue;
+            }
+            const eventStoreIds = await mappedStoreIdsForAppShopIds(eventAppShopIds, environment, lojaId);
+            for (const storeId of eventStoreIds) {
+              const config = await loadConfig(storeId, false, environment);
+              if (!config.merchantId || !eventAppShopIds.includes(config.merchantId)) continue;
+              handledStores += 1;
+              await applyShopBindEvent({
+                storeId,
+                config,
+                environment,
+                appId: payloadAppId,
+                appShopIds: eventAppShopIds,
+                authorized,
+                timestampMs,
+              });
+            }
+          }
+          response.status(handledStores || !recognizedEvents ? 200 : 202).json({errno: 0});
+          return;
+        }
+
+        const appShopIds = dedupeIds(payloadEvents.flatMap(extractAppShopIds));
+        const storeIds = await mappedStoreIdsForAppShopIds(appShopIds, environment, lojaId);
+
+        if (!storeIds.length) {
+          response.status(400).json({errno: 1, errmsg: 'store not mapped'});
+          return;
+        }
+        lojaId = storeIds[0];
+        const config = await loadConfig(lojaId, true, environment);
+        if (appShopIds.length && config.merchantId && !appShopIds.includes(config.merchantId)) {
+          response.status(403).json({errno: 1, errmsg: 'store mismatch'});
+          return;
+        }
+        if (!canRunAuthorizedOperation(config)) {
+          response.status(202).json({errno: 0});
+          return;
+        }
         const events = payloadEvents.flatMap((payload, index) => {
           const orderIds = extractOrderIds(payload);
           return orderIds.map((orderId) => ({
@@ -2638,35 +4866,71 @@ const createFood99Functions = ({
           }));
         });
         if (!events.length) {
-          await audit(lojaId, 'webhook.ignored', {reason: 'order_id_not_found', payload: request.body}, 'warning');
-          response.status(202).json({acknowledged: true, ignored: true});
+          await audit(lojaId, 'webhook.ignored', {reason: 'order_id_not_found'}, 'warning', environment);
+          response.status(200).json({errno: 0});
           return;
         }
         const result = await processEvents(lojaId, config, events, 'webhook');
         const interval = todayIntervalInTimezone();
-        const dashboard = await buildDailyDashboardSummary(lojaId, interval);
-        await healthRef(lojaId).set({
-          provider: PROVIDER,
-          status: 'online',
+        const dashboard = await buildDailyDashboardSummary(lojaId, environment, interval);
+        await setHealth(lojaId, environment, {
+          status: 'authorized',
+          authorizationStatus: 'authorized',
+          consecutiveFailures: 0,
           lastWebhookAt: FieldValue.serverTimestamp(),
           lastDashboardSummary: dashboard.summary,
           lastDashboardInterval: dashboard.interval,
           lastDashboardOrdersRead: dashboard.ordersRead,
-        }, {merge: true});
+        });
         logger.info('[99Food] webhook processed', {
           lojaId,
+          environment,
           eventsReceived: events.length,
           ordersUpdated: result.acknowledged,
           completedToday: dashboard.summary.finalizados,
           interval: dashboard.interval,
         });
-        response.status(200).json({acknowledged: true, result, dashboardSummary: dashboard.summary});
+        response.status(200).json({errno: 0});
       } catch (error) {
-        logger.error('[99Food] webhook failed', {lojaId, error: error.message});
-        response.status(500).json({error: error.message});
+        logger.error('[99Food] webhook failed', sanitizeLogContext({
+          lojaId,
+          environment,
+          endpoint: 'webhook',
+          errno: error.food99Errno,
+          requestId: error.food99RequestId,
+        }));
+        response.status(500).json({errno: 1, errmsg: 'processing failed'});
       }
     }),
   };
+
+  exportedFunctions.food99HubApi = onRequest(
+    {timeoutSeconds: 120, memory: '512MiB'},
+    async (request, response) => {
+      const method = cleanText(request.method).toUpperCase();
+      const pathname = cleanText(request.path || cleanText(request.url).split('?')[0]) || '/';
+      if (method === 'GET' && (pathname === '/' || pathname === '/health')) {
+        if (typeof response.set === 'function') {
+          response.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+          response.set('Pragma', 'no-cache');
+        }
+        response.status(200).json({
+          ok: true,
+          service: 'food99-hub-api',
+          provider: PROVIDER,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+      if (method === 'POST' && (pathname === '/' || pathname === '/webhook')) {
+        await exportedFunctions.food99Webhook(request, response);
+        return;
+      }
+      response.status(404).json({errno: 1, errmsg: 'not found'});
+    }
+  );
+
+  return exportedFunctions;
 };
 
 module.exports = {createFood99Functions};

@@ -37,14 +37,39 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { audioManager } from './utils/AudioManager.js';
 import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceWorkerMessages } from './utils/notifications.js';
 import { updateStock as updateStockService } from './services/stockService.js';
+import { loadStoreFreightConfig } from './services/freightConfigService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
+import ProducaoVitrine from './components/fornecedores/ProducaoVitrine';
 import IfoodHub from './components/ifood/IfoodHub';
 import Food99Hub from './components/food99/Food99Hub';
+import CaixaTab from './components/caixa/CaixaTab';
+import AlertasNotificacoesTab from './components/configuracoes/AlertasNotificacoesTab';
+import EntreLojasReport from './components/relatorios/EntreLojasReport';
+import NotificationsBell from './components/notifications/NotificationsBell';
+import SearchableClientSelect from './components/orders/SearchableClientSelect';
+import {
+  CAIXA_PERMISSION_KEYS,
+  CAIXA_PERMISSION_LABELS,
+  getDefaultCaixaPermissionsForRole,
+  getEmptyCaixaPermissions,
+  sanitizeCaixaPermissions,
+  createIdempotencyKey,
+} from './caixa/caixaCore';
+import { obterRegistroDiarioCaixa, registrarRetiradaDespesaCaixa } from './services/caixaService';
+import PostClosingConfirmation from './components/caixa/PostClosingConfirmation';
 
 // --- importação para Android
 import { NativeAudio } from '@capacitor-community/native-audio';
 import { Capacitor } from '@capacitor/core';
+import { Car as RideCar } from 'lucide-react';
+import {
+  build99OpenUrl,
+  buildRideAddresses,
+  buildUberRideUrl,
+  getOrderStoreId,
+  isDeliveryOrder
+} from './utils/rideService';
 
 // ✅ CORREÇÃO: URL local para evitar erro de pré-condição no Firebase Storage
 const ALARM_SOUND_URL = '/audio/alarm.mp3';
@@ -754,6 +779,7 @@ const getDefaultPermissionsForRole = (role) => {
     pedidos: true,
     'entre-lojas': true,
     agenda: true,
+    fornecedores: true,
     'meu-espaco': true,
   };
 };
@@ -765,6 +791,10 @@ const sanitizePermissions = (permissions, role) => {
   return MENU_PERMISSION_KEYS.reduce((acc, key) => {
     if (normalizeRole(role) === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(key)) {
       acc[key] = false;
+      return acc;
+    }
+    if (normalizeRole(role) === ROLE_ATTENDANT && key === 'fornecedores') {
+      acc[key] = true;
       return acc;
     }
     if (Object.prototype.hasOwnProperty.call(permissions, key)) {
@@ -781,36 +811,37 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
   return {
     'entre-lojas': {
       statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : []
-    }
+    },
+    caixa: permissions?.fornecedores
+      ? getDefaultCaixaPermissionsForRole(role)
+      : getEmptyCaixaPermissions(),
   };
 };
 
 const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = null) => {
   const permissions = permissionsInput || getDefaultPermissionsForRole(role);
-
-  if (!permissions?.['entre-lojas']) {
-    return { 'entre-lojas': { statuses: [] } };
-  }
-
   const details = permissionDetails && typeof permissionDetails === 'object' ? permissionDetails : null;
   const entreLojasDetails = details?.['entre-lojas'] || details?.entreLojas || null;
+  const caixaDetails = details?.caixa || details?.cash || null;
+  const rawStatuses = permissions?.['entre-lojas'] && entreLojasDetails
+    ? (Array.isArray(entreLojasDetails.statuses)
+      ? entreLojasDetails.statuses
+      : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []))
+    : (permissions?.['entre-lojas'] ? ENTRE_LOJAS_TRANSFER_STATUS_VALUES : []);
 
-  if (!entreLojasDetails) {
-    return getDefaultPermissionDetailsForRole(role, permissions);
-  }
-
-  const rawStatuses = Array.isArray(entreLojasDetails.statuses)
-    ? entreLojasDetails.statuses
-    : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []);
-
-  const validStatuses = rawStatuses
-    .map((status) => String(status || '').trim())
-    .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status));
+  const validStatuses = permissions?.['entre-lojas']
+    ? rawStatuses
+      .map((status) => String(status || '').trim())
+      .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status))
+    : [];
 
   return {
     'entre-lojas': {
       statuses: Array.from(new Set(validStatuses))
-    }
+    },
+    caixa: permissions?.fornecedores
+      ? sanitizeCaixaPermissions(caixaDetails, role)
+      : getEmptyCaixaPermissions(),
   };
 };
 
@@ -1085,7 +1116,13 @@ const getOrderItemProductId = (item) => item?.produtoId || item?.productId || it
 
 const getClientPrimaryAddressText = (cliente = {}) => {
   if (typeof cliente.endereco === 'string' && cliente.endereco.trim()) {
-    return cliente.endereco.trim();
+    return [
+      [cliente.endereco.trim(), cliente.numero].filter(Boolean).join(', '),
+      cliente.complemento,
+      cliente.bairro,
+      [cliente.cidade, cliente.uf || cliente.estado].filter(Boolean).join(' - '),
+      cliente.cep ? `CEP ${cliente.cep}` : ''
+    ].filter(Boolean).join(', ');
   }
 
   const firstAddress = Array.isArray(cliente.enderecos) ? cliente.enderecos[0] : null;
@@ -1098,8 +1135,8 @@ const getClientPrimaryAddressText = (cliente = {}) => {
     firstAddress.numero,
     firstAddress.complemento,
     firstAddress.bairro,
-    firstAddress.cidade,
-    firstAddress.cep,
+    [firstAddress.cidade, firstAddress.uf || firstAddress.estado].filter(Boolean).join(' - '),
+    firstAddress.cep ? `CEP ${firstAddress.cep}` : '',
   ].filter(Boolean).join(', ');
 };
 
@@ -1615,6 +1652,53 @@ const toDateInputValue = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const RideConfirmationModal = ({ request, onClose, onConfirm }) => {
+  if (!request) return null;
+
+  const isUber = request.service === 'uber';
+  const serviceName = isUber ? 'Uber' : '99';
+
+  return (
+    <Modal isOpen={!!request} onClose={onClose} title="Solicitar corrida" size="md">
+      <div className="space-y-4 text-sm text-gray-700">
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Origem</p>
+          <p className="font-semibold text-gray-900">{request.addresses.origin.name}</p>
+          <p className="mt-1">{request.addresses.origin.address}</p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Destino</p>
+          <p className="font-semibold text-gray-900">{request.addresses.destination.name}</p>
+          <p className="mt-1">{request.addresses.destination.address}</p>
+        </div>
+
+        {!isUber && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
+            A 99 não publica atualmente parâmetros oficiais para preencher origem e destino. O aplicativo será aberto pelo link oficial; confira os endereços acima antes de solicitar a corrida.
+          </p>
+        )}
+
+        <p className="text-xs text-gray-500">
+          A corrida não será solicitada automaticamente. Confira categoria e preço no aplicativo antes de confirmar.
+        </p>
+
+        <div className="flex flex-col-reverse justify-end gap-3 pt-2 sm:flex-row">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            onClick={onConfirm}
+            className={isUber
+              ? 'bg-gradient-to-r from-gray-800 to-black text-white hover:from-black hover:to-gray-900'
+              : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900 hover:from-yellow-500 hover:to-amber-600'}
+          >
+            <RideCar className="h-4 w-4" /> Abrir {serviceName}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 const normalizePointBankStartDate = (value) => {
   if (!value) return '';
   if (typeof value?.toDate === 'function') {
@@ -1690,7 +1774,7 @@ const maskCpfCnpj = (value) => {
 
 // --- NOVOS COMPONENTES ---
 
-const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser }) => {
+const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser, availableStores, storeInfoMap }) => {
     const [activeTab, setActiveTab] = usePersistentState('fornecedores_activeTab', 'fornecedores');
     
     // States
@@ -1714,9 +1798,14 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     const [showReceitaModal, setShowReceitaModal] = useState(false);
     const [showRetiradaCaixaModal, setShowRetiradaCaixaModal] = useState(false);
     const [editingReceita, setEditingReceita] = useState(null);
-    const [editingRetiradaCaixa, setEditingRetiradaCaixa] = useState(null);
     const [receitaFormData, setReceitaFormData] = useState({});
-    const [retiradaCaixaFormData, setRetiradaCaixaFormData] = useState({ data: new Date().toISOString().split('T')[0], motivo: '', valor: '', observacoes: '' });
+    const [retiradaCaixaFormData, setRetiradaCaixaFormData] = useState({ data: new Date().toISOString().split('T')[0], hora: '', motivo: '', valor: '', observacoes: '' });
+    const [retiradaCaixaStoreId, setRetiradaCaixaStoreId] = useState(effectiveStoreId || '');
+    const [isSavingRetiradaCaixa, setIsSavingRetiradaCaixa] = useState(false);
+    const [retiradaCaixaPostClosing, setRetiradaCaixaPostClosing] = useState(false);
+    const [pendingPostClosingRetirada, setPendingPostClosingRetirada] = useState(null);
+    const retiradaCaixaSubmittingRef = useRef(false);
+    const retiradaCaixaIdempotencyRef = useRef(createIdempotencyKey('retirada-despesa'));
     const [editingPerda, setEditingPerda] = useState(null);
     const [perdaFormData, setPerdaFormData] = useState({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: '', motivo: 'Vencimento', outroMotivo: '' });
 
@@ -1739,7 +1828,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     const resetEstoqueForm = () => setEstoqueFormData({ nome: '', categoria: DEFAULT_FORNECEDOR_CATEGORIES[0], fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' });
     const resetPerdaForm = () => setPerdaFormData({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: new Date().toISOString().split('T')[0], motivo: 'Vencimento', outroMotivo: '' });
     const resetReceitaForm = () => setReceitaFormData({ nome: '', categoria: '', ingredientes: '', modoPreparo: '', tempoPreparo: '', rendimento: '', custoEstimado: '', observacoes: '' });
-    const resetRetiradaCaixaForm = () => setRetiradaCaixaFormData({ data: new Date().toISOString().split('T')[0], motivo: '', valor: '', observacoes: '' });
+    const resetRetiradaCaixaForm = () => setRetiradaCaixaFormData({ data: new Date().toISOString().split('T')[0], hora: '', motivo: '', valor: '', observacoes: '' });
 
     const openStockMovementModal = (item, type) => {
         setStockMovementModal({ isOpen: true, type, item });
@@ -1903,21 +1992,27 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         return Number.isFinite(parsed) ? parsed : 0;
     };
 
-    const getRetiradaCaixaDate = useCallback((item) => getJSDate(item.dataRetirada || item.dataPagamento || item.dataVencimento || item.createdAt), []);
+    const getRetiradaCaixaDate = useCallback((item) => {
+        const value = item.dataOperacional || item.dataRetirada || item.dataPagamento || item.dataVencimento || item.registradoEm || item.createdAt;
+        if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            return new Date(`${value}T12:00:00`);
+        }
+        return getJSDate(value);
+    }, []);
 
     const retiradasCaixa = useMemo(() => {
         return (data.contas_a_pagar || [])
-            .filter(item => item.origem === 'retirada_caixa' || item.tipo === 'retirada_caixa')
+            .filter(item => (
+                item.registroCaixa === true
+                || ['retirada_caixa', 'retirada_despesa_caixa', 'retirada_para_despesa'].includes(item.origem)
+                || ['retirada_caixa', 'retirada_despesa_caixa', 'retirada_para_despesa'].includes(item.tipo)
+            ))
             .sort((a, b) => {
                 const dateA = getRetiradaCaixaDate(a) || new Date(0);
                 const dateB = getRetiradaCaixaDate(b) || new Date(0);
                 return dateB - dateA;
             });
     }, [data.contas_a_pagar, getRetiradaCaixaDate]);
-
-    const retiradaCaixaTotal = useMemo(() => (
-        retiradasCaixa.reduce((sum, item) => sum + (Number(item.valor) || 0), 0)
-    ), [retiradasCaixa]);
 
     const getRetiradaCaixaRegistrant = (item) => (
         item.registradoPorNome
@@ -2051,76 +2146,103 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         setShowReceitaModal(false);
     };
 
-    const handleNewRetiradaCaixa = () => {
-        setEditingRetiradaCaixa(null);
+    const handleNewRetiradaCaixa = (storeId = effectiveStoreId, dataOperacional = '', postClosing = false) => {
         resetRetiradaCaixaForm();
+        setRetiradaCaixaStoreId(storeId || '');
+        setRetiradaCaixaPostClosing(postClosing === true);
+        setPendingPostClosingRetirada(null);
+        if (dataOperacional) {
+            setRetiradaCaixaFormData((current) => ({ ...current, data: dataOperacional }));
+        }
+        retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${storeId || 'sem-loja'}`);
         setShowRetiradaCaixaModal(true);
     };
 
-    const handleEditRetiradaCaixa = (retirada) => {
-        const dataRetirada = getRetiradaCaixaDate(retirada);
-        setEditingRetiradaCaixa(retirada);
-        setRetiradaCaixaFormData({
-            data: dataRetirada ? dataRetirada.toISOString().split('T')[0] : '',
-            motivo: retirada.motivo || (retirada.descricao || '').replace(/^Retirada do caixa\s*-\s*/i, ''),
-            valor: String(retirada.valor ?? ''),
-            observacoes: retirada.observacoes || retirada.observacao || ''
-        });
-        setShowRetiradaCaixaModal(true);
+    const saveRetiradaCaixa = async (payload, postClosing = false) => {
+        await registrarRetiradaDespesaCaixa(payload);
+        alert(postClosing
+            ? 'Lançamento registrado com sucesso. A conferência do caixa foi recalculada.'
+            : 'Retirada para despesa registrada com sucesso.');
+        setShowRetiradaCaixaModal(false);
+        setPendingPostClosingRetirada(null);
+        setRetiradaCaixaPostClosing(false);
+        resetRetiradaCaixaForm();
+        retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${retiradaCaixaStoreId}`);
     };
 
     const handleRetiradaCaixaSubmit = async (e) => {
         e.preventDefault();
+        if (retiradaCaixaSubmittingRef.current) return;
         const motivo = String(retiradaCaixaFormData.motivo || '').trim();
         const valor = roundCurrency(parseCurrencyInput(retiradaCaixaFormData.valor));
+        const valorCentavos = Math.round(valor * 100);
         const dataRetirada = retiradaCaixaFormData.data || new Date().toISOString().split('T')[0];
 
         if (!motivo) { alert('Informe o motivo da retirada.'); return; }
         if (!valor || valor <= 0) { alert('Informe um valor de retirada maior que zero.'); return; }
+        if (!retiradaCaixaStoreId) { alert('Selecione uma loja para registrar a retirada.'); return; }
 
-        const dataToSave = {
-            descricao: `Retirada do caixa - ${motivo}`,
-            valor,
-            dataVencimento: dataRetirada,
-            dataPagamento: dataRetirada,
-            dataRetirada,
-            status: 'Pago',
-            categoria: 'Despesa Variável',
-            tipo: 'retirada_caixa',
-            origem: 'retirada_caixa',
-            motivo,
-            observacoes: String(retiradaCaixaFormData.observacoes || '').trim(),
-            registradoPorNome: getCurrentUserName(),
-            registradoPorEmail: currentUser?.auth?.email || currentUser?.email || '',
-            registradoPorUid: currentUser?.uid || currentUser?.auth?.uid || '',
-            registradoEm: editingRetiradaCaixa?.registradoEm || new Date().toISOString(),
-            atualizadoEm: new Date().toISOString()
-        };
-
-        if (editingRetiradaCaixa) {
-            await updateItem('contas_a_pagar', editingRetiradaCaixa.id, dataToSave);
-        } else {
-            await addItem('contas_a_pagar', dataToSave);
+        retiradaCaixaSubmittingRef.current = true;
+        setIsSavingRetiradaCaixa(true);
+        try {
+            const payload = {
+                lojaId: retiradaCaixaStoreId,
+                dataOperacional: dataRetirada,
+                valorCentavos,
+                motivo,
+                observacao: String(retiradaCaixaFormData.observacoes || '').trim(),
+                horaMovimentacao: String(retiradaCaixaFormData.hora || '').trim(),
+                idempotencyKey: retiradaCaixaIdempotencyRef.current,
+            };
+            const dailyResponse = await obterRegistroDiarioCaixa({
+                lojaId: retiradaCaixaStoreId,
+                dataOperacional: dataRetirada,
+            });
+            const daily = dailyResponse?.registro || null;
+            const isPostClosing = daily?.temValorEncerramento === true
+                || Number.isSafeInteger(daily?.valorEncerramentoCentavos);
+            setRetiradaCaixaPostClosing(isPostClosing);
+            if (isPostClosing) {
+                if (normalizeRole(currentUser?.role) !== ROLE_OWNER) {
+                    alert('Somente o Dono pode registrar retirada depois do encerramento do dia.');
+                    return;
+                }
+                setPendingPostClosingRetirada(payload);
+                return;
+            }
+            await saveRetiradaCaixa(payload, false);
+        } catch (error) {
+            console.error('Erro ao registrar retirada para despesa:', error);
+            alert(error?.message || 'Não foi possível registrar a retirada para despesa.');
+        } finally {
+            retiradaCaixaSubmittingRef.current = false;
+            setIsSavingRetiradaCaixa(false);
         }
-
-        setShowRetiradaCaixaModal(false);
-        setEditingRetiradaCaixa(null);
-        resetRetiradaCaixaForm();
     };
 
-    const handleDeleteRetiradaCaixa = (retirada) => setConfirmDelete({
-        isOpen: true,
-        onConfirm: () => deleteItem('contas_a_pagar', retirada.id)
-    });
+    const confirmPostClosingRetirada = async () => {
+        if (!pendingPostClosingRetirada || retiradaCaixaSubmittingRef.current) return;
+        retiradaCaixaSubmittingRef.current = true;
+        setIsSavingRetiradaCaixa(true);
+        try {
+            await saveRetiradaCaixa(pendingPostClosingRetirada, true);
+        } catch (error) {
+            console.error('Erro ao registrar retirada para despesa após encerramento:', error);
+            alert(error?.message || 'Não foi possível registrar a retirada para despesa.');
+        } finally {
+            retiradaCaixaSubmittingRef.current = false;
+            setIsSavingRetiradaCaixa(false);
+        }
+    };
 
     // UI Rendering
     return (
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
             <div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Fornecedores/Estoque</h1><p className="text-gray-600 mt-1">Organize seus parceiros, compras e insumos</p></div>
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2"><div className="flex flex-wrap gap-2">
-                {['fornecedores', 'pedidos', 'estoque', 'caixa', 'receitas', 'perdas'].map(tab => (
+                {['fornecedores', 'pedidos', 'estoque', 'producao-vitrine', 'caixa', 'receitas', 'perdas'].map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
-                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'caixa' && 'Retiradas do Caixa'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
+                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'producao-vitrine' && 'Produção / Vitrine'}{tab === 'caixa' && 'Caixa'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
                     </button>
                 ))}
             </div></div>
@@ -2206,66 +2328,26 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                 </div>
             )}
 
+            {activeTab === 'producao-vitrine' && (
+                <ProducaoVitrine
+                    currentUser={currentUser}
+                    availableStores={availableStores}
+                    storeInfoMap={storeInfoMap}
+                />
+            )}
+
             {activeTab === 'caixa' && (
-                <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
-                            <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
-                                    <Banknote className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-500">Total retirado</p>
-                                    <p className="text-2xl font-bold text-gray-900">{formatCurrencyBR(retiradaCaixaTotal)}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
-                            <p className="text-sm text-gray-500">Registros</p>
-                            <p className="text-2xl font-bold text-gray-900">{retiradasCaixa.length}</p>
-                        </div>
-                        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5">
-                            <p className="text-sm font-semibold text-gray-800">Contabilização automática</p>
-                            <p className="text-sm text-gray-600 mt-1">Cada retirada entra como despesa paga no Financeiro.</p>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-gray-800">Retiradas do Caixa</h2>
-                            <p className="text-sm text-gray-600">Registre saídas imediatas, como compras pequenas ou acertos operacionais.</p>
-                        </div>
-                        <Button onClick={handleNewRetiradaCaixa} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Nova Retirada</Button>
-                    </div>
-
-                    <Table
-                        columns={[
-                            { header: 'Data', render: (row) => getRetiradaCaixaDate(row)?.toLocaleDateString('pt-BR') || '-' },
-                            {
-                                header: 'Motivo',
-                                render: (row) => (
-                                    <div>
-                                        <p className="font-semibold text-gray-900">{row.motivo || row.descricao || '-'}</p>
-                                        <p className="text-xs text-gray-500">{row.descricao || 'Retirada do caixa'}</p>
-                                    </div>
-                                )
-                            },
-                            { header: 'Valor', render: (row) => <span className="font-semibold text-rose-600">{formatCurrencyBR(row.valor || 0)}</span> },
-                            { header: 'Registrado por', render: (row) => getRetiradaCaixaRegistrant(row) },
-                            { header: 'Observação', render: (row) => row.observacoes || row.observacao || '-' }
-                        ]}
-                        data={retiradasCaixa}
-                        actions={[
-                            { icon: Edit, label: "Editar", onClick: handleEditRetiradaCaixa },
-                            { icon: Trash2, label: "Excluir", onClick: handleDeleteRetiradaCaixa }
-                        ]}
-                    />
-                    {retiradasCaixa.length === 0 && (
-                        <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-8 text-center text-gray-500">
-                            Nenhuma retirada do caixa registrada ainda.
-                        </div>
-                    )}
-                </div>
+                <CaixaTab
+                    currentUser={currentUser}
+                    isOwner={normalizeRole(currentUser?.role) === ROLE_OWNER}
+                    effectiveStoreId={effectiveStoreId}
+                    availableStores={availableStores}
+                    storeInfoMap={storeInfoMap}
+                    retiradas={retiradasCaixa}
+                    getRetiradaDate={getRetiradaCaixaDate}
+                    getRetiradaRegistrant={getRetiradaCaixaRegistrant}
+                    onNewRetirada={handleNewRetiradaCaixa}
+                />
             )}
 
             {activeTab === 'receitas' && (
@@ -2394,7 +2476,12 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowEstoqueModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar Item</Button></div>
                 </form>
             </Modal>
-            <Modal isOpen={showRetiradaCaixaModal} onClose={() => setShowRetiradaCaixaModal(false)} title={editingRetiradaCaixa ? 'Editar Retirada do Caixa' : 'Registrar Retirada do Caixa'} size="md">
+            <Modal isOpen={showRetiradaCaixaModal} onClose={() => {
+                if (isSavingRetiradaCaixa) return;
+                setShowRetiradaCaixaModal(false);
+                setPendingPostClosingRetirada(null);
+                setRetiradaCaixaPostClosing(false);
+            }} title="Registrar retirada para despesa" size="md">
                 <form onSubmit={handleRetiradaCaixaSubmit} className="space-y-4">
                     <Input
                         label="Motivo da retirada"
@@ -2416,10 +2503,19 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                             label="Data da retirada"
                             type="date"
                             value={retiradaCaixaFormData.data || ''}
-                            onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, data: e.target.value })}
+                            onChange={e => {
+                                setRetiradaCaixaFormData({ ...retiradaCaixaFormData, data: e.target.value });
+                                setRetiradaCaixaPostClosing(false);
+                            }}
                             required
                         />
                     </div>
+                    <Input
+                        label="Horário da movimentação (opcional)"
+                        type="time"
+                        value={retiradaCaixaFormData.hora || ''}
+                        onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, hora: e.target.value })}
+                    />
                     <Textarea
                         label="Observação"
                         rows="3"
@@ -2428,14 +2524,25 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                         onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, observacoes: e.target.value })}
                     />
                     <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-800">
-                        Esta retirada será registrada automaticamente como despesa paga no Financeiro.
+                        Esta retirada para despesa será registrada automaticamente como paga no Financeiro.
                     </div>
+                    {retiradaCaixaPostClosing && normalizeRole(currentUser?.role) === ROLE_OWNER && (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                            Este caixa já possui encerramento. O lançamento será registrado como ajuste pós-encerramento e a conferência será recalculada. O encerramento original será preservado.
+                        </div>
+                    )}
                     <div className="flex justify-end gap-3 pt-2">
-                        <Button variant="secondary" type="button" onClick={() => setShowRetiradaCaixaModal(false)}>Cancelar</Button>
-                        <Button type="submit"><Save className="w-4 h-4"/> Salvar Retirada</Button>
+                        <Button variant="secondary" type="button" disabled={isSavingRetiradaCaixa} onClick={() => setShowRetiradaCaixaModal(false)}>Cancelar</Button>
+                        <Button type="submit" disabled={isSavingRetiradaCaixa}><Save className="w-4 h-4"/> {isSavingRetiradaCaixa ? 'Registrando...' : 'Registrar retirada para despesa'}</Button>
                     </div>
                 </form>
             </Modal>
+            <PostClosingConfirmation
+                isOpen={Boolean(pendingPostClosingRetirada)}
+                isSaving={isSavingRetiradaCaixa}
+                onCancel={() => !isSavingRetiradaCaixa && setPendingPostClosingRetirada(null)}
+                onConfirm={confirmPostClosingRetirada}
+            />
             <ReceitasModal
                 isOpen={showReceitaModal}
                 onClose={() => setShowReceitaModal(false)}
@@ -2908,7 +3015,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 // --- FIM DOS NOVOS COMPONENTES ---
 
 // Componente Relatorios adicionado no mesmo arquivo App.js para correção do erro
-const Relatorios = ({ data }) => {
+const Relatorios = ({ data, user, availableStores, storeInfoMap }) => {
   const getInitialDateRange = () => {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -2934,6 +3041,40 @@ const Relatorios = ({ data }) => {
   const [reportTotals, setReportTotals] = useState(null);
   const [perdasColumns, setPerdasColumns] = useState([]);
   const [perdasData, setPerdasData] = useState([]);
+
+  if (reportType === 'remessasEntreLojas') {
+    return (
+      <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Relatórios</h1>
+          <p className="text-gray-600 mt-1">Analise o desempenho da sua doceria</p>
+        </div>
+        <div className="max-w-xl rounded-2xl border border-gray-100 bg-white p-4 shadow-lg">
+          <Select
+            id="report-select"
+            label="Tipo de Relatório"
+            value={reportType}
+            onChange={(event) => setReportType(event.target.value)}
+          >
+            <option value="vendasPorPeriodo">Vendas por Período</option>
+            <option value="produtosMaisVendidos">Produtos Mais Vendidos</option>
+            <option value="clientesMaisCompram">Clientes que Mais Compram</option>
+            <option value="usoCupons">Uso de Cupons</option>
+            <option value="estoqueBaixo">Estoque Baixo (Produtos Finais)</option>
+            <option value="comprasInsumos">Compras de Insumos</option>
+            <option value="receitaPorPagamento">Receita por Forma de Pagamento</option>
+            <option value="custoProducao">Custo de Produção</option>
+            <option value="remessasEntreLojas">Remessas entre Lojas</option>
+          </Select>
+        </div>
+        <EntreLojasReport
+          currentUser={user}
+          availableStores={availableStores}
+          storeInfoMap={storeInfoMap}
+        />
+      </div>
+    );
+  }
 
   const formatCurrency = (value) =>
     (Number(value) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -3309,6 +3450,7 @@ const Relatorios = ({ data }) => {
                     <option value="comprasInsumos">Compras de Insumos</option>
                     <option value="receitaPorPagamento">Receita por Forma de Pagamento</option>
                     <option value="custoProducao">Custo de Produção</option>
+                    <option value="remessasEntreLojas">Remessas entre Lojas</option>
                 </Select>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -3495,6 +3637,7 @@ function App() {
   const initialDataLoaded = useRef(false);
   const storeCollectionsDataRef = useRef({});
   const clientesDataRef = useRef([]);
+  const customerMetricsEnsuredStoresRef = useRef(new Set());
   const pushTokenRef = useRef(null);
   const configMigrationStatusRef = useRef(new Set());
   // --- REMOVIDO: audioRef e alarmIntervalRef ---
@@ -7616,6 +7759,31 @@ function App() {
     const defaultClientFormData = { nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", bairro: "", cidade: "Goiania", uf: "GO", codigoIbge: "5208707", aniversario: "", status: "Ativo" };
     const [formData, setFormData] = useState(defaultClientFormData);
 
+    useEffect(() => {
+      const storeIds = isGeneralViewSelected
+        ? availableStores
+        : [selectedStoreIdForAlarm].filter(Boolean);
+      storeIds.forEach((storeId) => {
+        if (customerMetricsEnsuredStoresRef.current.has(storeId)) return;
+        customerMetricsEnsuredStoresRef.current.add(storeId);
+        const ensureMetrics = httpsCallable(functions, 'ensureCustomerPurchaseMetrics');
+        ensureMetrics({ lojaId: storeId }).catch((error) => {
+          customerMetricsEnsuredStoresRef.current.delete(storeId);
+          console.error('[Clientes] Falha ao sincronizar histórico de compras:', error);
+        });
+      });
+    }, []);
+
+    const getPurchaseMetrics = (client) => {
+      if (!isGeneralViewSelected && selectedStoreIdForAlarm) {
+        return client.metricasComprasPorLoja?.[selectedStoreIdForAlarm] || {
+          valorEmCompras: 0,
+          ultimaCompra: null
+        };
+      }
+      return client;
+    };
+
     const filteredClients = useMemo(() => {
       const term = searchTerm.toLowerCase();
       const digitsTerm = searchTerm.replace(/\D/g, '');
@@ -7698,8 +7866,8 @@ function App() {
             return `${day}/${month}`;
           }
         },
-        { header: "Valor em Compras", render: (row) => (<span className="font-semibold text-green-600">R$ {(row.valorEmCompras || 0).toFixed(2)}</span>) },
-        { header: "Última Compra", render: (row) => row.ultimaCompra ? getJSDate(row.ultimaCompra)?.toLocaleDateString('pt-BR') : '-' },
+        { header: "Valor em Compras", render: (row) => { const metrics = getPurchaseMetrics(row); return (<span className="font-semibold text-green-600">R$ {(metrics.valorEmCompras || 0).toFixed(2)}</span>); } },
+        { header: "Última Compra", render: (row) => { const metrics = getPurchaseMetrics(row); return metrics.ultimaCompra ? getJSDate(metrics.ultimaCompra)?.toLocaleDateString('pt-BR') : '-'; } },
         { header: "Status", render: (row) => (<span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'VIP' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>{row.status}</span>) }
     ];
     const actions = [ { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('clientes', row.id) }) } ];
@@ -8310,7 +8478,7 @@ function App() {
     );
   };
   
-	const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, deleteItem, availableStores, storeInfoMap, resolveActiveStoreForWrite, selectedStoreId }) => {
+	const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, deleteItem, availableStores, storeInfoMap, resolveActiveStoreForWrite, selectedStoreId, onOpenCashRecord }) => {
     const [activeTab, setActiveTab] = usePersistentState('configuracoes_activeTab', 'users');
 
     // States para Usuários
@@ -8332,6 +8500,7 @@ function App() {
         lojaId: "",
         lojaIds: [],
         permissions: getDefaultPermissionsForRole(ROLE_ATTENDANT),
+        permissionDetails: getDefaultPermissionDetailsForRole(ROLE_ATTENDANT),
         applyCustomProfile: true,
         jornadaTrabalho: sanitizeEmployeeWorkSchedule(),
         dataInicioBancoHoras: '',
@@ -8565,40 +8734,8 @@ const effectiveStoreName = useMemo(() => {
 
         const fetchFreteConfig = async () => {
             try {
-                const configRef = getStoreConfigDocRef(effectiveStoreId);
-                const configSnap = await getDoc(configRef);
-
-                if (configSnap.exists()) {
-                    const configData = configSnap.data() || {};
-                    const freteData = configData.frete || configData;
-
-                    if (freteData && Object.keys(freteData).length) {
-                        setFreteConfig(freteData);
-                        return;
-                    }
-                }
-
-                const legacyFreteRef = doc(db, 'lojas', effectiveStoreId, 'configuracoes', 'frete');
-                const legacyFreteSnap = await getDoc(legacyFreteRef);
-                if (legacyFreteSnap.exists()) {
-                    const freteData = legacyFreteSnap.data();
-                    setFreteConfig(freteData || { enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
-                    await setDoc(configRef, { frete: freteData || {} }, { merge: true });
-                    return;
-                }
-
-                const legacyInfoSnap = await getDoc(doc(db, 'lojas', effectiveStoreId, 'info', 'dados'));
-                if (legacyInfoSnap.exists()) {
-                    const infoData = legacyInfoSnap.data();
-                    const freteData = infoData?.frete || {};
-                    if (Object.keys(freteData).length) {
-                        setFreteConfig(freteData);
-                        await setDoc(configRef, { frete: freteData }, { merge: true });
-                        return;
-                    }
-                }
-
-                setFreteConfig({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
+                const freteData = await loadStoreFreightConfig(effectiveStoreId);
+                setFreteConfig(freteData);
             } catch (error) {
                 console.error("Erro ao buscar configurações de frete:", error);
             }
@@ -9367,7 +9504,7 @@ const effectiveStoreName = useMemo(() => {
             </div>
 
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2">
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                     <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'users' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Usuários
                     </button>
@@ -9382,6 +9519,9 @@ const effectiveStoreName = useMemo(() => {
                     </button>
                     <button onClick={() => setActiveTab('entre-lojas')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'entre-lojas' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Entre Lojas
+                    </button>
+                    <button onClick={() => setActiveTab('alertas-notificacoes')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'alertas-notificacoes' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
+                        Alertas e Notificações
                     </button>
                     <button onClick={() => setActiveTab('logs')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'logs' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Logs de Atividade
@@ -9845,6 +9985,15 @@ const effectiveStoreName = useMemo(() => {
                     </div>
                 )
             )}
+
+            {activeTab === 'alertas-notificacoes' && (
+                <AlertasNotificacoesTab
+                    user={user}
+                    storeId={effectiveStoreId}
+                    storeName={effectiveStoreName}
+                    onOpenCashRecord={onOpenCashRecord}
+                />
+            )}
             
             <Modal isOpen={showUserModal} onClose={() => setShowUserModal(false)} title={editingUser ? "Editar Usuário" : "Novo Usuário"}>
                  <form onSubmit={handleUserSubmit} className="space-y-4">
@@ -10203,15 +10352,21 @@ const effectiveStoreName = useMemo(() => {
                                 const normalizedFormRole = normalizeRole(userFormData.role);
                                 const isRestrictedAccountantModule = normalizedFormRole === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id);
                                 const isEntreLojas = item.id === 'entre-lojas';
-                                const moduleChecked = Boolean(userFormData.permissions?.[item.id]);
-                                const selectedEntreLojasStatuses = sanitizePermissionDetails(
+                                const isFornecedores = item.id === 'fornecedores';
+                                const supportsCashPermissions = [ROLE_ATTENDANT, ROLE_MANAGER, ROLE_OWNER].includes(normalizedFormRole);
+                                const sanitizedFormPermissions = sanitizePermissions(userFormData.permissions, userFormData.role);
+                                const isRequiredAttendantModule = normalizedFormRole === ROLE_ATTENDANT && isFornecedores;
+                                const moduleChecked = Boolean(sanitizedFormPermissions[item.id]);
+                                const sanitizedDetails = sanitizePermissionDetails(
                                     userFormData.permissionDetails,
                                     userFormData.role,
-                                    sanitizePermissions(userFormData.permissions, userFormData.role)
-                                )['entre-lojas']?.statuses || [];
+                                    sanitizedFormPermissions
+                                );
+                                const selectedEntreLojasStatuses = sanitizedDetails['entre-lojas']?.statuses || [];
+                                const selectedCaixaPermissions = sanitizedDetails.caixa || getEmptyCaixaPermissions();
 
                                 return (
-                                    <div key={item.id} className={isEntreLojas && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
+                                    <div key={item.id} className={(isEntreLojas || isFornecedores) && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
                                         <label
                                             className={`flex items-center gap-2 text-sm text-gray-700 ${!userFormData.applyCustomProfile ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             title={`Permitir acesso ao menu "${item.label}"`}
@@ -10219,7 +10374,7 @@ const effectiveStoreName = useMemo(() => {
                                             <input
                                                 type="checkbox"
                                                 checked={moduleChecked}
-                                                disabled={!userFormData.applyCustomProfile || isRestrictedAccountantModule}
+                                                disabled={!userFormData.applyCustomProfile || isRestrictedAccountantModule || isRequiredAttendantModule}
                                                 onChange={(e) => {
                                                     const nextPermissions = {
                                                         ...sanitizePermissions(userFormData.permissions, userFormData.role),
@@ -10228,13 +10383,16 @@ const effectiveStoreName = useMemo(() => {
                                                     setUserFormData({
                                                         ...userFormData,
                                                         permissions: nextPermissions,
-                                                        permissionDetails: isEntreLojas
+                                                        permissionDetails: (isEntreLojas || isFornecedores)
                                                             ? sanitizePermissionDetails(userFormData.permissionDetails, userFormData.role, nextPermissions)
-                                                            : userFormData.permissionDetails
+                                                            : userFormData.permissionDetails,
                                                     });
                                                 }}
                                             />
                                             {item.label}
+                                            {isRequiredAttendantModule && (
+                                                <span className="text-xs text-gray-400">(acesso operacional obrigatório)</span>
+                                            )}
                                             {isRestrictedAccountantModule && (
                                                 <span className="text-xs text-gray-400">(indisponível para leitura)</span>
                                             )}
@@ -10307,6 +10465,51 @@ const effectiveStoreName = useMemo(() => {
                                                 {!selectedEntreLojasStatuses.length && (
                                                     <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
                                                         O usuário acessará o menu, mas não verá remessas até que pelo menos um status seja marcado.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {isFornecedores && moduleChecked && userFormData.applyCustomProfile && (
+                                            <div className="ml-6 rounded-xl border border-pink-100 bg-white p-3 space-y-3">
+                                                <div>
+                                                    <p className="text-xs font-semibold text-gray-800">Permissões internas de Caixa</p>
+                                                    <p className="text-xs text-gray-500">
+                                                        Protegem somente as áreas dentro de Fornecedores/Estoque → Caixa, sem reduzir o acesso aos demais recursos do módulo.
+                                                    </p>
+                                                </div>
+                                                {supportsCashPermissions ? (
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        {CAIXA_PERMISSION_KEYS.map((permissionKey) => (
+                                                            <label key={permissionKey} className="flex items-start gap-2 text-xs text-gray-700">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="mt-0.5"
+                                                                    checked={Boolean(selectedCaixaPermissions[permissionKey])}
+                                                                    onChange={(event) => {
+                                                                        setUserFormData((prev) => {
+                                                                            const currentPermissions = sanitizePermissions(prev.permissions, prev.role);
+                                                                            const currentDetails = sanitizePermissionDetails(prev.permissionDetails, prev.role, currentPermissions);
+                                                                            return {
+                                                                                ...prev,
+                                                                                permissionDetails: {
+                                                                                    ...currentDetails,
+                                                                                    caixa: {
+                                                                                        ...currentDetails.caixa,
+                                                                                        [permissionKey]: event.target.checked,
+                                                                                    },
+                                                                                },
+                                                                            };
+                                                                        });
+                                                                    }}
+                                                                />
+                                                                <span>{CAIXA_PERMISSION_LABELS[permissionKey]}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-700">
+                                                        Este perfil não pode acessar operações ou informações do caixa.
                                                     </p>
                                                 )}
                                             </div>
@@ -10389,9 +10592,13 @@ const effectiveStoreName = useMemo(() => {
     const [editingOrder, setEditingOrder] = useState(null);
     const [isSavingOrder, setIsSavingOrder] = useState(false);
     const [saveOrderError, setSaveOrderError] = useState('');
-    const [formData, setFormData] = useState({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
+    const [clientSelectionError, setClientSelectionError] = useState('');
+    const [formData, setFormData] = useState({ clienteId: '', clienteNome: '', clienteEndereco: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
     const [viewingOrder, setViewingOrder] = useState(null);
-            const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
+    const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
+    const [rideRequest, setRideRequest] = useState(null);
+    const [rideFeedback, setRideFeedback] = useState('');
+    const [rideLoadingService, setRideLoadingService] = useState('');
     const [descontoValor, setDescontoValor] = useState('');
     const [descontoPercentual, setDescontoPercentual] = useState('');
     const [productSearchTerm, setProductSearchTerm] = useState('');
@@ -10408,6 +10615,66 @@ const effectiveStoreName = useMemo(() => {
             return false;
         }
         return deliveryProviders.length > 0;
+    };
+
+    const getRideAddressesForOrder = (order, freightConfig = {}) => {
+        const orderStoreId = getOrderStoreId(order);
+        const store = storeInfoMap[orderStoreId] || {};
+        return buildRideAddresses(order, store, freightConfig);
+    };
+
+    const prepareRideRequest = async (order, service) => {
+        setRideFeedback('');
+        const orderStoreId = getOrderStoreId(order);
+
+        if (!orderStoreId) {
+            setRideFeedback('Não foi possível identificar a loja responsável por este pedido.');
+            return;
+        }
+
+        setRideLoadingService(service);
+
+        try {
+            const freightConfig = await loadStoreFreightConfig(orderStoreId);
+            const addresses = getRideAddressesForOrder(order, freightConfig);
+
+            if (!addresses.destination.address) {
+                setRideFeedback('Este pedido não possui endereço de entrega válido para solicitar uma corrida.');
+                return;
+            }
+            if (!addresses.origin.address && !addresses.origin.coordinates) {
+                setRideFeedback('A loja não possui endereço ou coordenadas válidas cadastrados na configuração de frete.');
+                return;
+            }
+
+            setRideRequest({ service, addresses });
+        } catch (error) {
+            console.error(`[Ride] Não foi possível carregar o frete da loja ${orderStoreId}.`, error);
+            setRideFeedback('Não foi possível carregar a configuração de frete da loja deste pedido. Tente novamente.');
+        } finally {
+            setRideLoadingService('');
+        }
+    };
+
+    const openPreparedRide = () => {
+        if (!rideRequest) return;
+
+        try {
+            const url = rideRequest.service === 'uber'
+                ? buildUberRideUrl({
+                    ...rideRequest.addresses,
+                    clientId: process.env.REACT_APP_UBER_CLIENT_ID || ''
+                })
+                : build99OpenUrl();
+            const openedWindow = window.open(url, '_blank');
+            if (openedWindow) openedWindow.opener = null;
+            else window.location.assign(url);
+            setRideRequest(null);
+        } catch (error) {
+            console.error('[Ride] Não foi possível abrir o serviço de mobilidade.', error);
+            setRideFeedback(`Não foi possível abrir o aplicativo ${rideRequest.service === 'uber' ? 'Uber' : '99'} neste dispositivo.`);
+            setRideRequest(null);
+        }
     };
 
     const pedidosComNomes = (data.pedidos || []).map(pedido => {
@@ -10468,7 +10735,8 @@ const effectiveStoreName = useMemo(() => {
     const resetForm = () => {
         setEditingOrder(null);
         setSaveOrderError('');
-        setFormData({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
+        setClientSelectionError('');
+        setFormData({ clienteId: '', clienteNome: '', clienteEndereco: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
         setDescontoValor('');
         setDescontoPercentual('');
         setProductSearchTerm('');
@@ -10557,18 +10825,28 @@ const effectiveStoreName = useMemo(() => {
 
 const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSavingOrder(true);
     setSaveOrderError('');
+    const clienteSelecionado = data.clientes.find(
+        (client) => String(client.id) === String(formData.clienteId)
+    );
+    if (!clienteSelecionado) {
+        setClientSelectionError('Selecione um cliente cadastrado na lista.');
+        return;
+    }
+
+    setClientSelectionError('');
+    setIsSavingOrder(true);
     console.log('[Sales][Create] Iniciando tentativa de criar pedido pelo modal.', {
         isEditing: Boolean(editingOrder),
         authCurrentUserUid: auth.currentUser?.uid || null,
         authStateUserUid: user?.auth?.uid || null
     });
     // Garante que clienteNome seja definido mesmo se não for encontrado
-    const clienteSelecionado = data.clientes.find(c => c.id === formData.clienteId);
-    const orderData = { 
-        ...formData, 
-        clienteNome: clienteSelecionado ? clienteSelecionado.nome : 'Cliente não selecionado' 
+    const orderAddressSnapshot = formData.clienteEndereco || getClientPrimaryAddressText(clienteSelecionado);
+    const orderData = {
+        ...formData,
+        clienteNome: clienteSelecionado ? clienteSelecionado.nome : 'Cliente não selecionado',
+        clienteEndereco: orderAddressSnapshot || ''
     };
 
     try {
@@ -10698,6 +10976,7 @@ const handleSubmit = async (e) => {
     
     const handleEdit = (order) => {
         setEditingOrder(order);
+        setClientSelectionError('');
         const subtotal = (order.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
         const desconto = order.cupom?.valorDesconto || order.desconto || 0;
         const total = subtotal - desconto;
@@ -10707,6 +10986,7 @@ const handleSubmit = async (e) => {
         const defaultOrderData = {
             clienteId: '',
             clienteNome: '',
+            clienteEndereco: '',
             itens: [],
             subtotal: 0,
             desconto: 0,
@@ -10775,7 +11055,22 @@ const handleSubmit = async (e) => {
             <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingOrder ? "Editar Pedido" : "Novo Pedido"} size="xl">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Select label="Cliente" value={formData.clienteId} onChange={(e) => setFormData({...formData, clienteId: e.target.value})} required><option value="">Selecione um cliente</option>{data.clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</Select>
+                        <SearchableClientSelect
+                            clients={data.clientes}
+                            value={formData.clienteId}
+                            error={clientSelectionError}
+                            onChange={(selectedClient) => {
+                                setClientSelectionError('');
+                                setFormData((current) => ({
+                                    ...current,
+                                    clienteId: selectedClient?.id || '',
+                                    clienteNome: selectedClient?.nome || '',
+                                    clienteEndereco: selectedClient
+                                        ? getClientPrimaryAddressText(selectedClient)
+                                        : ''
+                                }));
+                            }}
+                        />
                         <Select label="Status" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})} required><option>Pendente</option><option>Em Produção</option><option>Pronto para Entrega</option><option>Finalizado</option><option>Cancelado</option></Select>
                         <Select label="Categoria do Pedido" value={formData.categoria} onChange={(e) => setFormData({...formData, categoria: e.target.value, itens: [], total: 0})} required>
                             <option value="Delivery">Delivery</option>
@@ -10846,12 +11141,14 @@ const handleSubmit = async (e) => {
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit" disabled={isSavingOrder}><Save className="w-4 h-4" />{isSavingOrder ? "Salvando..." : (editingOrder ? "Salvar Alterações" : "Criar Pedido")}</Button></div>
                 </form>
             </Modal>
-            <Modal isOpen={!!viewingOrder} onClose={() => setViewingOrder(null)} title="Detalhes do Pedido" size="lg">
+            <Modal isOpen={!!viewingOrder} onClose={() => { setViewingOrder(null); setRideRequest(null); setRideFeedback(''); }} title="Detalhes do Pedido" size="lg">
                 {viewingOrder && (() => {
                     const cliente = data.clientes.find(c => c.id === viewingOrder.clienteId);
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
                     const cpfCliente = viewingOrder.clienteDocumento || cliente?.cpf || cliente?.documento || '';
+                    const rideAddresses = getRideAddressesForOrder(viewingOrder);
+                    const showRideActions = isDeliveryOrder(viewingOrder);
                     const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
 					const frete = parseFloat(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0) || 0;
 
@@ -11031,7 +11328,39 @@ const handleSubmit = async (e) => {
                                     <Truck className="w-4 h-4" />
                                     Enviar Endereço para Entregador
                                 </Button>
+                                {showRideActions && rideAddresses.destination.address && (
+                                    <>
+                                        <Button
+                                            onClick={() => prepareRideRequest(viewingOrder, 'uber')}
+                                            disabled={!!rideLoadingService}
+                                            className="bg-gradient-to-r from-gray-800 to-black text-white hover:from-black hover:to-gray-900"
+                                            size="sm"
+                                        >
+                                            <RideCar className="w-4 h-4" />
+                                            {rideLoadingService === 'uber' ? 'Carregando...' : 'Chamar Uber'}
+                                        </Button>
+                                        <Button
+                                            onClick={() => prepareRideRequest(viewingOrder, '99')}
+                                            disabled={!!rideLoadingService}
+                                            className="bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900 hover:from-yellow-500 hover:to-amber-600"
+                                            size="sm"
+                                        >
+                                            <RideCar className="w-4 h-4" />
+                                            {rideLoadingService === '99' ? 'Carregando...' : 'Chamar 99'}
+                                        </Button>
+                                    </>
+                                )}
                             </div>
+                            {showRideActions && !rideAddresses.destination.address && (
+                                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                                    Este pedido não possui endereço de entrega válido para solicitar uma corrida.
+                                </p>
+                            )}
+                            {rideFeedback && (
+                                <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                    {rideFeedback}
+                                </p>
+                            )}
                         </div>
                     );
                 })()}
@@ -11042,6 +11371,11 @@ const handleSubmit = async (e) => {
                 clientes={data.clientes}
                 fornecedores={data.fornecedores}
                 onClose={() => setOrderToSendToDeliverer(null)}
+            />
+            <RideConfirmationModal
+                request={rideRequest}
+                onClose={() => setRideRequest(null)}
+                onConfirm={openPreparedRide}
             />
         </div>
     );
@@ -17727,6 +18061,19 @@ const handleSubmit = async (e) => {
     return ids.length ? ids[0] : null;
   }, [user, selectedStoreId, resolveStoreIdsForView]);
 
+  const openCashRecordFromAlert = useCallback((alert = {}) => {
+    try {
+      sessionStorage.setItem('fornecedores_activeTab', JSON.stringify('caixa'));
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(alert.dataOperacional || ''))) {
+        sessionStorage.setItem('caixa_operational_date', alert.dataOperacional);
+      }
+    } catch (error) {
+      console.error('Não foi possível preparar a abertura do registro do caixa.', error);
+    }
+    if (alert.lojaId) selectStoreById(alert.lojaId);
+    setCurrentPage('fornecedores');
+  }, [selectStoreById, setCurrentPage]);
+
   const renderCurrentPage = () => {
     if (authLoading || (loading && user)) {
       return (<div className="flex h-full w-full items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-pink-500"></div></div>);
@@ -17748,8 +18095,15 @@ const handleSubmit = async (e) => {
       case 'pedidos': return userHasPermission('pedidos') ? <Pedidos /> : <PaginaInicial />;
       case 'entre-lojas': return userHasPermission('entre-lojas') ? <EntreLojas /> : <PaginaInicial />;
       case 'agenda': return userHasPermission('agenda') ? <Agenda /> : <PaginaInicial />;
-      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} /> : <PaginaInicial />;
-      case 'relatorios': return userHasPermission('relatorios') ? <Relatorios data={data} /> : <PaginaInicial />;
+      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} availableStores={availableStores} storeInfoMap={storeInfoMap} /> : <PaginaInicial />;
+      case 'relatorios': return userHasPermission('relatorios') ? (
+        <Relatorios
+          data={data}
+          user={user}
+          availableStores={availableStores}
+          storeInfoMap={storeInfoMap}
+        />
+      ) : <PaginaInicial />;
       case 'meu-espaco': return userHasPermission('meu-espaco') ? (
         <MeuEspaco
           user={user}
@@ -17762,7 +18116,7 @@ const handleSubmit = async (e) => {
       case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial />;
       case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
       case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
-      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} /> : <PaginaInicial />;
+      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} /> : <PaginaInicial />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
       default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;
@@ -17901,36 +18255,16 @@ const handleSubmit = async (e) => {
             </div>
             <div className="flex items-center gap-4">
                                 {user && (
-                                        <div className="relative">
-                                                <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-full hover:bg-gray-100">
-							<Bell className="w-5 h-5 text-gray-600" />
-							{pendingOrders.length > 0 && 
-								<span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center animate-pulse">
-									{pendingOrders.length}
-								</span>
-							}
-						</button>
-						{showNotifications && (
-							<div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl z-20 border">
-								<div className="p-4 font-bold border-b">Pedidos Pendentes ({pendingOrders.length})</div>
-								<div className="p-2 max-h-96 overflow-y-auto">
-									{pendingOrders.length > 0 ? (
-										pendingOrders.map(order => (
-											<div key={order.id} className="p-2 border-b hover:bg-gray-50 cursor-pointer" onClick={() => { setCurrentPage('pedidos'); setShowNotifications(false); }}>
-												<p className="font-semibold">{order.clienteNome || 'Cliente'}</p>
-												<p className="text-sm text-gray-500">ID: {order.id?.substring(0,8) || 'N/A'}</p>
-												<p className="text-sm text-gray-500">Data: {getJSDate(order.createdAt)?.toLocaleDateString() || '-'}</p>
-												<p className="text-sm">Status: <span className="font-medium">{order.status}</span></p>
-											</div>
-										))
-									) : (
-										<p className="p-4 text-center text-gray-500">Nenhum pedido pendente.</p>
-									)}
-								</div>
-							</div>
-						)}
-					</div>
-				)}
+                                    <NotificationsBell
+                                        user={user}
+                                        pendingOrders={pendingOrders}
+                                        isOpen={showNotifications}
+                                        onToggle={() => setShowNotifications((current) => !current)}
+                                        onClose={() => setShowNotifications(false)}
+                                        onOpenOrders={() => setCurrentPage('pedidos')}
+                                        storeInfoMap={storeInfoMap}
+                                    />
+                                )}
 				
 				<div className="relative">
 					<button onClick={() => {

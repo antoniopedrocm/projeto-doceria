@@ -1,10 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CheckCircle, Clock, DollarSign, Moon, Package,
-  Pencil, RefreshCw, Save, Search, Settings, ShoppingCart, Sun, Truck, Wifi, WifiOff, X
+  Copy, Eye, EyeOff, Pencil, RefreshCw, Save, Search, Settings, ShoppingCart, Sun, Truck, Wifi, WifiOff, X
 } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebaseConfig.js';
+import {
+  canRunFood99Operations,
+  filterFood99RecordsByEnvironment,
+  food99AuthorizationStatusMeta,
+  food99EnvironmentLabel,
+  food99QueueNextAt,
+  isFood99PublishQueued,
+  isFood99PlatformConfigDirty,
+  isValidFood99PlatformDraft,
+  normalizeFood99AuthorizationStatus,
+  resolveFood99AuthorizationStatus,
+  sanitizeFood99PlatformConfig,
+  sanitizeFood99StoreConfig,
+  selectFood99HealthRecord,
+} from './food99UiCore';
 
 const tabs = [
   {id: 'operacao', label: 'Operacao', icon: ShoppingCart},
@@ -16,6 +31,7 @@ const tabs = [
 const initialConfig = {
   merchantId: '',
   merchantName: '',
+  environment: 'development',
   enabled: false,
   pollingEnabled: true,
   ordersSyncEnabled: true,
@@ -27,12 +43,16 @@ const initialConfig = {
   platformCredentialsReady: false,
   credentialScope: '',
   platformWebhookSecretReady: false,
+  authorizationStatus: 'not_configured',
+  effectiveApiBaseUrl: '',
+  effectiveAuthUrl: '',
+  queue: {},
 };
 
 const initialPlatformConfig = {
-  environment: 'production',
-  apiBaseUrl: 'https://openapi.didi-food.com',
-  authUrl: 'https://openapi.didi-food.com',
+  environment: 'development',
+  effectiveApiBaseUrl: '',
+  effectiveAuthUrl: '',
   webhookUrl: '',
   webhookEnabled: false,
   inventoryEndpointTemplate: '',
@@ -41,10 +61,9 @@ const initialPlatformConfig = {
   clientIdReady: false,
   clientSecretReady: false,
   webhookSecretReady: false,
-  clientIdMasked: '',
-  clientSecretMasked: '',
-  webhookSecretMasked: '',
 };
+
+const PROTECTED_INFO_MESSAGE = 'Informação protegida — disponível apenas para o perfil Dono.';
 
 const money = (value) => (Number(value) || 0).toLocaleString('pt-BR', {
   style: 'currency',
@@ -181,11 +200,12 @@ const statusClass = (status, dark) => {
   return map[status] || (dark ? 'bg-rose-400/15 text-rose-300' : 'bg-rose-50 text-rose-700');
 };
 
-const Button = ({children, onClick, disabled, primary = false, dark = false, type = 'button'}) => (
+const Button = ({children, onClick, disabled, primary = false, dark = false, type = 'button', title}) => (
   <button
     type={type}
     onClick={onClick}
     disabled={disabled}
+    title={title}
     className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
       primary
         ? 'bg-pink-600 text-white hover:bg-pink-700'
@@ -210,36 +230,6 @@ const inputClass = (dark) => `h-11 w-full rounded-lg border px-3 text-sm outline
   dark ? 'border-slate-700 bg-slate-950 text-slate-100 placeholder:text-slate-500' : 'border-gray-200 bg-white text-gray-800'
 }`;
 
-const ProtectedSecretField = ({
-  label, stored, editing, value, onChange, onEdit, onCancel, emptyHint, dark,
-}) => (
-  <Field
-    dark={dark}
-    label={label}
-    hint={stored ? 'Armazenado no Secret Manager. Use Substituir para cadastrar um novo valor.' : emptyHint}
-  >
-    <div className="flex items-center gap-2">
-      <input
-        type={stored && !editing ? 'text' : 'password'}
-        readOnly={stored && !editing}
-        className={inputClass(dark)}
-        value={stored && !editing ? '********' : value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      {stored && !editing && (
-        <Button dark={dark} onClick={onEdit}>
-          <Pencil className="h-4 w-4" />Substituir
-        </Button>
-      )}
-      {stored && editing && (
-        <Button dark={dark} onClick={onCancel}>
-          <X className="h-4 w-4" />Cancelar
-        </Button>
-      )}
-    </div>
-  </Field>
-);
-
 const Metric = ({label, value, icon: Icon, tone, dark}) => (
   <div className={`rounded-lg border p-4 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
     <div className="flex items-start justify-between gap-2">
@@ -254,21 +244,28 @@ const Metric = ({label, value, icon: Icon, tone, dark}) => (
   </div>
 );
 
-const Toggle = ({label, checked, onChange, dark}) => (
+const Toggle = ({label, checked, onChange, dark, disabled = false}) => (
   <label className={`flex items-center justify-between gap-4 rounded-lg border p-3 ${dark ? 'border-slate-800 text-slate-200' : 'border-gray-100 text-gray-700'}`}>
     <span className="text-sm">{label}</span>
-    <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-pink-600" />
+    <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-pink-600 disabled:cursor-not-allowed disabled:opacity-50" />
   </label>
 );
 
-export default function Food99Hub({data, effectiveStoreId, selectedStoreId, availableStores = [], storeInfoMap, onSelectStore, currentUser}) {
+export default function Food99Hub({data, effectiveStoreId, selectedStoreId, availableStores = [], storeInfoMap, onSelectStore}) {
   const [tab, setTab] = useState('operacao');
   const [dark, setDark] = useState(() => window.localStorage.getItem('99Food-hub-theme') === 'dark');
+  const [selectedEnvironment, setSelectedEnvironment] = useState('development');
   const mappingPanelRef = useRef(null);
+  const configurationLoadIdRef = useRef(0);
+  const revealedAppSecretRef = useRef('');
   const [config, setConfig] = useState(initialConfig);
   const [platformConfig, setPlatformConfig] = useState(initialPlatformConfig);
-  const [platformSecrets, setPlatformSecrets] = useState({clientId: '', clientSecret: '', webhookSecret: ''});
-  const [editingPlatformSecrets, setEditingPlatformSecrets] = useState({clientId: false, clientSecret: false, webhookSecret: false});
+  const [platformBaseline, setPlatformBaseline] = useState(initialPlatformConfig);
+  const [canManagePlatform, setCanManagePlatform] = useState(false);
+  const [platformAppId, setPlatformAppId] = useState('');
+  const [revealedAppSecret, setRevealedAppSecret] = useState('');
+  const [appSecretRevealed, setAppSecretRevealed] = useState(false);
+  const [secretReplacement, setSecretReplacement] = useState({kind: '', value: ''});
   const [remoteHealth, setRemoteHealth] = useState({status: 'not_configured'});
   const [merchants, setMerchants] = useState([]);
   const [mappingPanelOpen, setMappingPanelOpen] = useState(false);
@@ -283,49 +280,105 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
   const [validation, setValidation] = useState({order: null, action: '', code: ''});
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState(null);
-  const isPlatformAdmin = currentUser?.role === 'dono' && currentUser?.canAccessAllStores;
+  const [queueState, setQueueState] = useState({});
+  const isPlatformAdmin = canManagePlatform;
 
   const invoke = useCallback(async (name, payload = {}) => {
     if (!effectiveStoreId) throw new Error('Selecione uma loja especifica para operar o 99Food.');
-    const response = await httpsCallable(functions, name)({lojaId: effectiveStoreId, ...payload});
+    const response = await httpsCallable(functions, name)({lojaId: effectiveStoreId, ...payload, environment: selectedEnvironment});
     return response.data;
-  }, [effectiveStoreId]);
+  }, [effectiveStoreId, selectedEnvironment]);
 
   const invokePlatform = useCallback(async (name, payload = {}) => {
-    const response = await httpsCallable(functions, name)(payload);
+    const response = await httpsCallable(functions, name)({...payload, environment: selectedEnvironment});
     return response.data;
+  }, [selectedEnvironment]);
+
+  const clearRevealedAppSecret = useCallback(() => {
+    revealedAppSecretRef.current = '';
+    setRevealedAppSecret('');
+    setAppSecretRevealed(false);
   }, []);
 
   const loadConfiguration = useCallback(async () => {
     if (!effectiveStoreId) return;
+    const loadId = configurationLoadIdRef.current + 1;
+    configurationLoadIdRef.current = loadId;
     setBusy('configuration-load');
     try {
       const result = await invoke('food99GetConfiguration');
-      setConfig({...initialConfig, ...(result.config || {})});
-      setPlatformConfig({...initialPlatformConfig, ...(result.platform || {})});
-      setRemoteHealth(result.health || {status: 'not_configured'});
+      if (configurationLoadIdRef.current !== loadId) return;
+      const configInput = {
+        ...(result.config || {}),
+        authorizationStatus: result.authorizationStatus || result.config?.authorizationStatus,
+        effectiveApiBaseUrl: result.effectiveApiBaseUrl || result.config?.effectiveApiBaseUrl,
+        effectiveAuthUrl: result.effectiveAuthUrl || result.config?.effectiveAuthUrl,
+        queue: result.queue || result.config?.queue,
+      };
+      const platformInput = {
+        ...(result.platform || {}),
+        effectiveApiBaseUrl: result.platformEffectiveApiBaseUrl || result.platform?.effectiveApiBaseUrl,
+        effectiveAuthUrl: result.platformEffectiveAuthUrl || result.platform?.effectiveAuthUrl,
+      };
+      const safeConfig = sanitizeFood99StoreConfig(configInput, selectedEnvironment);
+      const safePlatformConfig = {
+        ...initialPlatformConfig,
+        ...sanitizeFood99PlatformConfig(platformInput, selectedEnvironment),
+      };
+      const platformPermission = Boolean(result.permissions?.canManagePlatform);
+      setConfig({...initialConfig, ...safeConfig});
+      setPlatformConfig(safePlatformConfig);
+      setPlatformBaseline(safePlatformConfig);
+      setCanManagePlatform(platformPermission);
+      setPlatformAppId('');
+      clearRevealedAppSecret();
+      setRemoteHealth(result.health || {status: safeConfig.authorizationStatus, environment: selectedEnvironment});
+      setQueueState(result.queue || safeConfig.queue || result.health?.queue || {});
+      if (platformPermission) {
+        const protectedResult = await invokePlatform('food99GetPlatformConfiguration', {lojaId: effectiveStoreId});
+        if (configurationLoadIdRef.current === loadId) {
+          setPlatformAppId(String(protectedResult.appId || ''));
+        }
+      }
     } catch (error) {
-      setMessage({type: 'error', text: error.message});
+      if (configurationLoadIdRef.current === loadId) {
+        setMessage({type: 'error', text: error.message});
+      }
     } finally {
-      setBusy('');
+      if (configurationLoadIdRef.current === loadId) setBusy('');
     }
-  }, [effectiveStoreId, invoke]);
+  }, [clearRevealedAppSecret, effectiveStoreId, invoke, invokePlatform, selectedEnvironment]);
 
   useEffect(() => {
     setMessage(null);
-    setConfig(initialConfig);
-    setPlatformConfig(initialPlatformConfig);
-    setPlatformSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
-    setEditingPlatformSecrets({clientId: false, clientSecret: false, webhookSecret: false});
+    setConfig({...initialConfig, environment: selectedEnvironment});
+    setPlatformConfig({...initialPlatformConfig, environment: selectedEnvironment});
+    setPlatformBaseline({...initialPlatformConfig, environment: selectedEnvironment});
+    setCanManagePlatform(false);
+    setPlatformAppId('');
+    setRemoteHealth({status: 'not_configured', environment: selectedEnvironment});
+    setQueueState({});
+    clearRevealedAppSecret();
+    setSecretReplacement({kind: '', value: ''});
     setMerchants([]);
     setSelectedProductIds([]);
     setSelectedCatalogKeys([]);
     setBulkImportResult(null);
     setBulkLinkResult(null);
+    setCatalogProducts([]);
+    setCatalogSearch('');
     setMappingPanelOpen(false);
     setMapping({productId: '', food99ProductId: '', externalCode: '', catalogItemId: ''});
     loadConfiguration();
-  }, [loadConfiguration]);
+  }, [clearRevealedAppSecret, loadConfiguration, selectedEnvironment]);
+
+  useEffect(() => {
+    if (tab !== 'configuracao' || !isPlatformAdmin) clearRevealedAppSecret();
+  }, [clearRevealedAppSecret, isPlatformAdmin, tab]);
+
+  useEffect(() => () => {
+    revealedAppSecretRef.current = '';
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem('99Food-hub-theme', dark ? 'dark' : 'light');
@@ -336,12 +389,15 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     setSelectedCatalogKeys((current) => current.filter((key) => availableKeys.has(key)));
   }, [catalogProducts]);
 
-  const orders = useMemo(() => [...(data.food99Orders || [])].sort(
+  const food99Orders = useMemo(() => (
+    filterFood99RecordsByEnvironment(data.food99Orders, selectedEnvironment)
+  ), [data.food99Orders, selectedEnvironment]);
+  const orders = useMemo(() => [...food99Orders].sort(
     (a, b) => (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0)
-  ), [data.food99Orders]);
+  ), [food99Orders]);
   const dashboardOrders = useMemo(() => {
     const byOrderId = new Map();
-    (data.food99Orders || []).forEach((order) => {
+    food99Orders.forEach((order) => {
       const key = String(order.food99OrderId || order.id || '').trim();
       if (key) byOrderId.set(key, order);
     });
@@ -350,23 +406,50 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
         || String(order.canalVenda || '').toLowerCase() === '99food'
         || Boolean(order.food99OrderId);
       if (!isFood99) return;
+      if (!filterFood99RecordsByEnvironment([order], selectedEnvironment).length) return;
       const key = String(order.food99OrderId || order.id || '').trim();
       if (!key) return;
       byOrderId.set(key, {...(byOrderId.get(key) || {}), ...order});
     });
     const todayKey = todayKeyInSaoPaulo();
     return [...byOrderId.values()].filter((order) => dateKeyInTimezone(relevantOrderDate(order), DASHBOARD_TIMEZONE) === todayKey);
-  }, [data.food99Orders, data.pedidos]);
-  const productMappings = data.food99ProductMappings || [];
+  }, [data.pedidos, food99Orders, selectedEnvironment]);
+  const productMappings = useMemo(() => (
+    filterFood99RecordsByEnvironment(data.food99ProductMappings, selectedEnvironment)
+  ), [data.food99ProductMappings, selectedEnvironment]);
   const products = data.produtos || [];
-  const alerts = [...(data.food99Alerts || [])]
+  const alerts = filterFood99RecordsByEnvironment(data.food99Alerts, selectedEnvironment)
     .filter((alert) => !['resolved', 'closed'].includes(String(alert.status || '').toLowerCase()))
-    .sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
-  const audit = [...(data.food99Audit || [])].sort(
+    .sort((a, b) => (
+      (toDate(b.lastSeenAt || b.last_seen_at || b.updatedAt || b.createdAt)?.getTime() || 0)
+      - (toDate(a.lastSeenAt || a.last_seen_at || a.updatedAt || a.createdAt)?.getTime() || 0)
+    ));
+  const audit = filterFood99RecordsByEnvironment(data.food99Audit, selectedEnvironment).sort(
     (a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0)
   );
-  const health = (data.food99Health || []).find((entry) => entry.id === 'status') || remoteHealth;
-  const isOnline = health.status === 'online';
+  const health = selectFood99HealthRecord(data.food99Health, selectedEnvironment, remoteHealth) || {};
+  const authorizationStatus = resolveFood99AuthorizationStatus(config, health);
+  const authorizationMeta = food99AuthorizationStatusMeta(authorizationStatus);
+  const canOperate = Boolean(config.enabled) && canRunFood99Operations(authorizationStatus);
+  const pausedOperationMessage = !config.enabled
+    ? 'Ative a integração na configuração desta loja. Polling, estoque e catálogo permanecem suspensos enquanto ela estiver desativada.'
+    : (authorizationStatus === 'awaiting_authorization'
+      ? 'Use “Verificar autorização” para consultar e reconciliar o vínculo oficial da loja na 99Food. Se ainda não houver vínculo, conclua-o no portal com o super-administrador.'
+      : 'Use “Verificar autorização” para validar novamente o vínculo, o token e a conexão desta loja no ambiente selecionado.');
+  const authorizationToneClass = {
+    success: dark ? 'bg-emerald-400/15 text-emerald-300' : 'bg-emerald-50 text-emerald-700',
+    warning: dark ? 'bg-amber-400/15 text-amber-300' : 'bg-amber-50 text-amber-700',
+    info: dark ? 'bg-sky-400/15 text-sky-300' : 'bg-sky-50 text-sky-700',
+    danger: dark ? 'bg-rose-400/15 text-rose-300' : 'bg-rose-50 text-rose-700',
+    neutral: dark ? 'bg-slate-700 text-slate-300' : 'bg-gray-100 text-gray-600',
+  }[authorizationMeta.tone];
+  const effectiveApiBaseUrl = config.effectiveApiBaseUrl || platformConfig.effectiveApiBaseUrl || '';
+  const effectiveAuthUrl = config.effectiveAuthUrl || platformConfig.effectiveAuthUrl || '';
+  const platformConfigDirty = isFood99PlatformConfigDirty(platformConfig, platformBaseline);
+  const platformDraftValid = isValidFood99PlatformDraft(platformConfig);
+  const queue = Object.keys(queueState || {}).length ? queueState : (config.queue || health.queue || {});
+  const queueNextAt = food99QueueNextAt(queue);
+  const operationDisabledTitle = canOperate ? '' : 'Ative e autorize a loja neste ambiente antes de executar operações 99Food.';
   const storeLabel = storeInfoMap?.[effectiveStoreId]?.nome || effectiveStoreId || selectedStoreId || 'loja';
 
   const summary = useMemo(() => {
@@ -512,13 +595,26 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     }
   };
 
-  const actionForOrder = (order, action, extra = {}) => perform(
-    `${order.id}-${action}`,
-    () => invoke('food99OrderAction', {orderId: order.food99OrderId || order.id, action, ...extra}),
-    'Comando enviado ao 99Food. O novo status sera refletido pelo proximo evento.'
-  );
+  const requireAuthorizedOperation = () => {
+    if (canOperate) return true;
+    setMessage({
+      type: 'warning',
+      text: `A loja está ${config.enabled ? `como “${authorizationMeta.label}”` : 'desativada'} em ${food99EnvironmentLabel(selectedEnvironment)}. Ative e autorize antes de executar esta operação.`,
+    });
+    return false;
+  };
+
+  const actionForOrder = (order, action, extra = {}) => {
+    if (!requireAuthorizedOperation()) return;
+    perform(
+      `${order.id}-${action}`,
+      () => invoke('food99OrderAction', {orderId: order.food99OrderId || order.id, action, ...extra}),
+      'Comando enviado ao 99Food. O novo status sera refletido pelo proximo evento.'
+    );
+  };
 
   const openCancellation = async (order) => {
+    if (!requireAuthorizedOperation()) return;
     setBusy(`reasons-${order.id}`);
     try {
       const result = await invoke('food99GetCancellationReasons', {orderId: order.food99OrderId || order.id});
@@ -532,6 +628,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
 
   const requestCancellation = (event) => {
     event.preventDefault();
+    if (!requireAuthorizedOperation()) return;
     const order = cancellation.order;
     perform('cancellation', async () => {
       await invoke('food99OrderAction', {
@@ -545,6 +642,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
 
   const submitValidation = (event) => {
     event.preventDefault();
+    if (!requireAuthorizedOperation()) return;
     const order = validation.order;
     perform('validation', async () => {
       await invoke('food99OrderAction', {
@@ -570,48 +668,81 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
         autoConfirm: config.autoConfirm,
         autoStartPreparation: config.autoStartPreparation,
       });
-      setConfig({...initialConfig, ...saved});
+      setConfig({...initialConfig, ...sanitizeFood99StoreConfig(saved.config || saved, selectedEnvironment)});
     }, 'Configuracao da loja salva. O app_shop_id e as sincronizacoes desta unidade foram atualizados.');
   };
 
   const savePlatformConfiguration = (event) => {
     event.preventDefault();
+    if (!isPlatformAdmin || !isFood99PlatformConfigDirty(platformConfig, platformBaseline)) return;
     perform('platform-save', async () => {
       const saved = await invokePlatform('food99SavePlatformConfiguration', {
-        environment: platformConfig.environment,
-        apiBaseUrl: platformConfig.apiBaseUrl,
-        authUrl: platformConfig.authUrl,
+        lojaId: effectiveStoreId,
+        apiBaseUrl: platformConfig.effectiveApiBaseUrl,
+        authUrl: platformConfig.effectiveAuthUrl,
         webhookUrl: platformConfig.webhookUrl,
         webhookEnabled: platformConfig.webhookEnabled,
-        inventoryEndpointTemplate: platformConfig.inventoryEndpointTemplate,
         inventoryMethod: platformConfig.inventoryMethod,
-        ...platformSecrets,
       });
-      setPlatformConfig({...initialPlatformConfig, ...(saved.platform || {})});
-      setPlatformSecrets({clientId: '', clientSecret: '', webhookSecret: ''});
-      setEditingPlatformSecrets({clientId: false, clientSecret: false, webhookSecret: false});
-      await loadConfiguration();
+      const safePlatformConfig = {
+        ...initialPlatformConfig,
+        ...sanitizeFood99PlatformConfig(saved.platform || saved, selectedEnvironment),
+      };
+      setPlatformConfig(safePlatformConfig);
+      setPlatformBaseline(safePlatformConfig);
     }, 'Configuracao global 99Food salva. Segredos seguem protegidos no Google Secret Manager.');
   };
 
-  const editSecret = (field) => {
-    setPlatformSecrets((current) => ({...current, [field]: ''}));
-    setEditingPlatformSecrets((current) => ({...current, [field]: true}));
+  const revealPlatformAppSecret = () => perform('app-secret-reveal', async () => {
+    const result = await invokePlatform('food99RevealPlatformAppSecret', {lojaId: effectiveStoreId});
+    const secret = String(result.appSecret || '');
+    revealedAppSecretRef.current = secret;
+    setRevealedAppSecret(secret);
+    setAppSecretRevealed(true);
+  }, 'App Secret revelado somente nesta sessao da tela.');
+
+  const copyProtectedValue = async (value, label, auditSecretCopy = false) => {
+    if (!value || !navigator.clipboard?.writeText) {
+      setMessage({type: 'error', text: `Nao foi possivel copiar ${label} neste navegador.`});
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      if (auditSecretCopy) {
+        await invokePlatform('food99AuditPlatformAppSecretCopy', {lojaId: effectiveStoreId});
+      }
+      setMessage({type: 'success', text: `${label} copiado.`});
+    } catch {
+      setMessage({type: 'error', text: `Nao foi possivel copiar ${label}.`});
+    }
   };
 
-  const cancelSecretEdit = (field) => {
-    setPlatformSecrets((current) => ({...current, [field]: ''}));
-    setEditingPlatformSecrets((current) => ({...current, [field]: false}));
+  const beginSecretReplacement = (kind) => {
+    if (kind === 'app_secret') clearRevealedAppSecret();
+    setSecretReplacement({kind, value: ''});
   };
 
-  const editCredentials = () => {
-    setPlatformSecrets((current) => ({...current, clientId: '', clientSecret: ''}));
-    setEditingPlatformSecrets((current) => ({...current, clientId: true, clientSecret: true}));
-  };
+  const cancelSecretReplacement = () => setSecretReplacement({kind: '', value: ''});
 
-  const cancelCredentialsEdit = () => {
-    setPlatformSecrets((current) => ({...current, clientId: '', clientSecret: ''}));
-    setEditingPlatformSecrets((current) => ({...current, clientId: false, clientSecret: false}));
+  const replacePlatformSecret = (kind) => {
+    const value = secretReplacement.kind === kind ? secretReplacement.value : '';
+    if (!value.trim()) {
+      setMessage({type: 'warning', text: 'Informe o novo valor antes de substituir.'});
+      return;
+    }
+    const label = kind === 'app_id' ? 'App ID' : 'App Secret';
+    if (!window.confirm(`Confirma a substituicao do ${label} neste ambiente?`)) return;
+    perform(`replace-${kind}`, async () => {
+      await invokePlatform('food99ReplacePlatformSecret', {
+        lojaId: effectiveStoreId,
+        kind,
+        value,
+        confirmed: true,
+      });
+      cancelSecretReplacement();
+      clearRevealedAppSecret();
+      await loadConfiguration();
+    }, `${label} substituido com nova versao protegida.`);
   };
 
   const loadMerchants = () => perform('merchant-load', async () => {
@@ -625,8 +756,100 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
 
   const promoteStoredCredentials = () => perform('credential-promote', async () => {
     const promoted = await invoke('food99PromoteStoredCredentials');
-    setConfig({...initialConfig, ...promoted});
+    setConfig({...initialConfig, ...sanitizeFood99StoreConfig(promoted.config || promoted, selectedEnvironment)});
   }, 'Credencial central ativada. Novas lojas precisarao apenas informar seu app_shop_id.');
+
+  const startAuthorization = async () => {
+    if (!config.credentialsReady || !config.merchantId) {
+      setMessage({type: 'warning', text: 'Salve as credenciais e o app_shop_id antes de autorizar a loja.'});
+      return;
+    }
+    const authorizationWindow = window.open('about:blank', '_blank');
+    if (authorizationWindow) {
+      authorizationWindow.opener = null;
+      authorizationWindow.document.title = 'Abrindo portal oficial 99Food';
+      authorizationWindow.document.body.textContent = 'Preparando acesso ao portal oficial 99Food...';
+    }
+    setBusy('authorization-start');
+    setMessage(null);
+    try {
+      const result = await invoke('food99StartAuthorization');
+      const rawUrl = result.authorizationUrl || result.portalUrl || result.url || '';
+      if (rawUrl) {
+        const parsedUrl = new URL(rawUrl);
+        if (!['https:', 'http:'].includes(parsedUrl.protocol)) throw new Error('A 99Food retornou uma URL de autorização inválida.');
+        if (!authorizationWindow) {
+          throw new Error('O navegador bloqueou a nova aba. Permita pop-ups e clique novamente em Autorizar loja.');
+        }
+        authorizationWindow.location.replace(parsedUrl.toString());
+        setMessage({
+          type: 'success',
+          text: 'Portal oficial 99Food aberto em nova aba. Conclua a autorização e depois clique em Verificar autorização.',
+        });
+      } else {
+        authorizationWindow?.close();
+        setMessage({
+          type: 'warning',
+          text: result.message || 'A autorização deve ser concluída pelo super-administrador no portal oficial da 99Food.',
+        });
+      }
+    } catch (error) {
+      authorizationWindow?.close();
+      setMessage({type: 'error', text: error.message});
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const checkAuthorization = async () => {
+    setBusy('authorization-check');
+    setMessage(null);
+    try {
+      const result = await invoke('food99CheckAuthorization');
+      const resultStatus = normalizeFood99AuthorizationStatus(
+        result.authorizationStatus || result.status,
+        result.authorized ? 'authorized' : 'awaiting_authorization'
+      );
+      setMessage({
+        type: resultStatus === 'authorized' ? 'success' : 'warning',
+        text: resultStatus === 'authorized'
+          ? (result.message || 'Autorização confirmada. Polling, pedidos, estoque e catálogo foram liberados neste ambiente.')
+          : (result.message || 'A loja ainda aguarda autorização no portal oficial da 99Food.'),
+      });
+      await loadConfiguration();
+    } catch (error) {
+      setMessage({type: 'error', text: error.message});
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const testConnection = async () => {
+    setBusy('test');
+    setMessage(null);
+    try {
+      const result = await invoke('food99TestConnection');
+      const resultStatus = normalizeFood99AuthorizationStatus(
+        result.authorizationStatus || result.status,
+        result.ok || result.authorized ? 'authorized' : 'awaiting_authorization'
+      );
+      if (resultStatus === 'authorized') {
+        setMessage({type: 'success', text: result.message || 'Conexão 99Food validada e autorização da loja confirmada.'});
+      } else if (resultStatus === 'awaiting_authorization') {
+        setMessage({
+          type: 'warning',
+          text: result.message || 'Credenciais cadastradas. A validação completa depende da autorização da loja no portal oficial da 99Food.',
+        });
+      } else {
+        setMessage({type: 'error', text: result.message || food99AuthorizationStatusMeta(resultStatus).label});
+      }
+      await loadConfiguration();
+    } catch (error) {
+      setMessage({type: 'error', text: error.message});
+    } finally {
+      setBusy('');
+    }
+  };
 
   const handleMerchantSelect = (merchantId) => {
     const selected = merchants.find((merchant) => merchant.id === merchantId);
@@ -671,11 +894,24 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
   };
 
   const publishProducts = async (productIds) => {
+    if (!requireAuthorizedOperation()) return;
     setBusy('catalog-publish');
     setMessage(null);
     try {
       const result = await invoke('food99PublishProducts', {productIds});
-      if (result.failed) {
+      if (result.queue) setQueueState(result.queue);
+      if (isFood99PublishQueued(result)) {
+        const queuedCount = Number(result.queuedCount ?? result.accepted ?? result.requested ?? productIds.length) || productIds.length;
+        const nextAt = food99QueueNextAt(result.queue || result);
+        const submitted = String(result.status || '').toLowerCase() === 'submitted';
+        setMessage({
+          type: 'success',
+          text: submitted
+            ? `${queuedCount} produto(s) enviado(s) no catálogo consolidado; o processamento assíncrono foi iniciado.${nextAt ? ` Próxima janela: ${dateTime(nextAt)}.` : ''}`
+            : `${queuedCount} produto(s) enfileirado(s) para publicação consolidada.${nextAt ? ` Próxima janela: ${dateTime(nextAt)}.` : ''}`,
+        });
+        setSelectedProductIds([]);
+      } else if (result.failed) {
         const firstError = result.results?.find((item) => !item.ok)?.error || 'Consulte a auditoria.';
         setMessage({type: 'error', text: `${result.published} publicado(s), ${result.failed} com falha. ${firstError}`});
       } else {
@@ -691,6 +927,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
 
   const saveMapping = (event) => {
     event.preventDefault();
+    if (!requireAuthorizedOperation()) return;
     if (!mapping.productId || !mapping.food99ProductId) return;
     perform('mapping-save', async () => {
       const selectedCatalogProduct = catalogProducts.find((product) => (
@@ -708,6 +945,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
   };
 
   const loadCatalogProducts = async () => {
+    if (!requireAuthorizedOperation()) return;
     setBusy('catalog-load');
     setMessage(null);
     try {
@@ -751,13 +989,17 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
     });
   };
 
-  const importCatalogProduct = (catalogProduct) => perform(`catalog-import-${catalogProduct.itemId || catalogProduct.productId}`, async () => {
-    await invoke('food99ImportCatalogProduct', {
-      ...catalogProductPayload(catalogProduct),
-    });
-  }, 'Item 99Food trazido para a aplicacao. Revise estoque/preco antes de ativar a sincronizacao.');
+  const importCatalogProduct = (catalogProduct) => {
+    if (!requireAuthorizedOperation()) return;
+    perform(`catalog-import-${catalogProduct.itemId || catalogProduct.productId}`, async () => {
+      await invoke('food99ImportCatalogProduct', {
+        ...catalogProductPayload(catalogProduct),
+      });
+    }, 'Item 99Food trazido para a aplicacao. Revise estoque/preco antes de ativar a sincronizacao.');
+  };
 
   const importSelectedCatalogProducts = async () => {
+    if (!requireAuthorizedOperation()) return;
     if (!selectedCatalogRows.length) return;
     setBusy('catalog-import-bulk');
     setMessage(null);
@@ -782,6 +1024,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
   };
 
   const linkSelectedCatalogProducts = async () => {
+    if (!requireAuthorizedOperation()) return;
     if (!selectedCatalogRows.length) return;
     setBusy('catalog-link-bulk');
     setMessage(null);
@@ -846,16 +1089,34 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
         <div>
           <div className="mb-2 flex items-center gap-3">
             <h1 className="text-2xl font-semibold">99Food Hub</h1>
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${isOnline ? (dark ? 'bg-emerald-400/15 text-emerald-300' : 'bg-emerald-50 text-emerald-700') : (dark ? 'bg-rose-400/15 text-rose-300' : 'bg-rose-50 text-rose-700')}`}>
-              {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-              API {isOnline ? 'online' : health.status || 'nao configurada'}
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${authorizationToneClass}`}>
+              {authorizationStatus === 'authorized' ? <Wifi className="h-3.5 w-3.5" /> : authorizationStatus === 'connecting' ? <Clock className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+              {authorizationMeta.label}
             </span>
           </div>
           <p className={`text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Operacao, estoque e pedidos em tempo real para {storeLabel}</p>
+          <div className={`mt-2 space-y-1 text-xs ${dark ? 'text-slate-500' : 'text-gray-500'}`}>
+            <p><span className="font-medium">Ambiente:</span> {food99EnvironmentLabel(selectedEnvironment)}</p>
+            <p><span className="font-medium">API efetiva:</span> {effectiveApiBaseUrl || 'Aguardando configuração oficial do backend'}</p>
+            <p><span className="font-medium">Autenticação efetiva:</span> {effectiveAuthUrl || 'Aguardando configuração oficial do backend'}</p>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className={`text-xs font-medium ${dark ? 'text-slate-300' : 'text-gray-600'}`}>
+            <span className="sr-only">Ambiente 99Food</span>
+            <select
+              className={`${inputClass(dark)} min-w-[245px]`}
+              value={selectedEnvironment}
+              onChange={(event) => setSelectedEnvironment(event.target.value)}
+              disabled={busy !== ''}
+              aria-label="Ambiente 99Food"
+            >
+              <option value="development">Desenvolvimento (app Test oficial)</option>
+              <option value="production">Produção</option>
+            </select>
+          </label>
           <Button dark={dark} onClick={() => setDark(!dark)}>{dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}{dark ? 'Claro' : 'Escuro'}</Button>
-          <Button dark={dark} disabled={busy === 'poll'} onClick={() => perform('poll', () => invoke('food99PollNow'), 'Eventos consultados e processados.')}>
+          <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || busy === 'poll'} onClick={() => perform('poll', () => invoke('food99PollNow'), 'Eventos consultados e processados.')}>
             <RefreshCw className={`h-4 w-4 ${busy === 'poll' ? 'animate-spin' : ''}`} />Consultar agora
           </Button>
         </div>
@@ -871,6 +1132,13 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
         }`}>
           {message.type === 'success' ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
           {message.text}
+        </div>
+      )}
+
+      {!canOperate && (
+        <div className={`mb-5 rounded-lg border p-4 text-sm ${dark ? 'border-amber-700/50 bg-amber-400/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+          <p className="font-medium">Operações pausadas: {config.enabled ? authorizationMeta.label : 'Integração desativada'}</p>
+          <p className="mt-1">{pausedOperationMessage}</p>
         </div>
       )}
 
@@ -916,10 +1184,10 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                       <td className="px-4 py-3 font-medium">{money(order.total)}</td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-2">
-                          {order.externalStatus === 'PLACED' && <Button dark={dark} disabled={busy !== ''} onClick={() => actionForOrder(order, 'confirm')}>Confirmar</Button>}
-                          {order.externalStatus === 'CONFIRMED' && <Button dark={dark} disabled={busy !== ''} onClick={() => actionForOrder(order, 'readyToPickup')}>Pronto</Button>}
-                          {['READY_TO_PICKUP', 'DISPATCHED'].includes(order.externalStatus) && <Button dark={dark} disabled={busy !== ''} onClick={() => actionForOrder(order, 'delivered')}><Truck className="h-4 w-4" />Entregue</Button>}
-                          {!['CONCLUDED', 'CANCELLED'].includes(order.externalStatus) && <Button dark={dark} disabled={busy !== ''} onClick={() => openCancellation(order)}>Cancelar</Button>}
+                          {order.externalStatus === 'PLACED' && <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || busy !== ''} onClick={() => actionForOrder(order, 'confirm')}>Confirmar</Button>}
+                          {order.externalStatus === 'CONFIRMED' && <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || busy !== ''} onClick={() => actionForOrder(order, 'readyToPickup')}>Pronto</Button>}
+                          {['READY_TO_PICKUP', 'DISPATCHED'].includes(order.externalStatus) && <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || busy !== ''} onClick={() => actionForOrder(order, 'delivered')}><Truck className="h-4 w-4" />Entregue</Button>}
+                          {!['CONCLUDED', 'CANCELLED'].includes(order.externalStatus) && <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || busy !== ''} onClick={() => openCancellation(order)}>Cancelar</Button>}
                         </div>
                       </td>
                     </tr>
@@ -935,13 +1203,32 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
               <span className={`rounded-full px-2 py-1 text-xs font-medium ${alerts.length ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{alerts.length}</span>
             </div>
             <div className="space-y-3">
-              {alerts.slice(0, 8).map((alert) => (
-                <div key={alert.id} className={`rounded-lg border p-3 text-sm ${dark ? 'border-slate-800 bg-slate-950' : 'border-gray-100 bg-gray-50'}`}>
-                  <p className="font-medium">{alert.type || 'Falha de sincronizacao'}</p>
-                  <p className={`mt-1 text-xs ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{alert.message}</p>
-                  <p className={`mt-2 text-xs ${dark ? 'text-slate-500' : 'text-gray-400'}`}>{dateTime(alert.createdAt)}</p>
-                </div>
-              ))}
+              {alerts.slice(0, 8).map((alert) => {
+                const context = alert.context || alert.details || {};
+                const errno = alert.errno ?? context.errno ?? '-';
+                const requestId = alert.requestId || context.requestId || context.request_id || '-';
+                const firstSeenAt = alert.firstSeenAt || alert.first_seen_at || alert.createdAt;
+                const lastSeenAt = alert.lastSeenAt || alert.last_seen_at || alert.updatedAt || alert.createdAt;
+                const occurrenceCount = Number(alert.occurrenceCount ?? alert.occurrence_count ?? alert.count ?? 1) || 1;
+                return (
+                  <div key={alert.id} className={`rounded-lg border p-3 text-sm ${dark ? 'border-slate-800 bg-slate-950' : 'border-gray-100 bg-gray-50'}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium">{alert.type || 'Falha de sincronizacao'}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${dark ? 'bg-rose-400/15 text-rose-300' : 'bg-rose-50 text-rose-700'}`}>{occurrenceCount}x</span>
+                    </div>
+                    <p className={`mt-1 text-xs ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{alert.message}</p>
+                    <p className={`mt-2 text-[11px] ${dark ? 'text-slate-500' : 'text-gray-400'}`}>Primeira: {dateTime(firstSeenAt)} · Última: {dateTime(lastSeenAt)}</p>
+                    <details className={`mt-2 text-xs ${dark ? 'text-slate-400' : 'text-gray-500'}`}>
+                      <summary className="cursor-pointer font-medium">Detalhes técnicos</summary>
+                      <div className="mt-2 space-y-1 break-all">
+                        <p><span className="font-medium">errno:</span> {errno}</p>
+                        <p><span className="font-medium">requestId:</span> {requestId}</p>
+                        <p><span className="font-medium">endpoint:</span> {alert.endpoint || context.endpoint || context.path || '-'}</p>
+                      </div>
+                    </details>
+                  </div>
+                );
+              })}
               {!alerts.length && <p className={`py-8 text-center text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Operacao sem alertas ativos.</p>}
             </div>
             <div className={`mt-5 border-t pt-4 ${dark ? 'border-slate-800' : 'border-gray-100'}`}>
@@ -967,15 +1254,20 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
               <div>
                 <h2 className="font-semibold">Produtos para o 99Food</h2>
                 <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{productsReadyFor99Food.length} com preco 99Food definido, {mappedProducts.length} publicados</p>
+                {(Number(queue.pendingCount ?? queue.pending ?? queue.queuedCount ?? 0) > 0 || queueNextAt) && (
+                  <p className={`mt-1 text-xs ${dark ? 'text-amber-300' : 'text-amber-700'}`}>
+                    Fila consolidada: {Number(queue.pendingCount ?? queue.pending ?? queue.queuedCount ?? 0)} pendente(s){queueNextAt ? ` · próxima janela ${dateTime(queueNextAt)}` : ''}.
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button dark={dark} disabled={!selectedProductIds.length || busy === 'catalog-publish'} onClick={() => publishProducts(selectedProductIds)}>
+                <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || !selectedProductIds.length || busy === 'catalog-publish'} onClick={() => publishProducts(selectedProductIds)}>
                   <Package className="h-4 w-4" />Publicar selecionados
                 </Button>
-                <Button primary disabled={!productsReadyFor99Food.length || busy === 'catalog-publish'} onClick={() => publishProducts(productsReadyFor99Food.map((product) => product.id))}>
+                <Button primary title={operationDisabledTitle} disabled={!canOperate || !productsReadyFor99Food.length || busy === 'catalog-publish'} onClick={() => publishProducts(productsReadyFor99Food.map((product) => product.id))}>
                   <RefreshCw className={`h-4 w-4 ${busy === 'catalog-publish' ? 'animate-spin' : ''}`} />Publicar todos prontos
                 </Button>
-                <Button dark={dark} disabled={!mappedProducts.length || busy === 'sync'} onClick={() => perform('sync', () => invoke('food99SyncStockNow'), 'Sincronizacao de estoque solicitada.')}>
+                <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || !mappedProducts.length || busy === 'sync'} onClick={() => perform('sync', () => invoke('food99SyncStockNow'), 'Sincronizacao de estoque solicitada.')}>
                   <RefreshCw className={`h-4 w-4 ${busy === 'sync' ? 'animate-spin' : ''}`} />Reconciliar estoque
                 </Button>
               </div>
@@ -1017,7 +1309,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                           }`}>{linked?.publishStatus === 'error' ? 'Erro' : published ? 'Publicado' : 'Nao publicado'}</span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Button dark={dark} disabled={!ready || busy === 'catalog-publish'} onClick={() => publishProducts([product.id])}>
+                          <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || !ready || busy === 'catalog-publish'} onClick={() => publishProducts([product.id])}>
                             <Package className="h-4 w-4" />{published ? 'Atualizar' : 'Publicar'}
                           </Button>
                         </td>
@@ -1036,7 +1328,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                 <h2 className="font-semibold">Produtos ja sincronizados</h2>
                 <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{syncedProducts.length} produto(s) com vinculo, importacao ou estoque publicado no 99Food.</p>
               </div>
-              <Button dark={dark} disabled={!mappedProducts.length || busy === 'sync'} onClick={() => perform('sync', () => invoke('food99SyncStockNow'), 'Sincronizacao de estoque solicitada.')}>
+              <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || !mappedProducts.length || busy === 'sync'} onClick={() => perform('sync', () => invoke('food99SyncStockNow'), 'Sincronizacao de estoque solicitada.')}>
                 <RefreshCw className={`h-4 w-4 ${busy === 'sync' ? 'animate-spin' : ''}`} />Reconciliar todos
               </Button>
             </div>
@@ -1069,7 +1361,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                         }`}>{item.syncStatus === 'synced' ? 'Sincronizado' : item.importedFrom99Food ? 'Importado' : item.syncStatus || 'Vinculado'}</span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button dark={dark} disabled={busy !== '' || !item.stockSyncEnabled} onClick={() => perform(`sync-${item.productId}`, () => invoke('food99SyncStockNow', {productId: item.productId}), 'Saldo enviado ao 99Food.')}>
+                        <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || busy !== '' || !item.stockSyncEnabled} onClick={() => perform(`sync-${item.productId}`, () => invoke('food99SyncStockNow', {productId: item.productId}), 'Saldo enviado ao 99Food.')}>
                           <RefreshCw className="h-4 w-4" />Sincronizar
                         </Button>
                       </td>
@@ -1098,7 +1390,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                 <Button dark={dark} disabled={!catalogFilteredKeys.length} onClick={() => setCatalogSelection(catalogFilteredKeys, !allFilteredSelected)}>
                   {allFilteredSelected ? 'Desmarcar filtrados' : 'Selecionar filtrados'}
                 </Button>
-                <Button dark={dark} disabled={busy === 'catalog-load'} onClick={loadCatalogProducts}>
+                <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || busy === 'catalog-load'} onClick={loadCatalogProducts}>
                   <RefreshCw className={`h-4 w-4 ${busy === 'catalog-load' ? 'animate-spin' : ''}`} />Atualizar catalogo 99Food
                 </Button>
               </div>
@@ -1110,10 +1402,10 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                   <p className={`mt-1 text-xs ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{selectedVisibleCatalogCount} item(ns) visiveis nesta busca.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button primary disabled={busy !== ''} onClick={linkSelectedCatalogProducts}>
+                  <Button primary title={operationDisabledTitle} disabled={!canOperate || busy !== ''} onClick={linkSelectedCatalogProducts}>
                     <Save className="h-4 w-4" />Usar selecionados no vinculo
                   </Button>
-                  <Button primary disabled={busy !== ''} onClick={importSelectedCatalogProducts}>
+                  <Button primary title={operationDisabledTitle} disabled={!canOperate || busy !== ''} onClick={importSelectedCatalogProducts}>
                     <Package className="h-4 w-4" />Trazer selecionados para aplicacao
                   </Button>
                   <Button dark={dark} disabled={busy !== ''} onClick={clearCatalogSelection}>
@@ -1224,7 +1516,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-2">
                           {!item.linked && (
-                            <Button dark={dark} disabled={busy !== ''} onClick={() => importCatalogProduct(item)}>
+                            <Button dark={dark} title={operationDisabledTitle} disabled={!canOperate || busy !== ''} onClick={() => importCatalogProduct(item)}>
                               <Package className="h-4 w-4" />Trazer para aplicacao
                             </Button>
                           )}
@@ -1277,7 +1569,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
               )}
               <Field dark={dark} label="Codigo PDV existente"><input className={inputClass(dark)} value={mapping.externalCode} onChange={(event) => setMapping({...mapping, externalCode: event.target.value})} /></Field>
               <div className="flex items-end">
-                <Button type="submit" primary disabled={busy === 'mapping-save'}><Save className="h-4 w-4" />Vincular</Button>
+                <Button type="submit" primary title={operationDisabledTitle} disabled={!canOperate || busy === 'mapping-save'}><Save className="h-4 w-4" />Vincular</Button>
               </div>
             </form>
           </details>
@@ -1286,19 +1578,21 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
 
       {tab === 'configuracao' && (
         <div className="space-y-5">
-          {isPlatformAdmin ? (
+          {(
             <form onSubmit={savePlatformConfiguration} className={`space-y-6 rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="font-semibold">Configuracoes globais > Integracoes > 99Food OpenAPI</h2>
-                  <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>App ID, App Secret, API e webhook sao unicos para toda a plataforma.</p>
+                  <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>
+                    {isPlatformAdmin ? 'Configuracao global editavel pelo perfil Dono.' : PROTECTED_INFO_MESSAGE}
+                  </p>
                 </div>
                 <span className={`rounded-full px-3 py-1 text-xs font-medium ${platformConfig.credentialsReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                   {platformConfig.credentialsReady ? 'Credenciais globais protegidas' : 'Credenciais globais pendentes'}
                 </span>
               </div>
 
-              {config.credentialScope === 'legacy_store' && !config.platformCredentialsReady && (
+              {isPlatformAdmin && config.credentialScope === 'legacy_store' && !config.platformCredentialsReady && (
                 <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 text-sm ${dark ? 'border-amber-700/50 bg-amber-400/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
                   <span>As credenciais antigas desta loja podem ser promovidas para a configuracao central da plataforma.</span>
                   <Button dark={dark} disabled={busy === 'credential-promote'} onClick={promoteStoredCredentials}>
@@ -1309,55 +1603,133 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <Field dark={dark} label="Ambiente">
-                  <select className={inputClass(dark)} value={platformConfig.environment} onChange={(event) => setPlatformConfig({...platformConfig, environment: event.target.value})}>
-                    <option value="production">Producao</option>
-                    <option value="sandbox">Sandbox</option>
-                  </select>
+                  <input className={inputClass(dark)} readOnly value={food99EnvironmentLabel(selectedEnvironment)} />
                 </Field>
-                <Field dark={dark} label="API base URL">
-                  <input className={inputClass(dark)} value={platformConfig.apiBaseUrl} onChange={(event) => setPlatformConfig({...platformConfig, apiBaseUrl: event.target.value})} />
+                <Field dark={dark} label="API base efetiva" hint={isPlatformAdmin ? 'Configuracao global validada pela allowlist do backend.' : PROTECTED_INFO_MESSAGE}>
+                  <input
+                    className={inputClass(dark)}
+                    readOnly={!isPlatformAdmin}
+                    required={isPlatformAdmin}
+                    value={platformConfig.effectiveApiBaseUrl}
+                    onChange={(event) => setPlatformConfig({...platformConfig, effectiveApiBaseUrl: event.target.value})}
+                    placeholder="https://openapi.99food.com"
+                  />
                 </Field>
-                <Field dark={dark} label="URL base de autenticacao">
-                  <input className={inputClass(dark)} value={platformConfig.authUrl} onChange={(event) => setPlatformConfig({...platformConfig, authUrl: event.target.value})} />
+                <Field dark={dark} label="Autenticação efetiva" hint={isPlatformAdmin ? 'Configuracao global validada pela allowlist do backend.' : PROTECTED_INFO_MESSAGE}>
+                  <input
+                    className={inputClass(dark)}
+                    readOnly={!isPlatformAdmin}
+                    required={isPlatformAdmin}
+                    value={platformConfig.effectiveAuthUrl}
+                    onChange={(event) => setPlatformConfig({...platformConfig, effectiveAuthUrl: event.target.value})}
+                    placeholder="https://openapi.99food.com"
+                  />
                 </Field>
-                <ProtectedSecretField dark={dark} label="App ID da plataforma" stored={platformConfig.clientIdReady} editing={editingPlatformSecrets.clientId} value={platformSecrets.clientId} onChange={(value) => setPlatformSecrets({...platformSecrets, clientId: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
-                <ProtectedSecretField dark={dark} label="App Secret da plataforma" stored={platformConfig.clientSecretReady} editing={editingPlatformSecrets.clientSecret} value={platformSecrets.clientSecret} onChange={(value) => setPlatformSecrets({...platformSecrets, clientSecret: value})} onEdit={editCredentials} onCancel={cancelCredentialsEdit} />
-                <ProtectedSecretField dark={dark} label="Segredo global de webhook" stored={platformConfig.webhookSecretReady} editing={editingPlatformSecrets.webhookSecret} value={platformSecrets.webhookSecret} onChange={(value) => setPlatformSecrets({...platformSecrets, webhookSecret: value})} onEdit={() => editSecret('webhookSecret')} onCancel={() => cancelSecretEdit('webhookSecret')} emptyHint="Deixe vazio enquanto a operacao usar somente polling." />
-                <Field dark={dark} label="URL publica do webhook">
-                  <input className={inputClass(dark)} placeholder="https://.../food99Webhook" value={platformConfig.webhookUrl} onChange={(event) => setPlatformConfig({...platformConfig, webhookUrl: event.target.value})} />
+                <Field dark={dark} label="App ID da plataforma" hint={isPlatformAdmin ? 'Valor protegido carregado pelo backend para o perfil Dono.' : PROTECTED_INFO_MESSAGE}>
+                  {isPlatformAdmin && secretReplacement.kind === 'app_id' ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        className={`${inputClass(dark)} min-w-0 flex-1`}
+                        autoComplete="off"
+                        value={secretReplacement.value}
+                        onChange={(event) => setSecretReplacement({kind: 'app_id', value: event.target.value})}
+                        placeholder="Novo App ID"
+                      />
+                      <Button dark={dark} disabled={busy === 'replace-app_id'} onClick={() => replacePlatformSecret('app_id')}><Save className="h-4 w-4" />Confirmar</Button>
+                      <Button dark={dark} onClick={cancelSecretReplacement}><X className="h-4 w-4" />Cancelar</Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        className={`${inputClass(dark)} min-w-0 flex-1`}
+                        readOnly
+                        value={isPlatformAdmin ? (platformAppId || (platformConfig.clientIdReady ? 'Carregando...' : 'Nao cadastrado')) : PROTECTED_INFO_MESSAGE}
+                      />
+                      {isPlatformAdmin && (
+                        <>
+                          <Button dark={dark} disabled={!platformAppId} onClick={() => copyProtectedValue(platformAppId, 'App ID')}><Copy className="h-4 w-4" />Copiar</Button>
+                          <Button dark={dark} onClick={() => beginSecretReplacement('app_id')}><Pencil className="h-4 w-4" />Substituir</Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </Field>
+                <Field dark={dark} label="App Secret da plataforma" hint={isPlatformAdmin ? 'Mascarado por padrao e removido da tela ao ocultar ou sair desta aba.' : PROTECTED_INFO_MESSAGE}>
+                  {isPlatformAdmin && secretReplacement.kind === 'app_secret' ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="password"
+                        className={`${inputClass(dark)} min-w-0 flex-1`}
+                        autoComplete="new-password"
+                        value={secretReplacement.value}
+                        onChange={(event) => setSecretReplacement({kind: 'app_secret', value: event.target.value})}
+                        placeholder="Novo App Secret"
+                      />
+                      <Button dark={dark} disabled={busy === 'replace-app_secret'} onClick={() => replacePlatformSecret('app_secret')}><Save className="h-4 w-4" />Confirmar</Button>
+                      <Button dark={dark} onClick={cancelSecretReplacement}><X className="h-4 w-4" />Cancelar</Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        className={`${inputClass(dark)} min-w-0 flex-1`}
+                        readOnly
+                        value={isPlatformAdmin
+                          ? (appSecretRevealed ? revealedAppSecret : (platformConfig.clientSecretReady ? '••••••••' : 'Nao cadastrado'))
+                          : PROTECTED_INFO_MESSAGE}
+                      />
+                      {isPlatformAdmin && platformConfig.clientSecretReady && (
+                        <Button dark={dark} disabled={busy === 'app-secret-reveal'} onClick={appSecretRevealed ? clearRevealedAppSecret : revealPlatformAppSecret}>
+                          {appSecretRevealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{appSecretRevealed ? 'Ocultar' : 'Mostrar'}
+                        </Button>
+                      )}
+                      {isPlatformAdmin && appSecretRevealed && (
+                        <Button dark={dark} onClick={() => copyProtectedValue(revealedAppSecret, 'App Secret', true)}><Copy className="h-4 w-4" />Copiar</Button>
+                      )}
+                      {isPlatformAdmin && (
+                        <Button dark={dark} onClick={() => beginSecretReplacement('app_secret')}><Pencil className="h-4 w-4" />Substituir</Button>
+                      )}
+                    </div>
+                  )}
+                </Field>
+                <Field dark={dark} label="Assinatura do webhook" hint="Contrato oficial: MD5 do corpo bruto + App Secret; header didi-header-sign.">
+                  <input className={inputClass(dark)} readOnly value="Usa o App Secret protegido deste ambiente" />
+                </Field>
+                <Field dark={dark} label="URL publica do webhook" hint={isPlatformAdmin ? 'HTTPS publico; path e query string sao preservados.' : PROTECTED_INFO_MESSAGE}>
+                  <input
+                    className={inputClass(dark)}
+                    readOnly={!isPlatformAdmin}
+                    required={isPlatformAdmin}
+                    value={platformConfig.webhookUrl}
+                    onChange={(event) => setPlatformConfig({...platformConfig, webhookUrl: event.target.value})}
+                    placeholder="https://food99webhook-...a.run.app"
+                  />
                 </Field>
                 <Field dark={dark} label="Metodo de disponibilidade">
-                  <select className={inputClass(dark)} value={platformConfig.inventoryMethod} onChange={(event) => setPlatformConfig({...platformConfig, inventoryMethod: event.target.value})}>
+                  <select disabled={!isPlatformAdmin} className={inputClass(dark)} value={platformConfig.inventoryMethod} onChange={(event) => setPlatformConfig({...platformConfig, inventoryMethod: event.target.value})}>
                     <option value="POST">POST</option>
                     <option value="PUT">PUT</option>
                     <option value="PATCH">PATCH</option>
                   </select>
                 </Field>
                 <Field dark={dark} label="Endpoint alternativo de disponibilidade" hint="Opcional para homologacao futura. Hoje a integracao usa /v3/item/item/updateItemStatus.">
-                  <input className={inputClass(dark)} value={platformConfig.inventoryEndpointTemplate} onChange={(event) => setPlatformConfig({...platformConfig, inventoryEndpointTemplate: event.target.value})} />
+                  <input className={inputClass(dark)} readOnly value={platformConfig.inventoryEndpointTemplate} placeholder="Definido pelo backend" />
                 </Field>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <Toggle dark={dark} label="Webhooks globais habilitados" checked={platformConfig.webhookEnabled} onChange={(value) => setPlatformConfig({...platformConfig, webhookEnabled: value})} />
+                <Toggle dark={dark} disabled={!isPlatformAdmin} label="Webhooks globais habilitados" checked={platformConfig.webhookEnabled} onChange={(value) => setPlatformConfig({...platformConfig, webhookEnabled: value})} />
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button type="submit" primary disabled={busy === 'platform-save'}><Save className="h-4 w-4" />Salvar configuracao global</Button>
-              </div>
-            </form>
-          ) : (
-            <section className={`rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold">Credencial central protegida</h2>
-                  <p className={`mt-1 text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>App ID, App Secret, API e webhook sao administrados somente por Dono ou Administrador Master.</p>
+              {isPlatformAdmin ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="submit" primary disabled={busy === 'platform-save' || !platformConfigDirty || !platformDraftValid}><Save className="h-4 w-4" />Salvar configuracao global</Button>
+                  {!platformConfigDirty && <span className={`text-xs ${dark ? 'text-slate-400' : 'text-gray-500'}`}>Nenhuma alteracao pendente.</span>}
+                  {platformConfigDirty && !platformDraftValid && <span className="text-xs text-rose-600">Preencha as tres URLs com HTTPS valido.</span>}
                 </div>
-                <span className={`rounded-full px-3 py-1 text-xs font-medium ${platformConfig.credentialsReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {platformConfig.credentialsReady ? 'Plataforma conectada' : 'Aguardando configuracao global'}
-                </span>
-              </div>
-            </section>
+              ) : (
+                <p className={`text-sm ${dark ? 'text-slate-400' : 'text-gray-500'}`}>{PROTECTED_INFO_MESSAGE} O salvamento global esta indisponivel.</p>
+              )}
+            </form>
           )}
 
           <form onSubmit={saveConfiguration} className={`space-y-6 rounded-lg border p-5 ${dark ? 'border-slate-800 bg-slate-900' : 'border-gray-100 bg-white'}`}>
@@ -1412,9 +1784,22 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
               </div>
             </div>
 
+            <div className={`rounded-lg border p-4 text-sm ${dark ? 'border-sky-800 bg-sky-400/10 text-sky-200' : 'border-sky-200 bg-sky-50 text-sky-800'}`}>
+              <p className="font-medium">Autorização oficial da loja · {authorizationMeta.label}</p>
+              <p className="mt-1">A confirmação ocorre pelo webhook shopBindStatus ou pela consulta oficial executada em “Verificar autorização”. Nenhum callback OAuth é simulado nesta aplicação.</p>
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <Button type="submit" primary disabled={busy === 'config-save'}><Save className="h-4 w-4" />Salvar configuracao da loja</Button>
-              <Button dark={dark} disabled={!config.credentialsReady || busy === 'test'} onClick={() => perform('test', () => invoke('food99TestConnection'), 'Autenticacao 99Food validada com sucesso.')}>
+              {isPlatformAdmin && (
+                <Button dark={dark} disabled={!config.credentialsReady || !config.merchantId || busy === 'authorization-start'} onClick={startAuthorization}>
+                  <ArrowRight className="h-4 w-4" />Autorizar loja
+                </Button>
+              )}
+              <Button dark={dark} disabled={!config.credentialsReady || !config.merchantId || busy === 'authorization-check'} onClick={checkAuthorization}>
+                <RefreshCw className={`h-4 w-4 ${busy === 'authorization-check' ? 'animate-spin' : ''}`} />Verificar autorização
+              </Button>
+              <Button dark={dark} disabled={!config.credentialsReady || busy === 'test'} onClick={testConnection}>
                 <ArrowRight className="h-4 w-4" />Testar conexao
               </Button>
             </div>
@@ -1456,7 +1841,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
             </Field>
             <div className="mt-5 flex justify-end gap-2">
               <Button dark={dark} onClick={() => setCancellation({order: null, reasons: [], reason: ''})}>Voltar</Button>
-              <Button type="submit" primary disabled={busy === 'cancellation'}>Confirmar solicitacao</Button>
+              <Button type="submit" primary title={operationDisabledTitle} disabled={!canOperate || busy === 'cancellation'}>Confirmar solicitacao</Button>
             </div>
           </form>
         </div>
@@ -1479,7 +1864,7 @@ export default function Food99Hub({data, effectiveStoreId, selectedStoreId, avai
             </Field>
             <div className="mt-5 flex justify-end gap-2">
               <Button dark={dark} onClick={() => setValidation({order: null, action: '', code: ''})}>Voltar</Button>
-              <Button type="submit" primary disabled={busy === 'validation'}>Validar codigo</Button>
+              <Button type="submit" primary title={operationDisabledTitle} disabled={!canOperate || busy === 'validation'}>Validar codigo</Button>
             </div>
           </form>
         </div>
