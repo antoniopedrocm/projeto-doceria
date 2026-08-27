@@ -3,6 +3,7 @@ import {
   buildRideAddresses,
   buildUberRideUrl,
   formatRideAddress,
+  getOrderStoreId,
   isDeliveryOrder
 } from './rideService';
 
@@ -24,9 +25,10 @@ describe('rideService', () => {
       }
     }, {
       nome: 'ANA GUIMARAES DOCERIA LTDA - Matriz',
-      endereco: 'Rua da Loja, 100, Goiânia, GO',
-      latitude: -16.67,
-      longitude: -49.26
+    }, {
+      enderecoLoja: 'Rua da Loja, 100, Goiânia, GO',
+      lat: -16.67,
+      lng: -49.26
     });
 
     expect(addresses.origin).toEqual({
@@ -44,7 +46,7 @@ describe('rideService', () => {
     const addresses = buildRideAddresses({
       clienteNome: 'Cliente',
       cliente: { endereco: 'Não deve ser usado' }
-    }, { nome: 'Matriz', endereco: 'Rua da Loja, 1' });
+    }, { nome: 'Matriz' }, { enderecoLoja: 'Rua da Loja, 1' });
 
     expect(addresses.destination.address).toBe('');
   });
@@ -84,5 +86,50 @@ describe('rideService', () => {
     expect(isDeliveryOrder({ categoria: 'Delivery' })).toBe(true);
     expect(isDeliveryOrder({ categoria: 'Retirada' })).toBe(false);
     expect(formatRideAddress(null)).toBe('');
+  });
+
+  test('usa a configuração de frete da loja vinculada ao pedido em cenário multiloja', () => {
+    const stores = {
+      matriz: { nome: 'Matriz' },
+      garavelo: { nome: 'Garavelo' }
+    };
+    const freightByStore = {
+      matriz: { enderecoLoja: 'Av. Matriz, 100', lat: '-16.60', lng: '-49.20' },
+      garavelo: { enderecoLoja: 'Av. Garavelo, 200', lat: '-16.70', lng: '-49.30' }
+    };
+    const selectedStoreId = 'matriz';
+    const order = {
+      lojaId: 'garavelo',
+      clienteEndereco: 'Rua do Cliente, 300'
+    };
+    const orderStoreId = getOrderStoreId(order);
+    const addresses = buildRideAddresses(
+      order,
+      stores[orderStoreId],
+      freightByStore[orderStoreId]
+    );
+
+    expect(selectedStoreId).not.toBe(orderStoreId);
+    expect(addresses.origin.address).toBe('Av. Garavelo, 200');
+    expect(addresses.origin.coordinates).toEqual({ latitude: -16.7, longitude: -49.3 });
+  });
+
+  test('aceita origem apenas por coordenadas válidas e rejeita coordenadas vazias', () => {
+    const withCoordinates = buildRideAddresses(
+      { lojaId: 'matriz', clienteEndereco: 'Rua do Cliente, 1' },
+      { nome: 'Matriz' },
+      { enderecoLoja: '', lat: '-16.64464130924753', lng: '-49.3248949913069' }
+    );
+    const withoutCoordinates = buildRideAddresses(
+      { lojaId: 'matriz', clienteEndereco: 'Rua do Cliente, 1' },
+      { nome: 'Matriz' },
+      { enderecoLoja: '', lat: '', lng: '' }
+    );
+
+    expect(withCoordinates.origin.coordinates).toEqual({
+      latitude: -16.64464130924753,
+      longitude: -49.3248949913069
+    });
+    expect(withoutCoordinates.origin.coordinates).toBeNull();
   });
 });

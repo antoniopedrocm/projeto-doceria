@@ -37,6 +37,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { audioManager } from './utils/AudioManager.js';
 import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceWorkerMessages } from './utils/notifications.js';
 import { updateStock as updateStockService } from './services/stockService.js';
+import { loadStoreFreightConfig } from './services/freightConfigService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
 import ProducaoVitrine from './components/fornecedores/ProducaoVitrine';
@@ -65,6 +66,7 @@ import {
   build99OpenUrl,
   buildRideAddresses,
   buildUberRideUrl,
+  getOrderStoreId,
   isDeliveryOrder
 } from './utils/rideService';
 
@@ -8731,40 +8733,8 @@ const effectiveStoreName = useMemo(() => {
 
         const fetchFreteConfig = async () => {
             try {
-                const configRef = getStoreConfigDocRef(effectiveStoreId);
-                const configSnap = await getDoc(configRef);
-
-                if (configSnap.exists()) {
-                    const configData = configSnap.data() || {};
-                    const freteData = configData.frete || configData;
-
-                    if (freteData && Object.keys(freteData).length) {
-                        setFreteConfig(freteData);
-                        return;
-                    }
-                }
-
-                const legacyFreteRef = doc(db, 'lojas', effectiveStoreId, 'configuracoes', 'frete');
-                const legacyFreteSnap = await getDoc(legacyFreteRef);
-                if (legacyFreteSnap.exists()) {
-                    const freteData = legacyFreteSnap.data();
-                    setFreteConfig(freteData || { enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
-                    await setDoc(configRef, { frete: freteData || {} }, { merge: true });
-                    return;
-                }
-
-                const legacyInfoSnap = await getDoc(doc(db, 'lojas', effectiveStoreId, 'info', 'dados'));
-                if (legacyInfoSnap.exists()) {
-                    const infoData = legacyInfoSnap.data();
-                    const freteData = infoData?.frete || {};
-                    if (Object.keys(freteData).length) {
-                        setFreteConfig(freteData);
-                        await setDoc(configRef, { frete: freteData }, { merge: true });
-                        return;
-                    }
-                }
-
-                setFreteConfig({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
+                const freteData = await loadStoreFreightConfig(effectiveStoreId);
+                setFreteConfig(freteData);
             } catch (error) {
                 console.error("Erro ao buscar configurações de frete:", error);
             }
@@ -10626,6 +10596,7 @@ const effectiveStoreName = useMemo(() => {
     const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
     const [rideRequest, setRideRequest] = useState(null);
     const [rideFeedback, setRideFeedback] = useState('');
+    const [rideLoadingService, setRideLoadingService] = useState('');
     const [descontoValor, setDescontoValor] = useState('');
     const [descontoPercentual, setDescontoPercentual] = useState('');
     const [productSearchTerm, setProductSearchTerm] = useState('');
@@ -10644,25 +10615,43 @@ const effectiveStoreName = useMemo(() => {
         return deliveryProviders.length > 0;
     };
 
-    const getRideAddressesForOrder = (order) => {
-        const store = storeInfoMap[order?.lojaId] || {};
-        return buildRideAddresses(order, store);
+    const getRideAddressesForOrder = (order, freightConfig = {}) => {
+        const orderStoreId = getOrderStoreId(order);
+        const store = storeInfoMap[orderStoreId] || {};
+        return buildRideAddresses(order, store, freightConfig);
     };
 
-    const prepareRideRequest = (order, service) => {
+    const prepareRideRequest = async (order, service) => {
         setRideFeedback('');
-        const addresses = getRideAddressesForOrder(order);
+        const orderStoreId = getOrderStoreId(order);
 
-        if (!addresses.destination.address) {
-            setRideFeedback('Este pedido não possui endereço de entrega válido para solicitar uma corrida.');
-            return;
-        }
-        if (!addresses.origin.address) {
-            setRideFeedback('A loja não possui endereço completo cadastrado para utilizar esta função.');
+        if (!orderStoreId) {
+            setRideFeedback('Não foi possível identificar a loja responsável por este pedido.');
             return;
         }
 
-        setRideRequest({ service, addresses });
+        setRideLoadingService(service);
+
+        try {
+            const freightConfig = await loadStoreFreightConfig(orderStoreId);
+            const addresses = getRideAddressesForOrder(order, freightConfig);
+
+            if (!addresses.destination.address) {
+                setRideFeedback('Este pedido não possui endereço de entrega válido para solicitar uma corrida.');
+                return;
+            }
+            if (!addresses.origin.address && !addresses.origin.coordinates) {
+                setRideFeedback('A loja não possui endereço ou coordenadas válidas cadastrados na configuração de frete.');
+                return;
+            }
+
+            setRideRequest({ service, addresses });
+        } catch (error) {
+            console.error(`[Ride] Não foi possível carregar o frete da loja ${orderStoreId}.`, error);
+            setRideFeedback('Não foi possível carregar a configuração de frete da loja deste pedido. Tente novamente.');
+        } finally {
+            setRideLoadingService('');
+        }
     };
 
     const openPreparedRide = () => {
@@ -11331,19 +11320,21 @@ const handleSubmit = async (e) => {
                                     <>
                                         <Button
                                             onClick={() => prepareRideRequest(viewingOrder, 'uber')}
+                                            disabled={!!rideLoadingService}
                                             className="bg-gradient-to-r from-gray-800 to-black text-white hover:from-black hover:to-gray-900"
                                             size="sm"
                                         >
                                             <RideCar className="w-4 h-4" />
-                                            Chamar Uber
+                                            {rideLoadingService === 'uber' ? 'Carregando...' : 'Chamar Uber'}
                                         </Button>
                                         <Button
                                             onClick={() => prepareRideRequest(viewingOrder, '99')}
+                                            disabled={!!rideLoadingService}
                                             className="bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900 hover:from-yellow-500 hover:to-amber-600"
                                             size="sm"
                                         >
                                             <RideCar className="w-4 h-4" />
-                                            Chamar 99
+                                            {rideLoadingService === '99' ? 'Carregando...' : 'Chamar 99'}
                                         </Button>
                                     </>
                                 )}

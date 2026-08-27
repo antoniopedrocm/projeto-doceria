@@ -2,9 +2,10 @@ const cleanText = (value) => (typeof value === 'string' ? value.trim() : '');
 
 const firstText = (...values) => values.map(cleanText).find(Boolean) || '';
 
-const parseCoordinate = (value) => {
+const parseCoordinate = (value, min, max) => {
+  if (value === '' || value === null || value === undefined) return null;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : null;
 };
 
 export const formatRideAddress = (value) => {
@@ -53,9 +54,15 @@ const getCoordinates = (...sources) => {
     ].filter((item) => item && typeof item === 'object');
 
     for (const candidate of candidates) {
-      const latitude = parseCoordinate(candidate.latitude ?? candidate.lat ?? candidate._lat);
+      const latitude = parseCoordinate(
+        candidate.latitude ?? candidate.lat ?? candidate._lat,
+        -90,
+        90
+      );
       const longitude = parseCoordinate(
-        candidate.longitude ?? candidate.lng ?? candidate.lon ?? candidate._long
+        candidate.longitude ?? candidate.lng ?? candidate.lon ?? candidate._long,
+        -180,
+        180
       );
       if (latitude !== null && longitude !== null) return { latitude, longitude };
     }
@@ -64,12 +71,11 @@ const getCoordinates = (...sources) => {
   return null;
 };
 
-const getStoreAddressSource = (store = {}) => (
-  store.endereco
-  || store.address
-  || store.enderecoCompleto
-  || store.formattedAddress
-  || store
+const getStoreFreightAddressSource = (freightConfig = {}) => (
+  freightConfig.enderecoLoja
+  || freightConfig.endereco
+  || freightConfig.address
+  || freightConfig
 );
 
 const getOrderDeliveryAddressSource = (order = {}) => (
@@ -91,8 +97,10 @@ export const isDeliveryOrder = (order = {}) => {
   return category === 'delivery' || category === 'entrega';
 };
 
-export const buildRideAddresses = (order = {}, store = {}) => {
-  const storeAddressSource = getStoreAddressSource(store);
+export const getOrderStoreId = (order = {}) => cleanText(order.lojaId);
+
+export const buildRideAddresses = (order = {}, store = {}, freightConfig = {}) => {
+  const storeAddressSource = getStoreFreightAddressSource(freightConfig);
   const deliveryAddressSource = getOrderDeliveryAddressSource(order);
 
   return {
@@ -103,10 +111,10 @@ export const buildRideAddresses = (order = {}, store = {}) => {
         store.nome,
         store.name,
         order.lojaNome,
-        order.lojaId
+        getOrderStoreId(order)
       ) || 'Loja',
       address: formatRideAddress(storeAddressSource),
-      coordinates: getCoordinates(storeAddressSource, store)
+      coordinates: getCoordinates(freightConfig, storeAddressSource)
     },
     destination: {
       name: firstText(order.clienteNome, order.customerName) || 'Cliente',
