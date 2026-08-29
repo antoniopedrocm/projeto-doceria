@@ -2,6 +2,7 @@ package br.com.anaguimaraes.doceria;
 
 import android.app.ActivityManager;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.util.Log;
 
@@ -51,6 +52,18 @@ public class DoceriaFirebaseMessagingService extends FirebaseMessagingService {
         }
 
         Log.d(TAG, "Mensagem recebida: " + body);
+
+        String storeId = data != null ? data.get("storeId") : null;
+        SharedPreferences alarmPreferences = getSharedPreferences(
+                AlarmPausePlugin.PREFERENCES_NAME,
+                Context.MODE_PRIVATE
+        );
+        String currentUid = alarmPreferences.getString(AlarmPausePlugin.CURRENT_UID_KEY, "");
+        long pausedUntil = AlarmPausePlugin.getPausedUntil(this, currentUid, storeId);
+        if (pausedUntil > System.currentTimeMillis()) {
+            Log.d(TAG, "Alarme FCM silenciado para o usuário e loja atuais até " + pausedUntil + ".");
+            return;
+        }
 
         boolean isForeground = isAppInForeground();
         if (isForeground) {

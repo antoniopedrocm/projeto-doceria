@@ -19,6 +19,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(AlarmPausePlugin.class);
         super.onCreate(savedInstanceState);
         requestCriticalPermissions();
     }

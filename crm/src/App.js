@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import { Play } from 'lucide-react';
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
@@ -35,6 +36,13 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // --- CORREÇÃO: Importa o novo AudioManager ---
 import { audioManager } from './utils/AudioManager.js';
+import {
+  clearAlarmPause,
+  getAlarmPauseStorageKey,
+  readAlarmPauseUntil,
+  saveAlarmPauseUntil,
+} from './utils/alarmPauseStorage.js';
+import { clearNativeAlarmContext, syncNativeAlarmPause } from './utils/alarmPauseNative.js';
 import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceWorkerMessages } from './utils/notifications.js';
 import { updateStock as updateStockService } from './services/stockService.js';
 import { loadStoreFreightConfig } from './services/freightConfigService.js';
@@ -4103,7 +4111,44 @@ function App() {
   }, [user]);
 
 
-  // EFFECT para sincronizar ref com estado isAlarmSnoozed
+  const loadAlarmPauseForCurrentContext = useCallback(() => {
+    const pausedUntil = readAlarmPauseUntil({ uid: userId, storeId: selectedStoreIdForAlarm });
+    const isPaused = Boolean(pausedUntil);
+
+    isSnoozedRef.current = isPaused;
+    setIsAlarmSnoozed(isPaused);
+    setSnoozeEndTime(pausedUntil);
+
+    if (userId && selectedStoreIdForAlarm) {
+      syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil });
+    } else {
+      clearNativeAlarmContext();
+    }
+
+    if (isPaused) {
+      stopAlarm();
+      setStopAlarmFn(null);
+    }
+  }, [selectedStoreIdForAlarm, stopAlarm, userId]);
+
+  // Carrega a pausa antes da pintura da tela para nunca reaproveitar o estado
+  // visual/sonoro da combinação anterior durante uma troca de loja ou usuário.
+  useLayoutEffect(() => {
+    loadAlarmPauseForCurrentContext();
+  }, [loadAlarmPauseForCurrentContext]);
+
+  useEffect(() => {
+    const pauseKey = getAlarmPauseStorageKey(userId, selectedStoreIdForAlarm);
+    if (!pauseKey) return undefined;
+
+    const handleAlarmPauseStorageChange = (event) => {
+      if (event.key === pauseKey) loadAlarmPauseForCurrentContext();
+    };
+
+    window.addEventListener('storage', handleAlarmPauseStorageChange);
+    return () => window.removeEventListener('storage', handleAlarmPauseStorageChange);
+  }, [loadAlarmPauseForCurrentContext, selectedStoreIdForAlarm, userId]);
+
   useEffect(() => {
     isSnoozedRef.current = isAlarmSnoozed;
   }, [isAlarmSnoozed]);
@@ -4126,6 +4171,11 @@ function App() {
       return;
     }
 
+    const notificationStoreId = String(payload?.data?.storeId || '').trim();
+    if (notificationStoreId && notificationStoreId !== selectedStoreIdForAlarm) {
+      return;
+    }
+
     const hasPendingForStore = (dataRef.current.pedidos || []).some(
       (order) => order.status === 'Pendente' && order.lojaId === selectedStoreIdForAlarm
     );
@@ -4135,7 +4185,7 @@ function App() {
 
     setHasNewPendingOrders(true);
 
-    if (isSnoozedRef.current) {
+    if (readAlarmPauseUntil({ uid: userId, storeId: selectedStoreIdForAlarm })) {
       console.log('[App.js] Push recebido durante soneca. Alarme permanecerá silenciado até o fim da soneca.');
       return;
     }
@@ -4143,7 +4193,7 @@ function App() {
     if (typeof playAlarmRef.current === 'function') {
       playAlarmRef.current();
     }
-  }, [isGeneralViewSelected, selectedStoreIdForAlarm, stopAlarm]);
+  }, [isGeneralViewSelected, selectedStoreIdForAlarm, stopAlarm, userId]);
 
   useEffect(() => {
     if (!userId) {
@@ -4189,9 +4239,9 @@ function App() {
           handleIncomingPushNotification(message.payload);
         }
 		
-        if (message.type === 'PLAY_ORDER_SOUND' && typeof playAlarmRef.current === 'function') {
-          playAlarmRef.current();
-        }		
+        if (message.type === 'PLAY_ORDER_SOUND') {
+          handleIncomingPushNotification(message.payload);
+        }
 		
       });
     };
@@ -4214,47 +4264,61 @@ function App() {
       dataRef.current = data;
   }, [data]);
   
-  // FUNÇÃO PARA PARAR E ATIVAR SONEÇA - Refatorada
+  const reactivateAlarmForCurrentContext = useCallback(() => {
+    if (!userId || !selectedStoreIdForAlarm) return;
+
+    console.log('[App.js] Reativando alarme para usuário e loja atuais.');
+    clearAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
+    syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil: null });
+    isSnoozedRef.current = false;
+    setIsAlarmSnoozed(false);
+    setSnoozeEndTime(null);
+
+    const hasPending = !isGeneralViewSelected && (dataRef.current.pedidos || []).some(
+      (pedido) => pedido.status === 'Pendente' && pedido.lojaId === selectedStoreIdForAlarm
+    );
+    setHasNewPendingOrders(Boolean(hasPending));
+  }, [isGeneralViewSelected, selectedStoreIdForAlarm, userId]);
+
   const handleStopAndSnoozeAlarm = useCallback(() => {
-    console.log('[App.js] Ativando soneca...');
-    stopAlarm(); // Para o alarme atual
-	setStopAlarmFn(null); // Limpa o estado da função de parada
-    setIsAlarmSnoozed(true); // Ativa o estado de soneca
-    
-    const endTime = new Date().getTime() + (resolvedAlarmPauseMinutes * 60 * 1000);
-    setSnoozeEndTime(endTime); // Define o tempo final da soneca
-    
-    // Limpa timer anterior se existir
-    if (snoozeTimerRef.current) clearInterval(snoozeTimerRef.current);
-    
-    // Inicia timer para reativar alarme
-    snoozeTimerRef.current = setInterval(() => {
-      const now = new Date().getTime();
-      const remaining = endTime - now;
-      
-      if (remaining <= 0) {
-        // Fim da soneca
-        clearInterval(snoozeTimerRef.current);
+    if (!userId || !selectedStoreIdForAlarm || isGeneralViewSelected) return;
+
+    const pausedUntil = Date.now() + (resolvedAlarmPauseMinutes * 60 * 1000);
+    console.log('[App.js] Pausando alarme para usuário e loja atuais até:', pausedUntil);
+    stopAlarm();
+    setStopAlarmFn(null);
+    saveAlarmPauseUntil({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil });
+    syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil });
+    isSnoozedRef.current = true;
+    setIsAlarmSnoozed(true);
+    setSnoozeEndTime(pausedUntil);
+  }, [isGeneralViewSelected, resolvedAlarmPauseMinutes, selectedStoreIdForAlarm, stopAlarm, userId]);
+
+  useEffect(() => {
+    if (snoozeTimerRef.current) {
+      clearTimeout(snoozeTimerRef.current);
+      snoozeTimerRef.current = null;
+    }
+    if (!isAlarmSnoozed || !snoozeEndTime) return undefined;
+
+    const remaining = snoozeEndTime - Date.now();
+    if (remaining <= 0) {
+      reactivateAlarmForCurrentContext();
+      return undefined;
+    }
+
+    snoozeTimerRef.current = setTimeout(
+      reactivateAlarmForCurrentContext,
+      Math.min(remaining, 2_147_483_647)
+    );
+
+    return () => {
+      if (snoozeTimerRef.current) {
+        clearTimeout(snoozeTimerRef.current);
         snoozeTimerRef.current = null;
-        setIsAlarmSnoozed(false); // Desativa o estado de soneca
-        setSnoozeEndTime(null);
-        console.log('[App.js] Soneca terminada');
-        
-        // Verifica se ainda existem pedidos pendentes para tocar o alarme novamente
-        const hasPending = !isGeneralViewSelected && selectedStoreIdForAlarm && dataRef.current.pedidos && dataRef.current.pedidos.some(
-          (p) => p.status === 'Pendente' && p.lojaId === selectedStoreIdForAlarm
-        );
-        if (hasPending) {
-          console.log('[App.js] Pedidos pendentes encontrados após soneca, reativando alarme.');
-          setHasNewPendingOrders(true); // Garante que o banner apareça (se necessário)
-          playAlarmRef.current(); // Tenta tocar o alarme usando a ref
-        } else {
-           setHasNewPendingOrders(false); // Esconde o banner se não há mais pendentes
-        }
-      } 
-      // O display do timer é gerenciado localmente pelo Dashboard
-    }, 1000); // Atualiza a cada segundo
-  }, [stopAlarm, isGeneralViewSelected, selectedStoreIdForAlarm, resolvedAlarmPauseMinutes]); // Removidas dependências instáveis (data, playAlarm, unlockAudio)
+      }
+    };
+  }, [isAlarmSnoozed, reactivateAlarmForCurrentContext, snoozeEndTime]);
 
   // EFFECT PARA SINCRONIZAR DADOS DO FIREBASE
         useEffect(() => {
@@ -7506,7 +7570,7 @@ function App() {
   };
 
   // --- CORREÇÃO: Props do Dashboard atualizadas ---
-  const Dashboard = ({handleStopAndSnoozeAlarm, isAlarmPlaying, isAlarmSnoozed, hasNewPendingOrders, snoozeEndTime, alarmPauseMinutes}) => {
+  const Dashboard = ({handleStopAndSnoozeAlarm, handleReactivateAlarm, isAlarmPlaying, isAlarmSnoozed, hasNewPendingOrders, snoozeEndTime, alarmPauseMinutes}) => {
     const { pedidos, clientes } = data;
     
     // --- CORREÇÃO: Lógica de display da soneca movida para dentro do Dashboard ---
@@ -7695,13 +7759,24 @@ function App() {
                 )}
 
                 {isAlarmSnoozed && (
-                  <div className="bg-blue-100 border border-blue-300 text-blue-700 p-3 rounded-lg flex items-center">
-                    <Clock className="w-5 h-5 mr-3 flex-shrink-0" />
-                    <div>
+                  <div className="bg-blue-100 border border-blue-300 text-blue-700 p-3 rounded-lg flex items-center justify-between gap-3">
+                    <div className="flex items-center min-w-0">
+                      <Clock className="w-5 h-5 mr-3 flex-shrink-0" />
+                      <div>
                         <p className="font-bold">Alarme Pausado</p>
                         {/* Usa o snoozeDisplay local do Dashboard */}
                         <p className="text-sm">Reativando em <strong>{snoozeDisplay}</strong></p> 
+                      </div>
                     </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleReactivateAlarm}
+                      className="text-xs flex-shrink-0"
+                    >
+                      <Play className="w-4 h-4 mr-1" />
+                      Reativar agora
+                    </Button>
                   </div>
                 )}
             </div>
@@ -18348,6 +18423,7 @@ const handleSubmit = async (e) => {
       case 'pagina-inicial': return <PaginaInicial />;
       case 'dashboard': return userHasPermission('dashboard') ? <Dashboard
                                         handleStopAndSnoozeAlarm={handleStopAndSnoozeAlarm}
+                                        handleReactivateAlarm={reactivateAlarmForCurrentContext}
                                         isAlarmPlaying={isAlarmPlaying}
                                         isAlarmSnoozed={isAlarmSnoozed}
                                         snoozeEndTime={snoozeEndTime}
