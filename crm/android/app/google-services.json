@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "389481198252",
+    "project_id": "crmdoceria-9959e",
+    "storage_bucket": "crmdoceria-9959e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:389481198252:android:699b8102d4fc2814bea509",
+        "android_client_info": {
+          "package_name": "br.com.anaguimaraes.doceria"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "389481198252-ii72e6466jq1kh9nnjaibsrr9s55ad9o.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAe-hjQ__BdShi1lvSsZO3lmurDPA7CmNY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "389481198252-ii72e6466jq1kh9nnjaibsrr9s55ad9o.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

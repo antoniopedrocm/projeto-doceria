@@ -29,6 +29,12 @@ const {
   defaultCashPermissions,
   sanitizeCashPermissions,
 } = require('./caixa-core');
+const {
+  buildNewOrderData,
+  isAlarmPauseActive,
+  isNewPendingOrder,
+  profileCanReceiveOrder,
+} = require('./new-order-notifications');
 
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
@@ -2478,115 +2484,224 @@ exports.updateUserPassword = onCall(async (request) => {
 });
 
 
-exports.notifyNewOrder = onDocumentCreated({
-    document: "pedidos/{pedidoId}",
-    region: "southamerica-east1",
-}, async (event) => {
-    const orderData = event.data?.data();
+const chunkValues = (values, size = 500) => {
+    const chunks = [];
+    for (let index = 0; index < values.length; index += size) {
+        chunks.push(values.slice(index, index + size));
+    }
+    return chunks;
+};
 
-    if (!orderData) {
-        logger.warn("Novo pedido criado sem dados. Notificação não enviada.");
+const getAuthorizedOrderTokenDocs = async (storeId) => {
+    const tokensSnapshot = await db.collection('notificationTokens').get();
+    if (tokensSnapshot.empty) return [];
+
+    const userIds = [...new Set(tokensSnapshot.docs
+        .map((snapshot) => String(snapshot.data()?.uid || '').trim())
+        .filter(Boolean))];
+    const profilesByUid = new Map();
+    const customProfilesByUid = new Map();
+    const pausesByUid = new Map();
+
+    for (const userIdChunk of chunkValues(userIds, 100)) {
+        const [profileSnapshots, customProfileSnapshots, pauseSnapshots] = await Promise.all([
+            db.getAll(...userIdChunk.map((uid) => db.collection('users').doc(uid))),
+            db.getAll(...userIdChunk.map((uid) => db.collection('customProfiles').doc(uid))),
+            db.getAll(...userIdChunk.map((uid) =>
+                db.collection('users').doc(uid).collection('alarmPauses').doc(storeId),
+            )),
+        ]);
+
+        profileSnapshots.forEach((snapshot) => {
+            if (snapshot.exists) profilesByUid.set(snapshot.id, snapshot.data() || {});
+        });
+        customProfileSnapshots.forEach((snapshot) => {
+            if (snapshot.exists) customProfilesByUid.set(snapshot.id, snapshot.data() || {});
+        });
+        pauseSnapshots.forEach((snapshot, index) => {
+            if (snapshot.exists) pausesByUid.set(userIdChunk[index], snapshot.data() || {});
+        });
+    }
+
+    return tokensSnapshot.docs.filter((snapshot) => {
+        const uid = String(snapshot.data()?.uid || '').trim();
+        return uid &&
+            profileCanReceiveOrder(
+                profilesByUid.get(uid),
+                storeId,
+                customProfilesByUid.get(uid),
+            ) &&
+            !isAlarmPauseActive(pausesByUid.get(uid));
+    });
+};
+
+const INVALID_TOKEN_CODES = new Set([
+    'messaging/registration-token-not-registered',
+    'messaging/invalid-registration-token',
+]);
+const RETRYABLE_MESSAGING_CODES = new Set([
+    'messaging/internal-error',
+    'messaging/server-unavailable',
+    'messaging/unknown-error',
+    'messaging/quota-exceeded',
+]);
+
+const sendNewOrderMulticast = async ({tokenDocs, data, orderId}) => {
+    const invalidTokens = new Set();
+    let pendingTokenDocs = tokenDocs;
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (let attempt = 1; attempt <= 2 && pendingTokenDocs.length; attempt += 1) {
+        const retryTokenDocs = [];
+
+        for (const tokenDocChunk of chunkValues(pendingTokenDocs)) {
+            const tokens = tokenDocChunk.map((snapshot) => snapshot.id);
+            const response = await admin.messaging().sendEachForMulticast({
+                tokens,
+                data,
+                android: {
+                    priority: 'high',
+                    ttl: 10 * 60 * 1000,
+                    restrictedPackageName: 'br.com.anaguimaraes.doceria',
+                },
+                webpush: {
+                    headers: {
+                        Urgency: 'high',
+                        TTL: '600',
+                    },
+                },
+            });
+
+            for (let index = 0; index < response.responses.length; index += 1) {
+                const result = response.responses[index];
+                if (result.success) {
+                    successCount += 1;
+                    continue;
+                }
+
+                const errorCode = result.error?.code || 'messaging/unknown-error';
+                const tokenDoc = tokenDocChunk[index];
+                if (INVALID_TOKEN_CODES.has(errorCode)) {
+                    invalidTokens.add(tokens[index]);
+                    failureCount += 1;
+                } else if (attempt === 1 && RETRYABLE_MESSAGING_CODES.has(errorCode)) {
+                    retryTokenDocs.push(tokenDoc);
+                } else {
+                    failureCount += 1;
+                }
+
+                logger.error('Falha ao enviar notificação de novo pedido.', {
+                    attempt,
+                    errorCode,
+                    orderId,
+                });
+            }
+        }
+
+        pendingTokenDocs = retryTokenDocs;
+    }
+
+    await Promise.all([...invalidTokens].map((token) =>
+        db.collection('notificationTokens').doc(token).delete().catch((error) => {
+            logger.error('Erro ao remover token FCM inválido.', {token, error});
+        }),
+    ));
+
+    return {
+        successCount,
+        failureCount,
+        invalidTokenCount: invalidTokens.size,
+    };
+};
+
+const NOTIFICATION_CLAIM_LEASE_MS = 2 * 60 * 1000;
+const NOTIFICATION_EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+exports.notifyNewOrder = onDocumentCreated({
+    document: 'lojas/{lojaId}/pedidos/{pedidoId}',
+    region: 'southamerica-east1',
+    retry: true,
+}, async (event) => {
+    const order = event.data?.data();
+    const orderId = String(event.params?.pedidoId || '').trim();
+    const storeId = String(event.params?.lojaId || '').trim();
+
+    if (!order || !orderId || !storeId) {
+        logger.warn('Novo pedido sem identificadores válidos. Push ignorado.');
         return;
     }
 
+    if (!isNewPendingOrder(order)) {
+        logger.info('Pedido criado fora do status Pendente. Push ignorado.', {orderId, storeId});
+        return;
+    }
+
+    const eventKey = crypto.createHash('sha256')
+        .update(`${storeId}:${orderId}`)
+        .digest('hex');
+    const eventRef = db.collection('notificationEvents').doc(eventKey);
+
+    const now = Date.now();
+    const claimStatus = await db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(eventRef);
+        const previous = snapshot.data() || {};
+        if (snapshot.exists && ['sent', 'partial_failure'].includes(previous.status)) {
+            return 'completed';
+        }
+        if (snapshot.exists && previous.status === 'processing' &&
+            Number(previous.leaseUntil || 0) > now) {
+            return 'busy';
+        }
+
+        transaction.set(eventRef, {
+            type: 'new_order',
+            orderId,
+            storeId,
+            triggerEventId: event.id || '',
+            status: 'processing',
+            leaseUntil: now + NOTIFICATION_CLAIM_LEASE_MS,
+            attemptCount: admin.firestore.FieldValue.increment(1),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            expiresAt: admin.firestore.Timestamp.fromMillis(now + NOTIFICATION_EVENT_RETENTION_MS),
+        }, {merge: true});
+        return 'claimed';
+    });
+
+    if (claimStatus === 'completed') {
+        logger.info('Evento de novo pedido já processado.', {orderId, storeId});
+        return;
+    }
+    if (claimStatus === 'busy') {
+        throw new Error(`Evento ${storeId}:${orderId} ainda está sendo processado.`);
+    }
+
     try {
-        const tokensSnapshot = await db.collection("notificationTokens").get();
+        const tokenDocs = await getAuthorizedOrderTokenDocs(storeId);
+        const data = buildNewOrderData({orderId, storeId, order});
+        let delivery = {successCount: 0, failureCount: 0, invalidTokenCount: 0};
 
-        if (tokensSnapshot.empty) {
-            logger.info("Nenhum token de notificação cadastrado. Ignorando envio de push.");
-            return;
+        if (tokenDocs.length) {
+            delivery = await sendNewOrderMulticast({tokenDocs, data, orderId});
         }
 
-        const tokens = tokensSnapshot.docs.map((doc) => doc.id);
-        const orderId = String(event.params?.pedidoId || "");
-        const status = orderData.status ? String(orderData.status) : "Pendente";
-        const customerName = orderData.clienteNome || orderData.nomeCliente || orderData.nome || orderData.cliente?.nome || "";
-        const orderCode = orderData.numeroPedido || orderData.codigo || orderData.numero || "";
-
-        const title = "Novo pedido recebido";
-        let body = customerName ? `Pedido de ${customerName}` : "Um novo pedido foi recebido.";
-        if (orderCode) {
-            body = `${body} (#${orderCode})`;
-        }
-
-        const message = {
-            tokens,
-            notification: {
-                title,
-                body,
-            },
-            data: {
-                orderId,
-                status,
-                url: "/",
-                source: "new-order",
-            },
-            android: {
-                priority: "high",
-                notification: {
-                    title,
-                    body,
-                    channelId: "new-orders",
-                    sound: "default",
-                    clickAction: "FLUTTER_NOTIFICATION_CLICK",
-                },
-            },
-            apns: {
-                payload: {
-                    aps: {
-                        alert: {
-                            title,
-                            body,
-                        },
-                        sound: "default",
-                        category: "NEW_ORDER",
-                    },
-                },
-            },
-            webpush: {
-                headers: {
-                    Urgency: "high",
-                },
-                notification: {
-                    title,
-                    body,
-                    icon: "/logo192.png",
-                    badge: "/logo192.png",
-                    tag: "new-order",
-                    renotify: true,
-                    vibrate: [200, 100, 200],
-                    data: {
-                        orderId,
-                        url: "/",
-                    },
-                },
-                fcmOptions: {
-                    link: "/",
-                },
-            },
-        };
-
-        const response = await admin.messaging().sendEachForMulticast(message);
-        const tokensToDelete = [];
-
-        response.responses.forEach((res, index) => {
-            if (!res.success) {
-                const errorCode = res.error?.code;
-                logger.error("Falha ao enviar notificação push:", res.error);
-
-                if (errorCode === "messaging/registration-token-not-registered" || errorCode === "messaging/invalid-registration-token") {
-                    tokensToDelete.push(tokens[index]);
-                }
-            }
-        });
-
-        if (tokensToDelete.length > 0) {
-            await Promise.all(tokensToDelete.map((token) => db.collection("notificationTokens").doc(token).delete().catch((error) => {
-                logger.error("Erro ao remover token inválido:", error);
-            })));
-        }
+        await eventRef.set({
+            status: delivery.failureCount ? 'partial_failure' : 'sent',
+            authorizedDeviceCount: tokenDocs.length,
+            successCount: delivery.successCount,
+            failureCount: delivery.failureCount,
+            invalidTokenCount: delivery.invalidTokenCount,
+            leaseUntil: 0,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, {merge: true});
     } catch (error) {
-        logger.error("Erro ao enviar notificações de novo pedido:", error);
+        await eventRef.set({
+            status: 'failed',
+            leaseUntil: 0,
+            failedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, {merge: true}).catch(() => undefined);
+        logger.error('Erro ao enviar notificações de novo pedido.', {orderId, storeId, error});
+        throw error;
     }
 });
 

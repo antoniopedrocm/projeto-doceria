@@ -7,13 +7,12 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.media.AudioAttributes;
 import android.media.MediaPlayer;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -26,8 +25,11 @@ public class MediaPlaybackService extends Service {
     public static final String EXTRA_TITLE = "extra_title";
     public static final String EXTRA_BODY = "extra_body";
     public static final String EXTRA_URL = "extra_url";
+    public static final String EXTRA_ORDER_ID = "extra_order_id";
+    public static final String EXTRA_STORE_ID = "extra_store_id";
 
-    private static final String CHANNEL_ID = "doceria-orders-channel";
+    private static final String TAG = "OrderAlarmService";
+    private static final String CHANNEL_ID = "doceria-orders-alarm-v2";
     private static final int NOTIFICATION_ID = 2024;
     private static final long AUTO_STOP_DELAY_MS = 120_000L;
 
@@ -35,13 +37,26 @@ public class MediaPlaybackService extends Service {
     private Handler handler;
     private Runnable stopRunnable;
 
-    public static void startAlarm(Context context, String title, String body, String url) {
+    public static void startAlarm(
+            Context context,
+            String title,
+            String body,
+            String url,
+            String orderId,
+            String storeId
+    ) {
         Intent intent = new Intent(context, MediaPlaybackService.class);
         intent.setAction(ACTION_START_ALARM);
         intent.putExtra(EXTRA_TITLE, title);
         intent.putExtra(EXTRA_BODY, body);
         intent.putExtra(EXTRA_URL, url);
-        ContextCompat.startForegroundService(context, intent);
+        intent.putExtra(EXTRA_ORDER_ID, orderId);
+        intent.putExtra(EXTRA_STORE_ID, storeId);
+        try {
+            ContextCompat.startForegroundService(context, intent);
+        } catch (RuntimeException error) {
+            Log.e(TAG, "O Android não permitiu iniciar o alerta em segundo plano.", error);
+        }
     }
 
     public static void stopAlarm(Context context) {
@@ -65,14 +80,14 @@ public class MediaPlaybackService extends Service {
             stopForegroundAlarm();
         }
 
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     private void startForegroundAlarm(String title, String body, String url) {
         createNotificationChannel();
-        startMediaPlayer();
         Notification notification = buildNotification(title, body, url);
         startForeground(NOTIFICATION_ID, notification);
+        startMediaPlayer();
         scheduleAutoStop();
     }
 
@@ -99,7 +114,7 @@ public class MediaPlaybackService extends Service {
 
     private void startMediaPlayer() {
         stopMediaPlayer();
-        mediaPlayer = MediaPlayer.create(this, R.raw.mixkit_vintage_warning_alarm_990);
+        mediaPlayer = MediaPlayer.create(this, R.raw.alarm);
         if (mediaPlayer != null) {
             mediaPlayer.setLooping(true);
             mediaPlayer.start();
@@ -166,10 +181,11 @@ public class MediaPlaybackService extends Service {
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setFullScreenIntent(contentIntent, true)
                 .setContentIntent(contentIntent)
                 .setOngoing(true)
                 .setAutoCancel(false)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
                 .addAction(stopAction)
                 .build();
     }
@@ -198,12 +214,9 @@ public class MediaPlaybackService extends Service {
         channel.enableLights(true);
         channel.setDescription("Alertas de pedidos com alarme sonoro.");
 
-        AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build();
-        Uri soundUri = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.mixkit_vintage_warning_alarm_990);
-        channel.setSound(soundUri, audioAttributes);
+        // O MediaPlayer toca o MP3 oficial. O canal precisa ficar silencioso
+        // para o Android não sobrepor um segundo som ao mesmo pedido.
+        channel.setSound(null, null);
 
         notificationManager.createNotificationChannel(channel);
     }

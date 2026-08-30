@@ -988,3 +988,56 @@ describe("regras de acao do modulo Entre Lojas", () => {
     ), {status: "cancelado"}));
   });
 });
+
+describe("regras de alertas de novos pedidos", () => {
+  const pushTokenData = (uid, platform = "web") => ({
+    uid,
+    platform,
+    devicePlatform: platform,
+    userAgent: "rules-test",
+    updatedAt: new Date(),
+  });
+
+  test("usuario registra e remove apenas o proprio token", async () => {
+    const managerDb = testEnv.authenticatedContext("manager-a").firestore();
+    const otherDb = testEnv.authenticatedContext("manager-b").firestore();
+    const tokenRef = doc(managerDb, "notificationTokens", "token-manager-a");
+
+    await assertSucceeds(setDoc(tokenRef, pushTokenData("manager-a")));
+    await assertFails(setDoc(
+        doc(otherDb, "notificationTokens", "token-manager-a"),
+        pushTokenData("manager-b"),
+        {merge: true},
+    ));
+    await assertFails(deleteDoc(doc(otherDb, "notificationTokens", "token-manager-a")));
+    await assertSucceeds(deleteDoc(tokenRef));
+  });
+
+
+  test("pausa fica isolada por usuario e loja", async () => {
+    const managerDb = testEnv.authenticatedContext("manager-a").firestore();
+    const otherDb = testEnv.authenticatedContext("manager-b").firestore();
+    const pausePath = ["users", "manager-a", "alarmPauses", STORE_A];
+    const pauseData = {
+      uid: "manager-a",
+      storeId: STORE_A,
+      pausedUntil: Date.now() + 60_000,
+      updatedAt: new Date(),
+    };
+
+    await assertSucceeds(setDoc(doc(managerDb, ...pausePath), pauseData));
+    await assertSucceeds(getDoc(doc(managerDb, ...pausePath)));
+    await assertFails(getDoc(doc(otherDb, ...pausePath)));
+    await assertFails(setDoc(doc(otherDb, ...pausePath), {
+      ...pauseData,
+      uid: "manager-b",
+    }));
+  });
+
+  test("ledger de deduplicacao permanece exclusivo das Functions", async () => {
+    const managerDb = testEnv.authenticatedContext("manager-a").firestore();
+    const eventRef = doc(managerDb, "notificationEvents", "evento-1");
+    await assertFails(setDoc(eventRef, {status: "sent"}));
+    await assertFails(getDoc(eventRef));
+  });
+});

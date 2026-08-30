@@ -1,13 +1,14 @@
 // src/utils/AudioManager.js
 
-import { Capacitor } from '../shims/capacitor.js';
-import { NativeAudio } from '../shims/nativeAudio.js';
+import { Capacitor } from '@capacitor/core';
+import { NativeAudio } from '@capacitor-community/native-audio';
 
 const NATIVE_ASSET_ID = 'pedido';
 const NATIVE_ASSET_PATHS = [
-  'mixkit_vintage_warning_alarm_990.mp3',
-  'audio/mixkit_vintage_warning_alarm_990.mp3',
-  '/audio/mixkit_vintage_warning_alarm_990.mp3',
+  'public/audio/alarm.mp3',
+  'alarm.mp3',
+  'audio/alarm.mp3',
+  '/audio/alarm.mp3',
 ];
 const unlockEvents = ['touchstart', 'touchend', 'mousedown', 'keydown', 'pointerdown'];
 
@@ -19,6 +20,9 @@ class AudioManager {
 	this.htmlAudioPlayers = new Set();
     this.pendingPlay = false;
     this.alarmStopFn = null;
+    this.alarmStartPromise = null;
+    this.alarmGeneration = 0;
+    this.alarmStateListeners = new Set();
     this.nativeAudioReady = false;
     this.nativePreloadPromise = null;
     this._visibilityHandler = this._handleVisibilityChange.bind(this);
@@ -26,13 +30,35 @@ class AudioManager {
     this._setupAutoUnlockListener();
   }
 
+  subscribeToAlarmState(listener) {
+    if (typeof listener !== 'function') return () => {};
+    this.alarmStateListeners.add(listener);
+    return () => this.alarmStateListeners.delete(listener);
+  }
+
+  _emitAlarmState(status) {
+    this.alarmStateListeners.forEach((listener) => {
+      try {
+        listener({ status });
+      } catch (error) {
+        console.warn('[AudioManager] Listener de estado do alarme falhou:', error);
+      }
+    });
+  }
+
   _setupAutoUnlockListener() {
+    if (typeof document === 'undefined') return;
 
     const unlockHandler = async () => {
-      await this.userUnlock({ userGesture: true });
-      unlockEvents.forEach((ev) => document.removeEventListener(ev, unlockHandler));
+      try {
+        await this.userUnlock({ userGesture: true });
+      } finally {
+        if (this.unlocked) {
+          unlockEvents.forEach((ev) => document.removeEventListener(ev, unlockHandler));
+        }
+      }
     };
- unlockEvents.forEach((ev) => document.addEventListener(ev, unlockHandler, { once: true }));
+    unlockEvents.forEach((ev) => document.addEventListener(ev, unlockHandler, { passive: true }));
 
     document.addEventListener('visibilitychange', this._visibilityHandler);
     if (typeof window !== 'undefined') {
@@ -60,6 +86,17 @@ class AudioManager {
   }
 
   async init() {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await this._ensureNativePreload();
+        this.unlocked = true;
+      } catch (error) {
+        this.unlocked = false;
+        console.error('[AudioManager] Não foi possível preparar o áudio nativo:', error);
+      }
+      return;
+    }
+
     if (this.audioCtx && this.audioCtx.state !== "closed") {
       if (this.audioCtx.state === "suspended") {
         try {
@@ -78,7 +115,12 @@ class AudioManager {
     }
 
     try {
-      this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextConstructor) {
+        this.unlocked = false;
+        return;
+      }
+      this.audioCtx = new AudioContextConstructor();
 
       if (this.audioCtx.state === "running") {
         this.unlocked = true;
@@ -142,6 +184,7 @@ async _ensureNativePreload() {
         })
         .catch((error) => {
           this.nativeAudioReady = false;
+          this.nativePreloadPromise = null;
           throw error;
         });
     }
@@ -150,15 +193,19 @@ async _ensureNativePreload() {
   }
   
   async userUnlock({ userGesture = false } = {}) {
+    if (Capacitor.isNativePlatform()) {
+      await this.init();
+      if (this.unlocked && userGesture) {
+        await this._ensureNativePreload();
+      }
+      await this.retryPending();
+      return this.unlocked;
+    }
+
     if (!this.audioCtx || this.audioCtx.state === "closed") {
       await this.init();
       if (!this.audioCtx) return;
     }
-
-    const platform = Capacitor.getPlatform();
-    const isIOS =
-      platform === "ios" ||
-      (platform === "web" && typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent));
 
     if (this.audioCtx.state === "suspended") {
       try {
@@ -167,7 +214,7 @@ async _ensureNativePreload() {
         localStorage.setItem("audioUnlocked", "true");
         console.log("[AudioManager] unlocked by user");
 
-        if (userGesture && isIOS) {
+        if (userGesture && Capacitor.isNativePlatform()) {
           await this._ensureNativePreload();
         }
       } catch (e) {
@@ -180,17 +227,19 @@ async _ensureNativePreload() {
       localStorage.setItem("audioUnlocked", "true");
       console.log("[AudioManager] context already running, confirmed unlock by user");
 
-      if (userGesture && isIOS) {
+      if (userGesture && Capacitor.isNativePlatform()) {
         await this._ensureNativePreload();
       }
     }
 
     await this.retryPending();
+    return this.unlocked;
   }
 
   async playAlarmSound() {
     if (!this.unlocked) {
       this.pendingPlay = true;
+      this._emitAlarmState('pending');
       return false;
     }
 
@@ -198,14 +247,33 @@ async _ensureNativePreload() {
       return true;
     }
 
-    const stopFn = await this.playSound('/audio/alarm.mp3', { loop: true, volume: 0.8 });
-    if (typeof stopFn === 'function') {
+    if (this.alarmStartPromise) return this.alarmStartPromise;
+
+    const generation = this.alarmGeneration;
+    this.alarmStartPromise = (async () => {
+      const stopFn = await this.playSound('/audio/alarm.mp3', { loop: true, volume: 0.8 });
+      if (typeof stopFn !== 'function') {
+        this.pendingPlay = true;
+        this._emitAlarmState('pending');
+        return false;
+      }
+
+      if (generation !== this.alarmGeneration) {
+        await stopFn();
+        return false;
+      }
+
       this.alarmStopFn = stopFn;
       this.pendingPlay = false;
+      this._emitAlarmState('playing');
       return true;
-    }
+    })();
 
-    return false;
+    try {
+      return await this.alarmStartPromise;
+    } finally {
+      this.alarmStartPromise = null;
+    }
   }
 
   async retryPending() {
@@ -221,10 +289,13 @@ async _ensureNativePreload() {
   }
 
   stopAlarmSound() {
+    this.alarmGeneration += 1;
+    this.pendingPlay = false;
     if (typeof this.alarmStopFn === 'function') {
       this.alarmStopFn();
       this.alarmStopFn = null;
     }
+    this._emitAlarmState('stopped');
   }
 
   async _fetchAndDecode(url) {

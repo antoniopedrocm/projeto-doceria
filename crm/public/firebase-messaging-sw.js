@@ -35,18 +35,18 @@ if (!firebase.apps.length) {
 
 const messaging = firebase.messaging();
 const PUSH_EVENT_TYPE = 'NEW_ORDER_PUSH';
-const DEFAULT_AUDIO_URL = '/audio/mixkit_vintage_warning_alarm_990.mp3';
+const DEFAULT_AUDIO_URL = '/audio/alarm.mp3';
 
-async function notifyClients(message) {
+async function getWindowClients() {
   try {
-    const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    clientsList.forEach((client) => client.postMessage(message));
+    return await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   } catch (error) {
-    console.error('[service-worker] Falha ao enviar mensagem aos clientes:', error);
+    console.error('[service-worker] Falha ao consultar clientes da aplicação:', error);
+    return [];
   }
 }
 
-function buildNotificationPayload(payload) {
+function buildNotificationPayload(payload, { silent = false } = {}) {
   const data = payload?.data || {};
   const title = payload?.notification?.title || data.title || 'Novo pedido recebido';
   const body = payload?.notification?.body || data.body || 'Um novo pedido acabou de chegar.';
@@ -58,9 +58,12 @@ function buildNotificationPayload(payload) {
       body,
       icon: payload?.notification?.icon || '/logo192.png',
       badge: '/logo192.png',
-      tag: 'new-order',
-      renotify: true,
+      tag: `new-order-${data.orderId}`,
+      renotify: false,
       requireInteraction: true,
+      // Uma página visível toca o MP3 oficial. Sem página visível, o sistema
+      // operacional fornece o único som permitido a um Service Worker.
+      silent,
       vibrate: [300, 120, 300, 120, 500],
       data: {
         ...data,
@@ -73,28 +76,20 @@ function buildNotificationPayload(payload) {
 }
 
 async function showOrderNotification(payload) {
-  const notificationPayload = buildNotificationPayload(payload);
-  await self.registration.showNotification(notificationPayload.title, notificationPayload.options);
-  await notifyClients({ type: PUSH_EVENT_TYPE, payload });
-}
-
-messaging.onBackgroundMessage((payload) => {
-  const task = showOrderNotification(payload);
-  if (payload?.data?.playAlarm === 'true') {
-    task.finally(() => {
-      notifyClients({ type: 'PLAY_ORDER_SOUND', payload });
-    });
-  }
-});
-
-self.addEventListener('push', (event) => {
-  if (!event.data) {
+  const data = payload?.data || {};
+  if (data.type !== 'new_order' || !data.orderId || !data.storeId) {
     return;
   }
+  const clientsList = await getWindowClients();
+  const hasVisibleClient = clientsList.some(
+    (client) => client.visibilityState === 'visible'
+  );
+  const notificationPayload = buildNotificationPayload(payload, { silent: hasVisibleClient });
+  await self.registration.showNotification(notificationPayload.title, notificationPayload.options);
+  clientsList.forEach((client) => client.postMessage({ type: PUSH_EVENT_TYPE, payload }));
+}
 
-  const payload = event.data.json();
-  event.waitUntil(showOrderNotification(payload));
-});
+messaging.onBackgroundMessage((payload) => showOrderNotification(payload));
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
@@ -103,12 +98,14 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
+      .then(async (clientList) => {
         for (const client of clientList) {
           if ('focus' in client) {
-            client.postMessage({ type: PUSH_EVENT_TYPE, payload: { data: event.notification.data || {} } });
-            client.postMessage({ type: 'PLAY_ORDER_SOUND', payload: { data: event.notification.data || {} } });
-            return client.focus();
+            await client.focus();
+            if ('navigate' in client) {
+              return client.navigate(destinationUrl);
+            }
+            return client;
           }
         }
 

@@ -16,7 +16,6 @@ import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import {
   getMessaging,
-  getToken,
   isSupported as messagingIsSupported,
 } from 'firebase/messaging';
 
@@ -73,13 +72,16 @@ if (missingEnvKeys.length && isDev) {
   );
 }
 
-// Single source for the VAPID key so all modules read the same value and
-// we can fail gracefully when it is absent.
+// Single source for the VAPID key so all modules read the same value.
+// The fallback is the public Web Push key for the development Firebase project.
+const DEFAULT_VAPID_KEY =
+  'BLVVH0uQZCyvwD4IijHi76lEEXzTPrU4Mmw4YAoiv6FD8p03b-bfXx-HvNPTPhEpGiWte10JF4JNPIbHuETnU2k';
+
 export const VAPID_KEY =
   process.env.REACT_APP_FIREBASE_VAPID_KEY ||
   process.env.REACT_APP_VAPID_KEY ||
   import.meta.env?.VITE_VAPID_KEY ||
-  '';
+  DEFAULT_VAPID_KEY;
 
 // Initialise the Firebase app.  Use getApps() to avoid creating
 // duplicate instances if this module is imported multiple times.
@@ -421,17 +423,9 @@ export const messagingPromise = (async () => {
   try {
     const supported = await messagingIsSupported();
     if (!supported) return null;
-    const messaging = getMessaging(app);
-    if (!VAPID_KEY) {
-      return messaging;
-    }
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.warn('🔔 Notification permission not granted');
-      return messaging;
-    }
-    await getToken(messaging, { vapidKey: VAPID_KEY });
-    return messaging;
+    // A permissão precisa ser solicitada diretamente por uma ação do usuário
+    // (especialmente no Safari/iOS). O registro do token fica em notifications.js.
+    return getMessaging(app);
   } catch (err) {
     console.error('Failed to initialise Firebase Messaging:', err);
     return null;

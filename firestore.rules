@@ -927,6 +927,19 @@ match /users/{userId} {
       && resource.data.get('categoria', '') != 'caixa';
     allow create, update, delete: if false;
   }
+
+  match /alarmPauses/{storeId} {
+    allow read: if isSignedIn() && request.auth.uid == userId;
+    allow create, update: if isSignedIn()
+      && request.auth.uid == userId
+      && request.resource.data.keys().hasOnly(['uid', 'storeId', 'pausedUntil', 'updatedAt'])
+      && request.resource.data.uid == request.auth.uid
+      && request.resource.data.storeId == storeId
+      && request.resource.data.pausedUntil is int
+      && request.resource.data.pausedUntil > 0
+      && request.resource.data.updatedAt is timestamp;
+    allow delete: if isSignedIn() && request.auth.uid == userId;
+  }
 }
 
 match /customProfiles/{userId} {
@@ -960,6 +973,33 @@ match /producoesVitrine/{producaoId} {
   allow read, write: if false;
 }
 
+// Cada dispositivo só pode manter o próprio token. A seleção de lojas é
+// revalidada pela Cloud Function a partir do perfil, nunca destes campos.
+match /notificationTokens/{tokenId} {
+  allow read: if false;
+  allow create: if isSignedIn()
+    && request.resource.data.uid == request.auth.uid
+    && request.resource.data.platform in ['android', 'web']
+    && request.resource.data.get('devicePlatform', '') is string
+    && request.resource.data.get('userAgent', '') is string
+    && request.resource.data.get('userAgent', '').size() <= 1024
+    && request.resource.data.updatedAt is timestamp;
+  allow update: if isSignedIn()
+    && resource.data.uid == request.auth.uid
+    && request.resource.data.uid == request.auth.uid
+    && request.resource.data.platform in ['android', 'web']
+    && request.resource.data.get('devicePlatform', '') is string
+    && request.resource.data.get('userAgent', '') is string
+    && request.resource.data.get('userAgent', '').size() <= 1024
+    && request.resource.data.updatedAt is timestamp;
+  allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+}
+
+// Ledger idempotente escrito exclusivamente pela Function de novos pedidos.
+match /notificationEvents/{eventId} {
+  allow read, write: if false;
+}
+
 // --- REGRAS PARA OUTRAS COLEÇÕES (Acesso somente para usuários autenticados no CRM) ---
 match /{collection}/{document=**} {
   allow read: if isSignedIn()
@@ -970,6 +1010,8 @@ match /{collection}/{document=**} {
     && collection != 'transferenciasEntreLojas'
     && collection != 'fechamentosEntreLojas'
     && collection != 'producoesVitrine'
+    && collection != 'notificationTokens'
+    && collection != 'notificationEvents'
     && collection != 'transferDestinationAuditLogs'
     && (!isReadOnlyAccountant()
       || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
@@ -981,6 +1023,8 @@ match /{collection}/{document=**} {
     && collection != 'transferenciasEntreLojas'
     && collection != 'fechamentosEntreLojas'
     && collection != 'producoesVitrine'
+    && collection != 'notificationTokens'
+    && collection != 'notificationEvents'
     && collection != 'transferDestinationAuditLogs';
 }
 
