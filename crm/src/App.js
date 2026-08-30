@@ -18674,6 +18674,9 @@ const handleSubmit = async (e) => {
 					{showUserMenu && user && (
 						<div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-xl z-20 border p-2">
 							<p className="px-2 py-1 text-sm text-gray-700 font-semibold truncate">{user.auth.displayName || user.auth.email}</p>
+							{user.auth.email && (
+								<p className="px-2 pb-2 text-xs leading-snug text-gray-500 break-all">{user.auth.email}</p>
+							)}
                             <button onClick={() => { setCurrentPage('configuracoes'); setShowUserMenu(false); }} className="w-full text-left px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded">Configurações</button>
                             <button onClick={handleLogout} className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded">Sair</button>
 						</div>
