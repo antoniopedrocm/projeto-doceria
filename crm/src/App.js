@@ -39,10 +39,16 @@ import { audioManager } from './utils/AudioManager.js';
 import {
   clearAlarmPause,
   getAlarmPauseStorageKey,
+  readAlarmPause,
   readAlarmPauseUntil,
   saveAlarmPauseUntil,
 } from './utils/alarmPauseStorage.js';
 import { clearNativeAlarmContext, syncNativeAlarmPause } from './utils/alarmPauseNative.js';
+import {
+  getPendingOrderIdsForStore,
+  isPendingOrder,
+  resolveOrderAlarmCondition,
+} from './utils/orderAlarmRules.js';
 import {
   claimOrderAlertForRuntime,
   getPushPermissionStatus,
@@ -3581,6 +3587,7 @@ function App() {
 
   const [isAlarmSnoozed, setIsAlarmSnoozed] = useState(false);
   const [snoozeEndTime, setSnoozeEndTime] = useState(null);
+  const [pausedPendingOrderIds, setPausedPendingOrderIds] = useState(null);
   const [, setAudioAllowed] = useState(audioManager.unlocked);
   // --- Estado audioUnlocked agora é derivado do AudioManager ---
   // const [audioUnlocked, setAudioUnlocked] = useState(...);
@@ -4061,12 +4068,14 @@ function App() {
 
 
   const loadAlarmPauseForCurrentContext = useCallback(() => {
-    const pausedUntil = readAlarmPauseUntil({ uid: userId, storeId: selectedStoreIdForAlarm });
-    const isPaused = Boolean(pausedUntil);
+    const pause = readAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
+    const pausedUntil = pause?.pausedUntil || null;
+    const isPaused = Boolean(pause);
 
     isSnoozedRef.current = isPaused;
     setIsAlarmSnoozed(isPaused);
     setSnoozeEndTime(pausedUntil);
+    setPausedPendingOrderIds(pause?.pendingOrderIds || null);
 
     if (userId && selectedStoreIdForAlarm) {
       syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil });
@@ -4113,6 +4122,7 @@ function App() {
         isSnoozedRef.current = false;
         setIsAlarmSnoozed(false);
         setSnoozeEndTime(null);
+        setPausedPendingOrderIds(null);
         return;
       }
       const remotePausedUntil = Number(snapshot.data()?.pausedUntil || 0);
@@ -4126,13 +4136,23 @@ function App() {
         isSnoozedRef.current = false;
         setIsAlarmSnoozed(false);
         setSnoozeEndTime(null);
+        setPausedPendingOrderIds(null);
         return;
       }
+
+      const localPause = readAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
+      const remotePendingOrderIds = Array.isArray(snapshot.data()?.pendingOrderIds)
+        ? snapshot.data().pendingOrderIds
+        : null;
+      const pendingOrderIdsAtPause = remotePendingOrderIds || (
+        localPause?.pausedUntil === remotePausedUntil ? localPause.pendingOrderIds : null
+      );
 
       saveAlarmPauseUntil({
         uid: userId,
         storeId: selectedStoreIdForAlarm,
         pausedUntil: remotePausedUntil,
+        pendingOrderIds: pendingOrderIdsAtPause,
       });
       syncNativeAlarmPause({
         uid: userId,
@@ -4142,6 +4162,7 @@ function App() {
       isSnoozedRef.current = true;
       setIsAlarmSnoozed(true);
       setSnoozeEndTime(remotePausedUntil);
+      setPausedPendingOrderIds(pendingOrderIdsAtPause);
       stopAlarm();
     }, (error) => {
       console.warn('[App.js] Não foi possível sincronizar a pausa do alarme:', error);
@@ -4151,6 +4172,20 @@ function App() {
   useEffect(() => {
     isSnoozedRef.current = isAlarmSnoozed;
   }, [isAlarmSnoozed]);
+
+  const clearAlarmPauseForCurrentContext = useCallback(() => {
+    if (!userId || !selectedStoreIdForAlarm) return;
+
+    clearAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
+    syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil: null });
+    deleteDoc(doc(db, 'users', userId, 'alarmPauses', selectedStoreIdForAlarm)).catch((error) => {
+      console.warn('[App.js] Não foi possível remover a pausa compartilhada do alarme:', error);
+    });
+    isSnoozedRef.current = false;
+    setIsAlarmSnoozed(false);
+    setSnoozeEndTime(null);
+    setPausedPendingOrderIds(null);
+  }, [selectedStoreIdForAlarm, userId]);
 
   // --- Refs para estabilizar callbacks ---
   const playAlarmRef = useRef(playAlarm);
@@ -4180,6 +4215,11 @@ function App() {
       return;
     }
 
+    if (readAlarmPauseUntil({ uid: userId, storeId: notificationStoreId })) {
+      console.log('[App.js] Novo pedido recebido durante a pausa. Reativando o alarme.');
+      clearAlarmPauseForCurrentContext();
+    }
+
     if (!await claimOrderAlertForRuntime({
       uid: userId,
       storeId: notificationStoreId,
@@ -4190,11 +4230,6 @@ function App() {
 
     setHasNewPendingOrders(true);
 
-    if (readAlarmPauseUntil({ uid: userId, storeId: notificationStoreId })) {
-      console.log('[App.js] Push recebido durante soneca. Alarme permanecerá silenciado até o fim da soneca.');
-      return;
-    }
-
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
       console.log('[App.js] Página em segundo plano; o alerta ficará a cargo da notificação do sistema.');
       return;
@@ -4203,7 +4238,7 @@ function App() {
     if (typeof playAlarmRef.current === 'function') {
       playAlarmRef.current();
     }
-  }, [isGeneralViewSelected, selectedStoreIdForAlarm, userId]);
+  }, [clearAlarmPauseForCurrentContext, isGeneralViewSelected, selectedStoreIdForAlarm, userId]);
 
   useEffect(() => {
     if (!userId) {
@@ -4314,29 +4349,38 @@ function App() {
     if (!userId || !selectedStoreIdForAlarm) return;
 
     console.log('[App.js] Reativando alarme para usuário e loja atuais.');
-    clearAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
-    syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil: null });
-    deleteDoc(doc(db, 'users', userId, 'alarmPauses', selectedStoreIdForAlarm)).catch((error) => {
-      console.warn('[App.js] Não foi possível remover a pausa compartilhada do alarme:', error);
-    });
-    isSnoozedRef.current = false;
-    setIsAlarmSnoozed(false);
-    setSnoozeEndTime(null);
+    clearAlarmPauseForCurrentContext();
 
-    const hasPending = !isGeneralViewSelected && (dataRef.current.pedidos || []).some(
-      (pedido) => pedido.status === 'Pendente' && pedido.lojaId === selectedStoreIdForAlarm
-    );
+    const hasPending = !isGeneralViewSelected && getPendingOrderIdsForStore(
+      dataRef.current.pedidos,
+      selectedStoreIdForAlarm
+    ).length > 0;
     setHasNewPendingOrders(Boolean(hasPending));
-  }, [isGeneralViewSelected, selectedStoreIdForAlarm, userId]);
+
+    if (hasPending) {
+      playAlarmRef.current();
+    } else {
+      stopAlarm();
+    }
+  }, [clearAlarmPauseForCurrentContext, isGeneralViewSelected, selectedStoreIdForAlarm, stopAlarm, userId]);
 
   const handleStopAndSnoozeAlarm = useCallback(() => {
     if (!userId || !selectedStoreIdForAlarm || isGeneralViewSelected) return;
 
     const pausedUntil = Date.now() + (resolvedAlarmPauseMinutes * 60 * 1000);
+    const pendingOrderIdsAtPause = getPendingOrderIdsForStore(
+      dataRef.current.pedidos,
+      selectedStoreIdForAlarm
+    );
     console.log('[App.js] Pausando alarme para usuário e loja atuais até:', pausedUntil);
     stopAlarm();
     setStopAlarmFn(null);
-    saveAlarmPauseUntil({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil });
+    saveAlarmPauseUntil({
+      uid: userId,
+      storeId: selectedStoreIdForAlarm,
+      pausedUntil,
+      pendingOrderIds: pendingOrderIdsAtPause,
+    });
     syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil });
     setDoc(doc(db, 'users', userId, 'alarmPauses', selectedStoreIdForAlarm), {
       uid: userId,
@@ -4349,6 +4393,7 @@ function App() {
     isSnoozedRef.current = true;
     setIsAlarmSnoozed(true);
     setSnoozeEndTime(pausedUntil);
+    setPausedPendingOrderIds(pendingOrderIdsAtPause);
   }, [isGeneralViewSelected, resolvedAlarmPauseMinutes, selectedStoreIdForAlarm, stopAlarm, userId]);
 
   useEffect(() => {
@@ -4504,13 +4549,25 @@ function App() {
                                     setPendingOrders(activeOrders);
 
                                     if (initialDataLoaded.current) {
-                                          const newPendingOrderChanges = changes.filter(
+                                          const addedPendingOrderChanges = changes.filter(
                                                 (change) => change.type === 'added'
                                                       && change.doc.data().status === 'Pendente'
-                                                      && !change.doc.metadata?.hasPendingWrites
+                                          );
+                                          const newPendingOrderChanges = addedPendingOrderChanges.filter(
+                                                (change) => !change.doc.metadata?.hasPendingWrites
                                           );
                                           const shouldAlertCurrentStore =
                                             !isGeneralViewSelected && selectedStoreIdForAlarm === storeId;
+
+                                          if (
+                                            shouldAlertCurrentStore
+                                            && addedPendingOrderChanges.length > 0
+                                            && isSnoozedRef.current
+                                          ) {
+                                            console.log('[App.js] Novo pedido pendente entrou durante a pausa. Reativando o alarme.');
+                                            clearAlarmPauseForCurrentContext();
+                                          }
+
                                           const candidateOrderIds = shouldAlertCurrentStore
                                             ? newPendingOrderChanges.map((change) => change.doc.id)
                                             : [];
@@ -4531,9 +4588,7 @@ function App() {
                                                 console.log('[App.js] Novo pedido pendente detectado pelo listener!');
                                                 setHasNewPendingOrders(true);
 
-                                                if (isSnoozedRef.current) {
-                                                  console.log('[App.js] Alarme em modo soneca, não tocando agora.');
-                                                } else if (
+                                                if (
                                                   typeof document !== 'undefined'
                                                   && document.visibilityState !== 'visible'
                                                 ) {
@@ -4643,23 +4698,45 @@ function App() {
                 unsubscribes.forEach(unsubscribe => unsubscribe());
                 initialDataLoaded.current = false;
           };
-        }, [user, resolveStoreIdsForView, recomputeDataForView, selectedStoreId, availableStores, migrateLegacyConfigCollection, isGeneralViewSelected, selectedStoreIdForAlarm, currentPage, userId]);
-    // EFFECT PARA PARAR ALARME QUANDO NÃO HÁ MAIS PEDIDOS PENDENTES
+        }, [user, resolveStoreIdsForView, recomputeDataForView, selectedStoreId, availableStores, migrateLegacyConfigCollection, isGeneralViewSelected, selectedStoreIdForAlarm, currentPage, userId, clearAlarmPauseForCurrentContext]);
+    // A condição do alarme acompanha o estado atual dos pedidos, inclusive após reload.
     useEffect(() => {
-        if (isGeneralViewSelected) {
-          setHasNewPendingOrders(false);
+        const alarmCondition = resolveOrderAlarmCondition({
+          orders: data.pedidos,
+          storeId: isGeneralViewSelected ? null : selectedStoreIdForAlarm,
+          isPaused: isAlarmSnoozed,
+          pausedPendingOrderIds,
+        });
+
+        setHasNewPendingOrders(alarmCondition.hasPendingOrders);
+
+        if (!alarmCondition.hasPendingOrders) {
+          console.log('[App.js] Nenhum pedido Pendente na loja atual. Parando alarme.');
           stopAlarm();
           return;
         }
 
-        const hasAnyPending = data.pedidos && data.pedidos.some(p => p.status === 'Pendente');
-
-        if (!hasAnyPending && !isAlarmSnoozed) {
-          console.log('[App.js] Nenhum pedido pendente e não está em soneca. Parando alarme e escondendo banner.');
-          setHasNewPendingOrders(false);
+        if (isAlarmSnoozed && !alarmCondition.hasNewPendingOrderDuringPause) {
           stopAlarm();
+          return;
         }
-    }, [data.pedidos, isAlarmSnoozed, stopAlarm, isGeneralViewSelected]);
+
+        if (alarmCondition.hasNewPendingOrderDuringPause) {
+          console.log('[App.js] Nova ID Pendente detectada durante a pausa. Reativando o alarme.');
+          reactivateAlarmForCurrentContext();
+          return;
+        }
+
+        playAlarmRef.current();
+    }, [
+      data.pedidos,
+      isAlarmSnoozed,
+      isGeneralViewSelected,
+      pausedPendingOrderIds,
+      reactivateAlarmForCurrentContext,
+      selectedStoreIdForAlarm,
+      stopAlarm,
+    ]);
 
   // --- REMOVIDO: Antigo useEffect de desbloqueio ---
   // useEffect(() => { if (audioUnlocked && ...) ... });
@@ -7702,9 +7779,12 @@ function App() {
     const vendasSemana = (pedidos || []).filter(pedido => { const pedidoDate = getJSDate(pedido.createdAt); if (!pedidoDate) return false; return pedidoDate >= lastSunday && pedidoDate <= new Date() && pedido.status === 'Finalizado'; }).reduce((acc, pedido) => acc + (pedido.total || 0), 0);
     const numVendasSemana = (pedidos || []).filter(pedido => { const pedidoDate = getJSDate(pedido.createdAt); if (!pedidoDate) return false; return pedidoDate >= lastSunday && pedidoDate <= new Date() && pedido.status === 'Finalizado'; }).length;
     
-    const activeStatuses = ['Pendente', 'Em Produção', 'Pronto para Entrega'];
-    const pedidosPendentesCRM = (pedidos || []).filter(p => activeStatuses.includes(p.status) && p.origem !== 'Cardapio Online').length;
-    const pedidosPendentesWhatsApp = (pedidos || []).filter(p => activeStatuses.includes(p.status) && p.origem === 'Cardapio Online').length;
+    const pedidosPendentesCRM = (pedidos || []).filter(
+      p => isPendingOrder(p) && p.origem !== 'Cardapio Online'
+    ).length;
+    const pedidosPendentesWhatsApp = (pedidos || []).filter(
+      p => isPendingOrder(p) && p.origem === 'Cardapio Online'
+    ).length;
     
     const clientesAtivos = (clientes || []).length;
     

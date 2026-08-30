@@ -5,6 +5,7 @@ const {
   isAlarmPauseActive,
   isNewPendingOrder,
   profileCanReceiveOrder,
+  shouldInterruptAlarmPause,
 } = require('./new-order-notifications');
 
 test('autoriza somente perfil vinculado à loja do pedido', () => {
@@ -33,6 +34,14 @@ test('considera pausa somente enquanto o prazo da combinação está ativo', () 
   assert.equal(isAlarmPauseActive({pausedUntil: 2_000}, 1_000), true);
   assert.equal(isAlarmPauseActive({pausedUntil: 1_000}, 1_000), false);
   assert.equal(isAlarmPauseActive(null, 1_000), false);
+});
+
+test('novo pedido interrompe somente uma pausa que já estava ativa quando ele entrou', () => {
+  const pause = {pausedUntil: 20_000, updatedAt: new Date(5_000)};
+
+  assert.equal(shouldInterruptAlarmPause(pause, new Date(10_000), 10_000), true);
+  assert.equal(shouldInterruptAlarmPause(pause, new Date(4_000), 10_000), false);
+  assert.equal(shouldInterruptAlarmPause({pausedUntil: 9_000}, new Date(10_000), 10_000), false);
 });
 
 test('cria payload de dados mínimo para novo pedido', () => {

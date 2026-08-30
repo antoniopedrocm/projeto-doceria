@@ -8,6 +8,11 @@ const resolveStorage = (storage) => {
   return window.localStorage;
 };
 
+const normalizePendingOrderIds = (value) => {
+  if (!Array.isArray(value)) return null;
+  return [...new Set(value.map(normalizeIdentifier).filter(Boolean))];
+};
+
 export const getAlarmPauseStorageKey = (uid, storeId) => {
   const normalizedUid = normalizeIdentifier(uid);
   const normalizedStoreId = normalizeIdentifier(storeId);
@@ -16,7 +21,7 @@ export const getAlarmPauseStorageKey = (uid, storeId) => {
   return `${ALARM_PAUSE_STORAGE_PREFIX}:${encodeURIComponent(normalizedUid)}:${encodeURIComponent(normalizedStoreId)}`;
 };
 
-export const readAlarmPauseUntil = ({ uid, storeId, storage, now = Date.now() }) => {
+export const readAlarmPause = ({ uid, storeId, storage, now = Date.now() }) => {
   const key = getAlarmPauseStorageKey(uid, storeId);
   const targetStorage = resolveStorage(storage);
   if (!key || !targetStorage) return null;
@@ -27,28 +32,42 @@ export const readAlarmPauseUntil = ({ uid, storeId, storage, now = Date.now() })
 
     let parsedValue;
     try {
-      const parsed = JSON.parse(rawValue);
-      parsedValue = typeof parsed === 'object' && parsed !== null ? parsed.pausedUntil : parsed;
+      parsedValue = JSON.parse(rawValue);
     } catch (error) {
       parsedValue = rawValue;
     }
 
-    const pausedUntil = Number(parsedValue);
-    return Number.isFinite(pausedUntil) && pausedUntil > now ? pausedUntil : null;
+    const pauseData = typeof parsedValue === 'object' && parsedValue !== null
+      ? parsedValue
+      : { pausedUntil: parsedValue };
+    const pausedUntil = Number(pauseData.pausedUntil);
+    if (!Number.isFinite(pausedUntil) || pausedUntil <= now) return null;
+
+    return {
+      pausedUntil,
+      pendingOrderIds: normalizePendingOrderIds(pauseData.pendingOrderIds),
+    };
   } catch (error) {
     console.warn('[alarmPauseStorage] Não foi possível ler a pausa do alarme:', error);
     return null;
   }
 };
 
-export const saveAlarmPauseUntil = ({ uid, storeId, pausedUntil, storage }) => {
+export const readAlarmPauseUntil = (options) => readAlarmPause(options)?.pausedUntil || null;
+
+export const saveAlarmPauseUntil = ({ uid, storeId, pausedUntil, pendingOrderIds, storage }) => {
   const key = getAlarmPauseStorageKey(uid, storeId);
   const targetStorage = resolveStorage(storage);
   const normalizedPausedUntil = Number(pausedUntil);
   if (!key || !targetStorage || !Number.isFinite(normalizedPausedUntil)) return false;
 
   try {
-    targetStorage.setItem(key, JSON.stringify({ pausedUntil: normalizedPausedUntil }));
+    const pauseData = { pausedUntil: normalizedPausedUntil };
+    const normalizedPendingOrderIds = normalizePendingOrderIds(pendingOrderIds);
+    if (normalizedPendingOrderIds !== null) {
+      pauseData.pendingOrderIds = normalizedPendingOrderIds;
+    }
+    targetStorage.setItem(key, JSON.stringify(pauseData));
     return true;
   } catch (error) {
     console.warn('[alarmPauseStorage] Não foi possível salvar a pausa do alarme:', error);

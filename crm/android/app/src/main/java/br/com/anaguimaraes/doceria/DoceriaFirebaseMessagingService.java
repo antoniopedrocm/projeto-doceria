@@ -79,7 +79,12 @@ public class DoceriaFirebaseMessagingService extends FirebaseMessagingService {
 
         long pausedUntil = AlarmPausePlugin.getPausedUntil(this, currentUid, storeId);
         if (pausedUntil > System.currentTimeMillis()) {
-            Log.d(TAG, "Alarme silenciado para o usuário e loja até " + pausedUntil + ".");
+            AlarmPausePlugin.clearPause(this, currentUid, storeId);
+            Log.d(TAG, "Novo pedido interrompeu a pausa do usuário e loja atuais.");
+        }
+
+        if (appInForeground) {
+            Log.d(TAG, "Aplicativo em primeiro plano; o estado atual dos pedidos será tratado pela WebView.");
             return;
         }
 

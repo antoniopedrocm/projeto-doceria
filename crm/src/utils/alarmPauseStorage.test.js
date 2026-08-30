@@ -2,6 +2,7 @@ import {
   clearAlarmPause,
   getAlarmPauseStorageKey,
   isAlarmPausedForContext,
+  readAlarmPause,
   readAlarmPauseUntil,
   saveAlarmPauseUntil,
 } from './alarmPauseStorage';
@@ -47,9 +48,30 @@ describe('alarmPauseStorage', () => {
 
   test('restaura a pausa após uma nova leitura do mesmo armazenamento', () => {
     const storage = createStorage();
-    saveAlarmPauseUntil({ uid: 'celeste', storeId: 'matriz', pausedUntil: 30_000, storage });
+    saveAlarmPauseUntil({
+      uid: 'celeste',
+      storeId: 'matriz',
+      pausedUntil: 30_000,
+      pendingOrderIds: ['pedido-a', 'pedido-b', 'pedido-a'],
+      storage,
+    });
 
     expect(readAlarmPauseUntil({ uid: 'celeste', storeId: 'matriz', storage, now: 5_000 })).toBe(30_000);
+    expect(readAlarmPause({ uid: 'celeste', storeId: 'matriz', storage, now: 5_000 })).toEqual({
+      pausedUntil: 30_000,
+      pendingOrderIds: ['pedido-a', 'pedido-b'],
+    });
+  });
+
+  test('mantém compatibilidade com pausas antigas sem lista de pedidos', () => {
+    const storage = createStorage();
+    const key = getAlarmPauseStorageKey('celeste', 'matriz');
+    storage.setItem(key, JSON.stringify({ pausedUntil: 30_000 }));
+
+    expect(readAlarmPause({ uid: 'celeste', storeId: 'matriz', storage, now: 5_000 })).toEqual({
+      pausedUntil: 30_000,
+      pendingOrderIds: null,
+    });
   });
 
   test('codifica identificadores na chave sem perder o isolamento', () => {

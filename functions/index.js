@@ -31,9 +31,9 @@ const {
 } = require('./caixa-core');
 const {
   buildNewOrderData,
-  isAlarmPauseActive,
   isNewPendingOrder,
   profileCanReceiveOrder,
+  shouldInterruptAlarmPause,
 } = require('./new-order-notifications');
 
 // Inicializa o Firebase Admin SDK
@@ -2501,15 +2501,11 @@ const getAuthorizedOrderTokenDocs = async (storeId) => {
         .filter(Boolean))];
     const profilesByUid = new Map();
     const customProfilesByUid = new Map();
-    const pausesByUid = new Map();
 
     for (const userIdChunk of chunkValues(userIds, 100)) {
-        const [profileSnapshots, customProfileSnapshots, pauseSnapshots] = await Promise.all([
+        const [profileSnapshots, customProfileSnapshots] = await Promise.all([
             db.getAll(...userIdChunk.map((uid) => db.collection('users').doc(uid))),
             db.getAll(...userIdChunk.map((uid) => db.collection('customProfiles').doc(uid))),
-            db.getAll(...userIdChunk.map((uid) =>
-                db.collection('users').doc(uid).collection('alarmPauses').doc(storeId),
-            )),
         ]);
 
         profileSnapshots.forEach((snapshot) => {
@@ -2517,9 +2513,6 @@ const getAuthorizedOrderTokenDocs = async (storeId) => {
         });
         customProfileSnapshots.forEach((snapshot) => {
             if (snapshot.exists) customProfilesByUid.set(snapshot.id, snapshot.data() || {});
-        });
-        pauseSnapshots.forEach((snapshot, index) => {
-            if (snapshot.exists) pausesByUid.set(userIdChunk[index], snapshot.data() || {});
         });
     }
 
@@ -2530,9 +2523,25 @@ const getAuthorizedOrderTokenDocs = async (storeId) => {
                 profilesByUid.get(uid),
                 storeId,
                 customProfilesByUid.get(uid),
-            ) &&
-            !isAlarmPauseActive(pausesByUid.get(uid));
+            );
     });
+};
+
+const clearInterruptedAlarmPauses = async (storeId, orderCreatedAt) => {
+    const pauseSnapshot = await db.collectionGroup('alarmPauses')
+        .where('storeId', '==', storeId)
+        .get();
+    const pausesToClear = pauseSnapshot.docs.filter((snapshot) =>
+        shouldInterruptAlarmPause(snapshot.data() || {}, orderCreatedAt),
+    );
+
+    for (const pauseChunk of chunkValues(pausesToClear)) {
+        const batch = db.batch();
+        pauseChunk.forEach((snapshot) => batch.delete(snapshot.ref));
+        await batch.commit();
+    }
+
+    return pausesToClear.length;
 };
 
 const INVALID_TOKEN_CODES = new Set([
@@ -2677,6 +2686,7 @@ exports.notifyNewOrder = onDocumentCreated({
     }
 
     try {
+        const interruptedPauseCount = await clearInterruptedAlarmPauses(storeId, event.time);
         const tokenDocs = await getAuthorizedOrderTokenDocs(storeId);
         const data = buildNewOrderData({orderId, storeId, order});
         let delivery = {successCount: 0, failureCount: 0, invalidTokenCount: 0};
@@ -2691,6 +2701,7 @@ exports.notifyNewOrder = onDocumentCreated({
             successCount: delivery.successCount,
             failureCount: delivery.failureCount,
             invalidTokenCount: delivery.invalidTokenCount,
+            interruptedPauseCount,
             leaseUntil: 0,
             sentAt: admin.firestore.FieldValue.serverTimestamp(),
         }, {merge: true});

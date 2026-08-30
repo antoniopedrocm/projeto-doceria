@@ -62,6 +62,24 @@ const getPauseTimestamp = (pause = null) => {
 
 const isAlarmPauseActive = (pause, now = Date.now()) => getPauseTimestamp(pause) > now;
 
+const getTimestampMillis = (value) => {
+  if (value && typeof value.toMillis === 'function') return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string') return Date.parse(value);
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+};
+
+const shouldInterruptAlarmPause = (pause, orderCreatedAt, now = Date.now()) => {
+  if (!isAlarmPauseActive(pause, now)) return false;
+
+  const pauseStartedAt = getTimestampMillis(pause?.updatedAt);
+  const orderCreatedAtMillis = getTimestampMillis(orderCreatedAt);
+  if (!pauseStartedAt || !orderCreatedAtMillis) return true;
+
+  return pauseStartedAt <= orderCreatedAtMillis;
+};
+
 const isNewPendingOrder = (order) => Boolean(order && order.status === NEW_ORDER_STATUS);
 
 const formatMoney = (value) => {
@@ -107,4 +125,5 @@ module.exports = {
   isAlarmPauseActive,
   isNewPendingOrder,
   profileCanReceiveOrder,
+  shouldInterruptAlarmPause,
 };
