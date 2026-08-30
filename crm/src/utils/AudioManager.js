@@ -10,7 +10,21 @@ const NATIVE_ASSET_PATHS = [
   'audio/alarm.mp3',
   '/audio/alarm.mp3',
 ];
-const unlockEvents = ['touchstart', 'touchend', 'mousedown', 'keydown', 'pointerdown'];
+const DEFAULT_UNLOCK_EVENTS = ['touchstart', 'touchend', 'mousedown', 'keydown', 'pointerdown'];
+const IOS_UNLOCK_EVENTS = ['touchend', 'click', 'keydown'];
+const ORDER_ALARM_URL = '/audio/alarm.mp3';
+const IOS_RESUME_TIMEOUT_MS = 2_500;
+
+export const isIOSWebBrowser = () => {
+  if (Capacitor.isNativePlatform() || typeof navigator === 'undefined') return false;
+
+  const userAgent = String(navigator.userAgent || '');
+  const platform = String(navigator.platform || '');
+  const isClassicIOS = /iPad|iPhone|iPod/i.test(userAgent);
+  const isIPadDesktopMode = platform === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1;
+
+  return isClassicIOS || isIPadDesktopMode;
+};
 
 class AudioManager {
   constructor() {
@@ -25,8 +39,16 @@ class AudioManager {
     this.alarmStateListeners = new Set();
     this.nativeAudioReady = false;
     this.nativePreloadPromise = null;
+    this.iosSessionUnlocked = false;
+    this.webUnlockPromise = null;
+    this.autoUnlockListening = false;
+    this.autoUnlockHandler = null;
+    this.autoUnlockEvents = [];
+    this.lifecycleListenersAttached = false;
     this._visibilityHandler = this._handleVisibilityChange.bind(this);
     this._focusHandler = this._handleVisibilityChange.bind(this);
+    this._pageHideHandler = this._handlePageHide.bind(this);
+    this._pageShowHandler = this._handlePageShow.bind(this);
     this._setupAutoUnlockListener();
   }
 
@@ -47,26 +69,159 @@ class AudioManager {
   }
 
   _setupAutoUnlockListener() {
-    if (typeof document === 'undefined') return;
+    if (typeof document === 'undefined' || this.autoUnlockListening) return;
 
-    const unlockHandler = async () => {
+    this.autoUnlockEvents = isIOSWebBrowser() ? IOS_UNLOCK_EVENTS : DEFAULT_UNLOCK_EVENTS;
+    this.autoUnlockHandler = async () => {
       try {
         await this.userUnlock({ userGesture: true });
       } finally {
         if (this.unlocked) {
-          unlockEvents.forEach((ev) => document.removeEventListener(ev, unlockHandler));
+          this._removeAutoUnlockListener();
         }
       }
     };
-    unlockEvents.forEach((ev) => document.addEventListener(ev, unlockHandler, { passive: true }));
+    this.autoUnlockEvents.forEach((eventName) => {
+      document.addEventListener(eventName, this.autoUnlockHandler, { passive: true });
+    });
+    this.autoUnlockListening = true;
 
-    document.addEventListener('visibilitychange', this._visibilityHandler);
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', this._focusHandler);
+    if (!this.lifecycleListenersAttached) {
+      document.addEventListener('visibilitychange', this._visibilityHandler);
+      if (typeof window !== 'undefined') {
+        window.addEventListener('focus', this._focusHandler);
+        window.addEventListener('pagehide', this._pageHideHandler);
+        window.addEventListener('pageshow', this._pageShowHandler);
+      }
+      this.lifecycleListenersAttached = true;
+    }
+  }
+
+  _removeAutoUnlockListener() {
+    if (typeof document === 'undefined' || !this.autoUnlockListening) return;
+
+    this.autoUnlockEvents.forEach((eventName) => {
+      document.removeEventListener(eventName, this.autoUnlockHandler);
+    });
+    this.autoUnlockListening = false;
+  }
+
+  _hasActiveUserGesture() {
+    if (typeof navigator === 'undefined' || !navigator.userActivation) return true;
+    return navigator.userActivation.isActive === true;
+  }
+
+  _ensureWebAudioContext() {
+    if (this.audioCtx && this.audioCtx.state !== 'closed') return this.audioCtx;
+    if (typeof window === 'undefined') return null;
+
+    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextConstructor) return null;
+
+    this.audioCtx = new AudioContextConstructor();
+    return this.audioCtx;
+  }
+
+  _startIOSUnlockPulse(audioContext) {
+    const sampleRate = Number(audioContext.sampleRate) || 44_100;
+    const buffer = audioContext.createBuffer(1, 1, sampleRate);
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContext.destination);
+    source.addEventListener?.('ended', () => {
+      try {
+        source.disconnect();
+      } catch {
+        // A fonte de desbloqueio já pode ter sido desconectada pelo WebKit.
+      }
+    }, { once: true });
+    source.start(0);
+  }
+
+  _waitForIOSResume(resumePromise, audioContext) {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        const timeoutError = new Error('AudioContext.resume() não respondeu dentro do prazo.');
+        timeoutError.name = 'TimeoutError';
+        reject(timeoutError);
+      }, IOS_RESUME_TIMEOUT_MS);
+    });
+
+    return Promise.race([resumePromise, timeoutPromise])
+      .catch((error) => {
+        // Há versões do WebKit que deixam a Promise pendente embora o estado
+        // já tenha mudado. Nesse caso, o estado real prevalece.
+        if (audioContext?.state === 'running') return;
+        throw error;
+      })
+      .finally(() => clearTimeout(timeoutId));
+  }
+
+  _setIOSAudioWaitingForGesture({ preserveAlarm = false } = {}) {
+    if (!isIOSWebBrowser()) return;
+
+    const shouldResumeAlarm = preserveAlarm && (
+      this.pendingPlay
+      || typeof this.alarmStopFn === 'function'
+      || Boolean(this.alarmStartPromise)
+    );
+
+    this.alarmGeneration += 1;
+    if (typeof this.alarmStopFn === 'function') {
+      this.alarmStopFn();
+      this.alarmStopFn = null;
+    }
+
+    this.iosSessionUnlocked = false;
+    this.unlocked = false;
+    this.pendingPlay = shouldResumeAlarm;
+    this._setupAutoUnlockListener();
+    this._emitAlarmState('stopped');
+    if (shouldResumeAlarm) this._emitAlarmState('pending');
+  }
+
+  _handlePageHide() {
+    if (!isIOSWebBrowser()) return;
+
+    console.info('[ORDER-ALARM][iOS] pagehide', {
+      contextState: this.audioCtx?.state || 'not-created',
+    });
+    this._setIOSAudioWaitingForGesture({ preserveAlarm: true });
+  }
+
+  _handlePageShow() {
+    if (!isIOSWebBrowser()) return;
+
+    console.info('[ORDER-ALARM][iOS] pageshow', {
+      contextState: this.audioCtx?.state || 'not-created',
+      pendingPlay: this.pendingPlay,
+    });
+    if (!this.iosSessionUnlocked || this.audioCtx?.state !== 'running') {
+      this.unlocked = false;
+      this._setupAutoUnlockListener();
+      if (this.pendingPlay) this._emitAlarmState('pending');
     }
   }
 
   _handleVisibilityChange() {
+    if (isIOSWebBrowser()) {
+      const visibilityState = typeof document === 'undefined' ? 'unknown' : document.visibilityState;
+      console.info('[ORDER-ALARM][iOS] visibilitychange', {
+        visibilityState,
+        contextState: this.audioCtx?.state || 'not-created',
+      });
+
+      if (visibilityState === 'hidden') {
+        this._setIOSAudioWaitingForGesture({ preserveAlarm: true });
+      } else if (!this.iosSessionUnlocked || this.audioCtx?.state !== 'running') {
+        this.unlocked = false;
+        this._setupAutoUnlockListener();
+        if (this.pendingPlay) this._emitAlarmState('pending');
+      }
+      return;
+    }
+
     if (!this.audioCtx) {
       return;
     }
@@ -93,6 +248,30 @@ class AudioManager {
       } catch (error) {
         this.unlocked = false;
         console.error('[AudioManager] Não foi possível preparar o áudio nativo:', error);
+      }
+      return;
+    }
+
+    if (isIOSWebBrowser()) {
+      try {
+        const audioContext = this.audioCtx?.state !== 'closed' ? this.audioCtx : null;
+        this.unlocked = Boolean(
+          this.iosSessionUnlocked
+          && audioContext
+          && audioContext.state === 'running'
+        );
+        if (!this.unlocked) {
+          console.info('[ORDER-ALARM][iOS] aguardando gesto real para habilitar áudio', {
+            contextState: audioContext?.state || 'unavailable',
+          });
+          this._setupAutoUnlockListener();
+        }
+      } catch (error) {
+        this.unlocked = false;
+        console.error('[ORDER-ALARM][iOS] falha ao criar AudioContext', {
+          name: error?.name || 'Error',
+          message: error?.message || String(error),
+        });
       }
       return;
     }
@@ -202,6 +381,96 @@ async _ensureNativePreload() {
       return this.unlocked;
     }
 
+    if (isIOSWebBrowser()) {
+      if (this.webUnlockPromise) return this.webUnlockPromise;
+
+      if (!userGesture || !this._hasActiveUserGesture()) {
+        this.unlocked = false;
+        this._setupAutoUnlockListener();
+        if (this.pendingPlay) this._emitAlarmState('pending');
+        return false;
+      }
+
+      this.webUnlockPromise = (async () => {
+        let audioContext;
+        try {
+          // Criar/resumir o contexto e iniciar uma fonte silenciosa acontece
+          // sincronamente dentro do toque. Nenhum await pode preceder estas chamadas no iOS.
+          audioContext = this._ensureWebAudioContext();
+          if (!audioContext) throw new Error('Web Audio API indisponível.');
+
+          console.info('[ORDER-ALARM][iOS] attempting unlock', {
+            contextState: audioContext.state,
+            userActivation: this._hasActiveUserGesture(),
+            pendingPlay: this.pendingPlay,
+          });
+
+          const resumePromise = audioContext.state === 'running'
+            ? Promise.resolve()
+            : audioContext.resume();
+          this._startIOSUnlockPulse(audioContext);
+          await this._waitForIOSResume(resumePromise, audioContext);
+
+          if (audioContext.state !== 'running') {
+            throw new Error(`AudioContext permaneceu em estado ${audioContext.state}.`);
+          }
+
+          this.iosSessionUnlocked = true;
+          this.unlocked = true;
+          try {
+            localStorage.setItem('audioUnlocked', 'true');
+          } catch (storageError) {
+            console.warn('[ORDER-ALARM][iOS] preferência de áudio não pôde ser persistida', {
+              name: storageError?.name || 'Error',
+              message: storageError?.message || String(storageError),
+            });
+          }
+          this._removeAutoUnlockListener();
+          console.info('[ORDER-ALARM][iOS] unlock success', {
+            contextState: audioContext.state,
+          });
+
+          await this.retryPending();
+          return true;
+        } catch (error) {
+          this.iosSessionUnlocked = false;
+          this.unlocked = false;
+          if (error?.name === 'TimeoutError' && this.audioCtx === audioContext) {
+            this.audioCtx = null;
+            try {
+              const closeResult = audioContext?.close?.();
+              closeResult?.catch?.((closeError) => {
+                console.warn('[ORDER-ALARM][iOS] falha ao descartar AudioContext travado', {
+                  name: closeError?.name || 'Error',
+                  message: closeError?.message || String(closeError),
+                });
+              });
+            } catch (closeError) {
+              console.warn('[ORDER-ALARM][iOS] falha ao descartar AudioContext travado', {
+                name: closeError?.name || 'Error',
+                message: closeError?.message || String(closeError),
+              });
+            }
+          }
+          this._setupAutoUnlockListener();
+          if (this.pendingPlay) this._emitAlarmState('pending');
+          console.error('[ORDER-ALARM][iOS] unlock rejected', {
+            name: error?.name || 'Error',
+            message: error?.message || String(error),
+            contextState: audioContext?.state || 'unavailable',
+            userActivation: this._hasActiveUserGesture(),
+          });
+          return false;
+        }
+      })();
+
+      try {
+        return await this.webUnlockPromise;
+      } finally {
+        this.webUnlockPromise = null;
+      }
+    }
+
     if (!this.audioCtx || this.audioCtx.state === "closed") {
       await this.init();
       if (!this.audioCtx) return;
@@ -240,6 +509,11 @@ async _ensureNativePreload() {
     if (!this.unlocked) {
       this.pendingPlay = true;
       this._emitAlarmState('pending');
+      if (isIOSWebBrowser()) {
+        console.info('[ORDER-ALARM][iOS] play waiting for user gesture', {
+          contextState: this.audioCtx?.state || 'not-created',
+        });
+      }
       return false;
     }
 
@@ -251,10 +525,23 @@ async _ensureNativePreload() {
 
     const generation = this.alarmGeneration;
     this.alarmStartPromise = (async () => {
-      const stopFn = await this.playSound('/audio/alarm.mp3', { loop: true, volume: 0.8 });
+      if (isIOSWebBrowser()) {
+        console.info('[ORDER-ALARM][iOS] attempting play', {
+          contextState: this.audioCtx?.state || 'not-created',
+        });
+      }
+
+      const stopFn = await this.playSound(ORDER_ALARM_URL, { loop: true, volume: 0.8 });
       if (typeof stopFn !== 'function') {
         this.pendingPlay = true;
         this._emitAlarmState('pending');
+        if (isIOSWebBrowser()) {
+          console.error('[ORDER-ALARM][iOS] play rejected', {
+            name: 'PlaybackError',
+            message: 'O WebKit não iniciou o player do alarme.',
+            contextState: this.audioCtx?.state || 'not-created',
+          });
+        }
         return false;
       }
 
@@ -266,6 +553,11 @@ async _ensureNativePreload() {
       this.alarmStopFn = stopFn;
       this.pendingPlay = false;
       this._emitAlarmState('playing');
+      if (isIOSWebBrowser()) {
+        console.info('[ORDER-ALARM][iOS] play success', {
+          contextState: this.audioCtx?.state || 'not-created',
+        });
+      }
       return true;
     })();
 
@@ -413,8 +705,22 @@ async _ensureNativePreload() {
 
       try {
         await audioElement.play();
+        if (isIOSWebBrowser()) {
+          console.info('[ORDER-ALARM][iOS] HTMLMediaElement.play success', { url });
+        }
       } catch (error) {
-        console.error('[AudioManager] Falha no fallback de HTMLAudio:', error);
+        if (isIOSWebBrowser()) {
+          console.error('[ORDER-ALARM][iOS] HTMLMediaElement.play rejected', {
+            name: error?.name || 'Error',
+            message: error?.message || String(error),
+            readyState: audioElement.readyState,
+            networkState: audioElement.networkState,
+            userActivation: this._hasActiveUserGesture(),
+            url,
+          });
+        } else {
+          console.error('[AudioManager] Falha no fallback de HTMLAudio:', error);
+        }
         return null;
       }
 

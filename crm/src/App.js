@@ -35,7 +35,7 @@ import { collection, query, doc, setDoc, addDoc, updateDoc, where, limit, orderB
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // --- CORREÇÃO: Importa o novo AudioManager ---
-import { audioManager } from './utils/AudioManager.js';
+import { audioManager, isIOSWebBrowser } from './utils/AudioManager.js';
 import {
   clearAlarmPause,
   getAlarmPauseStorageKey,
@@ -3988,13 +3988,7 @@ function App() {
     const tryAutoUnlock = async () => {
       // tenta inicializar automaticamente se já foi aceito antes
       try {
-        if (localStorage.getItem("audioUnlocked") === "true") {
-          await audioManager.init();
-        } else {
-          // tenta init para recuperar estado, mas pode ficar suspenso
-          await audioManager.init().catch(()=>{});
-        }
-
+        await audioManager.init();
         await audioManager.userUnlock({ userGesture: false });
       } catch (e) {
         console.error("Erro ao inicializar audioManager:", e);
@@ -4708,6 +4702,16 @@ function App() {
           pausedPendingOrderIds,
         });
 
+        if (isIOSWebBrowser()) {
+          console.info('[ORDER-ALARM][iOS] alarm state', {
+            pendingCount: alarmCondition.pendingOrderIds.length,
+            uid: userId || null,
+            storeId: selectedStoreIdForAlarm || null,
+            pauseState: isAlarmSnoozed ? 'paused' : 'active',
+            shouldAlarm: alarmCondition.shouldPlay,
+          });
+        }
+
         setHasNewPendingOrders(alarmCondition.hasPendingOrders);
 
         if (!alarmCondition.hasPendingOrders) {
@@ -4736,6 +4740,7 @@ function App() {
       reactivateAlarmForCurrentContext,
       selectedStoreIdForAlarm,
       stopAlarm,
+      userId,
     ]);
 
   // --- REMOVIDO: Antigo useEffect de desbloqueio ---
