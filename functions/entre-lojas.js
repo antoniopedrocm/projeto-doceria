@@ -15,6 +15,17 @@ const OWNER_ROLES = new Set([
 const normalizeValue = (value) => String(value || '').trim();
 const normalizeRole = (value) => normalizeValue(value).toLowerCase();
 
+const RESERVED_STORE_IDS = new Set(['internal', '__all__']);
+const TECHNICAL_STORE_TYPES = new Set([
+  'internal',
+  'interno',
+  'system',
+  'sistema',
+  'technical',
+  'tecnico',
+  'técnico',
+]);
+
 const normalizeStoreIds = (values = []) => Array.from(new Set(
     (Array.isArray(values) ? values : [])
         .map(normalizeValue)
@@ -30,6 +41,63 @@ const isStoreActive = (store = {}) => {
     'desativado',
     'desativada',
   ].includes(status);
+};
+
+const createRealStoreSummary = ({
+  id,
+  rootExists = false,
+  root = {},
+  company = {},
+  info = {},
+} = {}) => {
+  const storeId = normalizeValue(id);
+  const normalizedId = storeId.toLowerCase();
+  const merged = {...root, ...info, ...company};
+  const storeType = normalizeValue(
+      merged.tipoRegistro || merged.recordType || merged.tipo,
+  ).toLowerCase();
+  const isTechnicalRecord =
+    !rootExists ||
+    !storeId ||
+    RESERVED_STORE_IDS.has(normalizedId) ||
+    normalizedId.startsWith('__') ||
+    merged.internal === true ||
+    merged.interno === true ||
+    merged.technical === true ||
+    merged.tecnico === true ||
+    merged.sistema === true ||
+    merged.isSystem === true ||
+    TECHNICAL_STORE_TYPES.has(storeType);
+  const name = normalizeValue(
+      merged.nomeFantasia || merged.nome || merged.razaoSocial,
+  );
+
+  if (isTechnicalRecord || !name) return null;
+
+  return {
+    id: storeId,
+    nome: name,
+    identificacao: normalizeValue(
+        merged.identificacao || merged.codigo || merged.apelido,
+    ),
+    active: isStoreActive(root),
+  };
+};
+
+const selectAvailableDestinationStores = (originStoreId, summaries = []) => {
+  const originId = normalizeValue(originStoreId);
+  const seenStoreIds = new Set();
+  return (Array.isArray(summaries) ? summaries : []).filter((summary) => {
+    const storeId = normalizeValue(summary?.id);
+    if (
+      !storeId ||
+      storeId === originId ||
+      summary?.active !== true ||
+      seenStoreIds.has(storeId)
+    ) return false;
+    seenStoreIds.add(storeId);
+    return true;
+  });
 };
 
 const isAuthorizedTransferRoute = ({
@@ -156,45 +224,26 @@ const assertOriginAccess = (access, originStoreId, HttpsError) => {
 const loadStoreSummary = async (db, storeId) => {
   const id = normalizeValue(storeId);
   const rootRef = db.collection('lojas').doc(id);
-  const [rootSnapshot, companySnapshot, infoSnapshot, configSnapshot] = await Promise.all([
+  const [rootSnapshot, companySnapshot, infoSnapshot] = await Promise.all([
     rootRef.get(),
     rootRef.collection('meuEspaco').doc('empresa').get(),
     rootRef.collection('info').doc('dados').get(),
-    rootRef.collection('configuracoes').doc('config').get(),
   ]);
-  if (
-    !rootSnapshot.exists &&
-    !companySnapshot.exists &&
-    !infoSnapshot.exists &&
-    !configSnapshot.exists
-  ) return null;
 
-  const root = rootSnapshot.exists ? rootSnapshot.data() || {} : {};
-  const company = companySnapshot.exists ? companySnapshot.data() || {} : {};
-  const info = infoSnapshot.exists ? infoSnapshot.data() || {} : {};
-  const merged = {...root, ...info, ...company};
-  return {
+  return createRealStoreSummary({
     id,
-    nome: normalizeValue(
-        merged.nomeFantasia || merged.nome || merged.razaoSocial || id,
-    ),
-    identificacao: normalizeValue(
-        merged.identificacao || merged.codigo || merged.apelido,
-    ),
-    active: !rootSnapshot.exists || isStoreActive(root),
-  };
+    rootExists: rootSnapshot.exists,
+    root: rootSnapshot.exists ? rootSnapshot.data() || {} : {},
+    company: companySnapshot.exists ? companySnapshot.data() || {} : {},
+    info: infoSnapshot.exists ? infoSnapshot.data() || {} : {},
+  });
 };
 
 const getKnownStoreIds = async (db) => {
-  const [storesSnapshot, usersSnapshot] = await Promise.all([
-    db.collection('lojas').select().get(),
-    db.collection('users').select('lojaId', 'lojaIds').get(),
-  ]);
-  const storeIds = storesSnapshot.docs.map((snapshot) => snapshot.id);
-  usersSnapshot.docs.forEach((snapshot) => {
-    storeIds.push(...extractStoreIds(snapshot.data() || {}));
-  });
-  return normalizeStoreIds(storeIds);
+  const storesSnapshot = await db.collection('lojas').select().get();
+  return normalizeStoreIds(
+      storesSnapshot.docs.map((snapshot) => snapshot.id),
+  );
 };
 
 const getAuthorizedDestinationIds = async (db, originStoreId) => {
@@ -217,7 +266,7 @@ const listAuthorizedDestinations = async ({db, access, originStoreId, HttpsError
   const summaries = await Promise.all(
       destinationIds.map((destinationId) => loadStoreSummary(db, destinationId)),
   );
-  return summaries.filter((summary) => summary?.active === true);
+  return selectAvailableDestinationStores(originId, summaries);
 };
 
 const createEntreLojasFunctions = ({admin, db, onCall, HttpsError, logger}) => ({
@@ -265,10 +314,14 @@ const createEntreLojasFunctions = ({admin, db, onCall, HttpsError, logger}) => (
     ])
         .filter((storeId) => storeId !== originStoreId)
         .map((storeId) => loadStoreSummary(db, storeId)));
+    const stores = selectAvailableDestinationStores(originStoreId, summaries);
+    const availableStoreIds = new Set(stores.map((store) => store.id));
     return {
       originStoreId,
-      authorizedDestinationStoreIds,
-      stores: summaries.filter(Boolean),
+      authorizedDestinationStoreIds: authorizedDestinationStoreIds.filter(
+          (storeId) => availableStoreIds.has(storeId),
+      ),
+      stores,
     };
   }),
 
@@ -486,8 +539,10 @@ const createEntreLojasFunctions = ({admin, db, onCall, HttpsError, logger}) => (
 
 module.exports = {
   calculateClosingTotals,
+  createRealStoreSummary,
   createEntreLojasFunctions,
   isAuthorizedTransferRoute,
   isStoreActive,
   resolveEntreLojasRelation,
+  selectAvailableDestinationStores,
 };
