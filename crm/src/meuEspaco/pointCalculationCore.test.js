@@ -1,9 +1,13 @@
 import {
+  applyPointJourneyTimeCorrection,
   buildPointAuditEntry,
+  buildPointWorkPeriodsFromEvents,
   calculatePointDayCore,
   canManagePointRecords,
+  getFirstPointJourneyTimes,
   getPointRecordLogicalId,
   getPointWorkIntervals,
+  pointCurrentTimesMatch,
   resolvePointType,
   validateSupplementalPeriod
 } from './pointCalculationCore';
@@ -19,6 +23,149 @@ const calculate = (record, overrides = {}) => calculatePointDayCore({
   date: weekdayDate,
   scheduleDay: weekdaySchedule,
   ...overrides
+});
+
+describe('persistência estruturada de ajustes manuais de jornada', () => {
+  const correctionMetadata = {
+    corrigidoEm: '2026-08-12T21:45:00.000Z',
+    gestorId: 'gestor-1',
+    gestorNome: 'Gestora Teste',
+    motivoCorrecao: 'Saída final informada incorretamente'
+  };
+
+  const marianaRecord = {
+    funcionarioId: 'mariana',
+    dia: '2026-08-12',
+    horaEntrada: '09:34',
+    horaAlmocoSaida: '14:00',
+    horaAlmocoRetorno: '14:01',
+    horaSaida: '14:10',
+    batidasSincronizadasComAjuste: true,
+    batidas: [
+      { id: 'e1', tipo: 'entrada', hora: '09:34', origem: 'funcionaria', jornadaId: 'j1' },
+      { id: 'a1', tipo: 'almoco_inicio', hora: '14:00', origem: 'funcionaria', jornadaId: 'j1' },
+      { id: 'r1', tipo: 'almoco_fim', hora: '14:01', origem: 'funcionaria', jornadaId: 'j1' },
+      { id: 's1', tipo: 'saida', hora: '14:10', origem: 'funcionaria', jornadaId: 'j1' }
+    ]
+  };
+
+  const applyCorrection = (record, changedTimes) => {
+    const nextTimes = {
+      horaEntrada: record.horaEntrada || '',
+      horaAlmocoSaida: record.horaAlmocoSaida || '',
+      horaAlmocoRetorno: record.horaAlmocoRetorno || '',
+      horaSaida: record.horaSaida || '',
+      ...changedTimes
+    };
+    const batidas = applyPointJourneyTimeCorrection(record, nextTimes, correctionMetadata);
+    return {
+      ...record,
+      ...nextTimes,
+      batidas,
+      periodosTrabalho: buildPointWorkPeriodsFromEvents(batidas),
+      batidasSincronizadasComAjuste: true,
+      lancamentoManualGestor: true
+    };
+  };
+
+  test('Mariana — saída 14:10 corrigida para 18:30 vira o estado atual e recalculável', () => {
+    const corrected = applyCorrection(marianaRecord, { horaSaida: '18:30' });
+
+    expect(getFirstPointJourneyTimes(corrected)).toEqual({
+      horaEntrada: '09:34',
+      horaAlmocoSaida: '14:00',
+      horaAlmocoRetorno: '14:01',
+      horaSaida: '18:30'
+    });
+    expect(corrected.batidas.find((event) => event.tipo === 'saida')).toEqual(expect.objectContaining({
+      id: 's1',
+      hora: '18:30',
+      origem: 'gestor',
+      corrigido: true,
+      motivoCorrecao: correctionMetadata.motivoCorrecao
+    }));
+    expect(corrected.periodosTrabalho).toEqual([
+      expect.objectContaining({ horaInicio: '09:34', horaFim: '14:00', jornadaId: 'j1' }),
+      expect.objectContaining({ horaInicio: '14:01', horaFim: '18:30', jornadaId: 'j1' })
+    ]);
+    expect(calculate(corrected).summary.workedMinutes).toBe(535);
+    expect(pointCurrentTimesMatch(corrected, corrected)).toBe(true);
+  });
+
+  test.each([
+    ['horaEntrada', '09:00', 'entrada'],
+    ['horaAlmocoSaida', '13:30', 'almoco_inicio'],
+    ['horaAlmocoRetorno', '14:15', 'almoco_fim'],
+    ['horaSaida', '18:30', 'saida']
+  ])('corrige e sincroniza o campo %s em sua batida correspondente', (field, time, eventType) => {
+    const corrected = applyCorrection(marianaRecord, { [field]: time });
+    expect(corrected.batidas.find((event) => event.tipo === eventType)?.hora).toBe(time);
+    expect(getFirstPointJourneyTimes(corrected)[field]).toBe(time);
+    expect(pointCurrentTimesMatch(corrected, corrected)).toBe(true);
+  });
+
+  test('correções sucessivas mantêm a última como vigente sem criar outra jornada', () => {
+    const firstCorrection = applyCorrection(marianaRecord, { horaSaida: '18:00' });
+    const latestCorrection = applyCorrection(firstCorrection, { horaSaida: '18:30' });
+
+    expect(latestCorrection.batidas.filter((event) => event.tipo === 'entrada')).toHaveLength(1);
+    expect(latestCorrection.batidas.filter((event) => event.tipo === 'saida')).toHaveLength(1);
+    expect(getFirstPointJourneyTimes(latestCorrection).horaSaida).toBe('18:30');
+    expect(latestCorrection.batidas.find((event) => event.tipo === 'saida')?.id).toBe('s1');
+  });
+
+  test('jornada incompleta continua única ao incluir a entrada esquecida', () => {
+    const incomplete = {
+      horaEntrada: '',
+      horaAlmocoSaida: '12:04',
+      horaAlmocoRetorno: '',
+      horaSaida: '',
+      batidasSincronizadasComAjuste: true,
+      batidas: [{ id: 'a1', tipo: 'almoco_inicio', hora: '12:04', origem: 'funcionaria', jornadaId: 'j1' }]
+    };
+    const corrected = applyCorrection(incomplete, { horaEntrada: '09:30' });
+
+    expect(corrected.batidas).toHaveLength(2);
+    expect(getFirstPointJourneyTimes(corrected)).toEqual({
+      horaEntrada: '09:30',
+      horaAlmocoSaida: '12:04',
+      horaAlmocoRetorno: '',
+      horaSaida: ''
+    });
+    expect(corrected.periodosTrabalho).toEqual([
+      expect.objectContaining({ horaInicio: '09:30', horaFim: '12:04' })
+    ]);
+  });
+
+  test('preserva uma segunda jornada real após a saída final da primeira', () => {
+    const twoJourneys = {
+      ...marianaRecord,
+      batidas: [
+        ...marianaRecord.batidas,
+        { id: 'e2', tipo: 'entrada', hora: '20:00', origem: 'funcionaria', jornadaId: 'j2' },
+        { id: 's2', tipo: 'saida', hora: '22:00', origem: 'funcionaria', jornadaId: 'j2' }
+      ]
+    };
+    const corrected = applyCorrection(twoJourneys, { horaSaida: '18:30' });
+
+    expect(corrected.batidas.map(({ id, hora }) => ({ id, hora }))).toEqual([
+      { id: 'e1', hora: '09:34' },
+      { id: 'a1', hora: '14:00' },
+      { id: 'r1', hora: '14:01' },
+      { id: 's1', hora: '18:30' },
+      { id: 'e2', hora: '20:00' },
+      { id: 's2', hora: '22:00' }
+    ]);
+    expect(buildPointWorkPeriodsFromEvents(corrected.batidas)).toHaveLength(3);
+  });
+
+  test('validação pós-gravação rejeita divergência entre topo e estado estruturado', () => {
+    const desynchronized = {
+      ...marianaRecord,
+      horaSaida: '18:30'
+    };
+    expect(pointCurrentTimesMatch(desynchronized, desynchronized)).toBe(false);
+  });
 });
 
 describe('recálculo administrativo do Meu Espaço', () => {

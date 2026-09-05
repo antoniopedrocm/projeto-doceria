@@ -241,6 +241,123 @@ export const buildPointPunchEventsFromTimes = (record = {}, metadata = {}) => {
   ].filter(Boolean);
 };
 
+const POINT_TIME_EVENT_FIELDS = {
+  entrada: 'horaEntrada',
+  almoco_inicio: 'horaAlmocoSaida',
+  almoco_fim: 'horaAlmocoRetorno',
+  saida: 'horaSaida'
+};
+
+const POINT_EVENT_DESCRIPTIONS = {
+  entrada: 'entrada',
+  almoco_inicio: 'início do almoço',
+  almoco_fim: 'retorno do almoço',
+  saida: 'saída'
+};
+
+export const getFirstPointJourneyTimes = (record = {}) => {
+  const times = {
+    horaEntrada: '',
+    horaAlmocoSaida: '',
+    horaAlmocoRetorno: '',
+    horaSaida: ''
+  };
+  for (const event of getPointPunchEvents(record)) {
+    const field = POINT_TIME_EVENT_FIELDS[event.tipo];
+    if (field && !times[field]) times[field] = event.hora || '';
+    if (event.tipo === 'saida') break;
+  }
+  return times;
+};
+
+export const pointCurrentTimesMatch = (record = {}, expectedTimes = {}) => {
+  const fields = Object.values(POINT_TIME_EVENT_FIELDS);
+  const normalizedExpected = fields.reduce((times, field) => ({
+    ...times,
+    [field]: expectedTimes[field] || ''
+  }), {});
+  const topLevelMatches = fields.every((field) => (record[field] || '') === normalizedExpected[field]);
+  if (!topLevelMatches) return false;
+  const structuredTimes = getFirstPointJourneyTimes(record);
+  return fields.every((field) => structuredTimes[field] === normalizedExpected[field]);
+};
+
+// Substitui somente a jornada exibida no formulário. Eventos após a primeira
+// saída pertencem a jornadas posteriores reais e são preservados integralmente.
+export const applyPointJourneyTimeCorrection = (record = {}, nextTimes = {}, metadata = {}) => {
+  const events = getPointPunchEvents(record);
+  const firstExitIndex = events.findIndex((event) => event.tipo === 'saida');
+  const firstJourneyEvents = firstExitIndex === -1 ? events : events.slice(0, firstExitIndex + 1);
+  const laterJourneyEvents = firstExitIndex === -1 ? [] : events.slice(firstExitIndex + 1);
+  const existingByType = new Map();
+  firstJourneyEvents.forEach((event) => {
+    if (POINT_TIME_EVENT_FIELDS[event.tipo] && !existingByType.has(event.tipo)) {
+      existingByType.set(event.tipo, event);
+    }
+  });
+
+  const correctedAt = metadata.corrigidoEm || metadata.registradoEm || new Date().toISOString();
+  const managerId = metadata.gestorId || '';
+  const managerName = metadata.gestorNome || '';
+  const correctionReason = String(metadata.motivoCorrecao || '').trim();
+  const journeyId = metadata.jornadaId
+    || firstJourneyEvents.find((event) => event.jornadaId)?.jornadaId
+    || 'jornada_1';
+  const idPrefix = metadata.idPrefix || `ajuste_${String(correctedAt).replace(/\D/g, '')}`;
+
+  const correctedJourneyEvents = Object.entries(POINT_TIME_EVENT_FIELDS).flatMap(([type, field]) => {
+    const time = nextTimes[field] || '';
+    if (!time) return [];
+    const existing = existingByType.get(type) || {};
+    return [{
+      ...existing,
+      id: existing.id || `${idPrefix}_${type}`,
+      tipo: type,
+      descricao: existing.descricao || POINT_EVENT_DESCRIPTIONS[type],
+      hora: time,
+      jornadaId: existing.jornadaId || journeyId,
+      origemOriginal: existing.origemOriginal || existing.origem || '',
+      origem: 'gestor',
+      corrigido: true,
+      corrigidoEm: correctedAt,
+      ...(managerId ? { gestorId: managerId, corrigidoPor: managerId } : {}),
+      ...(managerName ? { gestorNome: managerName, corrigidoPorNome: managerName } : {}),
+      ...(correctionReason ? { motivoCorrecao: correctionReason } : {}),
+      ...(!existing.registradoEm ? { registradoEm: correctedAt } : {})
+    }];
+  });
+
+  return [...correctedJourneyEvents, ...laterJourneyEvents];
+};
+
+export const buildPointWorkPeriodsFromEvents = (events = []) => {
+  const periods = [];
+  let openEvent = null;
+  events.filter(Boolean).forEach((event) => {
+    if (event.tipo === 'entrada' || event.tipo === 'almoco_fim') {
+      openEvent = event;
+      return;
+    }
+    if ((event.tipo === 'saida' || event.tipo === 'almoco_inicio') && openEvent) {
+      const interval = toInterval(openEvent.hora, event.hora, event);
+      if (interval) {
+        periods.push({
+          id: `${openEvent.id || openEvent.registradoEm}_${event.id || event.registradoEm}`,
+          horaInicio: openEvent.hora,
+          horaFim: event.hora,
+          origem: openEvent.origem || 'funcionaria',
+          jornadaId: openEvent.jornadaId || event.jornadaId || '',
+          entradaBatidaId: openEvent.id || '',
+          saidaBatidaId: event.id || '',
+          ativo: true
+        });
+      }
+      openEvent = null;
+    }
+  });
+  return periods;
+};
+
 const legacyPunchEvents = (record = {}) => buildPointPunchEventsFromTimes(record);
 
 const hasManagerTimeCorrection = (record = {}) => Boolean(

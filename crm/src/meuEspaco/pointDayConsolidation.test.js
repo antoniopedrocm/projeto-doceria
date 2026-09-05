@@ -1,4 +1,8 @@
-import { calculatePointDayCore } from './pointCalculationCore';
+import {
+  applyPointJourneyTimeCorrection,
+  buildPointWorkPeriodsFromEvents,
+  calculatePointDayCore
+} from './pointCalculationCore';
 import { consolidatePointDayRecords, groupPointRecordsByDay } from './pointDayConsolidation';
 import { buildPointPresentationRows } from './pointPresentation';
 
@@ -248,5 +252,46 @@ describe('consolidação diária de múltiplos documentos do Meu Espaço', () =>
       ['08:00', '12:00'],
       ['15:00', '18:00']
     ]);
+  });
+
+  test('Mariana — reload consolida a batida corrigida para 18:30 em uma única linha', () => {
+    const original = {
+      ...base,
+      id: 'mariana-2026-08-12',
+      dia: '2026-08-12',
+      competencia: '2026-08',
+      horaEntrada: '09:34',
+      horaAlmocoSaida: '14:00',
+      horaAlmocoRetorno: '14:01',
+      horaSaida: '14:10',
+      batidasSincronizadasComAjuste: true,
+      batidas: [
+        { id: 'e1', tipo: 'entrada', hora: '09:34', jornadaId: 'j1' },
+        { id: 'a1', tipo: 'almoco_inicio', hora: '14:00', jornadaId: 'j1' },
+        { id: 'r1', tipo: 'almoco_fim', hora: '14:01', jornadaId: 'j1' },
+        { id: 's1', tipo: 'saida', hora: '14:10', jornadaId: 'j1' }
+      ]
+    };
+    const currentTimes = { ...original, horaSaida: '18:30' };
+    const correctedEvents = applyPointJourneyTimeCorrection(original, currentTimes, {
+      corrigidoEm: '2026-08-12T22:00:00.000Z',
+      gestorId: 'gestor-1'
+    });
+    const persisted = {
+      ...currentTimes,
+      lancamentoManualGestor: true,
+      batidas: correctedEvents,
+      periodosTrabalho: buildPointWorkPeriodsFromEvents(correctedEvents)
+    };
+
+    const [reloaded] = groupPointRecordsByDay([persisted], { storeId: 'loja-1' });
+    const rows = buildPointPresentationRows(reloaded);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      horaEntrada: '09:34',
+      horaAlmocoSaida: '14:00',
+      horaAlmocoRetorno: '14:01',
+      horaSaida: '18:30'
+    });
   });
 });
