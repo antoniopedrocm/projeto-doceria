@@ -44,7 +44,7 @@ Identificadores: `rascunho`, `aguardando_conferencia`, `conferencia_sem_divergen
 - `crm/src/App.js`: fonte de permissões, listener e invalidação de conteúdo.
 - `crm/src/utils/transferStatusVisibility.js`: leitura estrita da allowlist.
 - `crm/src/utils/transferStatusVisibility.test.js`: matriz frontend.
-- `firestore.rules`: remoção dos fallbacks amplos na leitura de remessas.
+- `firestore.rules`: remoção dos fallbacks amplos e avaliação única do bypass do Dono, evitando ultrapassar 1.000 expressões quando combinada às alterações locais de status de usuário.
 - `functions/transfer-status.rules.test.js`: matriz de get/list, perfis, destino, revogação e transição.
 - `functions/firestore.rules.test.js`: fixtures passam a conceder explicitamente os status usados pelas regressões.
 
@@ -55,7 +55,7 @@ Nenhuma Cloud Function foi alterada. Não foram alterados cálculos financeiros,
 - Frontend: 27 testes de permissões e allowlist passaram.
 - Backend existente de Entre Lojas e relatório: 19 testes passaram.
 - Rules da cópia isolada: 9 testes, um por status, passaram; incluem get/list, dois usuários, Dono, isolamento de lojas, destino, módulo desabilitado, revogar/conceder e mudança para status não autorizado.
-- Regressões existentes das Rules na cópia isolada: 30 testes passaram.
+- Regressões existentes das Rules na cópia isolada: 30 testes passaram. A matriz de 9 status também passou sobre as Rules do workspace com as alterações locais anteriores preservadas.
 - Lint inicial: zero erros; 60 avisos existentes no App.js.
 - Build da cópia isolada: aprovado; avisos de source maps ausentes da dependência native-audio e base Browserslist desatualizada.
 - `git diff --cached --check`: revisão sem erros de whitespace após normalização.
@@ -66,6 +66,8 @@ O emulador foi executado apenas em `demo-transfer-status`, localmente, com Java 
 
 Pendente: a credencial do Firebase expirou (`Authentication Error: Your credentials are no longer valid`). É necessário `firebase login --reauth`.
 
-Antes de publicar, comparar as Rules ativas de DEV com a versão preparada para não remover proteções já publicadas por outras tarefas. O comando deve explicitar `--project crmdoceria-9959e` e `--only hosting:prod,firestore:rules`, usando configuração que aponte o Hosting para o build isolado. O target local `prod` está mapeado ao site `crmdoceria-9959e` dentro do projeto DEV; não é o Firebase de produção.
+Antes de publicar, comparar as Rules ativas de DEV com a versão preparada para não remover proteções já publicadas por outras tarefas. Comando preparado (ainda não executado): `firebase deploy --config firebase.status-dev.json --project crmdoceria-9959e --only "hosting:prod,firestore:rules"`. A configuração local aponta o Hosting e as Rules para a cópia isolada. O target local `prod` está mapeado ao site `crmdoceria-9959e` dentro do projeto DEV; não é o Firebase de produção.
 
 Nenhum deploy foi realizado até este registro. A validação pós-deploy real com marcar/desmarcar Pagamento confirmado permanece pendente; os testes automatizados não são apresentados como validação de uma sessão real publicada.
+
+Commit principal: 70f3fca0 (enviado para origin/codex/remessas-destinos-autorizados). A otimização das Rules foi registrada em um commit complementar.

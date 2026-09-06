@@ -262,26 +262,24 @@ function currentUserHasTransferenciaStatus(status) {
   let details = currentUserData().get('permissionDetails', {});
   let moduleDetails = details.get('entre-lojas', details.get('entreLojas', {}));
   let statuses = moduleDetails.get('statuses', moduleDetails.get('status', []));
-  return isEntreLojasOwnerUser()
-    || (
-      currentUserHasEntreLojasModule()
-      && (
-        statuses is list
-        && status in validTransferenciaEntreLojasStatuses()
-        && status in statuses
-      )
-    );
+  return statuses is list
+    && status in validTransferenciaEntreLojasStatuses()
+    && status in statuses;
 }
 
 function canReadTransferenciaEntreLojasDoc() {
   return isSignedIn()
-    && (!isReadOnlyAccountant() || accountantHasModule('entre-lojas'))
-    && currentUserHasEntreLojasModule()
-    && currentUserHasTransferenciaStatus(resource.data.status)
     && (
       isEntreLojasOwnerUser()
-      || currentUserHasStore(resource.data.lojaOrigemId)
-      || (resource.data.status != 'rascunho' && currentUserHasStore(resource.data.lojaDestinoId))
+      || (
+        (!isReadOnlyAccountant() || accountantHasModule('entre-lojas'))
+        && currentUserData().get('permissions', {}).get('entre-lojas', true)
+        && currentUserHasTransferenciaStatus(resource.data.status)
+        && (
+          currentUserHasStore(resource.data.lojaOrigemId)
+          || (resource.data.status != 'rascunho' && currentUserHasStore(resource.data.lojaDestinoId))
+        )
+      )
     );
 }
 
