@@ -104,6 +104,7 @@ import {
   getEntreLojasStoreRelation,
   getTransferActionPermissions
 } from './utils/entreLojasPermissions';
+import { getExplicitTransferStatuses } from './utils/transferStatusVisibility';
 import { Car as RideCar } from 'lucide-react';
 import {
   build99OpenUrl,
@@ -870,7 +871,7 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
     ? (Array.isArray(entreLojasDetails.statuses)
       ? entreLojasDetails.statuses
       : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []))
-    : (permissions?.['entre-lojas'] ? ENTRE_LOJAS_TRANSFER_STATUS_VALUES : []);
+    : [];
 
   const validStatuses = permissions?.['entre-lojas']
     ? rawStatuses
@@ -1023,12 +1024,9 @@ const getPointScheduleDayInfo = (scheduleInput, date) => {
 const getEntreLojasAllowedStatusesFromProfile = (profile) => {
   if (!profile) return [];
   const role = normalizeRole(profile.role);
-  const permissionsSource = profile.customPermissions || profile.permissions;
-  const permissions = sanitizePermissions(permissionsSource, role);
+  const permissions = sanitizePermissions(profile.permissions, role);
   if (!permissions['entre-lojas']) return [];
-  const detailsSource = profile.customPermissionDetails || profile.permissionDetails;
-  const details = sanitizePermissionDetails(detailsSource, role, permissions);
-  return details['entre-lojas']?.statuses || [];
+  return getExplicitTransferStatuses(profile.permissionDetails, ENTRE_LOJAS_TRANSFER_STATUS_VALUES);
 };
 
 const ACCOUNTANT_COLLECTION_PERMISSIONS = {
@@ -5066,7 +5064,13 @@ function App() {
                                         const customPermissionDetails = customProfileData
                                           ? sanitizePermissionDetails(customProfileData.permissionDetails, role, permissions)
                                           : null;
-                                        const permissionDetails = customPermissionDetails || getDefaultPermissionDetailsForRole(role, permissions);
+                                        const permissionDetails = {
+                                          ...(customPermissionDetails || getDefaultPermissionDetailsForRole(role, permissions)),
+                                          'entre-lojas': {
+                                            ...profile.permissionDetails?.['entre-lojas'],
+                                            statuses: getExplicitTransferStatuses(profile.permissionDetails, ENTRE_LOJAS_TRANSFER_STATUS_VALUES)
+                                          }
+                                        };
 
                                         if (!customProfileSnap.exists() && role !== ROLE_ACCOUNTANT) {
                                           await setDoc(customProfileRef, {
@@ -5183,6 +5187,29 @@ function App() {
         };
     }, [user, setSelectedStoreId]);
 
+    useEffect(() => {
+      const uid = user?.auth?.uid;
+      if (!uid) return undefined;
+      const applyTransferProfile = (profile = {}) => setUser((previous) => (
+        previous?.auth?.uid !== uid ? previous : {
+          ...previous,
+          permissions: {
+            ...previous.permissions,
+            'entre-lojas': profile.permissions?.['entre-lojas'] !== false
+          },
+          permissionDetails: {
+            ...previous.permissionDetails,
+            'entre-lojas': {
+              ...profile.permissionDetails?.['entre-lojas'],
+              statuses: getExplicitTransferStatuses(profile.permissionDetails, ENTRE_LOJAS_TRANSFER_STATUS_VALUES)
+            }
+          }
+        }
+      ));
+      return onSnapshot(doc(db, 'users', uid), (snapshot) => {
+        applyTransferProfile(snapshot.exists() ? snapshot.data() : {});
+      }, () => applyTransferProfile({permissions: {'entre-lojas': false}}));
+    }, [user?.auth?.uid]);
     useEffect(() => {
         let active = true;
 
@@ -13785,6 +13812,7 @@ const handleSubmit = async (e) => {
       }
 
       const transfersRef = collection(db, 'transferenciasEntreLojas');
+      setTransferencias([]);
       let isActive = true;
       const unsubscribes = [];
 
@@ -13888,6 +13916,8 @@ const handleSubmit = async (e) => {
             });
             mergeTransfers();
           }, (error) => {
+            originDocsByQuery.delete(originKey);
+            mergeTransfers();
             console.error('[EntreLojas] Erro ao carregar transferências por origem:', error);
           });
 
@@ -13913,6 +13943,8 @@ const handleSubmit = async (e) => {
             });
             mergeTransfers();
           }, (error) => {
+            destinationDocsByQuery.delete(destinationKey);
+            mergeTransfers();
             console.error('[EntreLojas] Erro ao carregar transferências por destino:', error);
           });
 
@@ -14251,6 +14283,16 @@ const handleSubmit = async (e) => {
         setViewingTransfer(latestTransfer);
       }
     }, [canReadTransferForCurrentViewer, transferencias, viewingTransfer]);
+
+    useEffect(() => {
+      if (!editingTransfer?.id) return;
+      const latest = transferencias.find((item) => item.id === editingTransfer.id);
+      if (!latest || !canReadTransferForCurrentViewer(latest)) {
+        setEditingTransfer(null);
+        setShowModal(false);
+        setFormData((previous) => ({ ...previous, itens: [], observacaoOrigem: '' }));
+      }
+    }, [canReadTransferForCurrentViewer, editingTransfer, transferencias]);
 
     const formatMoney = (value) => `R$ ${(Number(value) || 0).toFixed(2)}`;
     const formatDate = (value) => parseLocalDate(value)?.toLocaleDateString('pt-BR') || '-';
@@ -15772,7 +15814,7 @@ const handleSubmit = async (e) => {
     const visibleTransferTableColumns = columns.filter((column) => visibleTransferColumnSet.has(column.id));
 
     const actions = [
-      { icon: Eye, label: 'Visualizar', onClick: (row) => setViewingTransfer(row) },
+      { icon: Eye, label: 'Visualizar', onClick: (row) => { if (canReadTransferForCurrentViewer(row)) setViewingTransfer(row); } },
       {
         icon: ArrowLeftRight,
         label: 'Mover para fechamento',
@@ -16356,7 +16398,7 @@ const handleSubmit = async (e) => {
           )}
         </Modal>
 
-        <Modal isOpen={!!viewingTransfer} onClose={() => { setViewingTransfer(null); setActionComment(''); }} title="Detalhe da Remessa" size="xl">
+        <Modal isOpen={!!viewingTransfer && canReadTransferForCurrentViewer(viewingTransfer)} onClose={() => { setViewingTransfer(null); setActionComment(''); }} title="Detalhe da Remessa" size="xl">
           {viewingTransfer && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-gray-50 rounded-xl p-4 text-sm">

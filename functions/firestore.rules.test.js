@@ -29,6 +29,11 @@ const userProfile = (role, storeIds = [], cashPermissions = {}) => ({
   lojaIds: storeIds,
   permissions: {},
   permissionDetails: {
+    "entre-lojas": {statuses: [
+      "rascunho", "aguardando_conferencia", "conferencia_sem_divergencia",
+      "conferencia_com_divergencia", "pagamento_informado",
+      "pagamento_confirmado", "pagamento_contestado", "cancelado", "cancelada",
+    ]},
     caixa: cashPermissions,
   },
 });

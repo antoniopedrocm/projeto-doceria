@@ -259,12 +259,16 @@ function isAuthorizedTransferRoute(data) {
 }
 
 function currentUserHasTransferenciaStatus(status) {
+  let details = currentUserData().get('permissionDetails', {});
+  let moduleDetails = details.get('entre-lojas', details.get('entreLojas', {}));
+  let statuses = moduleDetails.get('statuses', moduleDetails.get('status', []));
   return isEntreLojasOwnerUser()
     || (
       currentUserHasEntreLojasModule()
       && (
-        !currentUserData().get('permissionDetails', {}).keys().hasAny(['entre-lojas'])
-        || status in currentUserData().get('permissionDetails', {}).get('entre-lojas', {}).get('statuses', validTransferenciaEntreLojasStatuses())
+        statuses is list
+        && status in validTransferenciaEntreLojasStatuses()
+        && status in statuses
       )
     );
 }
