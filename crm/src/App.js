@@ -105,6 +105,7 @@ import {
   getTransferActionPermissions
 } from './utils/entreLojasPermissions';
 import { getExplicitTransferStatuses } from './utils/transferStatusVisibility';
+import { fetchAuthorizedTransferDestinations } from './services/entreLojasService';
 import { Car as RideCar } from 'lucide-react';
 import {
   build99OpenUrl,
@@ -13562,6 +13563,9 @@ const handleSubmit = async (e) => {
     const [authorizedDestinationStores, setAuthorizedDestinationStores] = useState([]);
     const [isLoadingAuthorizedDestinations, setIsLoadingAuthorizedDestinations] = useState(false);
     const [authorizedDestinationsError, setAuthorizedDestinationsError] = useState('');
+    const [authorizedClosingDestinationStores, setAuthorizedClosingDestinationStores] = useState([]);
+    const [isLoadingAuthorizedClosingDestinations, setIsLoadingAuthorizedClosingDestinations] = useState(false);
+    const [authorizedClosingDestinationsError, setAuthorizedClosingDestinationsError] = useState('');
     const [actionComment, setActionComment] = useState('');
     const [closingActionComment, setClosingActionComment] = useState('');
     const [closingPaymentForm, setClosingPaymentForm] = useState({
@@ -13614,6 +13618,7 @@ const handleSubmit = async (e) => {
 
     const isEditingTransfer = !!editingTransfer?.id;
     const isEditingClosing = !!editingClosing?.id;
+    const editingClosingHasTransfers = isEditingClosing && (editingClosing?.remessaIds || []).length > 0;
     const canChangeOriginStore = allowedOriginStoreIds.length > 1;
     const visibleTransferColumnSet = useMemo(() => {
       const validColumnIds = new Set(TRANSFER_TABLE_COLUMN_OPTIONS.map((column) => column.id));
@@ -14072,13 +14077,9 @@ const handleSubmit = async (e) => {
       let active = true;
       setIsLoadingAuthorizedDestinations(true);
       setAuthorizedDestinationsError('');
-      const listDestinations = httpsCallable(functions, 'listAuthorizedTransferDestinations');
-      listDestinations({ originStoreId })
-        .then((result) => {
+      fetchAuthorizedTransferDestinations(functions, originStoreId)
+        .then((destinations) => {
           if (!active) return;
-          const destinations = Array.isArray(result?.data?.destinations)
-            ? result.data.destinations
-            : [];
           setAuthorizedDestinationStores(destinations);
           setFormData((prev) => {
             if (!prev.lojaDestinoId || isEditingTransfer) return prev;
@@ -14101,6 +14102,50 @@ const handleSubmit = async (e) => {
         active = false;
       };
     }, [formData.lojaOrigemId, isEditingTransfer, showModal]);
+
+    const authorizedClosingDestinationStoreIds = useMemo(
+      () => new Set(authorizedClosingDestinationStores.map((store) => store.id)),
+      [authorizedClosingDestinationStores]
+    );
+
+    useEffect(() => {
+      const originStoreId = normalizeStoreId(closingFormData.lojaOrigemId);
+      if (!showClosingModal || !originStoreId) {
+        setAuthorizedClosingDestinationStores([]);
+        setAuthorizedClosingDestinationsError('');
+        setIsLoadingAuthorizedClosingDestinations(false);
+        return undefined;
+      }
+
+      let active = true;
+      setAuthorizedClosingDestinationStores([]);
+      setIsLoadingAuthorizedClosingDestinations(true);
+      setAuthorizedClosingDestinationsError('');
+      fetchAuthorizedTransferDestinations(functions, originStoreId)
+        .then((destinations) => {
+          if (!active) return;
+          setAuthorizedClosingDestinationStores(destinations);
+          setClosingFormData((previous) => {
+            if (!previous.lojaDestinoId || editingClosingHasTransfers) return previous;
+            return destinations.some((store) => store.id === previous.lojaDestinoId)
+              ? previous
+              : { ...previous, lojaDestinoId: '' };
+          });
+        })
+        .catch((error) => {
+          if (!active) return;
+          console.error('[EntreLojas] Erro ao carregar destinos autorizados do fechamento:', error);
+          setAuthorizedClosingDestinationStores([]);
+          setAuthorizedClosingDestinationsError(error?.message || 'Não foi possível carregar os destinos autorizados.');
+        })
+        .finally(() => {
+          if (active) setIsLoadingAuthorizedClosingDestinations(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [closingFormData.lojaOrigemId, editingClosingHasTransfers, showClosingModal]);
 
     const productOptions = useMemo(() => {
       const originStoreId = normalizeStoreId(formData.lojaOrigemId);
@@ -14515,11 +14560,7 @@ const handleSubmit = async (e) => {
         (editingTransfer?.status === 'rascunho' && mode === 'enviar');
       let validatedDestination = null;
       if (mustRevalidateDestination) {
-        const listDestinations = httpsCallable(functions, 'listAuthorizedTransferDestinations');
-        const destinationResult = await listDestinations({ originStoreId: origemId });
-        const currentDestinations = Array.isArray(destinationResult?.data?.destinations)
-          ? destinationResult.data.destinations
-          : [];
+        const currentDestinations = await fetchAuthorizedTransferDestinations(functions, origemId);
         validatedDestination = currentDestinations.find((store) => store.id === destinoId) || null;
         if (!validatedDestination) {
           throw new Error(
@@ -15048,11 +15089,6 @@ const handleSubmit = async (e) => {
       }
     };
 
-    const isStoreAllowedForUser = (storeId) => {
-      if (canAccessAllTransfers) return true;
-      return allowedStoreIds.includes(normalizeStoreId(storeId));
-    };
-
     const canViewClosing = useCallback((closing) => {
       if (canAccessAllTransfers) return true;
       const originId = normalizeStoreId(closing?.lojaOrigemId);
@@ -15061,9 +15097,11 @@ const handleSubmit = async (e) => {
     }, [allowedStoreIds, canAccessAllTransfers]);
 
     const canCreateClosing = () => {
-      if (!user) return false;
-      if (user.role === ROLE_OWNER || user.role === ROLE_MANAGER) return true;
-      return false;
+      return Boolean(
+        user &&
+        (canAccessAllTransfers || user.permissions?.['entre-lojas'] !== false) &&
+        allowedOriginStoreIds.length
+      );
     };
 
     const getClosingPermissions = (closing) => getClosingActionPermissions({
@@ -15138,6 +15176,16 @@ const handleSubmit = async (e) => {
         return 'Informe nome, origem, destino e período do fechamento.';
       }
       if (origemId === destinoId) return 'A loja destino deve ser diferente da loja origem.';
+      if (!allowedOriginStoreIds.includes(origemId)) {
+        return 'Você não pode criar fechamento para essa loja de origem.';
+      }
+      const routeChanged = isEditingClosing && (
+        normalizeStoreId(editingClosing?.lojaOrigemId) !== origemId ||
+        normalizeStoreId(editingClosing?.lojaDestinoId) !== destinoId
+      );
+      if ((!isEditingClosing || routeChanged) && !authorizedClosingDestinationStoreIds.has(destinoId)) {
+        return 'A loja destino não está autorizada para receber remessas desta origem.';
+      }
       const start = parseLocalDate(closingFormData.periodoInicio);
       const end = parseLocalDate(closingFormData.periodoFim);
       if (!start || !end || start > end) return 'Informe um período válido para o fechamento.';
@@ -15145,9 +15193,6 @@ const handleSubmit = async (e) => {
         if (!canEditClosing(editingClosing)) return 'Você não tem permissão para editar este fechamento.';
       } else if (!canCreateClosing()) {
         return 'Você não tem permissão para criar fechamentos.';
-      }
-      if (!canAccessAllTransfers && !isStoreAllowedForUser(origemId) && !isStoreAllowedForUser(destinoId)) {
-        return 'Você não tem permissão para criar fechamento para estas lojas.';
       }
       return '';
     };
@@ -15166,6 +15211,16 @@ const handleSubmit = async (e) => {
       setClosingSyncNotice('');
 
       try {
+        const routeChanged = isEditingClosing && (
+          normalizeStoreId(editingClosing?.lojaOrigemId) !== origemId ||
+          normalizeStoreId(editingClosing?.lojaDestinoId) !== destinoId
+        );
+        if (!isEditingClosing || routeChanged) {
+          const currentDestinations = await fetchAuthorizedTransferDestinations(functions, origemId);
+          if (!currentDestinations.some((store) => store.id === destinoId)) {
+            throw new Error('A loja destino não está autorizada para receber remessas desta origem.');
+          }
+        }
         const [origemSnap, destinoSnap] = await Promise.all([
           readStoreSnapshotOrThrow(origemId, 'origem'),
           readStoreSnapshotOrThrow(destinoId, 'destino')
@@ -15877,8 +15932,6 @@ const handleSubmit = async (e) => {
           : null;
       })
       .filter(Boolean);
-    const editingClosingHasTransfers = isEditingClosing && (editingClosing?.remessaIds || []).length > 0;
-
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -16180,24 +16233,29 @@ const handleSubmit = async (e) => {
               <Select
                 label="Loja origem"
                 value={closingFormData.lojaOrigemId}
-                disabled={editingClosingHasTransfers}
+                disabled={editingClosingHasTransfers || !canChangeOriginStore}
                 onChange={(e) => {
                   const nextOriginId = e.target.value;
                   setClosingFormData((prev) => ({
                     ...prev,
                     lojaOrigemId: nextOriginId,
-                    lojaDestinoId: prev.lojaDestinoId === nextOriginId ? '' : prev.lojaDestinoId
+                    lojaDestinoId: ''
                   }));
                 }}
               >
                 <option value="">Selecione</option>
-                {storesForSelect.filter((store) => canAccessAllTransfers || allowedStoreIds.includes(store.id)).map((store) => (
+                {storesForSelect.filter((store) => allowedOriginStoreIds.includes(store.id)).map((store) => (
                   <option key={store.id} value={store.id}>{store.nome}</option>
                 ))}
               </Select>
-              <Select label="Loja destino" disabled={editingClosingHasTransfers} value={closingFormData.lojaDestinoId} onChange={(e) => setClosingFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
-                <option value="">Selecione</option>
-                {storesForSelect.filter((store) => store.id !== closingFormData.lojaOrigemId).map((store) => (
+              <Select label="Loja destino" disabled={!closingFormData.lojaOrigemId || isLoadingAuthorizedClosingDestinations || editingClosingHasTransfers} value={closingFormData.lojaDestinoId} onChange={(e) => setClosingFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
+                <option value="">{isLoadingAuthorizedClosingDestinations ? 'Carregando destinos...' : 'Selecione'}</option>
+                {closingFormData.lojaDestinoId && !authorizedClosingDestinationStoreIds.has(closingFormData.lojaDestinoId) && (
+                  <option value={closingFormData.lojaDestinoId} disabled>
+                    {editingClosing?.lojaDestinoNome || closingFormData.lojaDestinoId} — não autorizado
+                  </option>
+                )}
+                {authorizedClosingDestinationStores.map((store) => (
                   <option key={store.id} value={store.id}>{store.nome}</option>
                 ))}
               </Select>
@@ -16231,13 +16289,22 @@ const handleSubmit = async (e) => {
                 <Input label="Nome do fechamento" value={closingFormData.nome} onChange={(e) => setClosingFormData((prev) => ({ ...prev, nome: e.target.value }))} />
               </div>
             </div>
+            {!isLoadingAuthorizedClosingDestinations && closingFormData.lojaOrigemId && !authorizedClosingDestinationStores.length && !authorizedClosingDestinationsError && (
+              <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p>Nenhuma loja destino está autorizada para receber remessas desta unidade.</p>
+                {canManageTransferDestinations && <p className="mt-1">Configure os destinos em Configurações &gt; Entre Lojas.</p>}
+              </div>
+            )}
+            {authorizedClosingDestinationsError && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{authorizedClosingDestinationsError}</div>
+            )}
             <Textarea label="Observação da origem" value={closingFormData.observacaoOrigem} onChange={(e) => setClosingFormData((prev) => ({ ...prev, observacaoOrigem: e.target.value }))} rows={2} />
             <Textarea label="Observação do destino" value={closingFormData.observacaoDestino} onChange={(e) => setClosingFormData((prev) => ({ ...prev, observacaoDestino: e.target.value }))} rows={2} />
             {closingSyncNotice && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{closingSyncNotice}</div>}
             {closingFormError && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{closingFormError}</div>}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => { setShowClosingModal(false); resetClosingForm(); }}>Cancelar</Button>
-              <Button disabled={isSavingClosing} onClick={saveClosing}>{isSavingClosing ? 'Salvando...' : (isEditingClosing ? 'Salvar alterações' : 'Criar fechamento')}</Button>
+              <Button disabled={isSavingClosing || isLoadingAuthorizedClosingDestinations || (!isEditingClosing && !authorizedClosingDestinationStores.length)} onClick={saveClosing}>{isSavingClosing ? 'Salvando...' : (isEditingClosing ? 'Salvar alterações' : 'Criar fechamento')}</Button>
             </div>
           </div>
         </Modal>

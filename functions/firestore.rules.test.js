@@ -659,6 +659,13 @@ const newTransferPayload = (originStoreId, destinationStoreId, status = "rascunh
   historico: [],
 });
 
+const newClosingPayload = (originStoreId, destinationStoreId) => ({
+  lojaOrigemId: originStoreId,
+  lojaDestinoId: destinationStoreId,
+  status: "aberto",
+  historico: [],
+});
+
 describe("rotas autorizadas para novas remessas entre lojas", () => {
   test("usuario da origem cria remessa para destino autorizado sem acesso geral ao destino", async () => {
     const managerDb = testEnv.authenticatedContext("manager-a").firestore();
@@ -738,6 +745,92 @@ describe("rotas autorizadas para novas remessas entre lojas", () => {
     ));
     await assertFails(getDoc(
         doc(ownerDb, "transferDestinationAuditLogs", "qualquer"),
+    ));
+  });
+});
+
+describe("fechamentos reutilizam as rotas autorizadas das remessas", () => {
+  test("gerente e atendente da origem criam fechamento sem permissao adicional", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(doc(context.firestore(), "users", "manager-a"), {
+        "permissionDetails.entre-lojas.statuses": [],
+      });
+    });
+    const managerDb = testEnv.authenticatedContext("manager-a").firestore();
+    const attendantDb = testEnv.authenticatedContext("attendant-a").firestore();
+
+    await assertSucceeds(setDoc(
+        entreLojasDoc(managerDb, "fechamentosEntreLojas", "novo-manager"),
+        newClosingPayload(STORE_A, STORE_B),
+    ));
+    await assertSucceeds(setDoc(
+        entreLojasDoc(attendantDb, "fechamentosEntreLojas", "novo-atendente"),
+        newClosingPayload(STORE_A, STORE_B),
+    ));
+  });
+
+  test("bloqueia destino nao autorizado, inativo, igual a origem e usuario sem modulo", async () => {
+    const managerDb = testEnv.authenticatedContext("manager-a").firestore();
+    const noModuleDb = testEnv.authenticatedContext("manager-no-entre-lojas").firestore();
+
+    await assertFails(setDoc(
+        entreLojasDoc(managerDb, "fechamentosEntreLojas", "destino-nao-autorizado"),
+        newClosingPayload(STORE_A, STORE_C),
+    ));
+    await assertFails(setDoc(
+        entreLojasDoc(managerDb, "fechamentosEntreLojas", "destino-inativo"),
+        newClosingPayload(STORE_A, STORE_D),
+    ));
+    await assertFails(setDoc(
+        entreLojasDoc(managerDb, "fechamentosEntreLojas", "mesma-loja"),
+        newClosingPayload(STORE_A, STORE_A),
+    ));
+    await assertFails(setDoc(
+        entreLojasDoc(noModuleDb, "fechamentosEntreLojas", "sem-modulo"),
+        newClosingPayload(STORE_A, STORE_B),
+    ));
+  });
+
+  test("a autorizacao e direcional inclusive para o dono", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(
+          doc(context.firestore(), "lojas", STORE_B, "configuracoes", "config"),
+          {"entreLojas.authorizedDestinationStoreIds": []},
+      );
+    });
+    const ownerDb = testEnv.authenticatedContext("owner").firestore();
+
+    await assertSucceeds(setDoc(
+        entreLojasDoc(ownerDb, "fechamentosEntreLojas", "ida-autorizada"),
+        newClosingPayload(STORE_A, STORE_B),
+    ));
+    await assertFails(setDoc(
+        entreLojasDoc(ownerDb, "fechamentosEntreLojas", "volta-bloqueada"),
+        newClosingPayload(STORE_B, STORE_A),
+    ));
+  });
+
+  test("nova loja autorizada passa a valer sem configuracao paralela", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await updateDoc(
+          doc(context.firestore(), "lojas", STORE_A, "configuracoes", "config"),
+          {"entreLojas.authorizedDestinationStoreIds": [STORE_B, STORE_C]},
+      );
+    });
+    const managerDb = testEnv.authenticatedContext("manager-a").firestore();
+
+    await assertSucceeds(setDoc(
+        entreLojasDoc(managerDb, "fechamentosEntreLojas", "nova-loja"),
+        newClosingPayload(STORE_A, STORE_C),
+    ));
+  });
+
+  test("alteracao manual de rota tambem e revalidada", async () => {
+    const managerDb = testEnv.authenticatedContext("manager-a").firestore();
+
+    await assertFails(updateDoc(
+        entreLojasDoc(managerDb, "fechamentosEntreLojas", "fechamento-aberto"),
+        {lojaDestinoId: STORE_C},
     ));
   });
 });
