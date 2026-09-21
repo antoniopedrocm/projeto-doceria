@@ -20,6 +20,51 @@ Esta atualização altera somente o planejamento. Substitui as decisões anterio
 - Na última tentativa, o seed de dados fictícios foi bloqueado pelo revisor automático por limite de uso. O script foi salvo, mas essa tentativa de execução não foi concluída. Não houve cobrança real nem deploy.
 - Próxima tarefa da fase atual: adaptar o rascunho Google/Customer para telefone de contato obrigatório sem OTP, sem consultar/vincular automaticamente o Customer legado, preservando a identificação antiga por celular. Fazer isso em uma execução de implementação, com testes; nesta atualização, somente registrar a mudança.
 
+## Checkpoint de implementação — 2026-09-14
+
+- Branch e remoto DEV conferidos antes da execução: `feature/infinitepay-customer-auth` permanece sem divergência de commits em relação a `origin/feature/infinitepay-customer-auth`; alterações locais anteriores foram preservadas. Nenhum deploy foi realizado.
+- Próxima fase planejada executada no rascunho Google/Customer: o primeiro acesso agora solicita somente telefone de contato e salva o número sem OTP, SMS, reCAPTCHA ou Firebase Phone Auth.
+- O Customer autenticado é criado de forma idempotente pelo vínculo com o `sub` Google. O backend não consulta telefone legado, não cria identidade de provedor `phone` e grava `phone_verified_at: null`.
+- A identificação antiga pelo botão de celular continua chamando `lookupClientByPhone` nos três cardápios, sem nova etapa de autenticação. A separação de privilégios entre esse acesso legado e a conta autenticada permanece explícita.
+- Validação desta execução: sintaxe dos módulos alterados aprovada; ESLint direcionado aprovado; 36 testes unitários/de negócio passaram, incluindo três novos testes de autenticação sem Phone Auth. O teste transacional foi atualizado para exigir criação separada do cadastro legado, idempotência concorrente e ausência de identidade por telefone.
+- Limitação de ambiente: a suíte transacional não executou neste checkpoint. O Firebase CLI tentou baixar `cloud-firestore-emulator-v1.22.0.jar`, mas a rede recusou o download; o emulador local 1.21.0 exige Java 21, indisponível nesta máquina (Java 17 é antigo e Java 25 falhou ao abrir o loopback). Os três testes HTTP também não abriram o loopback neste ambiente. As aprovações anteriores dessas suítes continuam como histórico, mas não validam esta alteração.
+- **Conclusão total estimada do projeto: 37%.** A estimativa considera fases 0 e a reconciliação Google/Customer parcialmente concluídas, além do trabalho antecipado ainda não homologado em conta e pagamento. E-mail/senha, sessão pela home, conclusão dos estados financeiros, recuperação opcional do legado, validação integrada e homologação continuam pendentes.
+- Próxima tarefa recomendada: concluir a interface da fase 1 e implementar a fase 3 (e-mail/senha), reutilizando o mesmo Customer autenticado e mantendo o telefone inicial sem validação e sem merge automático.
+
+## Checkpoint de implementação — 2026-09-15
+
+- Estado inicial conferido: branch `feature/infinitepay-customer-auth`, sem divergência de commits em relação ao remoto DEV (`0/0`), com todas as alterações locais dos checkpoints anteriores preservadas. Nenhum deploy foi realizado.
+- Fase 1 concluída no rascunho local dos três cardápios: “Entrar com Google” e “Entrar com e-mail” aparecem lado a lado em telas maiores e empilhados em telas pequenas; celular, separador, visitante e cancelamento foram preservados.
+- Fase 3 implementada localmente: cadastro com nome, e-mail, telefone, senha e confirmação; login; logout; recuperação de senha; envio nativo de verificação após cadastro sem bloquear a compra; indicação de e-mail verificado/não verificado e reenvio em Minha Conta.
+- O backend agora aceita identidades `google` e `email_password`. Para e-mail/senha, a chave estável é o UID do Firebase; o texto do e-mail e o telefone não são usados como chave do Customer e não provocam vínculo com cadastro legado.
+- O mesmo fluxo `customerCompleteProfile` cria o Customer isolado para ambos os providers, mantém o telefone como contato não verificado (`phone_verified_at: null`) e permite retomar o checkout depois da autenticação.
+- Validação desta execução: sintaxe dos módulos aprovada, ESLint do backend alterado aprovado, `git diff --check` aprovado e 37 testes unitários/de negócio passaram. Foi acrescentado teste unitário da identidade por UID e teste transacional do isolamento do cadastro por e-mail. A limitação do emulador/loopback registrada em 2026-09-14 permanece; portanto, os novos testes transacionais e HTTP continuam pendentes de execução em ambiente compatível.
+- **Conclusão total estimada do projeto: 45%.** Interface de autenticação e e-mail/senha avançaram, assim como o modelo Customer multiprovedor. Ainda faltam integração pela home, conclusão funcional de Minha Conta, validação ponta a ponta, estados financeiros, recuperação opcional do legado, homologação DEV e produção.
+- Próxima tarefa recomendada: executar a fase 6, criando a Área do Cliente na home, separada do acesso da equipe, e reutilizar a sessão para pular a identificação no checkout sem perder carrinho ou etapa.
+
+## Checkpoint de implementação — 2026-09-15 — fase 6
+
+- Estado inicial reconferido: branch `feature/infinitepay-customer-auth`, remoto DEV sem divergência (`0/0`) e alterações locais anteriores preservadas. Nenhum build ou deploy foi executado.
+- A home agora apresenta “Área do Cliente” e “Acesso da Equipe” como entradas distintas. A conta do cliente usa a instância Firebase pública nomeada `cardapioPublic`; o login administrativo continua no Firebase padrão do CRM e recebeu identificação explícita de equipe.
+- A Área do Cliente da home reutiliza o mesmo módulo Google/e-mail dos cardápios e força persistência local da sessão. Ao navegar para qualquer cardápio no mesmo domínio, a sessão Customer é restaurada sem compartilhar privilégios ou estado com o acesso da equipe.
+- O checkout aguarda a restauração inicial da sessão antes de decidir o fluxo. Customer autenticado e vinculado segue diretamente aos endereços; acesso legado por celular e visitante continuam vendo “Como deseja continuar?”.
+- Carrinho, cupom, entrega e etapa são persistidos antes da decisão de identificação. Logout do Customer deixa o carrinho salvo, e a conclusão de um pedido mantém somente a sessão autenticada, descartando identificações legadas temporárias.
+- Validação desta execução: sintaxe dos módulos públicos e JSX aprovada, `git diff --check` aprovado, 39 testes Node passaram (incluindo dois novos testes de decisão/retenção de sessão) e as 7 suítes React passaram, totalizando 98 testes React. As limitações de emulador/loopback dos checkpoints anteriores permanecem para os testes transacionais e HTTP.
+- **Conclusão total estimada do projeto: 52%.** A autenticação pública, os dois providers, o Customer isolado e a sessão home/checkout estão implementados localmente. Permanecem pendentes a conclusão de Minha Conta, validação integrada/visual, estados financeiros e reservas, recuperação opcional do legado, homologação DEV e produção.
+- Próxima tarefa recomendada: concluir a fase 5 de Minha Conta, especialmente gestão autenticada de endereços e histórico, antes de avançar a preparação financeira da fase 7.
+
+## Checkpoint de implementação — 2026-09-15 — fase 5
+
+- Estado inicial reconferido: branch `feature/infinitepay-customer-auth`, remoto DEV sem divergência (`0/0`) e trabalho local anterior preservado. Nenhum build ou deploy foi executado.
+- Minha Conta agora permite editar nome e data de nascimento, mostra telefone de contato como não verificado, mantém o estado/reenvio de verificação de e-mail e oferece logout.
+- Endereços autenticados são listados e podem ser excluídos na home ou no cardápio. Novos endereços criados no cardápio usam a callable `customerAddAddress`, que resolve o Customer pela identidade autenticada, ignora qualquer `clientId` do navegador, limita campos/coordenadas e aplica limite de 20 endereços.
+- O fluxo legado de endereço continua separado. As operações de perfil, inclusão, exclusão e histórico da conta verificam `authOwnerUid`; nenhuma delas autoriza o Customer pelo identificador recebido do cliente.
+- O histórico retorna no máximo 50 pedidos do Customer autenticado, com loja, data, total, estados do pedido/pagamento, forma e itens limitados aos campos necessários. A consulta usa o índice `clienteId + createdAt` já preparado.
+- Formas de pagamento permanecem no checkout InfinitePay. Minha Conta informa que os dados completos do cartão não são armazenados pela Ana Guimarães; cartão salvo continua condicionado ao suporte real do gateway, sem simulação local.
+- Validação desta execução: sintaxe aprovada, `git diff --check` aprovado, 41 testes Node passaram (incluindo validação de endereço/data e sessão) e as 7 suítes React passaram, totalizando 98 testes React. O teste transacional de inclusão/exclusão autenticada foi atualizado, mas segue pendente de execução pela limitação de emulador/loopback já registrada.
+- **Conclusão total estimada do projeto: 60%.** Autenticação, Customer, sessão home/checkout e Minha Conta estão implementados localmente. Permanecem estados financeiros/reservas, recuperação opcional do legado, validação integrada e visual, homologação DEV e produção.
+- Próxima tarefa recomendada: executar a fase 7, consolidando estados de pedido/pagamento, reservas de estoque e cupom, expiração/liberação e disparo de notificações somente após confirmação adequada.
+
 ### Divergências do rascunho a resolver, sem apagar o trabalho
 
 | Componente existente | Ajuste pendente conforme o novo direcionamento |
@@ -100,6 +145,49 @@ Os caminhos abaixo são relativos ao worktree; linhas referem-se à baseline aci
 - Preservar `PaymentService → InfinitePayProvider`, configuração por loja, idempotência, conciliação de pedido/conta/valor e confirmação pelo backend. Redirect não comprova pagamento; webhook precisa ser validado e reconciliado. Não liberar estoque/confirmar pedidos com base apenas no navegador.
 - Separar `order_status`: PENDING, CONFIRMED, PREPARING, READY, DELIVERED, CANCELLED; e `payment_status`: PENDING, PAID, FAILED, EXPIRED, REFUNDED. Garantir compatibilidade com legado. Expiração, falha, estorno, reservas, cupons e notificações ainda exigem validação completa; os testes existentes não demonstram que todos esses estados foram implementados.
 
+## Direcionamento vigente — 2026-09-21 — InfinitePay por loja
+
+Esta seção incorpora integralmente a atualização de configuração financeira. Preserva as demais decisões e implementações e prevalece sobre notas históricas incompatíveis. Execução documental: fase 5 registrada localmente, próxima execução permanece na fase 7; a configuração gráfica abaixo será implementada na fase 8, sem pular etapas. Estimativa anterior de 60% mantida como referência provisória, sem aumento por esta atualização de requisitos e sujeita à reavaliação na validação integrada.
+
+### Conta recebedora e configuração
+
+- Cada loja possui sua própria conta/InfiniteTag InfinitePay. Nenhuma InfiniteTag global hardcoded ou fallback para outra loja é permitido. A tag `ana_guimare` pertence exclusivamente à Matriz.
+- Usar o documento existente `lojas/{storeId}/configuracoesInternas/infinitepay` como base. O rascunho de `functions/checkout-payment.js` já consulta esse caminho, exige `enabled` e handle válido e não contém tag recebedora global; isso não significa que a configuração gráfica esteja implementada.
+- Criar em Configurações da Loja → Pagamentos Online → InfinitePay: `enabled`, `handle`, `sendCustomerData` (default true) e `sendDeliveryAddress` (default true). Não armazenar nome, e-mail, telefone ou endereço fixos de comprador nessa configuração. URLs operacionais existentes permanecem sob controle do backend/ambiente.
+- Exibir: “A InfiniteTag configurada determina a conta que receberá os pagamentos desta loja.”
+- Festas, quando representar loja recebedora própria, exige `storeId` e conta próprios. O HTML de festas ainda aponta para Matriz na baseline: resolver esse mapeamento antes de habilitar recebimento independente, sem inventar tag ou tratar o nome do arquivo como loja financeira.
+
+### Permissões e confirmação financeira
+
+- Dono/Administrador autorizado pode visualizar, cadastrar, alterar, ativar/desativar e consultar histórico. Mapear Administrador ao perfil administrativo efetivamente existente; não conceder poder apenas porque o frontend envia role ou um rótulo “admin”.
+- Gerente não pode alterar por padrão. Seguir o padrão existente `permissionDetails.configuracoes`, encontrado em `functions/user-status-core.js`, para a permissão específica conceitual `manage_payment_settings`; definir a chave final ao implementar e exigir valor explicitamente true. Nenhuma permissão financeira nova foi criada nesta execução documental.
+- Validar perfil ativo, permissão e escopo de loja no backend e nas Rules aplicáveis. Gerente da loja A não altera a loja B sem autorização de escopo existente. Proteger também a concessão dessa permissão contra autoelevação; esconder botões serve apenas à experiência.
+- Primeiro cadastro usa confirmação normal. Troca de qualquer handle existente exige modal “Alterar conta de recebimento?”, mostrando valor atual e novo e avisando: “Você está alterando a InfiniteTag desta loja. Os próximos pagamentos online poderão ser direcionados à nova conta.”
+- Troca de tag ativa exige digitar `ALTERAR` antes de habilitar a ação final. O backend valida a confirmação e compara a versão/valor anterior para impedir sobrescrita concorrente. Essa confirmação não substitui autorização. Não exigir esse atrito em ajustes triviais sem troca de conta.
+
+### Auditoria e histórico
+
+- Toda alteração relevante gera auditoria server-side com storeId, campo alterado, valor anterior/novo, UID, identificação disponível, role, timestamp do servidor e origem/ação. Reutilizar a arquitetura `auditLogs`, já presente em `functions/fiscal.js`, após conferir suas permissões de leitura.
+- Persistir alteração e auditoria de forma atômica; não aceitar mudança financeira sem registro. Identidade, role e horário são obtidos no servidor. InfiniteTag pode constar no histórico; passwords, tokens privados, secrets, dados de cartão e CVV nunca podem constar.
+- Mostrar “Última alteração”, data/hora, “Por” e usuário; oferecer histórico com acesso autorizado e escopo por loja. Reutilizar a interface central de auditoria quando compatível.
+
+### Dados dinâmicos e criação do checkout
+
+- Resolver `order.storeId` → configuração dessa loja → `enabled == true` e handle válido → checkout InfinitePay. Ausência, desativação ou configuração inválida bloqueia o checkout com erro seguro e registro apropriado, sem fallback para Matriz ou outra loja.
+- Respeitar `sendCustomerData`: preencher dinamicamente nome, e-mail apenas quando disponível e telefone a partir do comprador/pedido. Usar os nomes de campos aceitos pelo contrato real do provider (o rascunho usa `customer.phone_number`); não inventar um contrato por tradução dos nomes conceituais.
+- Respeitar `sendDeliveryAddress`: em entrega, mapear CEP, rua, número, bairro e complemento dos campos reais para o contrato do provider. Não tentar inferir campos ausentes de um texto livre nem inventar dados; preparar a preservação dos campos estruturados existentes no formulário de endereço. Retirada não envia endereço residencial fictício.
+- Relacionar por `order_nsu` e manter confirmação server-side. Salvar a conta recebedora/configuração usada na tentativa: uma troca posterior de tag afeta próximos checkouts, sem redirecionar ou reconciliar cobranças anteriores na conta nova.
+- Situação atual: flags de envio, e-mail e endereço estruturado, tela, permissão, auditoria e confirmação forte ainda pendentes. O rascunho já envia nome/telefone dinamicamente e lê handle por loja; não declarar conformidade completa.
+
+### Critérios de teste da fase 8
+
+- Dono e Administrador autorizado configuram; gerente sem permissão é negado; gerente com permissão altera somente loja autorizada; gerente de outra loja é negado. Validar no backend, incluindo tentativa de escrita direta e autoelevação.
+- Primeiro cadastro funciona; troca de tag existente exige confirmação; tag ativa exige `ALTERAR`; alteração concorrente é detectada; auditoria e metadados de última alteração são gerados no servidor.
+- Checkout usa exatamente a tag da loja, nunca fallback; configuração ausente/inválida/desativada bloqueia com erro seguro; cobranças antigas mantêm sua conta original após troca.
+- Dados variam conforme comprador; ausência de e-mail é aceita; retirada não envia endereço fictício; flags de envio são respeitadas; dados pessoais não são gravados em configurações financeiras nem em sua auditoria.
+
+Checkpoint desta atualização: status e branch verificados antes da edição; trabalho local preservado. Somente este plano foi alterado nesta execução, incluindo os checkpoints anteriores ainda locais. Commit documental na branch atual; nenhum build, deploy, alteração de main ou implementação antecipada. Testes funcionais serão executados quando esta parte for implementada; agora validar apenas o diff documental. Próxima etapa permanece fase 7, seguida da fase 8 com estes requisitos.
+
 ## Roadmap vigente (numeração atualizada)
 
 A numeração abaixo substitui a antiga. Trabalho já iniciado permanece preservado; a atualização não autoriza executar automaticamente fases posteriores.
@@ -107,18 +195,18 @@ A numeração abaixo substitui a antiga. Trabalho já iniciado permanece preserv
 | Fase | Entrega e critério principal |
 | --- | --- |
 | 0 | Baseline Git e levantamento concluídos; ambiente local iniciado e testado parcialmente; preservar rastreabilidade e isolamento |
-| 1 | Interface Google + e-mail + separador; preservar celular/visitante e acessibilidade. Rascunho Google existente; e-mail e novo rótulo pendentes |
-| 2 | Google Auth + sessão pública. Rascunho existente; reconciliar primeiro acesso sem OTP e validar o fluxo |
-| 3 | E-mail/senha: cadastro, login, logout, recuperação de senha e verificação nativa não bloqueante. Planejado |
-| 4 | Customer autenticado: telefone obrigatório sem validação inicial; vínculo por identidade autenticada; nenhum merge automático com legado. Reconciliar o módulo já iniciado |
-| 5 | Minha Conta: perfil, endereços, pedidos, formas de pagamento, segurança e verificação de e-mail. Parte iniciada, não homologada |
-| 6 | Login do cliente pela home, separado da equipe; reaproveitar sessão e pular identificação no checkout. Planejado |
+| 1 | Interface Google + e-mail + separador implementada nos três cardápios; celular/visitante preservados; validação visual pendente |
+| 2 | Google Auth + sessão pública. Primeiro acesso sem OTP reconciliado; validação integrada e de sessão ainda pendente |
+| 3 | E-mail/senha: cadastro, login, logout, recuperação e verificação nativa não bloqueante implementados localmente; integração completa pendente |
+| 4 | Customer autenticado: telefone obrigatório sem validação inicial; vínculos Google e e-mail por identidade estável, idempotentes e sem merge automático; integração completa pendente |
+| 5 | Minha Conta: perfil, endereços autenticados, pedidos, segurança, estado/reenvio de e-mail e política de pagamento implementados localmente; homologação pendente |
+| 6 | Área do Cliente na home separada da equipe; sessão pública persistente e checkout pulando identificação para Customer vinculado implementados localmente; validação visual pendente |
 | 7 | Preparar pedidos/status para pagamento, compatibilidade legada, reservas/cupons e notificações. Parte iniciada |
-| 8 | InfinitePay: checkout, Pix/cartão, customer/endereço, order_nsu e redirect por loja. Provider iniciado, sem validação financeira real; cartão salvo/parcelamento dependem do suporte efetivo |
+| 8 | InfinitePay: configuração gráfica e conta própria por loja, permissão financeira específica, auditoria, confirmação forte de troca de tag, prefill dinâmico e falha segura conforme direcionamento de 2026-09-21; checkout, Pix/cartão, order_nsu e redirect. Provider iniciado, sem validação financeira real; cartão salvo/parcelamento dependem do suporte efetivo |
 | 9 | Webhook: validação, idempotência, reconciliação e confirmação server-side. Parte testada em emulação; completar cenários de recuperação |
 | 10 | Recuperação opcional do legado mediante prova de posse do telefone; somente então associar histórico/endereços. Não implementar OTP agora |
 | 11 | Testes locais completos: celular inalterado, Google/e-mail sem validação inicial, isolamento de Customer/legado e equipe, sessão home/checkout, endereços/histórico, pagamento e recuperação; preservar os testes já úteis e adaptar os incompatíveis |
 | 12 | Firebase DEV `crmdoceria-9959e` e homologação após marco funcional local e autorização. Sem deploy nesta atualização |
 | 13 | Produção após homologação e autorização, no repositório/diretório próprio, com plano de retorno. Sem promoção automática |
 
-Esta atualização não altera código, schema, autenticação de funcionários, fluxo de visitante ou configuração Firebase; não faz deploy. Commit documental separado, somente na branch atual do GitHub DEV. As divergências do rascunho acima ficam explícitas para a próxima implementação, sem declarar o código já conforme ao novo plano.
+O checkpoint de 2026-09-14 altera somente o rascunho local da autenticação Google/Customer e sua documentação/testes. Não houve deploy, mudança nas mains ou acesso ao Firebase DEV/produção.
