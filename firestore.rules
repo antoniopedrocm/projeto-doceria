@@ -11,13 +11,10 @@ function isAuthenticated() {
 
 function isSignedIn() {
   return isAuthenticated()
-    && (
-      !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-      || (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('ativo', true) != false
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'ativo') != 'inativo'
-      )
-    );
+    && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['dono', 'owner', 'admin', 'adm', 'administrador', 'administradora', 'administrador_master', 'gerente', 'atendente', 'funcionario', 'contador', 'corretor']
+    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('ativo', true) != false
+    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'ativo') != 'inativo';
 }
 
 function hasCurrentUserProfile() {
@@ -200,7 +197,7 @@ function isCashExpenseWithdrawal(data) {
 }
 
 function isValidOwnClientProfileCreation(userId) {
-  return isSignedIn()
+  return isAuthenticated()
     && request.auth.uid == userId
     && request.resource.data.keys().hasOnly([
       'email', 'nome', 'role', 'lojaId', 'lojaIds'
@@ -587,13 +584,13 @@ match /cupons/{cupomId} {
 // Fluxo público deve usar Cloud Function para identificação por telefone, sem leitura direta no cliente.
 // Apenas usuários autenticados (CRM) podem ler documentos de clientes.
 match /clientes/{clienteId} {
-  allow create: if isCreatingOwnClient();
+  allow create: if isCreatingOwnClient() && !request.resource.data.keys().hasAny(['authOwnerUid', 'authIdentities']);
   allow read: if isSignedIn() && (
     !isReadOnlyAccountant()
     || accountantHasModule('clientes')
     || accountantCanReadFiscalClient()
   );
-  allow update: if isOwnerByUid() && request.resource.data.uid == resource.data.uid;
+  allow update: if isOwnerByUid() && request.resource.data.uid == resource.data.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['authOwnerUid', 'authIdentities']);
   allow delete: if isOwnerByUid();
 }
 
@@ -610,6 +607,24 @@ match /pedidos/{pedidoId} {
 match /lojas/{lojaId} {
   // O seletor do CRM lista os documentos raiz para descobrir lojas cadastradas.
   allow read: if isSignedIn();
+
+  // Online financial state and reservations are changed only by the backend.
+  match /pedidos/{pedidoId} {
+    allow read: if canReadStoreCollection(lojaId, 'pedidos');
+    allow create: if canStaffWrite() && !request.resource.data.keys().hasAny(['paymentId', 'payment_status', 'order_status']);
+    allow delete: if canStaffWrite() && !resource.data.keys().hasAny(['paymentId']);
+    allow update: if canStaffWrite() && (
+      (!resource.data.keys().hasAny(['paymentId']) && !request.resource.data.keys().hasAny(['paymentId', 'payment_status', 'order_status']))
+      || (resource.data.get('payment_status', '') == 'PAID'
+        && resource.data.get('order_status', '') in ['CONFIRMED', 'PREPARING', 'READY', 'DELIVERED']
+        && resource.data.get('requiresReview', false) == false
+        && request.resource.data.status in ['Pendente', 'Em Produção', 'Pronto para Entrega', 'Finalizado', 'Cancelado']
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'paymentId', 'payment_status', 'order_status', 'requiresReview', 'ownerUid', 'paidAt',
+          'total', 'subtotal', 'desconto', 'valorFrete', 'itens', 'cupom', 'formaPagamento', 'lojaId', 'clienteId'
+        ]))
+    );
+  }
 
   match /produtos/{produtoId} {
     allow read: if true;
@@ -741,6 +756,7 @@ match /lojas/{lojaId} {
       && collection != 'configuracoesInternas'
       && canReadStoreCollection(lojaId, collection);
     allow write: if canStaffWrite()
+      && collection != 'pedidos'
       && collection != 'ifood'
       && collection != 'fiscalConfig'
       && collection != 'pontos'
@@ -767,7 +783,10 @@ match /integrations/{document=**} {
 }
 
 match /users/{userId} {
-  allow get: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
+  allow get: if (isAuthenticated() && userId == request.auth.uid
+    && (!exists(/databases/$(database)/documents/users/$(userId))
+      || (resource.data.get('ativo', true) != false && resource.data.get('status', 'ativo') != 'inativo')))
+    || (isSignedIn() && !isReadOnlyAccountant());
   allow list: if isSignedIn() && !isReadOnlyAccountant();
   // Administracao de perfis passa pelas Functions. A unica escrita direta
   // aceita e o bootstrap estrito do proprio perfil como cliente sem loja.
@@ -824,6 +843,8 @@ match /{collection}/{document=**} {
     && (!isReadOnlyAccountant()
       || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
   allow write: if canStaffWrite()
+    && collection != 'checkoutPayments'
+    && collection != 'checkoutReceipts'
     && collection != 'lojas'
     && collection != 'integrations'
     && collection != 'users'

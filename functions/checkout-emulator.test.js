@@ -1,0 +1,97 @@
+// Dedicated demo project; this suite cannot target live Firestore.
+process.env.FIRESTORE_EMULATOR_HOST='127.0.0.1:8080';
+process.env.GCLOUD_PROJECT='demo-doceria-checkout';
+const {test,after}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const admin=require('firebase-admin');
+const {initializeTestEnvironment,assertFails,assertSucceeds}=require('@firebase/rules-unit-testing');
+const {doc,getDoc,setDoc}=require('firebase/firestore');
+const {createPaymentService}=require('./checkout-payment');
+const {createCustomerAccount}=require('./checkout-auth');
+const app=admin.initializeApp({projectId:'demo-doceria-checkout'},'checkout-tests');
+const db=app.firestore();
+const stamp=admin.firestore.Timestamp.now();
+after(()=>app.delete());
+test('cliente Google não lê CRM nem assume papel de funcionário',async()=>{
+  const env=await initializeTestEnvironment({projectId:'demo-doceria-checkout',firestore:{host:'127.0.0.1',port:8080,rules:fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8')}});
+  try {
+    await db.doc('users/test-staff').set({role:'gerente',ativo:true});
+    await db.doc('lojas/test-store/pedidos/private').set({total:10});
+    await db.doc('clientes/private').set({nome:'Privado'});
+    const client=env.authenticatedContext('google-customer',{firebase:{sign_in_provider:'google.com'}}).firestore();
+    await assertFails(getDoc(doc(client,'clientes/private')));
+    await assertFails(getDoc(doc(client,'lojas/test-store/pedidos/private')));
+    await assertFails(setDoc(doc(client,'users/google-customer'),{role:'gerente'}));
+    await assertFails(setDoc(doc(client,'customerAuthIdentities/anything'),{customerId:'private'}));
+    await assertSucceeds(getDoc(doc(env.authenticatedContext('test-staff').firestore(),'lojas/test-store/pedidos/private')));
+  } finally {await env.cleanup();}
+});
+test('webhooks concorrentes são idempotentes e não cruzam contas/pedidos',async()=>{
+  const id='a'.repeat(64),id2='b'.repeat(64);
+  let count=0;
+  const provider={check:async payload=>{count++;assert.equal(payload.handle,'merchant-a');return {success:true,paid:true,amount:1000,paid_amount:1000,capture_method:'pix'};}};
+  const service=createPaymentService({db,admin,provider});
+  for(const paymentId of [id,id2]) {
+    const orderPath=`lojas/payment-test/pedidos/${paymentId}`;
+    await db.doc(orderPath).set({order_status:'PENDING',payment_status:'PENDING',total:10});
+    await db.doc(`checkoutPayments/${paymentId}`).set({orderId:paymentId,orderPath,ownerUid:'owner',handle:'merchant-a',amount:1000,payment_status:'PENDING'});
+  }
+  await db.collection('checkoutReceipts').get().then(s=>Promise.all(s.docs.map(d=>d.ref.delete())));
+  const payload={order_nsu:id,transaction_nsu:'transaction-1',invoice_slug:'invoice-1',amount:1,handle:'attacker'};
+  await Promise.all([service.reconcile(payload),service.reconcile(payload)]);
+  assert.equal((await db.doc(`lojas/payment-test/pedidos/${id}`).get()).data().payment_status,'PAID');
+  assert.equal((await db.collection('checkoutReceipts').get()).size,1);
+  assert.equal(count,2);
+  await assert.rejects(()=>service.reconcile({...payload,order_nsu:id2}));
+  await assert.rejects(()=>service.status(id,'stranger'));
+});
+test('criação concorrente do link chama provedor uma vez; falha ambígua não cria outra cobrança',async()=>{
+  const id='c'.repeat(64);const ref=db.doc(`checkoutPayments/${id}`);
+  const seed={ownerUid:'owner',orderId:'order',storeId:'store',amount:1000,handle:'merchant',customer:{name:'Teste'},payment_status:'PENDING',redirectUrl:'https://example.com/return',webhookUrl:'https://example.com/webhook'};
+  await ref.set(seed);
+  let calls=0;
+  const service=createPaymentService({db,admin,provider:{create:async()=>{calls++;return {url:'https://buy.infinitepay.io/test'};}}});
+  await Promise.allSettled([service.start(id,'owner'),service.start(id,'owner')]);
+  assert.equal(calls,1);assert.equal((await service.start(id,'owner')).checkoutUrl,'https://buy.infinitepay.io/test');
+  await ref.set(seed);
+  const failing=createPaymentService({db,admin,provider:{create:async()=>{calls++;throw new Error('timeout');}}});
+  await assert.rejects(()=>failing.start(id,'owner'));const before=calls;
+  await assert.rejects(()=>failing.start(id,'owner'));assert.equal(calls,before);
+});
+test('cadastro Google concorrente é idempotente e permanece isolado do legado',async()=>{
+  const uid='link-test', phone='+5562999997654', sub='test-google-sub';
+  const user={uid,displayName:'Teste',providerData:[{providerId:'google.com',uid:sub}]};
+  const wrapper={firestore:admin.firestore,auth:()=>({getUser:async()=>user})};
+  const service=createCustomerAccount({db,admin:wrapper});
+  const request={auth:{uid,token:{uid,firebase:{sign_in_provider:'google.com',identities:{'google.com':[sub]}}}},data:{phone}};
+  await db.collection('customerAuthIdentities').get().then(s=>Promise.all(s.docs.map(d=>d.ref.delete())));
+  await db.doc('clientes/link-existing').set({nome:'Cliente antigo',telefone:phone.slice(3),enderecos:[],createdAt:stamp});
+  await Promise.all([service.completeProfile(request),service.completeProfile(request)]);
+  const account=(await service.account(request)).customer;
+  assert.notEqual(account.id,'link-existing');
+  assert.equal(account.telefone,phone.slice(3));
+  assert.equal((await db.doc(`clientes/${account.id}`).get()).data().phone_verified_at,null);
+  assert.equal((await db.doc('clientes/link-existing').get()).data().authOwnerUid,undefined);
+  assert.equal((await db.collection('customerAuthIdentities').where('provider','==','phone').get()).empty,true);
+});
+test('cadastro por e-mail usa UID do Firebase e não associa telefone legado',async()=>{
+  const uid='email-user-test', email='cliente@example.com', phone='+5562999994321';
+  const user={uid,email,emailVerified:false,displayName:'Cliente e-mail',providerData:[{providerId:'password',uid:email}]};
+  const wrapper={firestore:admin.firestore,auth:()=>({getUser:async()=>user})};
+  const service=createCustomerAccount({db,admin:wrapper});
+  const request={auth:{uid,token:{uid,email,firebase:{sign_in_provider:'password',identities:{email:[email]}}}},data:{phone,nome:'Cliente e-mail'}};
+  await db.doc('clientes/email-legacy').set({nome:'Legado',telefone:phone.slice(3),enderecos:[]});
+  await service.completeProfile(request);
+  const account=(await service.account(request)).customer;
+  assert.notEqual(account.id,'email-legacy');
+  assert.equal(account.authProvider,'email_password');
+  assert.equal(account.emailVerified,false);
+  assert.equal((await db.doc('clientes/email-legacy').get()).data().authOwnerUid,undefined);
+  const address={enderecoCompleto:'Rua Teste, 10',nickname:'Casa',lat:-16.67,lng:-49.27,isDefault:true};
+  request.data={address};
+  assert.equal((await service.addAddress(request)).customer.enderecos.length,1);
+  request.data={index:0,expectedAddress:address.enderecoCompleto};
+  assert.equal((await service.deleteAddress(request)).customer.enderecos.length,0);
+});

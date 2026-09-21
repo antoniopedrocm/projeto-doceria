@@ -8,7 +8,7 @@
  */
 
 const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
-const {onDocumentCreated, onDocumentUpdated, onDocumentWritten} = require("firebase-functions/v2/firestore");
+const {onDocumentUpdated, onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -36,6 +36,26 @@ const {
 admin.initializeApp();
 const db = admin.firestore();
 const auth = admin.auth();
+const {createCustomerAccount} = require('./checkout-auth');
+const customerAccounts = createCustomerAccount({admin, db});
+const {createPaymentService, cents, paymentError} = require('./checkout-payment');
+const checkoutPayments = createPaymentService({db, admin});
+const {RESERVATION_MS, shouldNotifyOrder} = require('./checkout-reservation');
+exports.expireCheckoutReservations = onSchedule({schedule:'every 5 minutes', region:'southamerica-east1'}, async () => {
+  const results = await checkoutPayments.expireDue();
+  for (const result of results) if (result.error) logger.error('checkout_reservation_expiry_failed', {paymentId:result.id});
+});
+async function checkoutToken(req) {
+  const token = String(req.headers.authorization || '').match(/^Bearer (.+)$/)?.[1];
+  if (!token) throw paymentError('Entre novamente para continuar.',401);
+  try {return await auth.verifyIdToken(token, true);} catch {throw paymentError('Sessão inválida.',401);}
+}
+exports.customerAccount = onCall({cors:true}, customerAccounts.account);
+exports.customerCompleteProfile = onCall({cors:true}, customerAccounts.completeProfile);
+exports.customerUpdate = onCall({cors:true}, customerAccounts.update);
+exports.customerOrders = onCall({cors:true}, customerAccounts.orders);
+exports.customerAddAddress = onCall({cors:true}, customerAccounts.addAddress);
+exports.customerDeleteAddress = onCall({cors:true}, customerAccounts.deleteAddress);
 const STORE_INFO_DOC_ID = 'dados';
 const CONFIG_DOC_ID = 'config';
 const ROLE_OWNER = 'dono';
@@ -1170,6 +1190,26 @@ const isStoreOpenNow = (storeConfig = {}, now = new Date()) => {
 const app = express();
 app.use(cors({origin: true})); // Habilita CORS para a API do cardápio
 app.use(express.json());
+app.get('/checkout/config', async (req,res) => {
+  const store=String(req.query.lojaId || '');
+  if(!/^[\w-]+$/.test(store)) return res.status(400).json({enabled:false});
+  try {await checkoutPayments.config(store);return res.json({enabled:true});} catch {return res.json({enabled:false});}
+});
+app.post('/checkout/webhook', async(req,res)=>{
+  try {return res.json(await checkoutPayments.reconcile(req.body));}
+  catch(e){return res.status(e.httpStatus===404?404:400).json({ok:false});}
+});
+app.post('/checkout/payment-status', async(req,res)=>{
+  try {
+    const user=await checkoutToken(req);
+    const paymentId=String(req.body?.paymentId || '');
+    await checkoutPayments.status(paymentId,user.uid);
+    if(req.body.transaction_nsu && (req.body.slug || req.body.invoice_slug)) {
+      try {await checkoutPayments.reconcile({...req.body,order_nsu:paymentId});} catch(e) {if(e.httpStatus!==409) throw e;}
+    }
+    return res.json(await checkoutPayments.status(paymentId,user.uid));
+  } catch(e) {return res.status(e.httpStatus || 500).json({message:e.message});}
+});
 
 const CLIENTS_COLLECTION = 'clientes';
 const getClientsCollection = () => db.collection(CLIENTS_COLLECTION);
@@ -1194,6 +1234,7 @@ const sanitizeClientPayload = (input = {}) => {
     ...rest
   } = input || {};
 
+  for (const key of ['authOwnerUid', 'uid', 'authIdentities', 'customerId', 'phoneVerified', 'payment_status', 'order_status']) delete rest[key];
   delete rest.numeroDeComprasIncrement;
   delete rest.valorEmComprasIncrement;
 
@@ -1359,6 +1400,7 @@ const upsertClientDocument = async ({
   const timestamp = admin.firestore.FieldValue.serverTimestamp();
   return db.runTransaction(async (transaction) => {
     const snap = await transaction.get(targetRef);
+    if (snap.data()?.authOwnerUid) throw createHttpError(403, 'Use Minha Conta para alterar este cadastro.');
     const payload = {
       ...data,
       lojaId: data.lojaId || lojaId || data.lojaId,
@@ -1439,6 +1481,10 @@ app.get("/clientes", async (req, res) => {
   const lojaId = requireStoreId(req, res);
   if (!lojaId) return;
   try {
+    const token = await checkoutToken(req);
+    const staff = (await db.collection('users').doc(token.uid).get()).data();
+    if (!staff || staff.ativo === false || staff.status === 'inativo' || !['dono', 'gerente', 'atendente'].includes(staff.role)) return res.status(403).json({message:'Acesso restrito à equipe.'});
+    if (staff.role !== 'dono' && staff.lojaId !== lojaId && !staff.lojaIds?.includes(lojaId)) return res.status(403).json({message:'Loja não autorizada.'});
     const snapshot = await getClientsCollection().where('lojasVisitadas', 'array-contains', lojaId).get();
     const clients = snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()}));
     res.status(200).json(clients);
@@ -1623,9 +1669,10 @@ app.post("/checkout/confirmar", async (req, res) => {
   const cupom = req.body?.cupom || null;
   const subtotal = Number(req.body?.subtotal ?? 0);
   const descontoInformado = Number(req.body?.desconto ?? 0);
-  const valorFrete = Number(req.body?.valorFrete ?? 0);
+  let valorFrete = Number(req.body?.valorFrete ?? 0);
   const origem = typeof req.body?.origem === 'string' ? req.body.origem : 'Cardapio Online';
-  const status = typeof req.body?.status === 'string' ? req.body.status : 'Pendente';
+  const status = 'Pendente';
+  const online = pagamento.forma === 'Online';
 
   if (!itens.length) {
     return res.status(400).json({ok: false, message: 'Adicione ao menos um item ao pedido.'});
@@ -1636,7 +1683,21 @@ app.post("/checkout/confirmar", async (req, res) => {
   }
 
   try {
+    let paymentConfig, paymentId, ownerUid, orderRef, fingerprint;
+    if(req.headers.authorization) ownerUid=(await checkoutToken(req)).uid;
+    if(online) {
+      const token=await checkoutToken(req);ownerUid=token.uid;
+      if(!/^[a-zA-Z0-9_-]{16,100}$/.test(req.body?.idempotencyKey || '')) throw paymentError('Identificador do pedido inválido.',400);
+      paymentConfig=await checkoutPayments.config(lojaId);
+      paymentId=crypto.createHash('sha256').update(ownerUid+':'+lojaId+':'+req.body.idempotencyKey).digest('hex');
+      fingerprint=crypto.createHash('sha256').update(JSON.stringify({cliente,itens,cupom,subtotal,delivery:req.body.delivery,descontoInformado})).digest('hex');
+      orderRef=db.collection('lojas').doc(lojaId).collection('pedidos').doc(paymentId);
+    }
     const orderId = await db.runTransaction(async (transaction) => {
+      if(online) {
+        const prior=await transaction.get(db.collection('checkoutPayments').doc(paymentId));
+        if(prior.exists) {if(prior.data().fingerprint!==fingerprint) throw paymentError('O pedido já foi enviado com outros dados. Consulte o pagamento pendente.');return prior.data().orderId;}
+      }
       const storeConfigRef = getStoreConfigDoc(lojaId);
       const storeConfigSnap = await transaction.get(storeConfigRef);
       const storeConfig = storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : {};
@@ -1649,6 +1710,19 @@ app.post("/checkout/confirmar", async (req, res) => {
         );
       }
 
+      if(online) {
+        const delivery=req.body.delivery || {};
+        if(delivery.pickup === true && cliente.endereco === 'Retirar na Loja') valorFrete=0;
+        else {
+          const f=storeConfig.frete || storeConfig;
+          const lat=Number(delivery.lat),lng=Number(delivery.lng);
+          if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180||![f.lat,f.lng,f.valorPorKm].every(Number.isFinite)||f.valorPorKm<0) throw paymentError('Confirme o endereço de entrega.',400);
+          const r=Math.PI/180,a=Math.sin((lat-f.lat)*r/2)**2+Math.cos(f.lat*r)*Math.cos(lat*r)*Math.sin((lng-f.lng)*r/2)**2;
+          valorFrete=Number((6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))*f.valorPorKm).toFixed(2));
+          if(Math.abs(valorFrete-Number(req.body.valorFrete))>0.01) throw paymentError('O frete mudou. Confirme novamente seu endereço.');
+        }
+      }
+      const seenProducts=new Set();
       const stockUpdates = [];
       const validatedItems = [];
       let calculatedSubtotal = 0;
@@ -1656,10 +1730,11 @@ app.post("/checkout/confirmar", async (req, res) => {
       for (const item of itens) {
         const produtoId = item?.produtoId || item?.id;
         const quantity = Number(item?.quantity || 0);
-        if (!produtoId || !Number.isFinite(quantity) || quantity <= 0) {
+        if (!produtoId || !Number.isSafeInteger(quantity) || quantity <= 0 || seenProducts.has(String(produtoId))) {
           throw createHttpError(400, 'Item de pedido inválido.');
         }
 
+        seenProducts.add(String(produtoId));
         const productRef = db.collection('lojas').doc(lojaId).collection('produtos').doc(String(produtoId));
         const productSnap = await transaction.get(productRef);
 
@@ -1692,7 +1767,7 @@ app.post("/checkout/confirmar", async (req, res) => {
           if (newStock < 0) {
             throw createHttpError(409, `Estoque insuficiente para ${productData.nome || produtoId}.`);
           }
-          stockUpdates.push({ref: productRef, newStock});
+          stockUpdates.push({ref: productRef, newStock, quantity});
         }
 
         calculatedSubtotal += currentPrice * quantity;
@@ -1753,7 +1828,7 @@ app.post("/checkout/confirmar", async (req, res) => {
 
         const usosAtuais = typeof cupomData.usos === 'number' ? cupomData.usos : 0;
         const limiteUso = Number(cupomData.limiteUso || 0);
-        if (limiteUso > 0 && usosAtuais >= limiteUso) {
+        if (limiteUso > 0 && usosAtuais + Number(cupomData.reservados || 0) >= limiteUso) {
           throw createHttpError(400, 'Este cupom atingiu o limite de usos.');
         }
 
@@ -1771,7 +1846,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         throw createHttpError(400, 'Desconto informado sem cupom válido.');
       }
 
-      const descontoFinal = cupomDocRef ? valorDesconto : 0;
+      const descontoFinal = cupomDocRef ? Math.min(subtotalFinal, Math.max(0,valorDesconto)) : 0;
       const total = Number((subtotalFinal - descontoFinal + valorFrete).toFixed(2));
       if (!Number.isFinite(total) || total < 0) {
         throw createHttpError(400, 'Totais do pedido inválidos.');
@@ -1784,7 +1859,22 @@ app.post("/checkout/confirmar", async (req, res) => {
         clienteSnap = await transaction.get(clienteRef);
       }
 
-      const orderRef = db.collection('lojas').doc(lojaId).collection('pedidos').doc();
+      if (clienteSnap?.data()?.authOwnerUid && clienteSnap.data().authOwnerUid !== ownerUid) throw paymentError('Entre na conta vinculada ao cadastro.',403);
+      if (online && clienteSnap?.data()?.cuponsUsados?.includes(couponCode)) throw paymentError('Você já utilizou este cupom.');
+      if (couponCode && clienteSnap?.data()?.cuponsReservados?.includes(couponCode)) throw paymentError('Este cupom está reservado em outro pedido.');
+      if (!orderRef) orderRef = db.collection('lojas').doc(lojaId).collection('pedidos').doc();
+      if(online) {
+        transaction.set(db.collection('checkoutPayments').doc(paymentId),{
+          orderId:orderRef.id,orderPath:orderRef.path,storeId:lojaId,ownerUid,fingerprint,
+          payment_status:'PENDING',amount:cents(total),...paymentConfig,
+          expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+RESERVATION_MS),
+          reservation:{state:'HELD',stock:stockUpdates.map(s=>({path:s.ref.path,quantity:s.quantity})),
+            couponPath:cupomDocRef?.path || null,couponCode,
+            customerPath:cupomDocRef && clienteSnap?.exists ? clienteRef.path : null},
+          customer:{name:String(cliente.nome).slice(0,120),phone_number:'+55'+String(cliente.telefone).replace(/\D/g,'').replace(/^55(?=\d{10,11}$)/,'')},
+          createdAt:admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
       transaction.set(orderRef, {
         lojaId,
         clienteId: cliente.id || null,
@@ -1798,7 +1888,8 @@ app.post("/checkout/confirmar", async (req, res) => {
         valorFrete,
         total,
         cupom: cupomDocRef ? {codigo: couponCode, valorDesconto: descontoFinal} : null,
-        status,
+        status: online ? 'Aguardando pagamento' : status,
+        ...(online ? {order_status:'PENDING',payment_status:'PENDING',paymentId,ownerUid} : {}),
         origem,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -1808,11 +1899,11 @@ app.post("/checkout/confirmar", async (req, res) => {
       }
 
       if (cupomDocRef) {
-        transaction.set(cupomDocRef, {usos: admin.firestore.FieldValue.increment(1)}, {merge: true});
+        transaction.set(cupomDocRef, {[online ? 'reservados' : 'usos']: admin.firestore.FieldValue.increment(1)}, {merge: true});
 
         if (clienteRef && clienteSnap?.exists) {
           transaction.set(clienteRef, {
-            cuponsUsados: admin.firestore.FieldValue.arrayUnion(couponCode),
+            [online ? 'cuponsReservados' : 'cuponsUsados']: admin.firestore.FieldValue.arrayUnion(couponCode),
             atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
           }, {merge: true});
         }
@@ -1821,6 +1912,7 @@ app.post("/checkout/confirmar", async (req, res) => {
       return orderRef.id;
     });
 
+    if(online) return res.status(200).json({ok:true,...await checkoutPayments.start(paymentId,ownerUid)});
     return res.status(200).json({ok: true, id: orderId});
   } catch (error) {
     logger.error('Erro ao confirmar checkout:', error);
@@ -2042,6 +2134,7 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
       throw new HttpsError('not-found', 'Cliente não encontrado.');
     }
 
+    if (found.data?.authOwnerUid) throw new HttpsError('permission-denied', 'Este cadastro usa Minha Conta. Continue com Google.');
     await upsertClientDocument({
       targetRef: getClientsCollection().doc(found.id),
       data: found.data,
@@ -2104,6 +2197,7 @@ exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
     const clientRef = getClientsCollection().doc(clientId);
     const clientSnap = await clientRef.get();
 
+    if (clientSnap.data()?.authOwnerUid && clientSnap.data().authOwnerUid !== request.auth?.uid) throw new HttpsError('permission-denied', 'Entre na conta vinculada a este cadastro.');
     if (!clientSnap.exists) {
       throw new HttpsError('not-found', 'Cliente não encontrado.');
     }
@@ -2177,6 +2271,7 @@ exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async
 
     const clientRef = getClientsCollection().doc(clientId);
     const clientSnap = await clientRef.get();
+    if (clientSnap.data()?.authOwnerUid && clientSnap.data().authOwnerUid !== request.auth?.uid) throw new HttpsError('permission-denied', 'Entre na conta vinculada a este cadastro.');
     if (!clientSnap.exists) {
       throw new HttpsError('not-found', 'Cliente não encontrado.');
     }
@@ -3707,11 +3802,17 @@ exports.reconcileConfirmedTransferFinancialRecords = onSchedule({
 });
 
 
-exports.notifyNewOrder = onDocumentCreated({
+exports.notifyNewOrder = onDocumentWritten({
     document: "lojas/{lojaId}/pedidos/{pedidoId}",
     region: "southamerica-east1",
 }, async (event) => {
-    const orderData = event.data?.data();
+    let orderData = event.data?.after?.data();
+    const previousOrder = event.data?.before?.data();
+    if (orderData?.paymentId && orderData.payment_status === 'PAID') {
+      await checkoutPayments.syncOrderStatus(event.data.after.ref.path);
+      orderData = (await event.data.after.ref.get()).data();
+    }
+    if (!shouldNotifyOrder(previousOrder, orderData)) return;
 
     if (!orderData) {
         logger.warn(

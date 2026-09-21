@@ -1,3 +1,4 @@
+import {localCheckout, getCheckoutFirebaseConfig} from './checkout-environment.js';
 // Firebase configuration and setup for the public/cardápio pages.
 // This file initialises a named Firebase app instance to avoid
 // interfering with the main CRM session.  It also ensures that
@@ -7,6 +8,7 @@
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import {
   getFirestore,
+  connectFirestoreEmulator,
   collection,
   getDocs,
   getDoc,
@@ -20,9 +22,10 @@ import {
   arrayUnion,
   onSnapshot,
 } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
-import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js';
+import { getFunctions, httpsCallable, connectFunctionsEmulator } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js';
 import {
   getAuth,
+  connectAuthEmulator,
   signInAnonymously,
   onAuthStateChanged,
   setPersistence,
@@ -33,17 +36,7 @@ import {
 // These credentials correspond to the Ana Guimarães project hosted on
 // Firebase.  Replace them only if you migrate the project to a new
 // Firebase account.
-const GOOGLE_API_KEY = 'AIzaSyAIdbF2EgdbZSPqBaQhi1pnNb4t5xauwEc';
-
-const firebaseConfig = {
-  apiKey: GOOGLE_API_KEY,
-  authDomain: 'ana-guimaraes.firebaseapp.com',
-  projectId: 'ana-guimaraes',
-  storageBucket: 'ana-guimaraes.firebasestorage.app',
-  messagingSenderId: '847824537421',
-  appId: '1:847824537421:web:75861057fd6f998ee49904',
-  measurementId: 'G-F8BVTNLEW7',
-};
+const firebaseConfig = await getCheckoutFirebaseConfig();
 
 // Create or retrieve a named app instance.  Using a distinct name
 // prevents interference with other Firebase initialisations on the page.
@@ -56,6 +49,11 @@ const db = getFirestore(app);
 // Authentication service.
 const auth = getAuth(app);
 const functions = getFunctions(app, 'us-central1');
+if (localCheckout) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', {disableWarnings: true});
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+}
 
 const normalizeCallableError = (error) => {
   const rawCode = typeof error?.code === 'string' ? error.code : '';
