@@ -18,6 +18,7 @@ const crypto = require('crypto');
 const {createFiscalFunctions} = require('./fiscal');
 const {createIfoodFunctions} = require('./ifood');
 const {createFood99Functions} = require('./food99');
+const {createPublicStoreValidator} = require('./public-store-access');
 const {createCaixaFunctions} = require('./caixa');
 const {createEntreLojasFunctions} = require('./entre-lojas');
 const {createEntreLojasReportFunctions} = require('./entre-lojas-report');
@@ -825,6 +826,7 @@ const generateStoreId = (value) => {
 };
 
 const getStoreRef = (storeId) => db.collection('lojas').doc(storeId);
+const isValidPublicStoreId = createPublicStoreValidator(getStoreRef);
 
 const getStoreConfigDoc = (storeId) => getStoreRef(storeId).collection('configuracoes').doc(CONFIG_DOC_ID);
 const getStoreConfigCollection = (storeId, collectionName) => getStoreConfigDoc(storeId).collection(collectionName);
@@ -1622,8 +1624,7 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
       throw new HttpsError('invalid-argument', 'lojaId é obrigatório.');
     }
 
-    const storeDoc = await getStoreRef(lojaId).get();
-    if (!storeDoc.exists) {
+    if (!(await isValidPublicStoreId(lojaId))) {
       throw new HttpsError('permission-denied', 'Loja inválida para consulta.');
     }
 
@@ -1761,8 +1762,7 @@ exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async
       throw new HttpsError('invalid-argument', 'Parâmetros obrigatórios ausentes.');
     }
 
-    const storeDoc = await getStoreRef(lojaId).get();
-    if (!storeDoc.exists) {
+    if (!(await isValidPublicStoreId(lojaId))) {
       throw new HttpsError('permission-denied', 'Loja inválida para atualização.');
     }
 
