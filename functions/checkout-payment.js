@@ -35,7 +35,7 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     const payment = await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);const p=snap.data();
       if (!p || p.ownerUid !== ownerUid) throw paymentError('Pedido não encontrado.',404);
-      if(p.payment_status !== 'PENDING' && p.payment_status !== 'PAID') throw paymentError('Reserva encerrada. Consulte a loja antes de pagar.');
+      if(p.requiresReview || (p.payment_status !== 'PENDING' && p.payment_status !== 'PAID')) throw paymentError('Pedido aguardando conciliação. Consulte a loja antes de pagar.');
       if(p.checkoutUrl || p.payment_status === 'PAID') return p;
       if(p.linkState) throw paymentError('Pedido aguardando conciliação. Não refaça a compra; consulte a loja.');
       tx.update(ref,{linkState:'CREATING',updatedAt:timestamp()});return p;
@@ -66,25 +66,47 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     if(!payment) throw paymentError('Pedido não encontrado.',404);
     // Webhook and browser parameters are hints only. Re-query the provider with stored merchant/order.
     const result=await provider.check({handle:payment.handle,order_nsu:id,transaction_nsu:input.transaction_nsu,slug:input.invoice_slug || input.slug});
-    assertPaid(result,payment.amount);
+    if(result?.success !== true || result?.paid !== true) throw paymentError('Pagamento ainda não confirmado.');
     const receiptRef=db.collection('checkoutReceipts').doc(crypto.createHash('sha256').update(`${payment.handle}:${input.transaction_nsu}`).digest('hex'));
-    await db.runTransaction(async tx=>{
-      const [latest, receipt, order] = await Promise.all([tx.get(ref),tx.get(receiptRef),tx.get(db.doc(payment.orderPath))]);
-      if(receipt.exists && receipt.data().paymentId !== id) throw paymentError('Transação já associada a outro pedido.');
-      if(latest.data()?.payment_status==='PAID') return;
-      if(!order.exists || cents(order.data().total) !== payment.amount) throw paymentError('Pedido requer conciliação manual.');
-      const current=latest.data();
-      const held=await readReservation(tx,db,current);
-      const requiresReview=order.data().order_status!=='PENDING' || current.payment_status!=='PENDING' ||
-        !!(current.reservation && current.reservation.state!=='HELD') ||
-        !!(current.expiresAt && current.expiresAt.toMillis()<=now());
-      settleReservation(tx,db,admin,held,!requiresReview);
-      tx.set(receiptRef,{paymentId:id,createdAt:timestamp()});
-      tx.update(ref,{payment_status:'PAID',requiresReview,transactionNsu:input.transaction_nsu,slug:input.invoice_slug || input.slug,paidAt:timestamp(),
-        ...(held ? {'reservation.state':requiresReview?'RELEASED':'CONSUMED'} : {})});
-      tx.update(order.ref,{payment_status:'PAID',requiresReview,order_status:requiresReview?'CANCELLED':'CONFIRMED',status:requiresReview?'Pagamento em conferência':'Pendente',formaPagamento:result.capture_method==='pix'?'Pix online':'Cartão online',paidAt:timestamp()});
+    const paidMatches=(()=>{try {assertPaid(result,payment.amount);return true;} catch {return false;}})();
+    const orderRef=db.doc(payment.orderPath);
+    const evidence={handle:payment.handle,orderPath:payment.orderPath,transactionNsu:input.transaction_nsu,
+      slug:input.invoice_slug || input.slug,amount:Number.isSafeInteger(result.amount)?result.amount:null,
+      paidAmount:Number.isSafeInteger(result.paid_amount)?result.paid_amount:null,
+      captureMethod:typeof result.capture_method==='string'?result.capture_method:null};
+    return db.runTransaction(async tx=>{
+        const [latest,receipt,order]=await Promise.all([tx.get(ref),tx.get(receiptRef),tx.get(orderRef)]);
+        const current=latest.data();
+        if(!current || current.handle!==payment.handle || current.amount!==payment.amount || current.orderPath!==payment.orderPath) throw paymentError('Pedido requer conciliação manual.');
+        if(receipt.exists && receipt.data().paymentId!==id) throw paymentError('Transação já associada a outro pedido.');
+        if(receipt.exists) return {ok:true,payment_status:current.payment_status,requiresReview:!!current.requiresReview};
+        const duplicate=current.payment_status==='PAID' && current.transactionNsu!==input.transaction_nsu;
+        const invalidOrder=!order.exists || !Number.isFinite(Number(order.data().total)) || Math.round(Number(order.data().total)*100)!==payment.amount;
+        const reviewReason=!paidMatches?'PROVIDER_PAYMENT_MISMATCH':duplicate?'DUPLICATE_PROVIDER_TRANSACTION':invalidOrder?'ORDER_MISSING_OR_AMOUNT_CHANGED':null;
+        if(reviewReason) {
+          tx.create(receiptRef,{paymentId:id,...evidence,outcome:'REVIEW',reason:reviewReason,createdAt:timestamp()});
+          tx.update(ref,{requiresReview:true,reviewReason,linkState:'RECONCILIATION_REQUIRED',updatedAt:timestamp()});
+          if(order.exists) tx.update(orderRef,{requiresReview:true});
+          return {ok:true,payment_status:current.payment_status,requiresReview:true};
+        }
+        if(current.payment_status==='PAID') return {ok:true,payment_status:'PAID',requiresReview:!!current.requiresReview};
+        let held;
+        try {held=await readReservation(tx,db,current);} catch {
+          tx.create(receiptRef,{paymentId:id,...evidence,outcome:'REVIEW',reason:'RESERVATION_INCONSISTENT',createdAt:timestamp()});
+          tx.update(ref,{requiresReview:true,reviewReason:'RESERVATION_INCONSISTENT',linkState:'RECONCILIATION_REQUIRED',updatedAt:timestamp()});
+          tx.update(orderRef,{requiresReview:true});
+          return {ok:true,payment_status:current.payment_status,requiresReview:true};
+        }
+        const requiresReview=!!current.requiresReview || !!order.data().requiresReview || order.data().order_status!=='PENDING' || current.payment_status!=='PENDING' ||
+          !!(current.reservation && current.reservation.state!=='HELD') ||
+          !!(current.expiresAt && current.expiresAt.toMillis()<=now());
+        settleReservation(tx,db,admin,held,!requiresReview);
+        tx.create(receiptRef,{paymentId:id,...evidence,outcome:requiresReview?'REVIEW':'CONFIRMED',createdAt:timestamp()});
+        tx.update(ref,{payment_status:'PAID',requiresReview,transactionNsu:input.transaction_nsu,slug:input.invoice_slug || input.slug,paidAt:timestamp(),
+          ...(held ? {'reservation.state':requiresReview?'RELEASED':'CONSUMED'} : {})});
+        tx.update(order.ref,{payment_status:'PAID',requiresReview,order_status:requiresReview?'CANCELLED':'CONFIRMED',status:requiresReview?'Pagamento em conferência':'Pendente',formaPagamento:result.capture_method==='pix'?'Pix online':'Cartão online',paidAt:timestamp()});
+        return {ok:true,payment_status:'PAID',requiresReview};
     });
-    return {ok:true,payment_status:'PAID'};
   }
   async function status(id,uid) {
     if(!/^[a-f0-9]{64}$/.test(id)) throw paymentError('Pedido inválido.',400);
@@ -92,12 +114,13 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     if(!p || p.ownerUid!==uid) throw paymentError('Pedido não encontrado.',404);
     await expire(id);
     p=(await payments.doc(id).get()).data();
-    return {id:p.orderId,payment_status:p.payment_status,checkoutUrl:p.payment_status==='PENDING' ? p.checkoutUrl || null : null,requiresReview:!!p.requiresReview || p.linkState==='RECONCILIATION_REQUIRED'};
+    const requiresReview=!!p.requiresReview || p.linkState==='RECONCILIATION_REQUIRED';
+    return {id:p.orderId,payment_status:p.payment_status,checkoutUrl:p.payment_status==='PENDING' && !requiresReview ? p.checkoutUrl || null : null,requiresReview};
   }
   async function expire(id) {
     return db.runTransaction(async tx => {
       const ref=payments.doc(id);const p=(await tx.get(ref)).data();
-      if(!p || p.payment_status!=='PENDING' || p.reservation?.state!=='HELD' || !p.expiresAt || p.expiresAt.toMillis()>now()) return false;
+      if(!p || p.requiresReview || p.payment_status!=='PENDING' || p.reservation?.state!=='HELD' || !p.expiresAt || p.expiresAt.toMillis()>now()) return false;
       const order=await tx.get(db.doc(p.orderPath));
       if(!order.exists || order.data().order_status!=='PENDING') throw paymentError('Pedido requer conciliação manual.');
       const held=await readReservation(tx,db,p);

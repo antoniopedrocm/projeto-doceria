@@ -38,6 +38,13 @@ test('HTTP online reserva uma vez e devolve o mesmo checkout no retry',async()=>
   assert.equal((await db.doc(`lojas/${store}/produtos/product`).get()).data().estoque,9);
   const conflict=await send({...b,cliente:{...b.cliente,nome:'Outro'}});assert.equal(conflict.status,409);
 });
+test('falha temporária na consulta do provedor retorna 5xx ao webhook para permitir retry',async()=>{
+  const b=body();const created=await send(b);
+  assert.equal(created.status,200);
+  const response=await originalFetch(base+'/checkout/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_nsu:created.data.paymentId,transaction_nsu:'unavailable',invoice_slug:'unavailable'})});
+  assert.equal(response.status,500);
+  assert.equal((await db.doc(`checkoutPayments/${created.data.paymentId}`).get()).data().payment_status,'PENDING');
+});
 test('HTTP rejeita quantidade duplicada/preço/frete manipulados',async()=>{
   const b=body();
   assert.equal((await send({...b,itens:[...b.itens,...b.itens],subtotal:20})).status,400);
@@ -45,9 +52,10 @@ test('HTTP rejeita quantidade duplicada/preço/frete manipulados',async()=>{
   assert.equal((await send({...b,cliente:{...b.cliente,endereco:'Entrega'},delivery:{lat:-17,lng:-49}})).status,409);
 });
 test('visitante offline preserva criação sem gateway e status não é controlado pelo navegador',async()=>{
+  const previousLinks=links;
   const b=body();b.pagamento.forma='Dinheiro';b.status='Entregue';
   const r=await send(b);assert.equal(r.status,200,JSON.stringify(r.data));
-  assert.equal((await db.doc(`lojas/${store}/pedidos/${r.data.id}`).get()).data().status,'Pendente');assert.equal(links,1);
+  assert.equal((await db.doc(`lojas/${store}/pedidos/${r.data.id}`).get()).data().status,'Pendente');assert.equal(links,previousLinks);
 });
 test('HTTP reserva limite de cupom entre compras concorrentes e libera após expiração',async()=>{
   const {createPaymentService}=require('./checkout-payment');

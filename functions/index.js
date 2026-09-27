@@ -42,6 +42,7 @@ const {createPaymentService, cents, paymentError} = require('./checkout-payment'
 const checkoutPayments = createPaymentService({db, admin});
 const {paymentPrefill}=require('./payment-prefill');
 const {RESERVATION_MS, shouldNotifyOrder} = require('./checkout-reservation');
+const {claimOnlineOrderNotification} = require('./checkout-notification');
 exports.expireCheckoutReservations = onSchedule({schedule:'every 5 minutes', region:'southamerica-east1'}, async () => {
   const results = await checkoutPayments.expireDue();
   for (const result of results) if (result.error) logger.error('checkout_reservation_expiry_failed', {paymentId:result.id});
@@ -1209,7 +1210,7 @@ app.get('/checkout/config', async (req,res) => {
 });
 app.post('/checkout/webhook', async(req,res)=>{
   try {return res.json(await checkoutPayments.reconcile(req.body));}
-  catch(e){return res.status(e.httpStatus===404?404:400).json({ok:false});}
+  catch(e){return res.status(e.httpStatus || 500).json({ok:false});}
 });
 app.post('/checkout/payment-status', async(req,res)=>{
   try {
@@ -3833,6 +3834,7 @@ exports.notifyNewOrder = onDocumentWritten({
         return;
     }
 
+    let notificationAttemptRef;
     try {
         const orderId = String(
             event.params?.pedidoId || "",
@@ -3961,6 +3963,15 @@ exports.notifyNewOrder = onDocumentWritten({
                 `Nenhum dispositivo cadastrado para a loja ${lojaId}.`,
             );
             return;
+        }
+
+        if (orderData.paymentId) {
+            const claimed = await claimOnlineOrderNotification({
+                db, admin, orderRef: event.data.after.ref,
+                paymentId: orderData.paymentId,
+            });
+            if (!claimed) return;
+            notificationAttemptRef = db.collection('checkoutNotificationAttempts').doc(orderData.paymentId);
         }
 
         /*
@@ -4215,7 +4226,13 @@ exports.notifyNewOrder = onDocumentWritten({
             `Android: ${androidTokens.length}. ` +
             `Legados: ${legacyTokens.length}.`,
         );
+        if (notificationAttemptRef) await notificationAttemptRef.update({
+            state: 'SENT', completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
     } catch (error) {
+        if (notificationAttemptRef) await notificationAttemptRef.update({
+            state: 'REVIEW', completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch((updateError) => logger.error('Falha ao registrar resultado do push:', updateError));
         logger.error(
             "Erro ao enviar notificações de novo pedido:",
             error,

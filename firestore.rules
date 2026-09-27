@@ -846,6 +846,7 @@ match /{collection}/{document=**} {
   allow write: if canStaffWrite()
     && collection != 'checkoutPayments'
     && collection != 'checkoutReceipts'
+    && collection != 'checkoutNotificationAttempts'
     && (collection != 'auditLogs' || ((request.method == 'delete' || !request.resource.data.keys().hasAny(['paymentSettingsStoreId'])) && (request.method == 'create' || !resource.data.keys().hasAny(['paymentSettingsStoreId']))))
     && collection != 'lojas'
     && collection != 'integrations'

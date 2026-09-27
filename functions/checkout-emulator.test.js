@@ -9,6 +9,7 @@ const admin=require('firebase-admin');
 const {initializeTestEnvironment,assertFails,assertSucceeds}=require('@firebase/rules-unit-testing');
 const {doc,getDoc,setDoc}=require('firebase/firestore');
 const {createPaymentService}=require('./checkout-payment');
+const {claimOnlineOrderNotification}=require('./checkout-notification');
 const {createCustomerAccount}=require('./checkout-auth');
 const app=admin.initializeApp({projectId:'demo-doceria-checkout'},'checkout-tests');
 const db=app.firestore();
@@ -25,8 +26,65 @@ test('cliente Google não lê CRM nem assume papel de funcionário',async()=>{
     await assertFails(getDoc(doc(client,'lojas/test-store/pedidos/private')));
     await assertFails(setDoc(doc(client,'users/google-customer'),{role:'gerente'}));
     await assertFails(setDoc(doc(client,'customerAuthIdentities/anything'),{customerId:'private'}));
-    await assertSucceeds(getDoc(doc(env.authenticatedContext('test-staff').firestore(),'lojas/test-store/pedidos/private')));
+    await assertFails(setDoc(doc(client,'checkoutNotificationAttempts/anything'),{state:'SENT'}));
+    const staff=env.authenticatedContext('test-staff').firestore();
+    await assertFails(setDoc(doc(staff,'checkoutNotificationAttempts/anything'),{state:'SENT'}));
+    await assertSucceeds(getDoc(doc(staff,'lojas/test-store/pedidos/private')));
   } finally {await env.cleanup();}
+});
+test('cobrança verificada com divergência fica em conferência sem confirmar pedido',async()=>{
+  const id='d'.repeat(64),orderPath=`lojas/payment-test/pedidos/${id}`;
+  await db.doc(orderPath).set({order_status:'PENDING',payment_status:'PENDING',total:10,paymentId:id});
+  await db.doc(`checkoutPayments/${id}`).set({orderId:id,orderPath,ownerUid:'owner',handle:'merchant-a',amount:1000,payment_status:'PENDING',checkoutUrl:'https://buy.infinitepay.io/test'});
+  const service=createPaymentService({db,admin,provider:{check:async()=>({success:true,paid:true,amount:900,paid_amount:900,capture_method:'pix'})}});
+  const payload={order_nsu:id,transaction_nsu:'short-payment',invoice_slug:'invoice-short'};
+  const first=await service.reconcile(payload),second=await service.reconcile(payload);
+  assert.deepEqual(first,second);
+  assert.equal(first.requiresReview,true);
+  assert.equal((await db.doc(orderPath).get()).data().order_status,'PENDING');
+  assert.equal((await service.status(id,'owner')).checkoutUrl,null);
+  await assert.rejects(()=>service.start(id,'owner'));
+  await db.doc(`checkoutPayments/${id}`).update({reservation:{state:'HELD',stock:[]},expiresAt:admin.firestore.Timestamp.fromMillis(1)});
+  assert.equal(await service.expire(id),false);
+  assert.equal((await service.status(id,'owner')).requiresReview,true);
+  assert.equal((await db.collection('checkoutReceipts').where('paymentId','==',id).get()).size,1);
+  const corrected=createPaymentService({db,admin,provider:{check:async()=>({success:true,paid:true,amount:1000,paid_amount:1000,capture_method:'pix'})}});
+  const later=await corrected.reconcile({...payload,transaction_nsu:'another-charge'});
+  assert.equal(later.requiresReview,true);
+  assert.equal((await db.doc(orderPath).get()).data().order_status,'CANCELLED');
+});
+test('segunda cobrança verificada não repete confirmação e sinaliza revisão',async()=>{
+  const id='e'.repeat(64),orderPath=`lojas/payment-test/pedidos/${id}`;
+  await db.doc(orderPath).set({order_status:'PENDING',payment_status:'PENDING',total:10,paymentId:id});
+  await db.doc(`checkoutPayments/${id}`).set({orderId:id,orderPath,ownerUid:'owner',handle:'merchant-a',amount:1000,payment_status:'PENDING'});
+  const service=createPaymentService({db,admin,provider:{check:async()=>({success:true,paid:true,amount:1000,paid_amount:1000,capture_method:'pix'})}});
+  await service.reconcile({order_nsu:id,transaction_nsu:'first-charge',invoice_slug:'first-invoice'});
+  const result=await service.reconcile({order_nsu:id,transaction_nsu:'second-charge',invoice_slug:'second-invoice'});
+  assert.equal(result.requiresReview,true);
+  assert.equal((await db.doc(`checkoutPayments/${id}`).get()).data().transactionNsu,'first-charge');
+  assert.equal((await db.doc(orderPath).get()).data().requiresReview,true);
+  assert.equal((await db.collection('checkoutReceipts').where('paymentId','==',id).get()).size,2);
+});
+test('notificação online reivindicada uma vez e apenas para pedido confirmado',async()=>{
+  const id='f'.repeat(64),orderRef=db.doc(`lojas/payment-test/pedidos/${id}`);
+  await db.doc(`checkoutNotificationAttempts/${id}`).delete();
+  await orderRef.set({paymentId:id,payment_status:'PAID',order_status:'CONFIRMED'});
+  await db.doc(`checkoutPayments/${id}`).set({orderPath:orderRef.path,payment_status:'PAID'});
+  const args={db,admin,orderRef,paymentId:id};
+  assert.deepEqual(await Promise.all([claimOnlineOrderNotification(args),claimOnlineOrderNotification(args)]).then(v=>v.sort()),[false,true]);
+  assert.equal((await db.doc(`checkoutNotificationAttempts/${id}`).get()).data().state,'ATTEMPTED');
+  await orderRef.update({requiresReview:true});
+  await db.doc(`checkoutNotificationAttempts/${id}`).delete();
+  assert.equal(await claimOnlineOrderNotification(args),false);
+});
+test('paid false não inventa FAILED nem REFUNDED e preserva reserva',async()=>{
+  const id='1'.repeat(64),orderPath=`lojas/payment-test/pedidos/${id}`;
+  await db.doc(orderPath).set({order_status:'PENDING',payment_status:'PENDING',total:10,paymentId:id});
+  await db.doc(`checkoutPayments/${id}`).set({orderId:id,orderPath,ownerUid:'owner',handle:'merchant-a',amount:1000,payment_status:'PENDING'});
+  const service=createPaymentService({db,admin,provider:{check:async()=>({success:true,paid:false})}});
+  await assert.rejects(()=>service.reconcile({order_nsu:id,transaction_nsu:'not-paid',invoice_slug:'not-paid'}));
+  assert.equal((await db.doc(`checkoutPayments/${id}`).get()).data().payment_status,'PENDING');
+  assert.equal((await db.collection('checkoutReceipts').where('paymentId','==',id).get()).empty,true);
 });
 test('webhooks concorrentes são idempotentes e não cruzam contas/pedidos',async()=>{
   const id='a'.repeat(64),id2='b'.repeat(64);
