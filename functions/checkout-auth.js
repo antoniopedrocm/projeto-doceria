@@ -24,7 +24,7 @@ function normalizeContactPhone(value) {
 function normalizeAddress(value) {
   const address=value && typeof value==='object' ? value : {};
   const clean=(field,max)=>String(address[field] || '').trim().slice(0,max);
-  const normalized={enderecoCompleto:clean('enderecoCompleto',300),nickname:clean('nickname',60),
+  const normalized={...Object.fromEntries(['cep','street','number','neighborhood','complement'].filter(k=>address[k]).map(k=>[k,clean(k,160)])),enderecoCompleto:clean('enderecoCompleto',300),nickname:clean('nickname',60),
     referencia:clean('referencia',160),complemento:clean('complemento',120),semNumero:!!address.semNumero,
     isDefault:!!address.isDefault,localizacaoFrequente:!!address.localizacaoFrequente};
   const lat=Number(address.lat),lng=Number(address.lng);

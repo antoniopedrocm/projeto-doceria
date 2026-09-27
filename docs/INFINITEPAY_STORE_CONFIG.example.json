@@ -1,0 +1,18 @@
+{
+  "ana-guimaraes-matriz": {
+    "enabled": false,
+    "handle": "ana_guimare",
+    "redirectUrl": "https://crmdoceria-9959e.web.app/payment-return",
+    "webhookUrl": "https://us-central1-crmdoceria-9959e.cloudfunctions.net/api/checkout/webhook",
+    "sendCustomerData": true,
+    "sendDeliveryAddress": true
+  },
+  "ana-guimaraes-garavelo": {
+    "enabled": false,
+    "handle": "",
+    "redirectUrl": "https://crmdoceria-9959e.web.app/payment-return",
+    "webhookUrl": "https://us-central1-crmdoceria-9959e.cloudfunctions.net/api/checkout/webhook",
+    "sendCustomerData": true,
+    "sendDeliveryAddress": true
+  }
+}

@@ -1,3 +1,4 @@
+import InfinitePaySettings from './payments/InfinitePaySettings';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
@@ -1299,6 +1300,7 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
       ? getDefaultCaixaPermissionsForRole(role)
       : getEmptyCaixaPermissions(),
     configuracoes: {
+      manage_payment_settings: normalizedRole === ROLE_OWNER,
       gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER,
     },
   };
@@ -1331,6 +1333,7 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
       ? sanitizeCaixaPermissions(caixaDetails, role)
       : getEmptyCaixaPermissions(),
     configuracoes: {
+      manage_payment_settings: normalizedRole === ROLE_OWNER || (normalizedRole === ROLE_MANAGER && configuracoesDetails.manage_payment_settings === true),
       gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER || (
         normalizedRole === ROLE_MANAGER &&
         configuracoesDetails.gerenciarStatusUsuarios === true
@@ -6947,6 +6950,28 @@ function App() {
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Página Inicial</h1>
             <p className="text-gray-600 mt-1">Seja bem-vindo à Ana Guimarães Doceria!</p>
+            {!user && (
+              <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('customer-account:open'))}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 py-2 text-white font-semibold hover:bg-pink-700"
+                >
+                  <UserIcon className="w-4 h-4" /> Área do Cliente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowLogin(true);
+                    setShowPasswordReset(false);
+                    setLoginError('');
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 font-semibold hover:bg-gray-50"
+                >
+                  <Key className="w-4 h-4" /> Acesso da Equipe
+                </button>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
                 <a
@@ -12294,6 +12319,7 @@ const effectiveStoreName = useMemo(() => {
                     <button onClick={() => setActiveTab('cupons')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'cupons' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Cupons
                     </button>
+                    <button onClick={() => setActiveTab('pagamentos')} className="px-4 py-2 rounded-lg text-sm font-semibold">Pagamentos Online</button>
                     <button onClick={() => setActiveTab('frete')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'frete' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Frete
                     </button>
@@ -12312,6 +12338,7 @@ const effectiveStoreName = useMemo(() => {
                 </div>
             </div>
             
+            {activeTab === 'pagamentos' && <InfinitePaySettings key={effectiveStoreId || 'none'} functions={functions} storeId={effectiveStoreId} />}
             {activeTab === 'users' && (
 
             <div>
@@ -13274,7 +13301,8 @@ const effectiveStoreName = useMemo(() => {
 
                                         {isConfiguracoes && moduleChecked && normalizeRole(userFormData.role) === ROLE_MANAGER && userFormData.applyCustomProfile && (
                                             <div className="ml-6 rounded-xl border border-pink-100 bg-white p-3 space-y-2">
-                                                <p className="text-xs font-semibold text-gray-800">Permissões internas de Usuários</p>
+                                                <p className="text-xs font-semibold text-gray-800">Permissões internas</p>
+                                                <label className="flex gap-2 text-xs"><input type="checkbox" disabled={user?.role !== ROLE_OWNER} checked={userFormData.permissionDetails?.configuracoes?.manage_payment_settings === true} onChange={e=>setUserFormData(prev=>({...prev,permissionDetails:{...prev.permissionDetails,configuracoes:{...prev.permissionDetails?.configuracoes,manage_payment_settings:e.target.checked}}}))}/>Gerenciar pagamentos online das lojas autorizadas</label>
                                                 <label className="flex items-start gap-2 text-xs text-gray-700">
                                                     <input
                                                         type="checkbox"
@@ -21579,7 +21607,7 @@ const handleSubmit = async (e) => {
 						} else {
 							setShowUserMenu((previous) => !previous);
 						}
-					}} className="p-2 rounded-full hover:bg-gray-100" aria-label={user ? 'Menu do usuário' : 'Entrar'} aria-haspopup={user ? 'menu' : 'dialog'} aria-controls={user ? 'user-menu' : undefined} aria-expanded={user ? showUserMenu : showLogin}>
+					}} className="p-2 rounded-full hover:bg-gray-100" aria-label={user ? 'Menu do usuário' : 'Acesso da Equipe'} title={user ? 'Menu do usuário' : 'Acesso da Equipe'} aria-haspopup={user ? 'menu' : 'dialog'} aria-controls={user ? 'user-menu' : undefined} aria-expanded={user ? showUserMenu : showLogin}>
 						<UserIcon className="w-6 h-6 text-gray-600" />
 					</button>
 					{user && <span className="absolute top-0 right-0 w-2 h-2 bg-green-500 rounded-full border-2 border-white"></span>}
@@ -21626,7 +21654,7 @@ const handleSubmit = async (e) => {
         isCreatingStore={isCreatingStore}
       />
 
-      <Modal isOpen={showLogin} onClose={() => {setShowLogin(false); setLoginError(''); setPasswordResetMessage({ text: '', type: '' });}} title={showPasswordReset ? "Recuperar Senha" : "Login"} size="sm" closeOnEscape>
+      <Modal isOpen={showLogin} onClose={() => {setShowLogin(false); setLoginError(''); setPasswordResetMessage({ text: '', type: '' });}} title={showPasswordReset ? "Recuperar acesso da equipe" : "Acesso da Equipe"} size="sm" closeOnEscape>
         {showPasswordReset ? (
             <div className="space-y-4">
                 <p className="text-sm text-gray-600">Insira seu e-mail para enviarmos um link de recuperação.</p>

@@ -377,9 +377,14 @@
             <p class="text-gray-600 mb-6">Você pode buscar seu cadastro ou continuar como visitante.</p>
             <div class="space-y-4">
                 <button id="use-phone-button" class="w-full bg-blue-500 text-white py-3 rounded-lg font-bold hover:bg-blue-600 transition-colors flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-mobile-screen-button"></i> Usar número de celular
+                    <i class="fa-solid fa-mobile-screen-button"></i> Continuar com celular
                 </button>
-                <button id="continue-guest-button" class="w-full bg-gray-600 text-white py-3 rounded-lg font-bold hover:bg-gray-700 transition-colors">Continuar sem cadastro</button>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button id="continue-google-button" class="w-full border border-gray-300 bg-white text-gray-800 py-3 rounded-lg font-bold hover:bg-gray-50"><span aria-hidden="true">G</span> Entrar com Google</button>
+                    <button id="continue-email-button" class="w-full border border-gray-300 bg-white text-gray-800 py-3 rounded-lg font-bold hover:bg-gray-50"><span aria-hidden="true">✉</span> Entrar com e-mail</button>
+                </div>
+                <div class="flex items-center gap-3 text-gray-500"><hr class="flex-1">ou<hr class="flex-1"></div>
+                <button id="continue-guest-button" class="w-full bg-gray-600 text-white py-3 rounded-lg font-bold hover:bg-gray-700 transition-colors">Continuar como visitante</button>
                 <button id="close-identification-modal" class="text-sm text-gray-500 mt-4 hover:underline">Cancelar</button>
             </div>
         </div>
@@ -1230,9 +1235,14 @@
             app
         } from "./firebaseClientConfig.js";
 
+        import {apiBaseUrl} from './checkout-environment.js';
+        import {installCustomerAccount} from './customer-account.js';
+        import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
+        import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment} from './checkout-payment-client.js';
         // --- VARIÁVEIS GLOBAIS ---
         const WHATSAPP_NUMBER = '5562991056075';
-        const API_BASE_URL = 'https://us-central1-ana-guimaraes.cloudfunctions.net/api';
+        const API_BASE_URL = apiBaseUrl;
+        const escapeCheckoutText = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const DEFAULT_STORE_TIMEZONE = 'America/Sao_Paulo';
         const STORE_ID = window.STORE_ID || 'ana-guimaraes-matriz';
         const CONFIG_DOC_ID = 'config';
@@ -2120,7 +2130,7 @@
             cartButton.addEventListener('click', () => cartModal.classList.remove('hidden'));
             closeCartButton.addEventListener('click', () => cartModal.classList.add('hidden'));
 
-            checkoutButton.addEventListener('click', () => {
+            checkoutButton.addEventListener('click', async () => {
                 if (!storeIsOpenNow) {
                     showToast('A loja está fechada no momento. Volte em nosso horário de atendimento.', true);
                     return;
@@ -2130,6 +2140,12 @@
                     return;
                 }
                 cartModal.classList.add('hidden');
+                persistCheckoutState();
+                await customerAccount.ready;
+                if (isLinkedCustomer(currentClient)) {
+                    openAddressManagementModal(currentClient);
+                    return;
+                }
                 identificationModal.classList.remove('hidden');
             });
 
@@ -2374,6 +2390,7 @@
 
                 const newAddress = {
                     enderecoCompleto: addressText,
+                    cep:zip,street,number,neighborhood,complement,
                     nickname,
                     lat,
                     lng,
@@ -2386,6 +2403,15 @@
                 };
 
                 const functions = getFunctions(app, 'us-central1');
+                if (currentClient.accountLinked) {
+                    const result = await httpsCallable(functions, 'customerAddAddress')({address: newAddress});
+                    currentClient = result.data.customer;
+                    showToast('✅ Endereço salvo com sucesso!');
+                    cancelNewAddress(true);
+                    openAddressManagementModal(currentClient);
+                    await useExistingAddress(addressText, newAddress);
+                    return;
+                }
                 const addClientAddress = httpsCallable(functions, 'addClientAddress');
                 await addClientAddress({
                     clientId: currentClient.id,
@@ -2455,10 +2481,10 @@
 					addressDiv.className = 'bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow mb-4';
 					addressDiv.innerHTML = `
 						<div class="flex items-center justify-between gap-2 mb-2">
-							<span class="bg-pink-100 text-pink-800 text-xs font-medium px-2 py-1 rounded">${nickname}</span>
+							<span class="bg-pink-100 text-pink-800 text-xs font-medium px-2 py-1 rounded">${escapeCheckoutText(nickname)}</span>
 							<button class="text-red-500 hover:text-red-700 transition-colors delete-address-btn" title="Excluir endereço"><i class="fa-solid fa-trash-alt text-lg"></i></button>
 						</div>
-						<p class="text-gray-800 font-medium text-sm leading-tight">${enderecoCompleto}</p>
+						<p class="text-gray-800 font-medium text-sm leading-tight">${escapeCheckoutText(enderecoCompleto)}</p>
 						<button class="w-full mt-3 bg-pink-600 text-white py-2 px-4 rounded-lg font-bold hover:bg-pink-700 transition-colors flex items-center justify-center gap-2 use-address-btn"><i class="fa-solid fa-truck"></i> Usar este Endereço</button>
 					`;
 
@@ -2485,6 +2511,11 @@
                     : [];
                 if (!existingAddresses[addressIndex]) {
                     throw new Error('Endereço não encontrado.');
+                }
+                if(currentClient.accountLinked) {
+                    const address=existingAddresses[addressIndex];
+                    const result=await httpsCallable(getFunctions(app,'us-central1'),'customerDeleteAddress')({index:addressIndex,expectedAddress:typeof address==='string'?address:address.enderecoCompleto});
+                    currentClient=result.data.customer;openAddressManagementModal(currentClient);showToast('Endereço excluído!');return;
                 }
                 existingAddresses.splice(addressIndex, 1);
 
@@ -2535,10 +2566,13 @@
         /* === FIM DA MODIFICAÇÃO === */
 
 		async function useExistingAddress(addressText, addressData) {
+            window.checkoutDeliveryAddress=addressData || null;
+            window.currentLatLng = addressData?.lat != null ? {lat:Number(addressData.lat),lng:Number(addressData.lng)} : null;
 			pendingOrderDetails = {
 				clienteId: currentClient.id,
 				clienteNome: currentClient.nome,
 				clienteEndereco: addressText,
+                address: addressData || null,
 				telefone: currentClient.telefone
 			};
 			selectedAddressText.textContent = addressText;
@@ -3164,6 +3198,7 @@
 
         async function finalizeOrder(clientInfo, clientId, isPlatform) {
             await revalidateCheckoutBeforeFinalSubmit(clientInfo);
+            const online = clientInfo.formaPagamento === 'Online';
             if (!storeIsOpenNow) {
                 showToast('A loja está fechada no momento. Volte em nosso horário de atendimento.', true);
                 throw new Error('STORE_CLOSED');
@@ -3184,6 +3219,7 @@
                     endereco: clientInfo.clienteEndereco,
                     telefone: clientInfo.telefone,
                 },
+                ...(online ? {idempotencyKey:paymentAttempt(),delivery:{pickup:clientInfo.clienteEndereco==='Retirar na Loja',address:isPlatform ? pendingOrderDetails?.address : {cep:document.getElementById('guest-address-zip')?.value,street:document.getElementById('guest-address-street')?.value,number:document.getElementById('guest-address-no-number')?.checked ? 'S/N' : document.getElementById('guest-address-number')?.value,neighborhood:document.getElementById('guest-address-neighborhood')?.value,complement:document.getElementById('guest-address-complement')?.value},lat:(isPlatform ? window.currentLatLng : window.guestCurrentLatLng)?.lat,lng:(isPlatform ? window.currentLatLng : window.guestCurrentLatLng)?.lng}} : {}),
                 pagamento: {
                     forma: clientInfo.formaPagamento,
                 },
@@ -3199,7 +3235,7 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/checkout/confirmar?lojaId=${encodeURIComponent(STORE_ID)}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: await checkoutHeaders(online),
                     body: JSON.stringify(orderData)
                 });
 
@@ -3217,6 +3253,7 @@
                     throw new Error('Pedido não confirmado. Tente novamente.');
                 }
 
+                if (online) {redirectToPayment(responseData);return;}
                 clearCheckoutBlockingIssue();
 
                 const docRef = { id: responseData.id };
@@ -3238,7 +3275,7 @@
                 }
 
                 cart = [];
-                currentClient = null;
+                currentClient = retainAuthenticatedCustomer(currentClient);
                 pendingOrderDetails = {};
                 removeCupom();
                 clearCheckoutState();
@@ -3252,10 +3289,14 @@
                 throw error;
             }
         }
-        document.addEventListener('DOMContentLoaded', () => {
+        const customerAccount=installCustomerAccount({onCustomer: client => {currentClient=client;identificationModal.classList.add('hidden');openAddressManagementModal(client);},onSession:client=>{currentClient=client;},onLogout:()=>{currentClient=null;pendingOrderDetails={};persistCheckoutState();},notify:showToast});
+        const startCheckout = () => {
             restoreCheckoutState();
             initApp();
-        });
+            enableOnlinePayment(STORE_ID);
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startCheckout, {once:true});
+        else startCheckout();
     </script>
 
 	<script type="module">

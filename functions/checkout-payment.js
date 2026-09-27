@@ -27,7 +27,7 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     const redirect = new URL(c.redirectUrl);
     const webhook = new URL(c.webhookUrl);
     if (redirect.protocol !== 'https:' || webhook.protocol !== 'https:') throw paymentError('Configuração de pagamento inválida.',503);
-    return {handle:c.handle,redirectUrl:redirect.href,webhookUrl:webhook.href};
+    return {handle:c.handle,redirectUrl:redirect.href,webhookUrl:webhook.href,sendCustomerData:c.sendCustomerData!==false,sendDeliveryAddress:c.sendDeliveryAddress!==false};
   }
   async function start(paymentId, ownerUid) {
     const ref=payments.doc(paymentId);
@@ -44,7 +44,7 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     try {
       const data=await provider.create({handle:payment.handle,order_nsu:paymentId,
         items:[{quantity:1,price:payment.amount,description:`Pedido ${payment.orderId} - ${payment.storeId}`}],
-        customer:payment.customer, ...(payment.address ? {address:payment.address} : {}),
+        ...(payment.customer ? {customer:payment.customer} : {}), ...(payment.address ? {address:payment.address} : {}),
         redirect_url:payment.redirectUrl,webhook_url:payment.webhookUrl});
       const url=new URL(data.url);
       if(url.protocol!=='https:' || !(url.hostname==='infinitepay.io' || url.hostname.endsWith('.infinitepay.io'))) throw paymentError('Link de pagamento inválido.',502);

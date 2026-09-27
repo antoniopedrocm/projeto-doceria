@@ -838,6 +838,7 @@ match /{collection}/{document=**} {
     && collection != 'users'
     && collection != 'customProfiles'
     && collection != 'userStatusMetadata'
+    && (collection != 'auditLogs' || !resource.data.keys().hasAny(['paymentSettingsStoreId']))
     && collection != 'transferenciasEntreLojas'
     && collection != 'fechamentosEntreLojas'
     && (!isReadOnlyAccountant()
@@ -845,6 +846,7 @@ match /{collection}/{document=**} {
   allow write: if canStaffWrite()
     && collection != 'checkoutPayments'
     && collection != 'checkoutReceipts'
+    && (collection != 'auditLogs' || ((request.method == 'delete' || !request.resource.data.keys().hasAny(['paymentSettingsStoreId'])) && (request.method == 'create' || !resource.data.keys().hasAny(['paymentSettingsStoreId']))))
     && collection != 'lojas'
     && collection != 'integrations'
     && collection != 'users'

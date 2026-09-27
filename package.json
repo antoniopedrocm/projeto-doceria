@@ -21,7 +21,8 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "dev": "concurrently \"npm start\" \"firebase emulators:start\""
+    "dev": "concurrently \"npm start\" \"firebase emulators:start\"",
+    "checkout:local": "firebase emulators:start --config firebase.checkout-local.json --project demo-doceria-checkout --only auth,firestore,functions,hosting"
   },
   "eslintConfig": {
     "extends": [

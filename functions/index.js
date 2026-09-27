@@ -40,6 +40,7 @@ const {createCustomerAccount} = require('./checkout-auth');
 const customerAccounts = createCustomerAccount({admin, db});
 const {createPaymentService, cents, paymentError} = require('./checkout-payment');
 const checkoutPayments = createPaymentService({db, admin});
+const {paymentPrefill}=require('./payment-prefill');
 const {RESERVATION_MS, shouldNotifyOrder} = require('./checkout-reservation');
 exports.expireCheckoutReservations = onSchedule({schedule:'every 5 minutes', region:'southamerica-east1'}, async () => {
   const results = await checkoutPayments.expireDue();
@@ -204,6 +205,7 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
       defaultCashPermissions(role) :
       defaultCashPermissions(ROLE_ACCOUNTANT),
     configuracoes: {
+      manage_payment_settings: normalizedRole === ROLE_OWNER,
       gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER,
     },
   };
@@ -231,6 +233,7 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
       sanitizeCashPermissions(caixaDetails, role) :
       defaultCashPermissions(ROLE_ACCOUNTANT),
     configuracoes: {
+      manage_payment_settings: normalizedRole === ROLE_OWNER || (normalizedRole === ROLE_MANAGER && configuracoesDetails.manage_payment_settings === true),
       gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER || (
         normalizedRole === ROLE_MANAGER &&
         configuracoesDetails.gerenciarStatusUsuarios === true
@@ -391,6 +394,10 @@ const assertManagerCannotGrantUserStatusAccess = async (
     targetUid,
     requestedPermissionDetails,
 ) => {
+  const existingFinancialDetails = targetUid ?
+    (await db.collection('customProfiles').doc(targetUid).get()).data()?.permissionDetails : null;
+  assertFinancialPermissionGrant(requester, requestedPermissionDetails, existingFinancialDetails);
+
   if (
     requester.role !== ROLE_MANAGER ||
     !managerHasUserStatusPermission(requestedPermissionDetails)
@@ -434,6 +441,11 @@ const verifyStoreReadAccess = async (uid) => {
 
   throw new HttpsError('permission-denied', 'Você não tem permissão para consultar esta operação.');
 };
+
+const {createPaymentSettings,assertFinancialPermissionGrant}=require('./payment-settings');
+const paymentSettings=createPaymentSettings({db,admin,normalizeRole,extractStoreIds});
+exports.paymentSettingsGet=onCall({region:'us-central1'},paymentSettings.get);
+exports.paymentSettingsSave=onCall({region:'us-central1'},paymentSettings.save);
 
 const verifyPointStoreAccess = async (uid, lojaId) => {
   const profile = await assertActiveUser(uid);
@@ -1683,10 +1695,10 @@ app.post("/checkout/confirmar", async (req, res) => {
   }
 
   try {
-    let paymentConfig, paymentId, ownerUid, orderRef, fingerprint;
+    let paymentConfig, paymentId, ownerUid, orderRef, fingerprint, buyerEmail;
     if(req.headers.authorization) ownerUid=(await checkoutToken(req)).uid;
     if(online) {
-      const token=await checkoutToken(req);ownerUid=token.uid;
+      const token=await checkoutToken(req);ownerUid=token.uid;buyerEmail=token.email;
       if(!/^[a-zA-Z0-9_-]{16,100}$/.test(req.body?.idempotencyKey || '')) throw paymentError('Identificador do pedido inválido.',400);
       paymentConfig=await checkoutPayments.config(lojaId);
       paymentId=crypto.createHash('sha256').update(ownerUid+':'+lojaId+':'+req.body.idempotencyKey).digest('hex');
@@ -1871,7 +1883,7 @@ app.post("/checkout/confirmar", async (req, res) => {
           reservation:{state:'HELD',stock:stockUpdates.map(s=>({path:s.ref.path,quantity:s.quantity})),
             couponPath:cupomDocRef?.path || null,couponCode,
             customerPath:cupomDocRef && clienteSnap?.exists ? clienteRef.path : null},
-          customer:{name:String(cliente.nome).slice(0,120),phone_number:'+55'+String(cliente.telefone).replace(/\D/g,'').replace(/^55(?=\d{10,11}$)/,'')},
+          ...paymentPrefill(paymentConfig,cliente,req.body.delivery,buyerEmail),
           createdAt:admin.firestore.FieldValue.serverTimestamp()
         });
       }
