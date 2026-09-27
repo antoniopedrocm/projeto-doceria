@@ -1,4 +1,5 @@
 // Local reservation deadline, not a cancellation of the provider's payment link.
+const {FieldValue} = require('firebase-admin/firestore');
 const RESERVATION_MS = 30 * 60 * 1000;
 function operationalState(status) {
   return {'Pendente':'CONFIRMED','Em Produção':'PREPARING','Pronto para Entrega':'READY',
@@ -31,7 +32,7 @@ async function readReservation(tx, db, payment) {
 function settleReservation(tx, db, admin, held, consume) {
   if (!held) return;
   const {reservation: r, docs} = held;
-  const fields = admin.firestore.FieldValue;
+  const fields = FieldValue;
   if (!consume) for (const item of r.stock) {
     tx.update(db.doc(item.path), {estoque: fields.increment(item.quantity)});
   }

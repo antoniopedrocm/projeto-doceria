@@ -1,5 +1,6 @@
 const {createHash} = require('node:crypto');
 const {HttpsError} = require('firebase-functions/v2/https');
+const {FieldValue} = require('firebase-admin/firestore');
 const digest = (provider, subject) => createHash('sha256').update(`${provider}:${subject}`).digest('hex');
 const fail = (code, message) => { throw new HttpsError(code, message); };
 function verifiedIdentity(token, user) {
@@ -42,7 +43,7 @@ function normalizeBirthdate(value) {
   return text;
 }
 function createCustomerAccount({admin, db}) {
-  const stamp = () => admin.firestore.FieldValue.serverTimestamp();
+  const stamp = () => FieldValue.serverTimestamp();
   const identities = db.collection('customerAuthIdentities');
   async function identity(request) {
     if (!request.auth?.uid) fail('unauthenticated', 'Entre com Google ou e-mail.');

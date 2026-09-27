@@ -12,6 +12,7 @@ const {onDocumentUpdated, onDocumentWritten} = require("firebase-functions/v2/fi
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
+const {FieldValue} = require('firebase-admin/firestore');
 const express = require("express");
 const cors = require("cors");
 const crypto = require('crypto');
@@ -254,7 +255,7 @@ const ensureCustomProfile = async (uid, role, permissionsInput = null, permissio
     permissions,
     permissionDetails,
     role,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   }, {merge: true});
   return {permissions, permissionDetails};
 };
@@ -1377,7 +1378,7 @@ const enforcePhoneLookupRateLimit = async ({callerKeyHash, phoneHash}) => {
       windowStart: isSameWindow ? windowStart : now,
       lastAttemptAt: now,
       lastPhoneHash: phoneHash,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
     if (nextCount > RATE_LIMIT_MAX_CALLS) {
@@ -1410,7 +1411,7 @@ const upsertClientDocument = async ({
   purchaseValueIncrement = 0,
   createdAt = null,
 }) => {
-  const timestamp = admin.firestore.FieldValue.serverTimestamp();
+  const timestamp = FieldValue.serverTimestamp();
   return db.runTransaction(async (transaction) => {
     const snap = await transaction.get(targetRef);
     if (snap.data()?.authOwnerUid) throw createHttpError(403, 'Use Minha Conta para alterar este cadastro.');
@@ -1421,22 +1422,22 @@ const upsertClientDocument = async ({
     };
 
     if (lojaId) {
-      payload.lojasVisitadas = admin.firestore.FieldValue.arrayUnion(lojaId);
+      payload.lojasVisitadas = FieldValue.arrayUnion(lojaId);
     }
 
     if (Number.isFinite(purchaseCountIncrement) && purchaseCountIncrement !== 0) {
-      payload.numeroDeCompras = admin.firestore.FieldValue.increment(purchaseCountIncrement);
+      payload.numeroDeCompras = FieldValue.increment(purchaseCountIncrement);
     }
 
     if (Number.isFinite(purchaseValueIncrement) && purchaseValueIncrement !== 0) {
-      payload.valorEmCompras = admin.firestore.FieldValue.increment(purchaseValueIncrement);
+      payload.valorEmCompras = FieldValue.increment(purchaseValueIncrement);
     }
 
     if (!snap.exists && setCreatedIfMissing) {
       payload.criadoEm = createdAt || timestamp;
       payload.numeroDeCompras = payload.numeroDeCompras ?? 0;
       payload.valorEmCompras = payload.valorEmCompras ?? 0;
-      payload.lojasVisitadas = lojaId ? admin.firestore.FieldValue.arrayUnion(lojaId) : payload.lojasVisitadas;
+      payload.lojasVisitadas = lojaId ? FieldValue.arrayUnion(lojaId) : payload.lojasVisitadas;
     }
 
     transaction.set(targetRef, payload, {merge: true});
@@ -1550,7 +1551,7 @@ app.put("/clientes/:id", async (req, res) => {
     const updates = {...clientData};
 
     if (newAddress) {
-      updates.enderecos = admin.firestore.FieldValue.arrayUnion(newAddress);
+      updates.enderecos = FieldValue.arrayUnion(newAddress);
     }
 
     await upsertClientDocument({
@@ -1656,7 +1657,7 @@ app.post("/pedidos", async (req, res) => {
         subtotal: subtotalFinal,
         desconto: descontoFinal,
         total: totalFinal,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
 
       return orderRef.id;
@@ -1696,10 +1697,18 @@ app.post("/checkout/confirmar", async (req, res) => {
   }
 
   try {
-    let paymentConfig, paymentId, ownerUid, orderRef, fingerprint, buyerEmail;
+    let paymentConfig, paymentId, ownerUid, orderRef, fingerprint, buyerEmail, checkoutCustomerId;
     if(req.headers.authorization) ownerUid=(await checkoutToken(req)).uid;
     if(online) {
       const token=await checkoutToken(req);ownerUid=token.uid;buyerEmail=token.email;
+      let account;
+      try {account=await customerAccounts.account({auth:{uid:ownerUid,token}});}
+      catch(e) {
+        if(['unauthenticated','permission-denied','not-found'].includes(e.code)) throw paymentError('Entre em sua conta de cliente para pagar online.',403);
+        throw e;
+      }
+      checkoutCustomerId=account.customer?.id;
+      if(!checkoutCustomerId || cliente.id!==checkoutCustomerId) throw paymentError('Entre em sua conta de cliente para pagar online.',403);
       if(!/^[a-zA-Z0-9_-]{16,100}$/.test(req.body?.idempotencyKey || '')) throw paymentError('Identificador do pedido inválido.',400);
       paymentConfig=await checkoutPayments.config(lojaId);
       paymentId=crypto.createHash('sha256').update(ownerUid+':'+lojaId+':'+req.body.idempotencyKey).digest('hex');
@@ -1872,6 +1881,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         clienteSnap = await transaction.get(clienteRef);
       }
 
+      if (online && (!clienteSnap?.exists || clienteRef.id!==checkoutCustomerId || clienteSnap.data().authOwnerUid!==ownerUid)) throw paymentError('Cadastro de cliente não autorizado para pagamento online.',403);
       if (clienteSnap?.data()?.authOwnerUid && clienteSnap.data().authOwnerUid !== ownerUid) throw paymentError('Entre na conta vinculada ao cadastro.',403);
       if (online && clienteSnap?.data()?.cuponsUsados?.includes(couponCode)) throw paymentError('Você já utilizou este cupom.');
       if (couponCode && clienteSnap?.data()?.cuponsReservados?.includes(couponCode)) throw paymentError('Este cupom está reservado em outro pedido.');
@@ -1885,7 +1895,7 @@ app.post("/checkout/confirmar", async (req, res) => {
             couponPath:cupomDocRef?.path || null,couponCode,
             customerPath:cupomDocRef && clienteSnap?.exists ? clienteRef.path : null},
           ...paymentPrefill(paymentConfig,cliente,req.body.delivery,buyerEmail),
-          createdAt:admin.firestore.FieldValue.serverTimestamp()
+          createdAt:FieldValue.serverTimestamp()
         });
       }
       transaction.set(orderRef, {
@@ -1904,7 +1914,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         status: online ? 'Aguardando pagamento' : status,
         ...(online ? {order_status:'PENDING',payment_status:'PENDING',paymentId,ownerUid} : {}),
         origem,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
 
       for (const stockUpdate of stockUpdates) {
@@ -1912,12 +1922,12 @@ app.post("/checkout/confirmar", async (req, res) => {
       }
 
       if (cupomDocRef) {
-        transaction.set(cupomDocRef, {[online ? 'reservados' : 'usos']: admin.firestore.FieldValue.increment(1)}, {merge: true});
+        transaction.set(cupomDocRef, {[online ? 'reservados' : 'usos']: FieldValue.increment(1)}, {merge: true});
 
         if (clienteRef && clienteSnap?.exists) {
           transaction.set(clienteRef, {
-            [online ? 'cuponsReservados' : 'cuponsUsados']: admin.firestore.FieldValue.arrayUnion(couponCode),
-            atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+            [online ? 'cuponsReservados' : 'cuponsUsados']: FieldValue.arrayUnion(couponCode),
+            atualizadoEm: FieldValue.serverTimestamp(),
           }, {merge: true});
         }
       }
@@ -2136,7 +2146,7 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
       phoneHash,
       lojaId,
       found: Boolean(found),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     };
 
     if (!found) {
@@ -2219,8 +2229,8 @@ exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
       nome,
       aniversario,
       lojaId,
-      lojasVisitadas: admin.firestore.FieldValue.arrayUnion(lojaId),
-      atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      lojasVisitadas: FieldValue.arrayUnion(lojaId),
+      atualizadoEm: FieldValue.serverTimestamp(),
     });
 
     const updatedClientSnap = await clientRef.get();
@@ -2290,10 +2300,10 @@ exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async
     }
 
     await clientRef.update({
-      enderecos: admin.firestore.FieldValue.arrayUnion(allowedAddress),
-      lojasVisitadas: admin.firestore.FieldValue.arrayUnion(lojaId),
+      enderecos: FieldValue.arrayUnion(allowedAddress),
+      lojasVisitadas: FieldValue.arrayUnion(lojaId),
       lojaId,
-      atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      atualizadoEm: FieldValue.serverTimestamp(),
     });
 
     return {success: true, address: allowedAddress};
@@ -2451,7 +2461,7 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
   const pontosRef = db.collection('lojas').doc(lojaId).collection('pontos');
   const punchAuditRef = db.collection('lojas').doc(lojaId).collection('pontosAuditoria').doc();
   const fallbackRecordRef = pontosRef.doc(`${uid}_${dayKey}`);
-  const timestamp = admin.firestore.FieldValue.serverTimestamp();
+  const timestamp = FieldValue.serverTimestamp();
   const actionMap = {
     entrada: 'entrada',
     almoco_inicio: 'início do almoço',
@@ -2561,7 +2571,7 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
       almocoNaoRegistradoBancoHoras: statusPatch.inconsistente ? 0 : balanceDistribution.almocoNaoRegistradoBancoHoras,
       jornadaTrabalho: mergedRecord.jornadaTrabalho,
       updatedAt: timestamp,
-      historicoRegistros: admin.firestore.FieldValue.arrayUnion(pointEvent),
+      historicoRegistros: FieldValue.arrayUnion(pointEvent),
     };
     transaction.set(recordRef, updateData, {merge: true});
     transaction.set(punchAuditRef, {
@@ -2640,7 +2650,7 @@ exports.createStore = onCall(async (request) => {
     }
 
     const storeDocRef = db.collection('lojas').doc(normalizedId);
-    const timestamp = admin.firestore.FieldValue.serverTimestamp();
+    const timestamp = FieldValue.serverTimestamp();
 
     await db.runTransaction(async (transaction) => {
         const existingDoc = await transaction.get(storeDocRef);
@@ -2904,7 +2914,7 @@ const persistUserStatusAndAudit = async ({
   reason,
   tokensRevoked,
 }) => {
-  const timestamp = admin.firestore.FieldValue.serverTimestamp();
+  const timestamp = FieldValue.serverTimestamp();
   const previousStatus = isUserActive(targetProfile) ?
     USER_STATUS_ACTIVE :
     USER_STATUS_INACTIVE;
@@ -3174,8 +3184,8 @@ exports.createUser = onCall(async (request) => {
             status: USER_STATUS_ACTIVE,
             jornadaTrabalho: sanitizedWorkSchedule,
             dataInicioBancoHoras: sanitizedBankStartDate,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
         });
         return {uid: userRecord.uid, message: "Usuário criado com sucesso!"};
     } catch (error) {
@@ -3475,8 +3485,8 @@ const prepareRecurringExpensesForStores = async (storeIds, sourceMonth) => {
                 geradoPorRecorrencia: true,
                 recorrenciaOrigemId: expenseDoc.id,
                 recorrenciaOrigemCompetencia: sourceMonth,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
             };
 
             delete targetExpense.dataPagamento;
@@ -3657,7 +3667,7 @@ const syncConfirmedTransferFinancialRecords = async ({
         || admin.firestore.Timestamp.now()
     );
     const competence = getTransferFinancialMonth(transfer);
-    const now = admin.firestore.FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
     const isNewEntry = (
         previousTransfer.status !== 'pagamento_confirmado'
         || previousOriginStoreId !== originStoreId
@@ -4227,11 +4237,11 @@ exports.notifyNewOrder = onDocumentWritten({
             `Legados: ${legacyTokens.length}.`,
         );
         if (notificationAttemptRef) await notificationAttemptRef.update({
-            state: 'SENT', completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            state: 'SENT', completedAt: FieldValue.serverTimestamp(),
         });
     } catch (error) {
         if (notificationAttemptRef) await notificationAttemptRef.update({
-            state: 'REVIEW', completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            state: 'REVIEW', completedAt: FieldValue.serverTimestamp(),
         }).catch((updateError) => logger.error('Falha ao registrar resultado do push:', updateError));
         logger.error(
             "Erro ao enviar notificações de novo pedido:",

@@ -1,4 +1,5 @@
 const {HttpsError}=require('firebase-functions/v2/https');
+const {FieldValue}=require('firebase-admin/firestore');
 const FIELDS=['enabled','handle','sendCustomerData','sendDeliveryAddress'];
 const values=c=>({enabled:c?.enabled===true,handle:c?.handle||'',sendCustomerData:c?.sendCustomerData!==false,sendDeliveryAddress:c?.sendDeliveryAddress!==false});
 function assertFinancialPermissionGrant(requester,details,previousDetails={}) {
@@ -37,7 +38,7 @@ function createPaymentSettings({db,admin,normalizeRole,extractStoreIds}) {
       if(previous.handle&&previous.handle!==c.handle && (d.confirmChange!==true||(previous.enabled&&d.confirmation!=='ALTERAR'))) throw new HttpsError('failed-precondition','Confirme a alteração da conta recebedora.');
       const changes=FIELDS.filter(k=>previous[k]!==c[k]).map(field=>({field,before:previous[field],after:c[field]}));
       if(!changes.length) return {saved:true,version:old.version||0};
-      const timestamp=admin.firestore.FieldValue.serverTimestamp();
+      const timestamp=FieldValue.serverTimestamp();
       tx.set(ref,{...c,version:(old.version||0)+1,updatedAt:timestamp,updatedBy:actor},{merge:true});
       tx.create(db.collection('auditLogs').doc(),{action:'infinitepay.settings.updated',source:'paymentSettingsSave',storeId,paymentSettingsStoreId:storeId,actor,changes,timestamp});
       return {saved:true,version:(old.version||0)+1};

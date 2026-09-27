@@ -6,14 +6,15 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getAnalytics } from 'firebase/analytics';
 import {
   getFirestore,
+  connectFirestoreEmulator,
   onSnapshot as firestoreOnSnapshot,
   getDoc as firestoreGetDoc,
   getDocs as firestoreGetDocs,
   deleteDoc as firestoreDeleteDoc,
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
-import { getFunctions } from 'firebase/functions';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import {
   getMessaging,
   getToken,
@@ -21,42 +22,33 @@ import {
 } from 'firebase/messaging';
 
 // --- Firebase project configuration ---
-// Prefer environment variables so production deployments can use a
-// dedicated API key and auth domain. Hard-coded fallbacks keep local
-// development working out of the box.
+// This checkout belongs to the DEV workspace. A local preview uses only demo emulators.
 const envVar = (key) => process.env[key] || import.meta.env?.[key] || '';
-
-const GOOGLE_API_KEY = 'AIzaSyAIdbF2EgdbZSPqBaQhi1pnNb4t5xauwEc';
-const DEFAULT_FIREBASE_AUTH_DOMAIN = 'ana-guimaraes.firebaseapp.com';
-const DEFAULT_FIREBASE_STORAGE_BUCKET = 'ana-guimaraes.firebasestorage.app';
-const LEGACY_FIREBASE_STORAGE_BUCKET = 'ana-guimaraes.appspot.com';
+const DEV_PROJECT_ID = 'crmdoceria-9959e';
+const LOCAL_PROJECT_ID = 'demo-doceria-checkout';
+const isLocalPreview = typeof window !== 'undefined' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
 
 const normalizeStorageBucket = (bucket) => {
   const normalizedBucket = String(bucket || '').trim().replace(/^gs:\/\//i, '');
-  if (!normalizedBucket || normalizedBucket === LEGACY_FIREBASE_STORAGE_BUCKET) {
-    return DEFAULT_FIREBASE_STORAGE_BUCKET;
-  }
-
   return normalizedBucket;
 };
 
-const firebaseConfig = {
-  apiKey: envVar('REACT_APP_FIREBASE_API_KEY') || GOOGLE_API_KEY,
-  // Keep the default OAuth handler unless a deployment explicitly configures
-  // another handler and authorizes its /__/auth/handler redirect URI.
-  authDomain: envVar('REACT_APP_FIREBASE_AUTH_DOMAIN') || DEFAULT_FIREBASE_AUTH_DOMAIN,
-  projectId: envVar('REACT_APP_FIREBASE_PROJECT_ID') || 'ana-guimaraes',
-  // Keep old env files from pointing uploads at the retired appspot bucket.
-  storageBucket: normalizeStorageBucket(
-    envVar('REACT_APP_FIREBASE_STORAGE_BUCKET') || DEFAULT_FIREBASE_STORAGE_BUCKET
-  ),
-  messagingSenderId:
-    envVar('REACT_APP_FIREBASE_MESSAGING_SENDER_ID') || '847824537421',
-  appId:
-    envVar('REACT_APP_FIREBASE_APP_ID') ||
-    '1:847824537421:web:75861057fd6f998ee49904',
-  measurementId: envVar('REACT_APP_FIREBASE_MEASUREMENT_ID') || 'G-F8BVTNLEW7',
+const firebaseConfig = isLocalPreview ? {
+  apiKey: 'demo-api-key', authDomain: `${LOCAL_PROJECT_ID}.firebaseapp.com`,
+  projectId: LOCAL_PROJECT_ID, appId: LOCAL_PROJECT_ID,
+  storageBucket: `${LOCAL_PROJECT_ID}.appspot.com`,
+} : {
+  apiKey: envVar('REACT_APP_FIREBASE_API_KEY'),
+  authDomain: envVar('REACT_APP_FIREBASE_AUTH_DOMAIN') || `${DEV_PROJECT_ID}.firebaseapp.com`,
+  projectId: envVar('REACT_APP_FIREBASE_PROJECT_ID') || DEV_PROJECT_ID,
+  storageBucket: normalizeStorageBucket(envVar('REACT_APP_FIREBASE_STORAGE_BUCKET')),
+  messagingSenderId: envVar('REACT_APP_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: envVar('REACT_APP_FIREBASE_APP_ID'),
+  measurementId: envVar('REACT_APP_FIREBASE_MEASUREMENT_ID'),
 };
+if (!isLocalPreview && (firebaseConfig.projectId !== DEV_PROJECT_ID || !firebaseConfig.apiKey || !firebaseConfig.appId)) {
+  throw new Error('Configuração Firebase DEV incompleta ou vinculada a outro projeto.');
+}
 
 const runtimeEnv =
   (typeof process !== 'undefined' && process.env && process.env.NODE_ENV) ||
@@ -90,7 +82,7 @@ const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 // Optionally enable Google Analytics (only works in browsers).  When
 // running in Node or during SSR the analytics import will be unused.
 let analytics;
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && !isLocalPreview) {
   analytics = getAnalytics(app);
 }
 
@@ -101,6 +93,11 @@ export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
+if (isLocalPreview) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', {disableWarnings: true});
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+}
 
 // Expose the underlying app and analytics for advanced use cases.
 export { app, analytics };
@@ -419,7 +416,7 @@ export const onSnapshot = (...args) => {
 };
 
 export const messagingPromise = (async () => {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || isLocalPreview) return null;
   try {
     const supported = await messagingIsSupported();
     if (!supported) return null;

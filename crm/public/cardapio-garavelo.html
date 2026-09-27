@@ -1238,7 +1238,7 @@
         import {apiBaseUrl} from './checkout-environment.js';
         import {installCustomerAccount} from './customer-account.js';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
-        import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment} from './checkout-payment-client.js';
+        import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js';
         // --- VARIÁVEIS GLOBAIS ---
         const WHATSAPP_NUMBER = '5562991056075';
         const API_BASE_URL = apiBaseUrl;
@@ -3199,6 +3199,7 @@
         async function finalizeOrder(clientInfo, clientId, isPlatform) {
             await revalidateCheckoutBeforeFinalSubmit(clientInfo);
             const online = clientInfo.formaPagamento === 'Online';
+            if (online && !isLinkedCustomer(currentClient)) throw new Error('Entre com Google ou e-mail em Minha Conta para pagar online.');
             if (!storeIsOpenNow) {
                 showToast('A loja está fechada no momento. Volte em nosso horário de atendimento.', true);
                 throw new Error('STORE_CLOSED');
@@ -3289,11 +3290,11 @@
                 throw error;
             }
         }
-        const customerAccount=installCustomerAccount({onCustomer: client => {currentClient=client;identificationModal.classList.add('hidden');openAddressManagementModal(client);},onSession:client=>{currentClient=client;},onLogout:()=>{currentClient=null;pendingOrderDetails={};persistCheckoutState();},notify:showToast});
+        const customerAccount=installCustomerAccount({onCustomer: client => {currentClient=client;syncOnlinePaymentOption(client);identificationModal.classList.add('hidden');openAddressManagementModal(client);},onSession:client=>{currentClient=client;syncOnlinePaymentOption(client);},onLogout:()=>{currentClient=null;syncOnlinePaymentOption(null);pendingOrderDetails={};persistCheckoutState();},notify:showToast});
         const startCheckout = () => {
             restoreCheckoutState();
             initApp();
-            enableOnlinePayment(STORE_ID);
+            enableOnlinePayment(STORE_ID,()=>currentClient);
         };
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startCheckout, {once:true});
         else startCheckout();

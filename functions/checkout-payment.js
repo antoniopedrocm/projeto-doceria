@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const {FieldValue} = require('firebase-admin/firestore');
 const {readReservation, settleReservation, operationalState} = require('./checkout-reservation');
 function paymentError(message, httpStatus = 409) {return Object.assign(new Error(message), {httpStatus});}
 const cents = value => {const n = Math.round(Number(value)*100);if (!Number.isSafeInteger(n) || n <= 0) throw paymentError('Valor de pagamento inválido.',400);return n;};
@@ -19,7 +20,7 @@ class InfinitePayProvider {
 }
 function createPaymentService({db, admin, provider = new InfinitePayProvider(), now = Date.now}) {
   const payments = db.collection('checkoutPayments');
-  const timestamp = () => admin.firestore.FieldValue.serverTimestamp();
+  const timestamp = () => FieldValue.serverTimestamp();
   async function config(store) {
     const snap = await db.doc(`lojas/${store}/configuracoesInternas/infinitepay`).get();
     const c = snap.data();
