@@ -1,15 +1,6 @@
 {
   "projects": {
-    "default": "ana-guimaraes"
-  },
-  "targets": {
-    "ana-guimaraes": {
-      "hosting": {
-        "prod": [
-          "ana-guimaraes"
-        ]
-      }
-    }
+    "default": "crmdoceria-9959e"
   },
   "etags": {}
 }

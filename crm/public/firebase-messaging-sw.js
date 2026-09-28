@@ -17,20 +17,12 @@ self.addEventListener('message', (event) => {
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
-const GOOGLE_API_KEY = 'AIzaSyAIdbF2EgdbZSPqBaQhi1pnNb4t5xauwEc';
-
-const firebaseConfig = {
-  apiKey: GOOGLE_API_KEY,
-  authDomain: 'ana-guimaraes.firebaseapp.com',
-  projectId: 'ana-guimaraes',
-  storageBucket: 'ana-guimaraes.firebasestorage.app',
-  messagingSenderId: '847824537421',
-  appId: '1:847824537421:web:75861057fd6f998ee49904',
-  measurementId: 'G-F8BVTNLEW7'
-};
-
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
+// Firebase Hosting supplies this site's own public Web configuration.
+importScripts('/__/firebase/init.js');
+const expectedProjectId = ['localhost', '127.0.0.1'].includes(self.location.hostname)
+  ? 'demo-doceria-checkout' : 'crmdoceria-9959e';
+if (firebase.app().options.projectId !== expectedProjectId) {
+  throw new Error('Service Worker vinculado ao projeto Firebase incorreto.');
 }
 
 const messaging = firebase.messaging();

@@ -93,6 +93,9 @@ export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
+export const apiBaseUrl = isLocalPreview
+  ? `http://127.0.0.1:5001/${LOCAL_PROJECT_ID}/us-central1/api`
+  : `https://us-central1-${DEV_PROJECT_ID}.cloudfunctions.net/api`;
 if (isLocalPreview) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', {disableWarnings: true});
   connectFirestoreEmulator(db, '127.0.0.1', 8080);

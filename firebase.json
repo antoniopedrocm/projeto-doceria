@@ -1,17 +1,21 @@
 {
   "firestore": {
     "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
+    "indexes": "firestore.indexes.json",
+    "predeploy": "node scripts/assert-dev-deploy.cjs"
   },
   "storage": {
-    "rules": "storage.rules"
+    "rules": "storage.rules",
+    "predeploy": "node scripts/assert-dev-deploy.cjs"
   },
   "functions": {
-    "source": "functions"
+    "source": "functions",
+    "predeploy": "node scripts/assert-dev-deploy.cjs"
   },
   "hosting": {
     "public": "crm/build",
     "cleanUrls": true,
+    "predeploy": "node scripts/assert-dev-deploy.cjs",
     "ignore": [
       "firebase.json",
       "**/.*",

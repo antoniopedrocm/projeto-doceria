@@ -15,6 +15,7 @@ import {
   db,
   storage,
   functions,
+  apiBaseUrl,
   onSnapshot,
   getDoc,
   getDocs,
@@ -109,7 +110,7 @@ import { Capacitor } from '@capacitor/core';
 
 // ✅ CORREÇÃO: URL local para evitar erro de pré-condição no Firebase Storage
 const ALARM_SOUND_URL = '/audio/alarm.mp3';
-const API_BASE_URL = 'https://us-central1-ana-guimaraes.cloudfunctions.net/api';
+const API_BASE_URL = apiBaseUrl;
 
 const ROLE_OWNER = 'dono';
 const ROLE_MANAGER = 'gerente';

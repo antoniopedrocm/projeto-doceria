@@ -1,95 +1,17 @@
-# projeto-doceria-Multilojas
+# Ana Guimarães Doceria — desenvolvimento
 
-## 🚀 Deploy do Projeto
-Siga os passos abaixo para instalar as dependências e realizar o deploy da aplicação no Firebase.
+Este checkout pertence ao Firebase **DEV** `crmdoceria-9959e`. Produção (`ana-guimaraes`) pertence ao diretório `projeto-doceria-multiloja`. O `firebase.json` verifica o workspace e o Project ID antes de publicar Hosting, Functions ou regras.
 
----
+## Prévia e testes locais
 
-### 1️⃣ Instalar dependências do CRM e gerar o build
-```bash
-# Instalar a CLI do Firebase (caso ainda não tenha)
-npm install -g firebase-tools
+Na raiz deste checkout, instale as dependências de `crm` e `functions`. Para o checkout público com dados fictícios, use `firebase.checkout-local.json` e o projeto demo `demo-doceria-checkout`. As instruções e o checkpoint do projeto estão em [docs/INFINITEPAY_PROJECT_PLAN.md](docs/INFINITEPAY_PROJECT_PLAN.md).
 
-# Entrar na pasta do CRM
-cd crm
+## Preparar homologação DEV
 
-# Instalar dependências
-npm install
+1. Confirme o caminho absoluto do checkout e o projeto `crmdoceria-9959e`.
+2. Obtenha a configuração Web do aplicativo Firebase DEV: `firebase apps:list --project crmdoceria-9959e` e `firebase apps:sdkconfig WEB <APP_ID> --project crmdoceria-9959e`.
+3. Preencha `crm/.env.production.local` conforme `crm/.env.example`. Esse arquivo é ignorado pelo Git; nunca use credenciais do projeto `ana-guimaraes` aqui. Configure separadamente a chave VAPID Web Push DEV para validar notificações.
+4. Execute `npm ci --prefix crm`, `npm ci --prefix functions`, os testes e `npm run build --prefix crm`.
+5. Valide a publicação proposta com `firebase deploy --dry-run --only hosting,functions,firestore,storage --project crmdoceria-9959e`. Revise mudanças de funções existentes e de regras antes de publicar.
 
-# Gerar build da aplicação
-npm run build
-```
-
----
-
-### 2️⃣ Instalar dependências das Functions
-```bash
-cd ../functions
-npm install
-```
-
----
-
-### 3️⃣ Fazer o deploy para o Firebase
-Volte para a raiz do projeto:
-```bash
-cd ..
-```
-
-#### 🔸 Deploy completo (Hosting + Functions, etc.)
-```bash
-firebase deploy
-```
-
-#### 🔸 Deploy somente do Hosting
-```bash
-firebase deploy --only hosting
-```
----
-## 🧪 Testar localmente
-
-Para testar a aplicação gerada localmente, rode o comando abaixo no **diretório da aplicação** (onde está a pasta `dist` ou equivalente):
-```bash
-http-server
-```
-
-> 💡 Se não tiver o `http-server` instalado globalmente, use:
-> ```bash
-> npm install -g http-server
-> ```
-
----
-
-## 📤 Publicar alterações no Git
-1. **Verificar configuração de usuário**
-   ```bash
-   git config user.name
-   git config user.email
-   ```
-2. **Verificar o status atual**
-   ```bash
-   git status
-   ```
-   Isso mostra quais arquivos foram modificados.
-3. **Adicionar os arquivos para o commit**
-   ```bash
-   # Para adicionar todos os arquivos modificados
-   git add .
-
-   # Ou para adicionar arquivos específicos
-   git add nome_do_arquivo
-   ```
-4. **Fazer o commit das alterações**
-   ```bash
-   git commit -m "Descrição das alterações realizadas"
-   ```
-5. **Enviar para o repositório remoto**
-   ```bash
-   git push origin main
-   ```
-   > Se sua branch principal for chamada `master`:
-   > ```bash
-   > git push origin master
-   > ```
-   
-   firebase deploy --only hosting --project ana-guimaraes
+O deploy DEV deve sempre incluir `--project crmdoceria-9959e` e pode ser dividido por recurso, por exemplo `firebase deploy --only hosting --project crmdoceria-9959e`. O workflow de Hosting DEV é manual; pull requests executam apenas testes. Não há promoção automática para produção.
