@@ -1590,9 +1590,15 @@
                     return;
                 }
 
-                const storeConfigDoc = await getDoc(doc(db, ...storePath("info", "dados")));
+                let storeConfigDoc;
+                try {
+                    storeConfigDoc = await getDoc(doc(db, ...storePath("info", "dados")));
+                } catch (error) {
+                    if (error.code !== 'permission-denied') throw error;
+                    // O documento legado é restrito; visitantes seguem para os fallbacks públicos.
+                }
 
-                if (storeConfigDoc.exists()) {
+                if (storeConfigDoc?.exists()) {
                     const data = storeConfigDoc.data();
                     storeConfig = data?.frete || data || {};
                     console.log("✅ Configurações da loja carregadas:", storeConfig);
