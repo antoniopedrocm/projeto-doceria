@@ -1,5 +1,7 @@
 import InfinitePaySettings from './payments/InfinitePaySettings';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { EMPTY_FREIGHT_CONFIG, loadStoreFreightConfig, validateFreightCoordinates } from './services/freightConfigService';
+import { getOrderFreight, getSavedOrderTotal } from './utils/orderFreight';
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
@@ -11370,7 +11372,8 @@ const effectiveStoreName = useMemo(() => {
     }, [activeTab, effectiveStoreId, user]);
     
     // States para Configuração de Frete
-    const [freteConfig, setFreteConfig] = useState({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
+    const [freteConfig, setFreteConfig] = useState({ ...EMPTY_FREIGHT_CONFIG });
+    const [freteLoadedStore, setFreteLoadedStore] = useState(null);
     const [isSavingFrete, setIsSavingFrete] = useState(false);
 
     const [storeHoursConfig, setStoreHoursConfig] = useState(getDefaultStoreHoursConfig());
@@ -11381,54 +11384,18 @@ const effectiveStoreName = useMemo(() => {
 
     useEffect(() => {
         if (activeTab !== 'frete') return;
-
-        if (!effectiveStoreId) {
-            setFreteConfig({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
-            return;
-        }
-
-        const fetchFreteConfig = async () => {
-            try {
-                const configRef = getStoreConfigDocRef(effectiveStoreId);
-                const configSnap = await getDoc(configRef);
-
-                if (configSnap.exists()) {
-                    const configData = configSnap.data() || {};
-                    const freteData = configData.frete || configData;
-
-                    if (freteData && Object.keys(freteData).length) {
-                        setFreteConfig(freteData);
-                        return;
-                    }
-                }
-
-                const legacyFreteRef = doc(db, 'lojas', effectiveStoreId, 'configuracoes', 'frete');
-                const legacyFreteSnap = await getDoc(legacyFreteRef);
-                if (legacyFreteSnap.exists()) {
-                    const freteData = legacyFreteSnap.data();
-                    setFreteConfig(freteData || { enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
-                    await setDoc(configRef, { frete: freteData || {} }, { merge: true });
-                    return;
-                }
-
-                const legacyInfoSnap = await getDoc(doc(db, 'lojas', effectiveStoreId, 'info', 'dados'));
-                if (legacyInfoSnap.exists()) {
-                    const infoData = legacyInfoSnap.data();
-                    const freteData = infoData?.frete || {};
-                    if (Object.keys(freteData).length) {
-                        setFreteConfig(freteData);
-                        await setDoc(configRef, { frete: freteData }, { merge: true });
-                        return;
-                    }
-                }
-
-                setFreteConfig({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
-            } catch (error) {
-                console.error("Erro ao buscar configurações de frete:", error);
-            }
-        };
-        fetchFreteConfig();
-
+        let cancelled = false;
+        setFreteLoadedStore(null);
+        setFreteConfig({ ...EMPTY_FREIGHT_CONFIG });
+        if (!effectiveStoreId) return;
+        loadStoreFreightConfig(effectiveStoreId).then((config) => {
+            if (cancelled) return;
+            setFreteConfig(config);
+            setFreteLoadedStore(effectiveStoreId);
+        }).catch((error) => {
+            if (!cancelled) alert('Não foi possível carregar o frete desta loja: ' + error.message);
+        });
+        return () => { cancelled = true; };
     }, [activeTab, effectiveStoreId]);
 
 
@@ -12010,38 +11977,43 @@ const effectiveStoreName = useMemo(() => {
         setIsSavingFrete(true);
         try {
 
-            if (!effectiveStoreId) {
+            if (!effectiveStoreId || freteLoadedStore !== effectiveStoreId) {
                 alert('Selecione uma loja específica para salvar as configurações.');
                 return;
             }
 
-            const freteDoc = getStoreConfigDocRef(effectiveStoreId);
-            await setDoc(freteDoc, {
-                frete: {
-                    ...freteConfig,
-                    valorPorKm: parseFloat(freteConfig.valorPorKm || 0),
-                    updatedAt: new Date(),
-                    updatedBy: user?.auth?.email || 'Sistema'
-                }
-            }, { merge: true });
-            await setDoc(doc(db, 'lojas', effectiveStoreId, 'info', 'dados'), {
-                frete: {
-                    ...freteConfig,
-                    valorPorKm: parseFloat(freteConfig.valorPorKm || 0),
-                    updatedAt: new Date(),
-                    updatedBy: user?.auth?.email || 'Sistema'
-                }
-            }, { merge: true });
-            await setDoc(doc(db, 'lojas', effectiveStoreId, 'configuracoes', 'frete'), {
+            const valorMinimoFrete = Number(freteConfig.valorMinimoFrete);
+            if (!Number.isFinite(valorMinimoFrete) || valorMinimoFrete < 0) {
+                alert('Informe um valor mínimo de frete válido.');
+                return;
+            }
+            const coordinates = validateFreightCoordinates(freteConfig);
+            const valorPorKm = Number(freteConfig.valorPorKm);
+            if (!Number.isFinite(valorPorKm) || valorPorKm < 0) {
+                alert('Informe um valor por KM válido.');
+                return;
+            }
+            const savedFreight = {
                 ...freteConfig,
-                valorPorKm: parseFloat(freteConfig.valorPorKm || 0),
+                ...coordinates,
+                valorPorKm,
+                valorMinimoFrete,
+                freteACombinar: freteConfig.freteACombinar === true,
                 updatedAt: new Date(),
                 updatedBy: user?.auth?.email || 'Sistema'
+            };
+            const freteDoc = getStoreConfigDocRef(effectiveStoreId);
+            await setDoc(freteDoc, {
+                frete: savedFreight
             }, { merge: true });
+            await setDoc(doc(db, 'lojas', effectiveStoreId, 'info', 'dados'), {
+                frete: savedFreight
+            }, { merge: true });
+            await setDoc(doc(db, 'lojas', effectiveStoreId, 'configuracoes', 'frete'), savedFreight, { merge: true });
             alert('Configurações de frete salvas com sucesso!');
         } catch (error) {
             console.error("Erro ao salvar frete:", error);
-            alert('Ocorreu um erro ao salvar as configurações.');
+            alert(error.message || 'Ocorreu um erro ao salvar as configurações.');
         } finally {
             setIsSavingFrete(false);
         }
@@ -12656,25 +12628,29 @@ const effectiveStoreName = useMemo(() => {
                                 value={freteConfig.valorPorKm || ''}
                                 onChange={e => setFreteConfig({ ...freteConfig, valorPorKm: e.target.value })}
                                 required
-                        />
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Input 
-                                label="Latitude da Loja" 
-                                placeholder="-16.6725019"
-                                value={freteConfig.lat || ''} 
-                                onChange={e => setFreteConfig({ ...freteConfig, lat: e.target.value })} 
-                                required 
                             />
-                            <Input 
-                                label="Longitude da Loja" 
-                                placeholder="-49.3274707"
-                                value={freteConfig.lng || ''} 
-                                onChange={e => setFreteConfig({ ...freteConfig, lng: e.target.value })} 
-                                required 
+                            <Input
+                                label="Valor mínimo do frete (R$)"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={freteConfig.valorMinimoFrete ?? ''}
+                                onChange={e => setFreteConfig({ ...freteConfig, valorMinimoFrete: e.target.value })}
+                                required
                             />
-                        </div>
+                            <label className="flex items-center gap-3">
+                                <input
+                                    type="checkbox"
+                                    checked={freteConfig.freteACombinar === true}
+                                    onChange={e => setFreteConfig({ ...freteConfig, freteACombinar: e.target.checked })}
+                                />
+                                <span>Frete a combinar</span>
+                            </label>
+                            {freteConfig.freteACombinar === true && (
+                                <p className="text-sm text-gray-500">O pedido exibirá Frete: A Combinar, sem adicionar frete ao total.</p>
+                            )}
                             <div className="pt-4">
-                                <Button type="submit" disabled={isSavingFrete}>
+                                <Button type="submit" disabled={isSavingFrete || freteLoadedStore !== effectiveStoreId}>
                                     <Save className="w-4 h-4" /> {isSavingFrete ? 'Salvando...' : 'Salvar Configurações'}
                                 </Button>
                             </div>
@@ -14382,7 +14358,8 @@ const handleSubmit = async (e) => {
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
                     const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
-					const frete = parseFloat(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0) || 0;
+					const freteExibido = getOrderFreight(viewingOrder).label;
+                    const totalFinal = getSavedOrderTotal(viewingOrder).toFixed(2);
 
                     
                     const handleSendToWhatsApp = () => {
@@ -14414,8 +14391,8 @@ const handleSubmit = async (e) => {
                              message += `*Desconto Manual:* - R$ ${viewingOrder.desconto.toFixed(2)}\n`;
                         }
 
-                        message += `*Frete:* R$ ${frete.toFixed(2)}\n`;
-                        message += `*Total:* R$ ${(viewingOrder.total || 0).toFixed(2)}\n`;
+                        message += `*Frete:* ${freteExibido}\n`;
+                        message += `*Total:* R$ ${totalFinal}\n`;
                         if(viewingOrder.formaPagamento) message += `*Pagamento:* ${viewingOrder.formaPagamento}\n`;
                         message += `*Status:* ${viewingOrder.status}\n\n`;
                         if(viewingOrder.observacao) message += `*Observações:* ${viewingOrder.observacao}\n\n`;
@@ -14459,7 +14436,8 @@ const handleSubmit = async (e) => {
                             }
                         }
                         
-                        printWindow.document.write(`<p class="total">Total:<span style="float: right;">R$ ${(viewingOrder.total || 0).toFixed(2)}</span></p>`);
+                        printWindow.document.write(`<p>Frete: ${freteExibido}</p>`);
+                        printWindow.document.write(`<p class="total">Total:<span style="float: right;">R$ ${totalFinal}</span></p>`);
                         if(viewingOrder.formaPagamento) printWindow.document.write(`<p>Pagamento: ${viewingOrder.formaPagamento}</p>`);
 
                         if(viewingOrder.observacao) {
@@ -14526,9 +14504,9 @@ const handleSubmit = async (e) => {
                                         </p>
                                     </>
                                 )}
-                                <p className="text-sm text-gray-600">Frete: R$ {frete.toFixed(2)}</p>
+                                <p className="text-sm text-gray-600">Frete: {freteExibido}</p>
                                 <p className="font-bold text-2xl text-pink-600">
-                                    Total: R$ ${(viewingOrder.total || 0).toFixed(2)}
+                                    Total: R$ {totalFinal}
                                 </p>
                            </div>
 
@@ -18517,7 +18495,9 @@ const handleSubmit = async (e) => {
       });
       const subtotal = roundCurrency(items.reduce((sum, item) => sum + (Number(item.preco || 0) * Number(item.quantity || 1)), 0));
       const desconto = roundCurrency(Math.min(Math.max(Number(draft.desconto || 0), 0), subtotal));
-      const valorFrete = roundCurrency(Math.max(Number(draft.valorFrete ?? draft.frete ?? 0), 0));
+      const valorFrete = draft.freteACombinar === true || draft.tipoFrete === 'a_combinar'
+        ? 0
+        : roundCurrency(Math.max(Number(draft.valorFrete ?? draft.frete ?? 0), 0));
       return {
         ...draft,
         itens: items,
@@ -18545,7 +18525,9 @@ const handleSubmit = async (e) => {
         observacao: order?.observacao || order?.additionalInfo || '',
         itens: items,
         desconto: Number(order?.desconto || order?.cupom?.valorDesconto || 0) || 0,
-        valorFrete: Number(order?.valorFrete ?? order?.frete ?? 0) || 0,
+        valorFrete: getOrderFreight(order).value,
+        freteACombinar: getOrderFreight(order).agreed,
+        tipoFrete: order?.tipoFrete,
         subtotal: Number(order?.subtotal || 0) || 0,
         total: Number(order?.total || 0) || 0,
         cupom: order?.cupom || null,

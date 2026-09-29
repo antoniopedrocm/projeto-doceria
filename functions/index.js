@@ -16,6 +16,8 @@ const {FieldValue} = require('firebase-admin/firestore');
 const express = require("express");
 const cors = require("cors");
 const crypto = require('crypto');
+const {quoteFreight, totalWithFreight, validateFreightCoordinates,
+  loadStoreFreightConfig, orderFreightSnapshot} = require('./freight-core');
 const {createFiscalFunctions} = require('./fiscal');
 const {createCaixaFunctions} = require('./caixa');
 const {createEntreLojasFunctions} = require('./entre-lojas');
@@ -1591,6 +1593,24 @@ app.put("/clientes/:id", async (req, res) => {
 });
 
 
+const quoteOrderFreight = async (transaction, storeId, primaryData, payload, pickup) => {
+  try {
+    const config = pickup ? {} : await loadStoreFreightConfig({
+      db, storeId, primaryData, read: (ref) => transaction.get(ref),
+    });
+    if (!pickup && config.freteACombinar !== true) validateFreightCoordinates(config);
+    const quote = quoteFreight({
+      config,
+      pickup,
+      distanceKm: payload?.distanciaFreteKm,
+      requestedFreight: payload?.valorFrete ?? payload?.frete ?? 0,
+    });
+    return orderFreightSnapshot({config, quote, storeId, distanceKm: payload?.distanciaFreteKm});
+  } catch (error) {
+    throw createHttpError(400, error.message, 'FREIGHT_INVALID');
+  }
+};
+
 // Rota para criar um novo pedido
 app.post("/pedidos", async (req, res) => {
   const lojaId = requireStoreId(req, res);
@@ -1604,7 +1624,8 @@ app.post("/pedidos", async (req, res) => {
   try {
     const orderId = await db.runTransaction(async (transaction) => {
       const storeConfigSnap = await transaction.get(getStoreConfigDoc(lojaId));
-      assertStoreOpen(storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : null);
+      const storeConfig = storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : null;
+      assertStoreOpen(storeConfig);
 
       const validatedItems = [];
       let calculatedSubtotal = 0;
@@ -1657,8 +1678,14 @@ app.post("/pedidos", async (req, res) => {
 
       const subtotalFinal = Number(calculatedSubtotal.toFixed(2));
       const descontoFinal = Math.min(Math.max(Number(req.body?.desconto || 0), 0), subtotalFinal);
-      const valorFreteFinal = Number(req.body?.valorFrete || req.body?.frete || 0);
-      const totalFinal = Number((subtotalFinal - descontoFinal + (Number.isFinite(valorFreteFinal) ? valorFreteFinal : 0)).toFixed(2));
+      const freight = await quoteOrderFreight(
+        transaction,
+        lojaId,
+        storeConfig,
+        req.body,
+        req.body?.clienteEndereco === 'Retirar na Loja',
+      );
+      const totalFinal = totalWithFreight(subtotalFinal - descontoFinal, freight);
 
       const orderRef = db.collection("lojas").doc(lojaId).collection("pedidos").doc();
       transaction.set(orderRef, {
@@ -1667,6 +1694,7 @@ app.post("/pedidos", async (req, res) => {
         itens: validatedItems,
         subtotal: subtotalFinal,
         desconto: descontoFinal,
+        ...freight,
         total: totalFinal,
         createdAt: FieldValue.serverTimestamp(),
       });
@@ -1694,7 +1722,6 @@ app.post("/checkout/confirmar", async (req, res) => {
   const cupom = req.body?.cupom || null;
   const subtotal = Number(req.body?.subtotal ?? 0);
   const descontoInformado = Number(req.body?.desconto ?? 0);
-  let valorFrete = Number(req.body?.valorFrete ?? 0);
   const origem = typeof req.body?.origem === 'string' ? req.body.origem : 'Cardapio Online';
   const status = 'Pendente';
   const online = pagamento.forma === 'Online';
@@ -1735,19 +1762,13 @@ app.post("/checkout/confirmar", async (req, res) => {
       const storeConfigSnap = await transaction.get(storeConfigRef);
       const storeConfig = storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : null;
       assertStoreOpen(storeConfig);
-
-      if(online) {
-        const delivery=req.body.delivery || {};
-        if(delivery.pickup === true && cliente.endereco === 'Retirar na Loja') valorFrete=0;
-        else {
-          const f=storeConfig.frete || storeConfig;
-          const lat=Number(delivery.lat),lng=Number(delivery.lng);
-          if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180||![f.lat,f.lng,f.valorPorKm].every(Number.isFinite)||f.valorPorKm<0) throw paymentError('Confirme o endereço de entrega.',400);
-          const r=Math.PI/180,a=Math.sin((lat-f.lat)*r/2)**2+Math.cos(f.lat*r)*Math.cos(lat*r)*Math.sin((lng-f.lng)*r/2)**2;
-          valorFrete=Number((6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))*f.valorPorKm).toFixed(2));
-          if(Math.abs(valorFrete-Number(req.body.valorFrete))>0.01) throw paymentError('O frete mudou. Confirme novamente seu endereço.');
-        }
-      }
+      const freight = await quoteOrderFreight(
+        transaction,
+        lojaId,
+        storeConfig,
+        req.body,
+        cliente.endereco === 'Retirar na Loja',
+      );
       const seenProducts=new Set();
       const stockUpdates = [];
       const validatedItems = [];
@@ -1873,7 +1894,7 @@ app.post("/checkout/confirmar", async (req, res) => {
       }
 
       const descontoFinal = cupomDocRef ? Math.min(subtotalFinal, Math.max(0,valorDesconto)) : 0;
-      const total = Number((subtotalFinal - descontoFinal + valorFrete).toFixed(2));
+      const total = totalWithFreight(subtotalFinal - descontoFinal, freight);
       if (!Number.isFinite(total) || total < 0) {
         throw createHttpError(400, 'Totais do pedido inválidos.');
       }
@@ -1912,7 +1933,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         itens: validatedItems,
         subtotal: subtotalFinal,
         desconto: descontoFinal,
-        valorFrete,
+        ...freight,
         total,
         cupom: cupomDocRef ? {codigo: couponCode, valorDesconto: descontoFinal} : null,
         status: online ? 'Aguardando pagamento' : status,
@@ -1936,11 +1957,11 @@ app.post("/checkout/confirmar", async (req, res) => {
         }
       }
 
-      return orderRef.id;
+      return {id: orderRef.id, subtotal: subtotalFinal, desconto: descontoFinal, ...freight, total};
     });
 
     if(online) return res.status(200).json({ok:true,...await checkoutPayments.start(paymentId,ownerUid)});
-    return res.status(200).json({ok: true, id: orderId});
+    return res.status(200).json({ok: true, ...orderId});
   } catch (error) {
     logger.error('Erro ao confirmar checkout:', error);
     const statusCode = Number(error?.httpStatus) || 500;
@@ -1959,37 +1980,21 @@ app.post("/frete/calcular", async (req, res) => {
     if (!lojaId) return;
     try {
         const { clienteLat, clienteLng } = req.body;
-
-        const configDoc = await getStoreConfigDoc(lojaId).get();
-        let freteConfig = configDoc.exists ? (configDoc.data()?.frete || configDoc.data()) : null;
-
-        if (!freteConfig || Object.keys(freteConfig).length === 0) {
-            const legacyFreteDoc = await getLegacyConfigDoc(lojaId, 'frete').get();
-            if (legacyFreteDoc.exists) {
-                freteConfig = legacyFreteDoc.data();
-                await getStoreConfigDoc(lojaId).set({ frete: freteConfig }, { merge: true });
-            }
+        const freteConfig = await loadStoreFreightConfig({db, storeId: lojaId});
+        if (freteConfig.freteACombinar === true) {
+            return res.status(200).json({...quoteFreight({config: freteConfig}), distanciaKm: null});
         }
-
-        if (!freteConfig || Object.keys(freteConfig).length === 0) {
-            const legacyDoc = await getLegacyInfoDoc(lojaId).get();
-            freteConfig = legacyDoc.data()?.frete || null;
-
-            if (freteConfig) {
-                await getStoreConfigDoc(lojaId).set({ frete: freteConfig }, { merge: true });
-            }
+        const {lat: lojaLat, lng: lojaLng} = validateFreightCoordinates(freteConfig);
+        if (req.body?.distanciaKm != null) {
+            return res.status(200).json({
+                ...quoteFreight({config: freteConfig, distanceKm: req.body.distanciaKm}),
+                distanciaKm: Number(req.body.distanciaKm),
+            });
         }
-
-        if (!freteConfig) {
-            return res.status(404).json({ message: "Configuração de frete não encontrada." });
-        }
-
-        const lojaLat = freteConfig.lat;
-        const lojaLng = freteConfig.lng;
-        const valorPorKm = freteConfig.valorPorKm;
-
-        if (typeof lojaLat !== 'number' || typeof lojaLng !== 'number' || typeof valorPorKm !== 'number') {
-            return res.status(400).json({ message: "Configuração de frete inválida." });
+        try {
+            validateFreightCoordinates({lat: clienteLat, lng: clienteLng});
+        } catch (error) {
+            return res.status(400).json({message: 'Confirme novamente o endereço para calcular o frete.'});
         }
 
         function getDistance(lat1, lon1, lat2, lon2) {
@@ -2005,16 +2010,14 @@ app.post("/frete/calcular", async (req, res) => {
         }
 
         const distanciaKm = getDistance(lojaLat, lojaLng, clienteLat, clienteLng);
-        const valorFrete = distanciaKm * valorPorKm;
-
-        res.status(200).json({
-            valorFrete: parseFloat(valorFrete.toFixed(2)),
-            distanciaKm: distanciaKm.toFixed(2)
+        return res.status(200).json({
+            ...quoteFreight({config: freteConfig, distanceKm: distanciaKm}),
+            distanciaKm,
         });
 
     } catch (error) {
         logger.error("Erro ao calcular frete:", error);
-        res.status(500).send("Erro ao calcular frete.");
+        return res.status(400).json({message: error.message || 'Erro ao calcular frete.'});
     }
 });
 
