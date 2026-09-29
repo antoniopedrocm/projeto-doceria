@@ -1169,7 +1169,7 @@ const getNowInTimeZone = (timezone, now = new Date()) => {
     weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false,
+    hourCycle: 'h23',
   });
   const parts = formatter.formatToParts(now);
   const weekdayRaw = parts.find((part) => part.type === 'weekday')?.value?.toLowerCase() || 'sun';
@@ -1180,24 +1180,34 @@ const getNowInTimeZone = (timezone, now = new Date()) => {
   return {weekday, minutes: (hour * 60) + minute};
 };
 
-const isStoreOpenNow = (storeConfig = {}, now = new Date()) => {
+const getStoreAvailability = (storeConfig, now = new Date()) => {
+  if (!storeConfig || typeof storeConfig !== 'object') return 'CONFIG_UNAVAILABLE';
   const overrideMode = storeConfig?.manualOverride?.mode || 'auto';
-  if (overrideMode === 'force_open') return true;
-  if (overrideMode === 'force_closed') return false;
+  if (overrideMode === 'force_open') return 'OPEN';
+  if (overrideMode === 'force_closed') return 'CLOSED';
+  if (overrideMode !== 'auto' || typeof storeConfig.timezone !== 'string' ||
+      !storeConfig.timezone.trim() || !storeConfig.schedule ||
+      typeof storeConfig.schedule !== 'object' || Array.isArray(storeConfig.schedule)) {
+    return 'CONFIG_UNAVAILABLE';
+  }
 
-  const timezone = storeConfig?.timezone || DEFAULT_STORE_TIMEZONE;
-  const schedule = storeConfig?.schedule || {};
-  const {weekday, minutes} = getNowInTimeZone(timezone, now);
+  let weekday;
+  let minutes;
+  try {
+    ({weekday, minutes} = getNowInTimeZone(storeConfig.timezone, now));
+  } catch (error) {
+    return 'CONFIG_UNAVAILABLE';
+  }
 
-  const todayConfig = schedule[weekday];
-  if (!todayConfig || !todayConfig.enabled) return false;
+  const todayConfig = storeConfig.schedule[weekday];
+  if (!todayConfig || typeof todayConfig.enabled !== 'boolean') return 'CONFIG_UNAVAILABLE';
+  if (!todayConfig.enabled) return 'CLOSED';
 
   const openMinutes = parseTimeToMinutes(todayConfig.open);
   const closeMinutes = parseTimeToMinutes(todayConfig.close);
-  if (openMinutes === null || closeMinutes === null) return false;
-  if (closeMinutes <= openMinutes) return false;
+  if (openMinutes === null || closeMinutes === null || closeMinutes <= openMinutes) return 'CONFIG_UNAVAILABLE';
 
-  return minutes >= openMinutes && minutes < closeMinutes;
+  return minutes >= openMinutes && minutes < closeMinutes ? 'OPEN' : 'CLOSED';
 };
 
 // API Express para o Cardápio Online
@@ -1398,6 +1408,15 @@ const createHttpError = (status, message, code = null) => {
   return error;
 };
 
+const assertStoreOpen = (storeConfig) => {
+  const availability = getStoreAvailability(storeConfig);
+  if (availability === 'OPEN') return;
+  if (availability === 'CLOSED') {
+    throw createHttpError(403, 'A loja está fechada no momento. Volte em nosso horário de atendimento.', 'STORE_CLOSED');
+  }
+  throw createHttpError(503, 'Não foi possível verificar o horário da loja no momento.', 'CONFIG_UNAVAILABLE');
+};
+
 const normalizeCouponCode = (value) => (
   typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : ''
 );
@@ -1585,15 +1604,7 @@ app.post("/pedidos", async (req, res) => {
   try {
     const orderId = await db.runTransaction(async (transaction) => {
       const storeConfigSnap = await transaction.get(getStoreConfigDoc(lojaId));
-      const storeConfig = storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : {};
-
-      if (!isStoreOpenNow(storeConfig)) {
-        throw createHttpError(
-          403,
-          'A loja está fechada no momento. Volte em nosso horário de atendimento.',
-          'STORE_CLOSED',
-        );
-      }
+      assertStoreOpen(storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : null);
 
       const validatedItems = [];
       let calculatedSubtotal = 0;
@@ -1722,15 +1733,8 @@ app.post("/checkout/confirmar", async (req, res) => {
       }
       const storeConfigRef = getStoreConfigDoc(lojaId);
       const storeConfigSnap = await transaction.get(storeConfigRef);
-      const storeConfig = storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : {};
-
-      if (!isStoreOpenNow(storeConfig)) {
-        throw createHttpError(
-          403,
-          'A loja está fechada no momento. Volte em nosso horário de atendimento.',
-          'STORE_CLOSED',
-        );
-      }
+      const storeConfig = storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : null;
+      assertStoreOpen(storeConfig);
 
       if(online) {
         const delivery=req.body.delivery || {};

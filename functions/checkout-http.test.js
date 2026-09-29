@@ -93,3 +93,34 @@ test('HTTP reserva limite de cupom entre compras concorrentes e libera após exp
   const retry=await send({...b,idempotencyKey:b.idempotencyKey+'-new'});
   assert.equal(retry.status,200,JSON.stringify(retry));
 });
+
+test('HTTP distingue loja fechada de configuração operacional indisponível',async()=>{
+  const configRef=db.doc(`lojas/${store}/configuracoes/config`);
+  const originalConfig=(await configRef.get()).data();
+  const attempt=()=>send({...body(),idempotencyKey:`availability-${require('node:crypto').randomUUID()}`});
+  const previousLinks=links;
+  try {
+    await configRef.delete();
+    const missing=await attempt();
+    assert.equal(missing.status,503,JSON.stringify(missing));
+    assert.equal(missing.data.code,'CONFIG_UNAVAILABLE');
+    const legacy=await originalFetch(base+`/pedidos?lojaId=${store}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body())
+    });
+    assert.equal(legacy.status,503);
+    assert.equal((await legacy.json()).code,'CONFIG_UNAVAILABLE');
+
+    await configRef.set({timezone:'America/Sao_Paulo',manualOverride:{mode:'auto'},frete:originalConfig.frete});
+    const noSchedule=await attempt();
+    assert.equal(noSchedule.status,503,JSON.stringify(noSchedule));
+    assert.equal(noSchedule.data.code,'CONFIG_UNAVAILABLE');
+
+    await configRef.set({...originalConfig,manualOverride:{mode:'force_closed'}});
+    const closed=await attempt();
+    assert.equal(closed.status,403,JSON.stringify(closed));
+    assert.equal(closed.data.code,'STORE_CLOSED');
+    assert.equal(links,previousLinks);
+  } finally {
+    await configRef.set(originalConfig);
+  }
+});

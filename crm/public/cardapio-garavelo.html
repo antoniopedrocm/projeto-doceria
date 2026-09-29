@@ -741,7 +741,7 @@
         <script type="module">
           import { db, doc, getDoc } from "./firebaseClientConfig.js";
 
-          const DEFAULT_STORE_ID = 'ana-guimaraes-garavelo';
+          const DEFAULT_STORE_ID = 'ana-guimaraes-doceria-garavelo';
           const STORE_ID = new URLSearchParams(window.location.search).get('store') || DEFAULT_STORE_ID;
           window.STORE_ID = STORE_ID;
           const CONFIG_DOC_ID = 'config';
@@ -1239,17 +1239,15 @@
         import {installCustomerAccount} from './customer-account.js';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js';
+        import {STORE_AVAILABILITY, getStoreAvailability, getStoreAvailabilityMessage} from './store-availability.mjs';
         // --- VARIÁVEIS GLOBAIS ---
         const WHATSAPP_NUMBER = '5562991056075';
         const API_BASE_URL = apiBaseUrl;
         const escapeCheckoutText = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-        const DEFAULT_STORE_TIMEZONE = 'America/Sao_Paulo';
-        const STORE_ID = window.STORE_ID || 'ana-guimaraes-garavelo';
+        const STORE_ID = window.STORE_ID || 'ana-guimaraes-doceria-garavelo';
         const CONFIG_DOC_ID = 'config';
         const CONFIG_COLLECTIONS = new Set(['cupons', 'logs']);
         const storeConfigDocPath = (...segments) => ['lojas', STORE_ID, 'configuracoes', CONFIG_DOC_ID, ...segments];
-        const legacyConfigPath = (...segments) => ['lojas', STORE_ID, 'configuracoes', ...segments];
-        const legacyStorePath = (...segments) => ['lojas', STORE_ID, ...segments];
         const storePath = (...segments) => {
             if (!segments.length) return ['lojas', STORE_ID];
 
@@ -1279,10 +1277,11 @@
         const subcategoryOrder = ['Queridinhos', 'Bolo no pote', 'Copo da felicidade', 'Bombom aberto', 'Pipoca', 'Cone recheado', 'Bolo gelado', 'Bombom recheado'];
         window.valorFrete = 0;
                 window.guestCurrentLatLng = null;
-        let storeConfig = {};
+        let storeConfig = null;
         let storeConfigListenerUnsubscribe = null;
         let productListenerUnsubscribe = null;
-        let storeIsOpenNow = true;
+        let storeAvailability = STORE_AVAILABILITY.CONFIG_UNAVAILABLE;
+        let storeIsOpenNow = false;
         let checkoutBlockingIssue = null;
 
         // --- SELEÇÃO DE ELEMENTOS DOM ---
@@ -1583,46 +1582,16 @@
                 const { db, doc, getDoc } = await import('./firebaseClientConfig.js');
                 const configDoc = await getDoc(doc(db, ...storeConfigDocPath()));
                 if (configDoc.exists()) {
-                    const data = configDoc.data() || {};
-                    storeConfig = data.frete || data;
-                    console.log("✅ Configurações da loja carregadas:", storeConfig);
-                    syncStoreAvailabilityStatus();
-                    return;
-                }
-
-                let storeConfigDoc;
-                try {
-                    storeConfigDoc = await getDoc(doc(db, ...storePath("info", "dados")));
-                } catch (error) {
-                    if (error.code !== 'permission-denied') throw error;
-                    // O documento legado é restrito; visitantes seguem para os fallbacks públicos.
-                }
-
-                if (storeConfigDoc?.exists()) {
-                    const data = storeConfigDoc.data();
-                    storeConfig = data?.frete || data || {};
-                    console.log("✅ Configurações da loja carregadas:", storeConfig);
-                    syncStoreAvailabilityStatus();
-                    return;
-                }
-
-                const legacyFreteDoc = await getDoc(doc(db, ...legacyConfigPath('frete')));
-                if (legacyFreteDoc.exists()) {
-                    storeConfig = legacyFreteDoc.data();
-                    console.log("⚠️ Usando configuração legada da loja:", storeConfig);
-                    syncStoreAvailabilityStatus();
-                    return;
-                }
-
-                const fallbackConfig = await getDoc(doc(db, "configuracoes", "frete"));
-                if (fallbackConfig.exists()) {
-                    storeConfig = fallbackConfig.data();
-                    console.log("⚠️ Configurações específicas não encontradas. Usando fallback padrão:", storeConfig);
-                    syncStoreAvailabilityStatus();
+                    storeConfig = configDoc.data() || {};
+                    console.info("✅ Configuração operacional da loja carregada.");
+                } else {
+                    storeConfig = null;
                 }
             } catch (error) {
                 console.error("Erro ao carregar configurações:", error);
+                storeConfig = null;
             }
+            syncStoreAvailabilityStatus();
         }
 
         function normalizeActiveProducts(products = []) {
@@ -1738,11 +1707,12 @@
             if (storeConfigListenerUnsubscribe) storeConfigListenerUnsubscribe();
 
             storeConfigListenerUnsubscribe = onSnapshot(doc(db, ...storeConfigDocPath()), (snap) => {
-                if (!snap.exists()) return;
-                storeConfig = snap.data() || {};
+                storeConfig = snap.exists() ? (snap.data() || {}) : null;
                 syncStoreAvailabilityStatus();
             }, (error) => {
                 console.error('Erro ao sincronizar configurações da loja:', error);
+                storeConfig = null;
+                syncStoreAvailabilityStatus();
             });
         }
 
@@ -2060,65 +2030,15 @@
         }
         window.showToast = showToast;
 
-        function parseTimeToMinutes(value) {
-            if (!value || typeof value !== "string") return null;
-            const match = value.match(/^(\d{2}):(\d{2})$/);
-            if (!match) return null;
-            const hh = Number(match[1]);
-            const mm = Number(match[2]);
-            if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-            return (hh * 60) + mm;
-        }
-
-        function getTimeDataForTimezone(timezone) {
-            try {
-                const formatter = new Intl.DateTimeFormat('en-CA', {
-                    timeZone: timezone || DEFAULT_STORE_TIMEZONE,
-                    weekday: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                });
-                const parts = formatter.formatToParts(new Date());
-                const weekdayRaw = (parts.find((part) => part.type === 'weekday')?.value || 'sun').toLowerCase().slice(0, 3);
-                const weekdayMap = { mon: 'mon', tue: 'tue', wed: 'wed', thu: 'thu', fri: 'fri', sat: 'sat', sun: 'sun' };
-                const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
-                const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
-                return { weekday: weekdayMap[weekdayRaw] || 'sun', minutes: (hour * 60) + minute };
-            } catch (error) {
-                console.error('Falha ao converter horário da loja:', error);
-                return { weekday: 'sun', minutes: 0 };
-            }
-        }
-
-        function isStoreOpenNow(config) {
-            const overrideMode = config?.manualOverride?.mode || 'auto';
-            if (overrideMode === 'force_open') return true;
-            if (overrideMode === 'force_closed') return false;
-
-            const timezone = config?.timezone || DEFAULT_STORE_TIMEZONE;
-            const schedule = config?.schedule || {};
-            const { weekday, minutes } = getTimeDataForTimezone(timezone);
-            const day = schedule?.[weekday];
-            if (!day || !day.enabled) return false;
-
-            const openMinutes = parseTimeToMinutes(day.open);
-            const closeMinutes = parseTimeToMinutes(day.close);
-            if (openMinutes === null || closeMinutes === null) return false;
-            if (closeMinutes <= openMinutes) return false;
-
-            return minutes >= openMinutes && minutes < closeMinutes;
-        }
-
         function updateStoreAvailabilityUI() {
-            const isClosed = !storeIsOpenNow;
-            if (checkoutButton) checkoutButton.disabled = isClosed;
-            if (checkoutButton) checkoutButton.classList.toggle('opacity-60', isClosed);
-            if (checkoutButton) checkoutButton.classList.toggle('cursor-not-allowed', isClosed);
+            const isUnavailable = !storeIsOpenNow;
+            if (checkoutButton) checkoutButton.disabled = isUnavailable;
+            if (checkoutButton) checkoutButton.classList.toggle('opacity-60', isUnavailable);
+            if (checkoutButton) checkoutButton.classList.toggle('cursor-not-allowed', isUnavailable);
 
             if (storeStatusBanner) {
-                if (isClosed) {
-                    storeStatusBanner.textContent = 'A loja está fechada no momento. Volte em nosso horário de atendimento.';
+                if (isUnavailable) {
+                    storeStatusBanner.textContent = getStoreAvailabilityMessage(storeAvailability);
                     storeStatusBanner.classList.remove('hidden');
                 } else {
                     storeStatusBanner.classList.add('hidden');
@@ -2127,7 +2047,8 @@
         }
 
         function syncStoreAvailabilityStatus() {
-            storeIsOpenNow = isStoreOpenNow(storeConfig || {});
+            storeAvailability = getStoreAvailability(storeConfig);
+            storeIsOpenNow = storeAvailability === STORE_AVAILABILITY.OPEN;
             updateStoreAvailabilityUI();
         }
 
@@ -2138,7 +2059,7 @@
 
             checkoutButton.addEventListener('click', async () => {
                 if (!storeIsOpenNow) {
-                    showToast('A loja está fechada no momento. Volte em nosso horário de atendimento.', true);
+                    showToast(getStoreAvailabilityMessage(storeAvailability), true);
                     return;
                 }
                 if (cart.length === 0) {
@@ -3039,8 +2960,8 @@
             if (!codigo) { showToast('Digite um cupom.', true); return; }
 
             if (!storeIsOpenNow) {
-                showToast('A loja está fechada no momento. Volte em nosso horário de atendimento.', true);
-                throw new Error('STORE_CLOSED');
+                showToast(getStoreAvailabilityMessage(storeAvailability), true);
+                throw new Error(storeAvailability);
             }
             const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
             if (subtotal <= 0) { showToast('Adicione itens ao carrinho.', true); return; }
@@ -3207,8 +3128,8 @@
             const online = clientInfo.formaPagamento === 'Online';
             if (online && !isLinkedCustomer(currentClient)) throw new Error('Entre com Google ou e-mail em Minha Conta para pagar online.');
             if (!storeIsOpenNow) {
-                showToast('A loja está fechada no momento. Volte em nosso horário de atendimento.', true);
-                throw new Error('STORE_CLOSED');
+                showToast(getStoreAvailabilityMessage(storeAvailability), true);
+                throw new Error(storeAvailability);
             }
             const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
             let cupomData = null;
