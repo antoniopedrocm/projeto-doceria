@@ -1,4 +1,5 @@
 import {auth, functions, httpsCallable} from './firebaseClientConfig.js';
+import {customerAuthErrorMessage} from './customer-auth-errors.mjs';
 import {GoogleAuthProvider, createUserWithEmailAndPassword, sendEmailVerification,
   sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged,
   signOut, updateProfile, setPersistence, browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
@@ -33,7 +34,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   emailDialog.className = 'rounded-lg shadow-xl p-6 w-full max-w-md';
   emailDialog.setAttribute('aria-label', 'Entrar com e-mail');
   emailDialog.innerHTML = `<form method="dialog" class="flex justify-between items-center"><h2 data-email-title class="text-xl font-bold text-pink-600">Entrar com e-mail</h2><button aria-label="Fechar">✕</button></form>
-    <p data-email-message role="status" class="my-3 text-gray-700"></p>
+    <p data-email-message role="status" aria-live="polite" class="my-3 text-gray-700"></p>
     <form data-login-form class="space-y-3"><label class="block">E-mail<input data-login-email type="email" autocomplete="email" required class="border rounded p-2 w-full"></label><label class="block">Senha<input data-login-password type="password" autocomplete="current-password" required class="border rounded p-2 w-full"></label><button class="w-full bg-pink-600 text-white rounded p-3 font-bold">Entrar</button><button data-forgot type="button" class="text-pink-700 underline">Esqueci minha senha</button><button data-show-register type="button" class="block text-pink-700 underline">Criar conta</button></form>
     <form data-register-form class="space-y-3" hidden><label class="block">Nome<input data-register-name autocomplete="name" maxlength="120" required class="border rounded p-2 w-full"></label><label class="block">E-mail<input data-register-email type="email" autocomplete="email" required class="border rounded p-2 w-full"></label><label class="block">Celular com DDD<input data-register-phone type="tel" autocomplete="tel" required class="border rounded p-2 w-full"></label><label class="block">Senha<input data-register-password type="password" autocomplete="new-password" minlength="6" required class="border rounded p-2 w-full"></label><label class="block">Confirmar senha<input data-register-confirm type="password" autocomplete="new-password" minlength="6" required class="border rounded p-2 w-full"></label><button class="w-full bg-pink-600 text-white rounded p-3 font-bold">Criar conta</button><button data-show-login type="button" class="text-pink-700 underline">Já tenho uma conta</button></form>`;
   document.body.append(emailDialog);
@@ -41,10 +42,10 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const el = name => dialog.querySelector(`[data-${name}]`);
   const emailEl = name => emailDialog.querySelector(`[data-${name}]`);
   const message = text => {el('message').textContent = text;};
-  const emailMessage = text => {emailEl('email-message').textContent = text;};
+  const emailMessage = (text, isError=false) => {const target=emailEl('email-message');target.textContent=text;target.classList.toggle('text-red-600',isError);target.classList.toggle('text-gray-700',!isError);};
   const busy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {message(e.message || 'Não foi possível concluir. Tente novamente.');} finally {button.disabled=false;}};
-  const emailButtonBusy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {emailMessage(e.message || 'Não foi possível concluir. Tente novamente.');} finally {button.disabled=false;}};
-  const emailBusy = (form, fn) => async event => {event.preventDefault();const button=form.querySelector('button:not([type])');button.disabled=true;try {await fn();} catch(e) {emailMessage(e.message || 'Não foi possível concluir. Tente novamente.');} finally {button.disabled=false;}};
+  const emailButtonBusy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
+  const emailBusy = (form, fn) => async event => {event.preventDefault();const button=form.querySelector('button:not([type])');button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
   const ensurePersistence = () => setPersistence(auth,browserLocalPersistence);
   function showEmail(mode='login') {const registering=mode==='register';emailEl('login-form').hidden=registering;emailEl('register-form').hidden=!registering;emailEl('email-title').textContent=registering?'Criar conta':'Entrar com e-mail';emailMessage('');if(!emailDialog.open) emailDialog.showModal();}
   async function refresh() {

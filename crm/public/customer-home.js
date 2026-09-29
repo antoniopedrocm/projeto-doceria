@@ -1,4 +1,4 @@
-import {installCustomerAccount} from './customer-account.js';
+import {installCustomerAccount} from './customer-account.js?v=20260929-account-errors';
 
 let customerAccount;
 const openCustomerAccount = async () => {
