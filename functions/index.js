@@ -2112,6 +2112,8 @@ app.post("/cupons/verificar", async (req, res) => {
 const LOOKUP_CLIENT_ALLOWED_ORIGINS = [
   'https://www.anaguimaraesdoceria.com.br',
   'https://anaguimaraesdoceria.com.br',
+  'https://crmdoceria-9959e.web.app',
+  'https://crmdoceria-9959e.firebaseapp.com',
   'http://localhost:5000',
   'http://127.0.0.1:5000',
 ];
