@@ -1408,8 +1408,12 @@
         window.setCheckoutBlockingIssue = setCheckoutBlockingIssue;
         window.clearCheckoutBlockingIssue = clearCheckoutBlockingIssue;
 
-        function ensureCheckoutNotBlocked() {
+        function ensureCheckoutNotBlocked(clientInfo = pendingOrderDetails) {
             if (!checkoutBlockingIssue) return;
+            if (checkoutBlockingIssue.type === 'frete' && clientInfo?.clienteEndereco === 'Retirar na Loja') {
+                clearCheckoutBlockingIssue('frete');
+                return;
+            }
             const message = checkoutBlockingIssue.message || 'Há uma pendência de conexão/sessão. Tente novamente.';
             showToast(message, true);
             if (paymentError) {
@@ -1420,7 +1424,7 @@
         }
 
         async function revalidateCheckoutBeforeFinalSubmit(clientInfo) {
-            ensureCheckoutNotBlocked();
+            ensureCheckoutNotBlocked(clientInfo);
 
             if (clientInfo?.clienteEndereco !== 'Retirar na Loja') {
                 const response = await fetch(`${API_BASE_URL}/frete/calcular?lojaId=${encodeURIComponent(STORE_ID)}`, {
@@ -2470,6 +2474,10 @@
 		function usePickupAddress() {
 			window.valorFrete = 0; // Retirada não cobra frete
             window.distanciaFreteKm = null;
+            window.freteACombinar = false;
+            window.checkoutDeliveryAddress = null;
+            window.currentLatLng = null;
+            clearCheckoutBlockingIssue('frete');
 
 			pendingOrderDetails = {
 				clienteId: currentClient.id,
@@ -3128,7 +3136,7 @@
             confirmOrderButton.innerHTML = '<div class="loader !w-5 !h-5 !border-2 !border-t-white mx-auto"></div> Confirmando...';
 
             try {
-                ensureCheckoutNotBlocked();
+                ensureCheckoutNotBlocked(pendingOrderDetails);
                 const finalOrderDetails = { ...pendingOrderDetails, formaPagamento: paymentMethodSelect.value };
                 await finalizeOrder(finalOrderDetails, finalOrderDetails.clienteId, true);
             } catch (error) {

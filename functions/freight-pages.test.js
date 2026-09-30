@@ -122,6 +122,66 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
     assert.equal(window.distanciaFreteKm, null);
   });
 
+  test(`${page}: retirada limpa falha anterior de frete e não depende da configuração de entrega`, () => {
+    const pickupStart = html.indexOf('function usePickupAddress()');
+    const pickupEnd = html.indexOf('async function useExistingAddress(addressText, addressData)', pickupStart);
+    const cleared = [];
+    const window = {
+      valorFrete: 12,
+      distanciaFreteKm: 3,
+      freteACombinar: true,
+      checkoutDeliveryAddress: {street: 'Rua teste'},
+      currentLatLng: {lat: -16.6, lng: -49.3},
+    };
+    const modal = {classList: {add() {}, remove() {}}};
+    const pickupContext = {
+      window,
+      currentClient: {id: 'cliente', nome: 'Cliente', telefone: '62999999999'},
+      pendingOrderDetails: {},
+      selectedAddressText: {},
+      addressManagementModal: modal,
+      paymentModal: modal,
+      clearCheckoutBlockingIssue: (type) => cleared.push(type),
+      updateAllSummaries() {},
+      persistCheckoutState() {},
+    };
+    vm.runInNewContext(html.slice(pickupStart, pickupEnd), pickupContext);
+    pickupContext.usePickupAddress();
+    assert.equal(window.valorFrete, 0);
+    assert.equal(window.distanciaFreteKm, null);
+    assert.equal(window.freteACombinar, false);
+    assert.equal(window.checkoutDeliveryAddress, null);
+    assert.equal(window.currentLatLng, null);
+    assert.deepEqual(cleared, ['frete']);
+    assert.equal(pickupContext.pendingOrderDetails.clienteEndereco, 'Retirar na Loja');
+
+    const guardStart = html.indexOf('function ensureCheckoutNotBlocked(');
+    const guardEnd = html.indexOf('async function revalidateCheckoutBeforeFinalSubmit', guardStart);
+    const guardContext = {
+      checkoutBlockingIssue: {type: 'frete', message: 'Configurações de frete não carregadas'},
+      pendingOrderDetails: {},
+      clearCheckoutBlockingIssue: (type) => {
+        assert.equal(type, 'frete');
+        guardContext.checkoutBlockingIssue = null;
+      },
+      showToast() {},
+      paymentError: null,
+    };
+    vm.runInNewContext(html.slice(guardStart, guardEnd), guardContext);
+    assert.throws(
+      () => guardContext.ensureCheckoutNotBlocked({clienteEndereco: 'Rua teste'}),
+      /Configurações de frete não carregadas/
+    );
+    guardContext.checkoutBlockingIssue = {type: 'session', message: 'Sessão expirada'};
+    assert.throws(
+      () => guardContext.ensureCheckoutNotBlocked({clienteEndereco: 'Retirar na Loja'}),
+      /Sessão expirada/
+    );
+    guardContext.checkoutBlockingIssue = {type: 'frete', message: 'Configurações de frete não carregadas'};
+    assert.doesNotThrow(() => guardContext.ensureCheckoutNotBlocked({clienteEndereco: 'Retirar na Loja'}));
+    assert.equal(guardContext.checkoutBlockingIssue, null);
+  });
+
   test(`${page}: todos os resumos usam o frete cobrado, incluindo retirada`, () => {
     const start = html.indexOf('function chargedFreight(');
     const end = html.indexOf('window.freightDisplayValue =', start);
