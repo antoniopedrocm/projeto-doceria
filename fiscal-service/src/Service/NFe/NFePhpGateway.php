@@ -151,9 +151,29 @@ final class NFePhpGateway
             'status' => $status,
             'key' => $key,
             'protocol' => $protocol,
+            'cancelProtocol' => isset($event->nProt) ? (string)$event->nProt : null,
+            'cancelledAt' => isset($event->dhRegEvento) ? (string)$event->dhRegEvento : null,
             'cStat' => $cStat,
             'xMotivo' => $event->xMotivo ?? $response->xMotivo ?? null,
             'cancelXml' => $rawResponse
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function inutilize(int $model, int $series, int $start, int $end, string $reason): array
+    {
+        $this->tools->model($model);
+        $rawResponse = $this->tools->sefazInutiliza($series, $start, $end, $reason);
+        $response = (new Standardize($rawResponse))->toStd();
+        $result = $response->infInut ?? $response;
+        $code = isset($result->cStat) ? (int)$result->cStat : null;
+
+        return [
+            'status' => $code === 102 ? 'inutilized' : 'rejected',
+            'protocol' => isset($result->nProt) ? (string)$result->nProt : null,
+            'cStat' => $code,
+            'xMotivo' => isset($result->xMotivo) ? (string)$result->xMotivo : null,
+            'responseXml' => $rawResponse,
         ];
     }
 

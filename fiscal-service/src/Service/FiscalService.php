@@ -153,6 +153,30 @@ final class FiscalService
         );
     }
 
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function inutilize(array $payload): array
+    {
+        $model = (int)($payload['model'] ?? 0);
+        $series = (int)($payload['series'] ?? -1);
+        $start = (int)($payload['start'] ?? 0);
+        $end = (int)($payload['end'] ?? 0);
+        $reason = trim((string)($payload['reason'] ?? ''));
+        if (!in_array($model, [55, 65], true) || $series < 0 || $series > 999 || $start < 1 || $end < $start || $end > 999999999) {
+            throw new InvalidArgumentException('Modelo, serie ou faixa de numeracao invalida.');
+        }
+        if (strlen($reason) < 15 || strlen($reason) > 255) {
+            throw new InvalidArgumentException('Justificativa de inutilizacao deve ter entre 15 e 255 caracteres.');
+        }
+        if ((int)($payload['year'] ?? 0) !== (int)date('Y')) {
+            throw new InvalidArgumentException('O ano deve corresponder ao ano corrente usado pela integracao fiscal.');
+        }
+
+        return $this->gateway()->inutilize($model, $series, $start, $end, $reason);
+    }
+
     private function gateway(): NFePhpGateway
     {
         if ($this->gateway === null) {

@@ -38,6 +38,12 @@ final class PayloadValidator
         if (!in_array((int)($invoice['model'] ?? 0), [55, 65], true)) {
             $errors[] = 'invoice.model deve ser 55 ou 65.';
         }
+        if (!in_array((int)$payload['environment'], [1, 2], true)) {
+            $errors[] = 'Ambiente fiscal invalido.';
+        }
+        if ((int)($invoice['series'] ?? -1) < 0 || (int)($invoice['number'] ?? 0) < 1) {
+            $errors[] = 'Serie ou numero fiscal invalido.';
+        }
 
         foreach (['cnpj', 'legalName', 'stateRegistration', 'taxRegime', 'address'] as $field) {
             if (!isset($issuer[$field]) || $issuer[$field] === '') {
@@ -50,6 +56,8 @@ final class PayloadValidator
                 $errors[] = "customer.{$field} obrigatorio.";
             }
         }
+        if (!$this->validDocument((string)($issuer['cnpj'] ?? ''))) $errors[] = 'Emitente: CNPJ invalido.';
+        if (!$this->validDocument((string)($customer['document'] ?? ''))) $errors[] = 'Cliente: CPF/CNPJ invalido.';
 
         $this->validateAddress($issuer['address'] ?? [], 'issuer.address', $errors);
         $this->validateAddress($customer['address'] ?? [], 'customer.address', $errors);
@@ -70,8 +78,19 @@ final class PayloadValidator
                 if (isset($item['cfop']) && !preg_match('/^\d{4}$/', (string)$item['cfop'])) {
                     $errors[] = "{$prefix}.cfop deve ter 4 digitos.";
                 }
-                if (!isset($item['tax']['csosn']) && !isset($item['tax']['cst'])) {
+                if (empty($item['tax']['csosn']) && empty($item['tax']['cst'])) {
                     $errors[] = "{$prefix}.tax precisa ter CSOSN ou CST.";
+                }
+                foreach (['origin', 'pisCst', 'cofinsCst'] as $taxField) {
+                    if (!isset($item['tax'][$taxField]) || $item['tax'][$taxField] === '') {
+                        $errors[] = "{$prefix}.tax.{$taxField} obrigatorio.";
+                    }
+                }
+                if ((float)($item['quantity'] ?? 0) <= 0 || (float)($item['unitPrice'] ?? -1) < 0) {
+                    $errors[] = "{$prefix}: quantidade ou valor unitario invalido.";
+                }
+                if (round((float)($item['quantity'] ?? 0) * (float)($item['unitPrice'] ?? 0), 2) !== round((float)($item['total'] ?? 0), 2)) {
+                    $errors[] = "{$prefix}: total diverge de quantidade x valor unitario.";
                 }
             }
         }
@@ -80,6 +99,14 @@ final class PayloadValidator
             if (!isset($totals[$field]) || !is_numeric($totals[$field])) {
                 $errors[] = "totals.{$field} numerico obrigatorio.";
             }
+        }
+        if (is_array($items) && is_numeric($totals['products'] ?? null)) {
+            $itemProducts = round(array_sum(array_map(static fn (array $item): float => (float)($item['total'] ?? 0), $items)), 2);
+            if ($itemProducts !== round((float)$totals['products'], 2)) $errors[] = 'Totais: subtotal diverge dos itens.';
+            $itemDiscount = round(array_sum(array_map(static fn (array $item): float => (float)($item['discount'] ?? 0), $items)), 2);
+            if ($itemDiscount !== round((float)($totals['discount'] ?? 0), 2)) $errors[] = 'Totais: desconto diverge dos itens.';
+            $calculatedTotal = round((float)$totals['products'] - (float)$totals['discount'] + (float)($totals['freight'] ?? 0) + (float)($totals['insurance'] ?? 0) + (float)($totals['other'] ?? 0), 2);
+            if ($calculatedTotal !== round((float)($totals['invoice'] ?? 0), 2)) $errors[] = 'Totais: valor da nota inconsistente.';
         }
 
         $payment = $invoice['payment'] ?? [];
@@ -106,6 +133,26 @@ final class PayloadValidator
                 $errors[] = "{$prefix}.{$field} obrigatorio.";
             }
         }
+        if (!preg_match('/^\d{8}$/', (string)($address['zip'] ?? ''))) $errors[] = "{$prefix}.zip deve ter 8 digitos.";
+    }
+
+    private function validDocument(string $value): bool
+    {
+        $digits = preg_replace('/\D/', '', $value) ?? '';
+        $length = strlen($digits);
+        if (!in_array($length, [11, 14], true) || preg_match('/^(\d)\1+$/', $digits)) return false;
+        $weights = $length === 11
+            ? [[10, 9, 8, 7, 6, 5, 4, 3, 2], [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]]
+            : [[5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]];
+        foreach ($weights as $index => $weightSet) {
+            $sum = 0;
+            foreach ($weightSet as $position => $weight) $sum += (int)$digits[$position] * $weight;
+            $remainder = $sum % 11;
+            $expected = $remainder < 2 ? 0 : 11 - $remainder;
+            $digitIndex = $length === 11 ? 9 + $index : 12 + $index;
+            if ($expected !== (int)$digits[$digitIndex]) return false;
+        }
+        return true;
     }
 
     /**

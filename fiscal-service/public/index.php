@@ -29,15 +29,17 @@ try {
     RequestGuard::assertAllowed($_SERVER);
     $body = file_get_contents('php://input') ?: '{}';
     $payload = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
-    $service = $path === '/validate'
+    $service = in_array($path, ['/validate', '/capabilities'], true)
         ? FiscalService::validationOnly()
         : FiscalService::fromPayload($payload);
 
     $result = match ($path) {
         '/validate' => $service->validate($payload),
+        '/capabilities' => ['inutilize' => true, 'year' => (int)date('Y')],
         '/issue' => $service->issue($payload),
         '/receipt' => $service->receipt($payload),
         '/cancel' => $service->cancel($payload),
+        '/inutilize' => $service->inutilize($payload),
         default => ['error' => 'Not found'],
     };
 
