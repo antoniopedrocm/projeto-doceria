@@ -666,7 +666,7 @@ test('somente dono registra retirada pos-encerramento e resolve divergencia', as
         ...blockedPayload,
         idempotencyKey: `${storeId}-gerente-bloqueado`,
       })),
-      expectHttpsCode('failed-precondition'),
+      expectHttpsCode('permission-denied'),
   );
 
   const ownerPayload = {
@@ -765,7 +765,7 @@ test('dono registra sangria pos-encerramento e cria uma nova divergencia', async
         motivo: 'Tentativa do gerente',
         idempotencyKey: `${storeId}-gerente-bloqueado`,
       })),
-      expectHttpsCode('failed-precondition'),
+      expectHttpsCode('permission-denied'),
   );
   await assert.rejects(
       caixa.registrarSangriaCaixa(requestFor('owner', {
@@ -874,4 +874,134 @@ test('ajuste pos-encerramento atualiza alerta existente sem duplicar', async () 
   assert.equal(alertsAfter.docs[0].data().diferencaCentavos, -2000);
   assert.equal(alertsAfter.docs[0].data().situacao, 'aberto');
   assert.equal(alertsAfter.docs[0].data().historicoDivergencias.length, 1);
+});
+
+test('correcao de valores exige autorizacao, respeita loja, recalcula e preserva auditoria', async () => {
+  const storeId = 'correcao-valores-caixa';
+  const otherStoreId = 'correcao-outra-loja';
+  const authorizedManagerPermissions = {
+    ...defaultCashPermissions('gerente'),
+    ajustarCaixaAposEncerramento: true,
+  };
+  await Promise.all([
+    seedStore(storeId),
+    seedStore(otherStoreId),
+    seedUser('owner', 'dono'),
+    seedUser('manager', 'gerente', [storeId]),
+    seedUser('manager-authorized', 'gerente', [storeId], authorizedManagerPermissions),
+    seedUser('manager-other', 'gerente', [otherStoreId], authorizedManagerPermissions),
+    seedUser('attendant', 'atendente', [storeId]),
+  ]);
+  await registerBaseDay(storeId, 28000);
+
+  const basePayload = {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorInicialAnteriorCentavos: 20000,
+    novoValorInicialCentavos: 21000,
+    motivo: 'Valor de abertura digitado incorretamente',
+  };
+  await assert.rejects(
+      caixa.corrigirValoresCaixa(requestFor('manager', {
+        ...basePayload,
+        idempotencyKey: `${storeId}-manager-denied`,
+      })),
+      expectHttpsCode('permission-denied'),
+  );
+  await assert.rejects(
+      caixa.corrigirValoresCaixa(requestFor('manager-other', {
+        ...basePayload,
+        idempotencyKey: `${storeId}-other-store-denied`,
+      })),
+      expectHttpsCode('permission-denied'),
+  );
+  await assert.rejects(
+      caixa.corrigirValoresCaixa(requestFor('attendant', {
+        ...basePayload,
+        idempotencyKey: `${storeId}-attendant-denied`,
+      })),
+      expectHttpsCode('permission-denied'),
+  );
+  await assert.rejects(
+      caixa.corrigirValoresCaixa(requestFor('owner', {
+        ...basePayload,
+        motivo: '   ',
+        idempotencyKey: `${storeId}-reason-required`,
+      })),
+      expectHttpsCode('invalid-argument'),
+  );
+
+  const managerCorrection = await caixa.corrigirValoresCaixa(
+      requestFor('manager-authorized', {
+        ...basePayload,
+        idempotencyKey: `${storeId}-manager-opening`,
+      }),
+  );
+  assert.equal(managerCorrection.registro.valorInicialCentavos, 21000);
+  assert.equal(managerCorrection.registro.valorEncerramentoCentavos, 28000);
+  assert.equal(managerCorrection.registro.temValorEncerramento, true);
+  assert.equal(managerCorrection.registro.correcoesValores.length, 1);
+  assert.equal(
+      managerCorrection.registro.correcoesValores[0].permissaoUtilizada,
+      'ajustarCaixaAposEncerramento',
+  );
+  let conference = (await db.collection('lojas').doc(storeId)
+    .collection('conferenciasCaixa').doc('2026-07-27').get()).data();
+  assert.equal(conference.valorEsperadoCentavos, 31000);
+  assert.equal(conference.valorEncerramentoCentavos, 28000);
+  assert.equal(conference.diferencaCentavos, -3000);
+
+  const ownerPayload = {
+    lojaId: storeId,
+    dataOperacional: '2026-07-27',
+    valorEncerramentoAnteriorCentavos: 28000,
+    novoValorEncerramentoCentavos: 31000,
+    motivo: 'Erro de digitacao no encerramento',
+    idempotencyKey: `${storeId}-owner-closing`,
+  };
+  await caixa.corrigirValoresCaixa(requestFor('owner', ownerPayload));
+  await caixa.corrigirValoresCaixa(requestFor('owner', ownerPayload));
+
+  const record = (await db.collection('lojas').doc(storeId)
+    .collection('caixas').doc('2026-07-27').get()).data();
+  assert.equal(record.valorInicialCentavos, 21000);
+  assert.equal(record.valorInicialOriginalCentavos, 20000);
+  assert.equal(record.valorEncerramentoCentavos, 31000);
+  assert.equal(record.valorEncerramentoOriginalCentavos, 28000);
+  assert.equal(record.temValorEncerramento, true);
+  assert.equal(record.correcoesValores.length, 2);
+  conference = (await db.collection('lojas').doc(storeId)
+    .collection('conferenciasCaixa').doc('2026-07-27').get()).data();
+  assert.equal(conference.valorEsperadoCentavos, 31000);
+  assert.equal(conference.diferencaCentavos, 0);
+  assert.equal(conference.temDivergencia, false);
+  assert.equal(conference.correcoesValores.length, 2);
+
+  const audit = await db.collection('lojas').doc(storeId)
+    .collection('caixas').doc('2026-07-27')
+    .collection('auditoria').get();
+  assert.equal(audit.size, 2);
+  assert.deepEqual(
+      audit.docs.map((document) => document.data().motivo).sort(),
+      [
+        'Erro de digitacao no encerramento',
+        'Valor de abertura digitado incorretamente',
+      ],
+  );
+  const closingAlert = (await db.collection('lojas').doc(storeId)
+    .collection('alertas').where(
+        'tipo',
+        '==',
+        'CAIXA_ENCERRAMENTO_DIVERGENTE',
+    ).get()).docs[0].data();
+  assert.equal(closingAlert.diferencaCentavos, 0);
+  assert.equal(closingAlert.situacao, 'resolvido');
+
+  await assert.rejects(
+      caixa.corrigirValoresCaixa(requestFor('owner', {
+        ...ownerPayload,
+        idempotencyKey: `${storeId}-stale-value`,
+      })),
+      expectHttpsCode('aborted'),
+  );
 });

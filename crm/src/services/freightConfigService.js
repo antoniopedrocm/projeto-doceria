@@ -5,10 +5,24 @@ export const EMPTY_FREIGHT_CONFIG = Object.freeze({
   enderecoLoja: '',
   lat: '',
   lng: '',
-  valorPorKm: ''
+  valorPorKm: '',
+  valorMinimoFrete: 2,
+  freteACombinar: false
 });
 
-const FREIGHT_FIELDS = ['enderecoLoja', 'lat', 'lng', 'valorPorKm'];
+export const validateFreightCoordinates = ({ lat, lng }) => {
+  const latitude = Number(String(lat ?? '').trim());
+  const longitude = Number(String(lng ?? '').trim());
+  if (String(lat ?? '').trim() === '' || !Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    throw new Error('Informe uma latitude válida entre -90 e 90.');
+  }
+  if (String(lng ?? '').trim() === '' || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new Error('Informe uma longitude válida entre -180 e 180.');
+  }
+  return { lat: latitude, lng: longitude };
+};
+
+const FREIGHT_FIELDS = ['enderecoLoja', 'lat', 'lng', 'valorPorKm', 'valorMinimoFrete', 'freteACombinar'];
 
 const hasFreightFields = (value) => (
   value

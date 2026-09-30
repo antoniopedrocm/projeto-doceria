@@ -81,6 +81,7 @@ export const updateStock = async (
         lojaId: storeId,
         estoqueMovimentacaoId: movementRef.id,
         createdAt: serverTimestamp(),
+        finalizadoEm: serverTimestamp(),
       });
     }
   });

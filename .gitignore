@@ -70,3 +70,13 @@ playstore-builds/
 
 # dataconnect generated files
 .dataconnect
+
+# Local archives and Git worktrees consolidated under this workspace
+/_preservados/
+/worktrees/
+/corretor-worktree/
+/entre-lojas-regressao/
+/financeiro-worktree/
+/pedidos-compra-worktree/
+/contador-prod-worktree/
+/pedidos-compra-producao-worktree/

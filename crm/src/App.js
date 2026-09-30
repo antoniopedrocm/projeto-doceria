@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { Play } from 'lucide-react';
+import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
   Clock, Edit, Trash2, Eye, X, Save, MessageCircle, Cake, Gift, ChevronLeft, ChevronRight, Printer, Home, Store, BookOpen, Instagram, MapPin, Image as ImageIcon, MessageSquare, VolumeX, ArrowUpCircle, ArrowDownCircle, Banknote, PackagePlus, Ticket,
-  Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle, Download // Ícone adicionado
+  Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle, Download,
+  UserX, UserCheck // Ícones de status de usuário
 } from 'lucide-react';
 
 // --- CORREÇÃO ---
@@ -59,7 +61,7 @@ import {
   subscribeToServiceWorkerMessages,
 } from './utils/notifications.js';
 import { updateStock as updateStockService } from './services/stockService.js';
-import { loadStoreFreightConfig } from './services/freightConfigService.js';
+import { EMPTY_FREIGHT_CONFIG, loadStoreFreightConfig, validateFreightCoordinates } from './services/freightConfigService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
 import ProducaoVitrine from './components/fornecedores/ProducaoVitrine';
@@ -73,6 +75,7 @@ import SearchableClientSelect from './components/orders/SearchableClientSelect';
 import {
   CAIXA_PERMISSION_KEYS,
   CAIXA_PERMISSION_LABELS,
+  canAdjustCaixaAfterClosing,
   getDefaultCaixaPermissionsForRole,
   getEmptyCaixaPermissions,
   sanitizeCaixaPermissions,
@@ -104,6 +107,7 @@ import {
   getEntreLojasStoreRelation,
   getTransferActionPermissions
 } from './utils/entreLojasPermissions';
+import { matchesOrderDateFilter } from './utils/orderDateFilter';
 import { getExplicitTransferStatuses } from './utils/transferStatusVisibility';
 import { fetchAuthorizedTransferDestinations } from './services/entreLojasService';
 import { Car as RideCar } from 'lucide-react';
@@ -125,6 +129,8 @@ const ROLE_ACCOUNTANT = 'contador';
 const ROLE_CLIENT = 'cliente';
 const ROLE_DEFAULT = ROLE_ATTENDANT;
 const STORE_ALL_KEY = '__all__';
+const USER_STATUS_ACTIVE = 'ativo';
+const USER_STATUS_INACTIVE = 'inativo';
 const DEFAULT_NCM_PRODUCT = '19059090';
 const NCM_PRODUCT_OPTIONS = [
   { value: '19059090', label: '1905.90.90 - bolo, bolo de pote, torta, brownie, cupcake etc.' },
@@ -860,6 +866,9 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
     caixa: permissions?.fornecedores
       ? getDefaultCaixaPermissionsForRole(role)
       : getEmptyCaixaPermissions(),
+    configuracoes: {
+      gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER,
+    },
   };
 };
 
@@ -868,6 +877,8 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
   const details = permissionDetails && typeof permissionDetails === 'object' ? permissionDetails : null;
   const entreLojasDetails = details?.['entre-lojas'] || details?.entreLojas || null;
   const caixaDetails = details?.caixa || details?.cash || null;
+  const configuracoesDetails = details?.configuracoes || details?.settings || {};
+  const normalizedRole = normalizeRole(role);
   const rawStatuses = permissions?.['entre-lojas'] && entreLojasDetails
     ? (Array.isArray(entreLojasDetails.statuses)
       ? entreLojasDetails.statuses
@@ -879,7 +890,6 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
       .map((status) => String(status || '').trim())
       .filter((status) => ENTRE_LOJAS_TRANSFER_STATUS_VALUES.includes(status))
     : [];
-  const normalizedRole = normalizeRole(role);
 
   return {
     'entre-lojas': {
@@ -892,7 +902,20 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
     caixa: permissions?.fornecedores
       ? sanitizeCaixaPermissions(caixaDetails, role)
       : getEmptyCaixaPermissions(),
+    configuracoes: {
+      gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER || (
+        normalizedRole === ROLE_MANAGER &&
+        configuracoesDetails.gerenciarStatusUsuarios === true
+      ),
+    },
   };
+};
+
+const isUserAccountActive = (profile = {}) => {
+  const status = String(profile.status || '').trim().toLowerCase();
+  return profile.ativo !== false &&
+    profile.authDisabled !== true &&
+    status !== USER_STATUS_INACTIVE;
 };
 
 const POINT_WORK_SCHEDULE_TYPES = [
@@ -1823,6 +1846,14 @@ const maskCpfCnpj = (value) => {
 
 const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser, availableStores, storeInfoMap }) => {
     const [activeTab, setActiveTab] = usePersistentState('fornecedores_activeTab', 'fornecedores');
+    const currentCashPermissions = useMemo(() => sanitizeCaixaPermissions(
+        currentUser?.permissionDetails?.caixa || currentUser?.customPermissionDetails?.caixa,
+        currentUser?.role
+    ), [currentUser]);
+    const canAdjustAfterClosing = useMemo(() => canAdjustCaixaAfterClosing(
+        currentUser?.role,
+        currentCashPermissions
+    ), [currentCashPermissions, currentUser?.role]);
     
     // States
     const [searchTerm, setSearchTerm] = usePersistentState('fornecedores_searchTerm', '');
@@ -2068,16 +2099,6 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         || '-'
     );
 
-    const getCurrentUserName = () => (
-        currentUser?.nome
-        || currentUser?.displayName
-        || currentUser?.auth?.displayName
-        || currentUser?.auth?.email
-        || currentUser?.email
-        || 'Usuário'
-    );
-
-
     // Handlers Fornecedores
     const handleNewFornecedor = () => { setEditingFornecedor(null); resetFornecedorForm(); setShowFornecedorModal(true); };
     const handleEditFornecedor = (fornecedor) => { setEditingFornecedor(fornecedor); setFornecedorFormData(fornecedor); setIsAddingFornecedorCategoria(false); setNewFornecedorCategoria(''); setIsSavingFornecedorCategoria(false); setPreviousFornecedorCategoria(''); setShowFornecedorModal(true); };
@@ -2250,8 +2271,8 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                 || Number.isSafeInteger(daily?.valorEncerramentoCentavos);
             setRetiradaCaixaPostClosing(isPostClosing);
             if (isPostClosing) {
-                if (normalizeRole(currentUser?.role) !== ROLE_OWNER) {
-                    alert('Somente o Dono pode registrar retirada depois do encerramento do dia.');
+                if (!canAdjustAfterClosing) {
+                    alert('Seu usuário não possui permissão para realizar ajustes após o encerramento.');
                     return;
                 }
                 setPendingPostClosingRetirada(payload);
@@ -2309,7 +2330,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     <Table columns={[{ header: 'Fornecedor', key: 'fornecedorNome' }, { header: 'Data do Pedido', render: (row) => getJSDate(row.dataPedido)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Previsão de Entrega', render: (row) => getJSDate(row.dataPrevistaEntrega)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Valor Total', render: (row) => `R$ ${(row.valorTotal || 0).toFixed(2)}`}, { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'Recebido' ? 'bg-green-100 text-green-800' : row.status === 'Pendente' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>{row.status}</span> }]} data={pedidosComNomes} actions={[{ icon: Edit, label: "Editar", onClick: handleEditPedido }, { icon: Truck, label: "Receber", onClick: (row) => handleUpdatePedidoStatus(row, 'Recebido') }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidosCompra', row.id) }) }]} />
                 </div>
             )}
-             {activeTab === 'estoque' && (
+            {activeTab === 'estoque' && (
                  <div>
                     <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
                         <div className="flex flex-col sm:flex-row gap-3 w-full md:max-w-2xl">
@@ -3004,7 +3025,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
                 <p className="text-gray-600 mt-1">Gerencie as finanças da sua doceria</p>
             </div>
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2">
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                     {['dashboard', 'pagar', 'receber', 'fluxo'].map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                             {tab === 'dashboard' && 'Dashboard'}
@@ -4007,6 +4028,7 @@ function App() {
       // tenta inicializar automaticamente se já foi aceito antes
       try {
         await audioManager.init();
+
         await audioManager.userUnlock({ userGesture: false });
       } catch (e) {
         console.error("Erro ao inicializar audioManager:", e);
@@ -5020,27 +5042,24 @@ function App() {
                                         if (userDoc.exists()) {
                                           profile = userDoc.data() || {};
                                         } else {
-                                          let initialRole = ROLE_CLIENT;
-
-                                          try {
-                                            const anyUserSnap = await getDocs(query(collection(db, "users"), limit(1)));
-                                            if (anyUserSnap.empty) {
-                                              initialRole = ROLE_OWNER;
-                                            }
-                                          } catch (roleCheckError) {
-                                            console.error("Erro ao verificar usuários existentes:", roleCheckError);
-                                            initialRole = ROLE_OWNER;
-                                          }
-
                                           profile = {
                                             email: authUser.email || "",
                                             nome: authUser.displayName || authUser.email || "Usuário",
-                                            role: initialRole,
+                                            role: ROLE_CLIENT,
                                             lojaId: null,
                                             lojaIds: [],
                                           };
 
                                           await setDoc(userDocRef, profile, { merge: true });
+                                        }
+
+                                        if (!isUserAccountActive(profile)) {
+                                          await signOut(auth);
+                                          setUser(null);
+                                          setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+                                          setShowLogin(true);
+                                          setCurrentPage('pagina-inicial');
+                                          return;
                                         }
 
                                         const role = normalizeRole(profile.role);
@@ -5073,14 +5092,6 @@ function App() {
                                           }
                                         };
 
-                                        if (!customProfileSnap.exists() && role !== ROLE_ACCOUNTANT) {
-                                          await setDoc(customProfileRef, {
-                                            uid: authUser.uid,
-                                            role,
-                                            permissions: permissionsDefaults,
-                                            permissionDetails: getDefaultPermissionDetailsForRole(role, permissionsDefaults),
-                                          }, { merge: true });
-                                        }
                                         const userData = {
                                           auth: authUser,
                                           role,
@@ -5092,6 +5103,8 @@ function App() {
                                           permissionDetails,
                                           customPermissionDetails,
                                           hasCustomProfile: Boolean(customProfileData),
+                                          ativo: true,
+                                          status: USER_STATUS_ACTIVE,
                                         };
                                         setUser(userData);
 			if (sessionStorage.getItem(GOOGLE_AUTH_FLOW_KEY) === GOOGLE_AUTH_FLOW_REDIRECT) {
@@ -5108,9 +5121,13 @@ function App() {
 
 		  } catch (error) {
 			console.error("Erro ao carregar dados do usuário:", error);
-      setLoginError('Não foi possível carregar seus dados de acesso. Tente sair e entrar novamente.');
+      const accessWasRevoked = error?.code === 'permission-denied';
+      setLoginError(accessWasRevoked
+        ? 'Sua conta está inativa. Entre em contato com o responsável pela empresa.'
+        : 'Não foi possível carregar seus dados de acesso. Tente sair e entrar novamente.');
       setShowLogin(true);
       setCurrentPage('pagina-inicial');
+      if (accessWasRevoked) await signOut(auth);
 		  }
                 } else {
                   setUser(null);
@@ -5131,6 +5148,54 @@ function App() {
 	  return () => unsubscribe();
         }, [stopAlarm, setCurrentPage]);
 
+    useEffect(() => {
+      const uid = user?.auth?.uid;
+      if (!uid) return undefined;
+
+      return onSnapshot(doc(db, 'users', uid), (snapshot) => {
+        if (!snapshot.exists() || isUserAccountActive(snapshot.data() || {})) return;
+        setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+        setShowLogin(true);
+        setCurrentPage('pagina-inicial');
+        signOut(auth).catch((error) => {
+          console.error('Erro ao encerrar sessão de usuário inativo:', error);
+        });
+      }, (error) => {
+        console.error('Erro ao acompanhar status da conta:', error);
+        if (error?.code === 'permission-denied') {
+          setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+          setShowLogin(true);
+          setCurrentPage('pagina-inicial');
+          signOut(auth).catch((signOutError) => {
+            console.error('Erro ao encerrar sessão sem permissão:', signOutError);
+          });
+        }
+      });
+    }, [user?.auth?.uid, setCurrentPage]);
+
+    useEffect(() => {
+      const uid = user?.auth?.uid;
+      if (!uid) return undefined;
+      const applyTransferProfile = (profile = {}) => setUser((previous) => (
+        previous?.auth?.uid !== uid ? previous : {
+          ...previous,
+          permissions: {
+            ...previous.permissions,
+            'entre-lojas': profile.permissions?.['entre-lojas'] !== false
+          },
+          permissionDetails: {
+            ...previous.permissionDetails,
+            'entre-lojas': {
+              ...profile.permissionDetails?.['entre-lojas'],
+              statuses: getExplicitTransferStatuses(profile.permissionDetails, ENTRE_LOJAS_TRANSFER_STATUS_VALUES)
+            }
+          }
+        }
+      ));
+      return onSnapshot(doc(db, 'users', uid), (snapshot) => {
+        applyTransferProfile(snapshot.exists() ? snapshot.data() : {});
+      }, () => applyTransferProfile({permissions: {'entre-lojas': false}}));
+    }, [user?.auth?.uid]);
     useEffect(() => {
         let isMounted = true;
 
@@ -5188,29 +5253,6 @@ function App() {
         };
     }, [user, setSelectedStoreId]);
 
-    useEffect(() => {
-      const uid = user?.auth?.uid;
-      if (!uid) return undefined;
-      const applyTransferProfile = (profile = {}) => setUser((previous) => (
-        previous?.auth?.uid !== uid ? previous : {
-          ...previous,
-          permissions: {
-            ...previous.permissions,
-            'entre-lojas': profile.permissions?.['entre-lojas'] !== false
-          },
-          permissionDetails: {
-            ...previous.permissionDetails,
-            'entre-lojas': {
-              ...profile.permissionDetails?.['entre-lojas'],
-              statuses: getExplicitTransferStatuses(profile.permissionDetails, ENTRE_LOJAS_TRANSFER_STATUS_VALUES)
-            }
-          }
-        }
-      ));
-      return onSnapshot(doc(db, 'users', uid), (snapshot) => {
-        applyTransferProfile(snapshot.exists() ? snapshot.data() : {});
-      }, () => applyTransferProfile({permissions: {'entre-lojas': false}}));
-    }, [user?.auth?.uid]);
     useEffect(() => {
         let active = true;
 
@@ -5280,7 +5322,9 @@ function App() {
             setCurrentPage('dashboard');
              // O onAuthStateChanged cuidará de inicializar o AudioManager se necessário
         } catch (error) {
-            if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+            if (error.code === 'auth/user-disabled') {
+                setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+            } else if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
                 setLoginError('Email ou senha inválidos.');
             } else {
                  console.error("Erro no login:", error);
@@ -5331,7 +5375,9 @@ function App() {
                 }
             }
             console.error("Erro no login com Google:", error?.code || error);
-            setLoginError('Ocorreu um erro ao entrar com Google.');
+            setLoginError(error?.code === 'auth/user-disabled'
+              ? 'Sua conta está inativa. Entre em contato com o responsável pela empresa.'
+              : 'Ocorreu um erro ao entrar com Google.');
         }
     };
 
@@ -5422,7 +5468,7 @@ function App() {
     { id: 'produtos', permission: 'produtos', label: 'Produtos', icon: Package, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'entre-lojas', permission: 'entre-lojas', label: 'Entre Lojas', icon: ArrowLeftRight, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
     { id: 'agenda', permission: 'agenda', label: 'Agenda', icon: Calendar, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
-    { id: 'fornecedores', permission: 'fornecedores', label: 'Fornecedores/Estoque', icon: Truck, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'fornecedores', permission: 'fornecedores', label: 'Fornecedores/Estoque', icon: Truck, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
     { id: 'relatorios', permission: 'relatorios', label: 'Relatórios', icon: BarChart3, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'meu-espaco', permission: 'meu-espaco', label: 'Meu Espaço', icon: Clock, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_CLIENT] },
     { id: 'financeiro', permission: 'financeiro', label: 'Financeiro', icon: DollarSign, roles: [ROLE_OWNER, ROLE_MANAGER] },
@@ -9925,6 +9971,7 @@ function App() {
     const [stockMovementModal, setStockMovementModal] = useState({ isOpen: false, type: 'entrada', product: null });
     const [stockMovementQuantity, setStockMovementQuantity] = useState('');
     const [stockMovementReason, setStockMovementReason] = useState('venda');
+    const [stockMovementPaymentMethod, setStockMovementPaymentMethod] = useState('');
     const [statusLoading, setStatusLoading] = useState({});
     const [statusOverrides, setStatusOverrides] = useState({});
 
@@ -10016,12 +10063,14 @@ function App() {
       setStockMovementModal({ isOpen: true, type, product });
       setStockMovementQuantity('');
       setStockMovementReason('venda');
+      setStockMovementPaymentMethod('');
     };
 
     const closeStockMovementModal = () => {
       setStockMovementModal({ isOpen: false, type: 'entrada', product: null });
       setStockMovementQuantity('');
       setStockMovementReason('venda');
+      setStockMovementPaymentMethod('');
     };
 
     const buildReasonLabel = () => {
@@ -10051,6 +10100,10 @@ function App() {
         const unitPrice = Number(product.preco || 0) || 0;
         const subtotal = unitPrice * quantity;
         const shouldCreateQuickSaleOrder = stockMovementModal.type === 'saida' && stockMovementReason === 'venda';
+        if (shouldCreateQuickSaleOrder && !stockMovementPaymentMethod) {
+          alert('Selecione a forma de pagamento da venda.');
+          return;
+        }
         const quickSaleOrder = shouldCreateQuickSaleOrder ? {
           clienteId: 'loja',
           clienteNome: 'Loja',
@@ -10072,7 +10125,7 @@ function App() {
           categoria: product.categoria || 'Delivery',
           dataEntrega: '',
           observacao: 'Venda registrada automaticamente pela movimentação rápida de estoque.',
-          formaPagamento: 'Não informado',
+          formaPagamento: stockMovementPaymentMethod,
           cupom: null,
         } : null;
 
@@ -10392,6 +10445,20 @@ function App() {
               </Select>
             )}
 
+            {stockMovementModal.type === 'saida' && stockMovementReason === 'venda' && (
+              <Select
+                label="Forma de pagamento"
+                value={stockMovementPaymentMethod}
+                onChange={(e) => setStockMovementPaymentMethod(e.target.value)}
+                required
+              >
+                <option value="">Selecione...</option>
+                {ORDER_PAYMENT_OPTIONS.map((paymentMethod) => (
+                  <option key={paymentMethod} value={paymentMethod}>{paymentMethod}</option>
+                ))}
+              </Select>
+            )}
+
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="secondary" type="button" onClick={closeStockMovementModal}>
                 Cancelar
@@ -10496,8 +10563,17 @@ function App() {
     const [userExcludeTerm, setUserExcludeTerm] = useState('');
     const [userEmailFilter, setUserEmailFilter] = useState('any');
     const [userRoleFilter, setUserRoleFilter] = useState('all');
+    const [userStatusFilter, setUserStatusFilter] = useState('all');
     const [showUserModal, setShowUserModal] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [userStatusModal, setUserStatusModal] = useState({
+        isOpen: false,
+        usuario: null,
+        activating: false,
+        motivo: '',
+        error: '',
+        submitting: false,
+    });
     const [editingUser, setEditingUser] = useState(null);
     const [selectedExistingUserId, setSelectedExistingUserId] = useState('');
     const [userFormData, setUserFormData] = useState({
@@ -10517,6 +10593,10 @@ function App() {
     const [newPassword, setNewPassword] = useState("");
 
     const getUsuarioId = useCallback((usuario) => usuario?.uid || usuario?.id || '', []);
+    const canManageUserStatus = user?.role === ROLE_OWNER || (
+        user?.role === ROLE_MANAGER &&
+        user?.permissionDetails?.configuracoes?.gerenciarStatusUsuarios === true
+    );
 	
 	const effectiveStoreId = useMemo(() => {
 	if (!user) return null;
@@ -10559,18 +10639,21 @@ const effectiveStoreName = useMemo(() => {
             const name = (usuario.nome || '').toLowerCase();
             const email = (usuario.email || '').trim();
             const role = (usuario.role || '').toLowerCase();
+            const active = isUserAccountActive(usuario);
 
-            if (search && !name.includes(search)) return false;
+            if (search && !name.includes(search) && !email.toLowerCase().includes(search)) return false;
             if (exclude && name.includes(exclude)) return false;
 
             if (userEmailFilter === 'empty' && email) return false;
             if (userEmailFilter === 'filled' && !email) return false;
 
             if (userRoleFilter !== 'all' && role !== userRoleFilter.toLowerCase()) return false;
+            if (userStatusFilter === USER_STATUS_ACTIVE && !active) return false;
+            if (userStatusFilter === USER_STATUS_INACTIVE && active) return false;
 
             return true;
         });
-    }, [usuarios, userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter]);
+    }, [usuarios, userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter, userStatusFilter]);
 
     const visibleUserIds = useMemo(() => {
         return (filteredUsuarios || []).map(getUsuarioId).filter(Boolean);
@@ -10598,15 +10681,17 @@ const effectiveStoreName = useMemo(() => {
             userSearchTerm.trim() ||
             userExcludeTerm.trim() ||
             userEmailFilter !== 'any' ||
-            userRoleFilter !== 'all'
+            userRoleFilter !== 'all' ||
+            userStatusFilter !== 'all'
         );
-    }, [userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter]);
+    }, [userSearchTerm, userExcludeTerm, userEmailFilter, userRoleFilter, userStatusFilter]);
 
     const handleClearUserFilters = useCallback(() => {
         setUserSearchTerm('');
         setUserExcludeTerm('');
         setUserEmailFilter('any');
         setUserRoleFilter('all');
+        setUserStatusFilter('all');
     }, []);
 
     const handleToggleUserSelection = useCallback((usuario, checked) => {
@@ -10647,9 +10732,12 @@ const effectiveStoreName = useMemo(() => {
                                 ? u.lojaIds
                                 : (u.lojaId ? [u.lojaId] : []);
                             const normalizedRole = normalizeRole(u.role);
+                            const active = isUserAccountActive(u);
                             return {
                                 ...u,
                                 role: normalizedRole,
+                                ativo: active,
+                                status: active ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
                                 lojaIds: lojas,
                                 lojaId: lojas[0] || null,
                                 permissions: sanitizePermissions(u.permissions, normalizedRole),
@@ -10723,7 +10811,7 @@ const effectiveStoreName = useMemo(() => {
     }, [activeTab, effectiveStoreId, user]);
     
     // States para Configuração de Frete
-    const [freteConfig, setFreteConfig] = useState({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
+    const [freteConfig, setFreteConfig] = useState({ ...EMPTY_FREIGHT_CONFIG });
     const [isSavingFrete, setIsSavingFrete] = useState(false);
 
     const [storeHoursConfig, setStoreHoursConfig] = useState(getDefaultStoreHoursConfig());
@@ -10745,20 +10833,22 @@ const effectiveStoreName = useMemo(() => {
     useEffect(() => {
         if (activeTab !== 'frete') return;
 
+        setFreteConfig({ ...EMPTY_FREIGHT_CONFIG });
         if (!effectiveStoreId) {
-            setFreteConfig({ enderecoLoja: '', lat: '', lng: '', valorPorKm: '' });
             return;
         }
 
+        let cancelled = false;
         const fetchFreteConfig = async () => {
             try {
                 const freteData = await loadStoreFreightConfig(effectiveStoreId);
-                setFreteConfig(freteData);
+                if (!cancelled) setFreteConfig(freteData);
             } catch (error) {
                 console.error("Erro ao buscar configurações de frete:", error);
             }
         };
         fetchFreteConfig();
+        return () => { cancelled = true; };
 
     }, [activeTab, effectiveStoreId]);
 
@@ -10947,6 +11037,97 @@ const effectiveStoreName = useMemo(() => {
         setShowUserModal(true);
     };
 
+    const closeUserStatusModal = () => {
+        if (userStatusModal.submitting) return;
+        setUserStatusModal({
+            isOpen: false,
+            usuario: null,
+            activating: false,
+            motivo: '',
+            error: '',
+            submitting: false,
+        });
+    };
+
+    const handleOpenUserStatusModal = (usuario) => {
+        if (!canManageUserStatus) return;
+        const targetUid = getUsuarioId(usuario);
+        const activating = !isUserAccountActive(usuario);
+        if (!activating && targetUid === user?.auth?.uid) {
+            alert('Você não pode inativar sua própria conta por esta tela.');
+            return;
+        }
+        setUserStatusModal({
+            isOpen: true,
+            usuario,
+            activating,
+            motivo: '',
+            error: '',
+            submitting: false,
+        });
+    };
+
+    const handleUserStatusSubmit = async (event) => {
+        event.preventDefault();
+        const target = userStatusModal.usuario;
+        const uid = getUsuarioId(target);
+        const motivo = userStatusModal.motivo.trim();
+        if (!uid) return;
+        if (!userStatusModal.activating && !motivo) {
+            setUserStatusModal((current) => ({
+                ...current,
+                error: 'O motivo da inativação é obrigatório.',
+            }));
+            return;
+        }
+
+        setUserStatusModal((current) => ({
+            ...current,
+            error: '',
+            submitting: true,
+        }));
+        try {
+            const functionName = userStatusModal.activating
+                ? 'reativarUsuario'
+                : 'inativarUsuario';
+            const changeStatus = httpsCallable(functions, functionName);
+            const result = await changeStatus({
+                uid,
+                ...(userStatusModal.activating ? {} : {motivo}),
+            });
+            const active = result.data?.ativo === true;
+            setUsuarios((currentUsers) => currentUsers.map((usuario) => (
+                getUsuarioId(usuario) === uid
+                    ? {
+                        ...usuario,
+                        ativo: active,
+                        status: active ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
+                        authDisabled: !active,
+                        ...(!active ? {motivoInativacao: motivo} : {}),
+                    }
+                    : usuario
+            )));
+            setUserStatusModal({
+                isOpen: false,
+                usuario: null,
+                activating: false,
+                motivo: '',
+                error: '',
+                submitting: false,
+            });
+            alert(result.data?.message || (active
+                ? 'Usuário reativado com sucesso!'
+                : 'Usuário inativado com sucesso!'));
+        } catch (error) {
+            console.error('Erro ao alterar status do usuário:', error);
+            setUserStatusModal((current) => ({
+                ...current,
+                error: error.message || 'Não foi possível alterar o status do usuário.',
+                submitting: false,
+            }));
+        }
+    };
+
     const handleExistingUserSelect = async (uid) => {
         setSelectedExistingUserId(uid);
         if (!uid) {
@@ -11042,6 +11223,7 @@ const effectiveStoreName = useMemo(() => {
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
                         permissionDetails: permissionDetailsToPersist,
+                        applyCustomProfile,
                         jornadaTrabalho: jornadaTrabalhoToPersist,
                         dataInicioBancoHoras: dataInicioBancoHorasToPersist
                   });
@@ -11058,21 +11240,13 @@ const effectiveStoreName = useMemo(() => {
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
                         permissionDetails: permissionDetailsToPersist,
+                        applyCustomProfile,
                         jornadaTrabalho: jornadaTrabalhoToPersist,
                         dataInicioBancoHoras: dataInicioBancoHorasToPersist
                   });
                   updatedUserId = result?.data?.uid || updatedUserId;
                   alert('Usuário criado com sucesso!');
                 }
-
-                if (!applyCustomProfile && updatedUserId) {
-                    try {
-                        await deleteDoc(doc(db, 'customProfiles', updatedUserId));
-                    } catch (deleteError) {
-                        console.error('Erro ao remover perfil personalizado:', deleteError);
-                    }
-                }
-
                 if (updatedUserId && user?.auth?.uid === updatedUserId) {
                     setUser((prev) => prev ? {
                         ...prev,
@@ -11097,9 +11271,12 @@ const effectiveStoreName = useMemo(() => {
                             ? u.lojaIds
                             : (u.lojaId ? [u.lojaId] : []);
                         const normalizedRole = normalizeRole(u.role);
+                        const active = isUserAccountActive(u);
                         return {
                             ...u,
                             role: normalizedRole,
+                            ativo: active,
+                            status: active ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
                             lojaIds: lojas,
                             lojaId: lojas[0] || null,
                             permissions: sanitizePermissions(u.permissions, normalizedRole),
@@ -11192,7 +11369,7 @@ const effectiveStoreName = useMemo(() => {
         setConfirmDelete({
             isOpen: true,
             title: 'Excluir usuários selecionados',
-            message: `Tem certeza que deseja excluir ${count} usuário${count === 1 ? '' : 's'} selecionado${count === 1 ? '' : 's'}? Esta ação remove o acesso à plataforma e não pode ser desfeita.`,
+            message: `Os usuários selecionados podem possuir histórico na plataforma. Considere inativá-los em vez de excluir. Deseja continuar com a exclusão definitiva de ${count} usuário${count === 1 ? '' : 's'}?`,
             confirmLabel: count === 1 ? 'Excluir usuário' : `Excluir ${count} usuários`,
             onConfirm: handleDeleteSelectedUsers
         });
@@ -11277,33 +11454,38 @@ const effectiveStoreName = useMemo(() => {
                 return;
             }
 
-            const freteDoc = getStoreConfigDocRef(effectiveStoreId);
-            await setDoc(freteDoc, {
-                frete: {
-                    ...freteConfig,
-                    valorPorKm: parseFloat(freteConfig.valorPorKm || 0),
-                    updatedAt: new Date(),
-                    updatedBy: user?.auth?.email || 'Sistema'
-                }
-            }, { merge: true });
-            await setDoc(doc(db, 'lojas', effectiveStoreId, 'info', 'dados'), {
-                frete: {
-                    ...freteConfig,
-                    valorPorKm: parseFloat(freteConfig.valorPorKm || 0),
-                    updatedAt: new Date(),
-                    updatedBy: user?.auth?.email || 'Sistema'
-                }
-            }, { merge: true });
-            await setDoc(doc(db, 'lojas', effectiveStoreId, 'configuracoes', 'frete'), {
+            const valorMinimoFrete = Number(freteConfig.valorMinimoFrete);
+            if (!Number.isFinite(valorMinimoFrete) || valorMinimoFrete < 0) {
+                alert('Informe um valor mínimo de frete válido.');
+                return;
+            }
+            const coordinates = validateFreightCoordinates(freteConfig);
+            const valorPorKm = Number(freteConfig.valorPorKm);
+            if (!Number.isFinite(valorPorKm) || valorPorKm < 0) {
+                alert('Informe um valor por KM válido.');
+                return;
+            }
+            const savedFreight = {
                 ...freteConfig,
-                valorPorKm: parseFloat(freteConfig.valorPorKm || 0),
+                ...coordinates,
+                valorPorKm,
+                valorMinimoFrete,
+                freteACombinar: freteConfig.freteACombinar === true,
                 updatedAt: new Date(),
                 updatedBy: user?.auth?.email || 'Sistema'
+            };
+            const freteDoc = getStoreConfigDocRef(effectiveStoreId);
+            await setDoc(freteDoc, {
+                frete: savedFreight
             }, { merge: true });
+            await setDoc(doc(db, 'lojas', effectiveStoreId, 'info', 'dados'), {
+                frete: savedFreight
+            }, { merge: true });
+            await setDoc(doc(db, 'lojas', effectiveStoreId, 'configuracoes', 'frete'), savedFreight, { merge: true });
             alert('Configurações de frete salvas com sucesso!');
         } catch (error) {
             console.error("Erro ao salvar frete:", error);
-            alert('Ocorreu um erro ao salvar as configurações.');
+            alert(error.message || 'Ocorreu um erro ao salvar as configurações.');
         } finally {
             setIsSavingFrete(false);
         }
@@ -11507,6 +11689,15 @@ const effectiveStoreName = useMemo(() => {
         return <span className={`px-3 py-1 rounded-full text-xs font-medium ${roleClass}`}>{normalizedRole}</span>;
     };
 
+    const renderUserStatusBadge = (row) => {
+        const active = isUserAccountActive(row);
+        return (
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                {active ? 'Ativo' : 'Inativo'}
+            </span>
+        );
+    };
+
     const getUserStoreLabel = (row) => {
         const lojas = Array.isArray(row.lojaIds) ? row.lojaIds : (row.lojaId ? [row.lojaId] : []);
         if (normalizeRole(row.role) === ROLE_OWNER && lojas.length === 0) {
@@ -11521,7 +11712,26 @@ const effectiveStoreName = useMemo(() => {
     const userActions = [ 
         { icon: Edit, label: "Editar", onClick: handleEditUser }, 
         { icon: Key, label: "Alterar Senha", onClick: (u) => { setEditingUser(u); setShowPasswordModal(true); } },
-        { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => handleDeleteUser(row) }) } 
+        {
+            icon: UserX,
+            getIcon: (row) => isUserAccountActive(row) ? UserX : UserCheck,
+            label: (row) => isUserAccountActive(row) ? 'Inativar usuário' : 'Reativar usuário',
+            visible: (row) => canManageUserStatus && !(
+                user?.role === ROLE_MANAGER && normalizeRole(row.role) === ROLE_OWNER
+            ),
+            onClick: handleOpenUserStatusModal,
+        },
+        {
+            icon: Trash2,
+            label: "Excluir",
+            onClick: (row) => setConfirmDelete({
+                isOpen: true,
+                title: 'Excluir usuário',
+                message: 'Este usuário pode possuir histórico na plataforma. Considere inativá-lo em vez de excluir. Deseja continuar com a exclusão definitiva?',
+                confirmLabel: 'Excluir usuário',
+                onConfirm: () => handleDeleteUser(row),
+            }),
+        },
     ];
     
     const cupomColumns = [
@@ -11598,10 +11808,10 @@ const effectiveStoreName = useMemo(() => {
                             Limpar filtros
                         </Button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                         <Input
-                            label="Buscar por nome"
-                            placeholder="Ex: Ana"
+                            label="Buscar por nome ou e-mail"
+                            placeholder="Ex: Ana ou ana@email.com"
                             value={userSearchTerm}
                             onChange={(e) => setUserSearchTerm(e.target.value)}
                         />
@@ -11631,6 +11841,15 @@ const effectiveStoreName = useMemo(() => {
                                     {roleOption.charAt(0).toUpperCase() + roleOption.slice(1)}
                                 </option>
                             ))}
+                        </Select>
+                        <Select
+                            label="Status"
+                            value={userStatusFilter}
+                            onChange={(e) => setUserStatusFilter(e.target.value)}
+                        >
+                            <option value="all">Todos</option>
+                            <option value={USER_STATUS_ACTIVE}>Ativos</option>
+                            <option value={USER_STATUS_INACTIVE}>Inativos</option>
                         </Select>
                     </div>
                 </div>
@@ -11702,6 +11921,7 @@ const effectiveStoreName = useMemo(() => {
                                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Email</th>
                                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Permissão</th>
                                             <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Loja</th>
+                                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
                                             <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">Ações</th>
                                         </tr>
                                     </thead>
@@ -11726,13 +11946,15 @@ const effectiveStoreName = useMemo(() => {
                                                     <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{usuario.email}</td>
                                                     <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{renderUserRoleBadge(usuario)}</td>
                                                     <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{getUserStoreLabel(usuario)}</td>
+                                                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{renderUserStatusBadge(usuario)}</td>
                                                     <td className="px-6 py-4 text-right">
                                                         <div className="flex justify-end gap-2">
-                                                            {userActions.map((action, actionIndex) => {
+                                                            {userActions.filter((action) => !action.visible || action.visible(usuario)).map((action, actionIndex) => {
                                                                 const actionLabel = typeof action.label === 'function' ? action.label(usuario) : action.label;
+                                                                const ActionIcon = action.getIcon ? action.getIcon(usuario) : action.icon;
                                                                 return (
                                                                     <button key={actionIndex} onClick={() => action.onClick(usuario)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title={actionLabel}>
-                                                                        <action.icon className="w-4 h-4 text-gray-600" />
+                                                                        <ActionIcon className="w-4 h-4 text-gray-600" />
                                                                     </button>
                                                                 );
                                                             })}
@@ -11766,11 +11988,12 @@ const effectiveStoreName = useMemo(() => {
                                                 Selecionar
                                             </label>
                                             <div className="flex justify-end gap-2">
-                                                {userActions.map((action, actionIndex) => {
+                                                {userActions.filter((action) => !action.visible || action.visible(usuario)).map((action, actionIndex) => {
                                                     const actionLabel = typeof action.label === 'function' ? action.label(usuario) : action.label;
+                                                    const ActionIcon = action.getIcon ? action.getIcon(usuario) : action.icon;
                                                     return (
                                                         <button key={actionIndex} onClick={() => action.onClick(usuario)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700" title={actionLabel}>
-                                                            <action.icon className="w-4 h-4" />
+                                                            <ActionIcon className="w-4 h-4" />
                                                         </button>
                                                     );
                                                 })}
@@ -11788,6 +12011,10 @@ const effectiveStoreName = useMemo(() => {
                                             <div>
                                                 <p className="text-xs text-gray-500">Loja</p>
                                                 <p className="mt-1 text-gray-900">{getUserStoreLabel(usuario)}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-500">Status</p>
+                                                <div className="mt-1">{renderUserStatusBadge(usuario)}</div>
                                             </div>
                                         </div>
                                     </div>
@@ -11877,28 +12104,36 @@ const effectiveStoreName = useMemo(() => {
                             <Input
                                 label="Valor por KM (R$)"
                                 type="number"
+                                min="0"
                                 step="0.01"
                                 placeholder="Ex: 1.50"
                                 value={freteConfig.valorPorKm || ''}
                                 onChange={e => setFreteConfig({ ...freteConfig, valorPorKm: e.target.value })}
                                 required
                         />
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Input 
-                                label="Latitude da Loja" 
-                                placeholder="-16.6725019"
-                                value={freteConfig.lat || ''} 
-                                onChange={e => setFreteConfig({ ...freteConfig, lat: e.target.value })} 
-                                required 
+                            <Input
+                                label="Valor mínimo do frete (R$)"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={freteConfig.valorMinimoFrete ?? ''}
+                                onChange={e => setFreteConfig({ ...freteConfig, valorMinimoFrete: e.target.value })}
+                                required
                             />
-                            <Input 
-                                label="Longitude da Loja" 
-                                placeholder="-49.3274707"
-                                value={freteConfig.lng || ''} 
-                                onChange={e => setFreteConfig({ ...freteConfig, lng: e.target.value })} 
-                                required 
-                            />
-                        </div>
+                            <label className="flex items-center gap-3 text-sm font-medium text-gray-800">
+                                <input
+                                    type="checkbox"
+                                    checked={freteConfig.freteACombinar === true}
+                                    onChange={e => setFreteConfig({ ...freteConfig, freteACombinar: e.target.checked })}
+                                    className="h-4 w-4 accent-pink-600"
+                                />
+                                Frete a combinar
+                            </label>
+                            {freteConfig.freteACombinar === true && (
+                                <p className="text-sm text-gray-600">
+                                    O valor do frete não será calculado ou cobrado automaticamente e será exibido ao cliente como “A Combinar”.
+                                </p>
+                            )}
                             <div className="pt-4">
                                 <Button type="submit" disabled={isSavingFrete}>
                                     <Save className="w-4 h-4" /> {isSavingFrete ? 'Salvando...' : 'Salvar Configurações'}
@@ -12006,7 +12241,7 @@ const effectiveStoreName = useMemo(() => {
                     </div>
                 ) : (
                     <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-                        <form onSubmit={handleSaveEntreLojasConfig} className="space-y-4 max-w-xl">
+                        <form onSubmit={handleSaveEntreLojasConfig} className="space-y-6 max-w-2xl">
                             <h3 className="text-xl font-bold text-gray-800">Configuração de Repasse — Entre Lojas</h3>
                             <p className="text-sm text-gray-500">
                                 Este percentual será somado ao custo do produto para calcular automaticamente o valor de repasse nas remessas entre lojas.
@@ -12457,6 +12692,7 @@ const effectiveStoreName = useMemo(() => {
                                 const isRestrictedAccountantModule = normalizedFormRole === ROLE_ACCOUNTANT && ACCOUNTANT_RESTRICTED_MODULES.has(item.id);
                                 const isEntreLojas = item.id === 'entre-lojas';
                                 const isFornecedores = item.id === 'fornecedores';
+                                const isConfiguracoes = item.id === 'configuracoes';
                                 const supportsCashPermissions = [ROLE_ATTENDANT, ROLE_MANAGER, ROLE_OWNER].includes(normalizedFormRole);
                                 const sanitizedFormPermissions = sanitizePermissions(userFormData.permissions, userFormData.role);
                                 const isRequiredAttendantModule = normalizedFormRole === ROLE_ATTENDANT && isFornecedores;
@@ -12469,9 +12705,10 @@ const effectiveStoreName = useMemo(() => {
                                 const selectedEntreLojasStatuses = sanitizedDetails['entre-lojas']?.statuses || [];
                                 const canManageTransferDestinations = sanitizedDetails['entre-lojas']?.manageTransferDestinations === true;
                                 const selectedCaixaPermissions = sanitizedDetails.caixa || getEmptyCaixaPermissions();
+                                const canManageUserStatuses = sanitizedDetails.configuracoes?.gerenciarStatusUsuarios === true;
 
                                 return (
-                                    <div key={item.id} className={(isEntreLojas || isFornecedores) && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
+                                    <div key={item.id} className={(isEntreLojas || isFornecedores || isConfiguracoes) && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
                                         <label
                                             className={`flex items-center gap-2 text-sm text-gray-700 ${!userFormData.applyCustomProfile ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             title={`Permitir acesso ao menu "${item.label}"`}
@@ -12616,6 +12853,40 @@ const effectiveStoreName = useMemo(() => {
                                             </div>
                                         )}
 
+                                        {isConfiguracoes && moduleChecked && normalizeRole(userFormData.role) === ROLE_MANAGER && userFormData.applyCustomProfile && (
+                                            <div className="ml-6 rounded-xl border border-pink-100 bg-white p-3 space-y-2">
+                                                <p className="text-xs font-semibold text-gray-800">Permissões internas de Usuários</p>
+                                                <label className="flex items-start gap-2 text-xs text-gray-700">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="mt-0.5"
+                                                        checked={canManageUserStatuses}
+                                                        disabled={user?.role !== ROLE_OWNER}
+                                                        onChange={(event) => {
+                                                            setUserFormData((prev) => {
+                                                                const currentPermissions = sanitizePermissions(prev.permissions, prev.role);
+                                                                const currentDetails = sanitizePermissionDetails(prev.permissionDetails, prev.role, currentPermissions);
+                                                                return {
+                                                                    ...prev,
+                                                                    permissionDetails: {
+                                                                        ...currentDetails,
+                                                                        configuracoes: {
+                                                                            ...currentDetails.configuracoes,
+                                                                            gerenciarStatusUsuarios: event.target.checked,
+                                                                        },
+                                                                    },
+                                                                };
+                                                            });
+                                                        }}
+                                                    />
+                                                    <span>Permitir inativar e reativar usuários das lojas às quais este gerente pertence.</span>
+                                                </label>
+                                                {user?.role !== ROLE_OWNER && (
+                                                    <p className="text-xs text-gray-500">Somente um Dono pode conceder ou remover esta permissão.</p>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {isFornecedores && moduleChecked && userFormData.applyCustomProfile && (
                                             <div className="ml-6 rounded-xl border border-pink-100 bg-white p-3 space-y-3">
                                                 <div>
@@ -12626,7 +12897,9 @@ const effectiveStoreName = useMemo(() => {
                                                 </div>
                                                 {supportsCashPermissions ? (
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                        {CAIXA_PERMISSION_KEYS.map((permissionKey) => (
+                                                        {CAIXA_PERMISSION_KEYS
+                                                            .filter((permissionKey) => permissionKey !== 'ajustarCaixaAposEncerramento')
+                                                            .map((permissionKey) => (
                                                             <label key={permissionKey} className="flex items-start gap-2 text-xs text-gray-700">
                                                                 <input
                                                                     type="checkbox"
@@ -12658,6 +12931,44 @@ const effectiveStoreName = useMemo(() => {
                                                         Este perfil não pode acessar operações ou informações do caixa.
                                                     </p>
                                                 )}
+                                                {normalizeRole(userFormData.role) === ROLE_MANAGER && (
+                                                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-800">Ajustes e correções após encerramento</p>
+                                                            <p className="text-xs text-gray-600">
+                                                                Permite corrigir abertura/encerramento e registrar retiradas ou sangrias após o fechamento, somente nas lojas atribuídas ao gerente.
+                                                            </p>
+                                                        </div>
+                                                        <label className="flex items-start gap-2 text-xs text-gray-700">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-0.5"
+                                                                checked={Boolean(selectedCaixaPermissions.ajustarCaixaAposEncerramento)}
+                                                                disabled={normalizeRole(user?.role) !== ROLE_OWNER}
+                                                                onChange={(event) => {
+                                                                    setUserFormData((prev) => {
+                                                                        const currentPermissions = sanitizePermissions(prev.permissions, prev.role);
+                                                                        const currentDetails = sanitizePermissionDetails(prev.permissionDetails, prev.role, currentPermissions);
+                                                                        return {
+                                                                            ...prev,
+                                                                            permissionDetails: {
+                                                                                ...currentDetails,
+                                                                                caixa: {
+                                                                                    ...currentDetails.caixa,
+                                                                                    ajustarCaixaAposEncerramento: event.target.checked,
+                                                                                },
+                                                                            },
+                                                                        };
+                                                                    });
+                                                                }}
+                                                            />
+                                                            <span>{CAIXA_PERMISSION_LABELS.ajustarCaixaAposEncerramento}</span>
+                                                        </label>
+                                                        {normalizeRole(user?.role) !== ROLE_OWNER && (
+                                                            <p className="text-xs text-gray-500">Somente um Dono pode conceder ou remover esta permissão.</p>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -12675,7 +12986,78 @@ const effectiveStoreName = useMemo(() => {
                     </div>
                 </form>
             </Modal>
-            
+
+            <Modal
+                isOpen={userStatusModal.isOpen}
+                onClose={closeUserStatusModal}
+                title={userStatusModal.activating ? 'Reativar usuário' : 'Inativar usuário'}
+                size="sm"
+            >
+                <form onSubmit={handleUserStatusSubmit} className="space-y-4">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-2 text-sm">
+                        <div><span className="font-semibold text-gray-700">Nome:</span> {userStatusModal.usuario?.nome || 'Não informado'}</div>
+                        <div><span className="font-semibold text-gray-700">E-mail:</span> {userStatusModal.usuario?.email || 'Não informado'}</div>
+                        <div className="flex items-center gap-2"><span className="font-semibold text-gray-700">Perfil:</span> {userStatusModal.usuario ? renderUserRoleBadge(userStatusModal.usuario) : null}</div>
+                        <div><span className="font-semibold text-gray-700">Loja(s):</span> {userStatusModal.usuario ? getUserStoreLabel(userStatusModal.usuario) : 'Não definida'}</div>
+                    </div>
+
+                    <div className={`rounded-xl border p-4 text-sm ${userStatusModal.activating ? 'border-green-100 bg-green-50 text-green-900' : 'border-amber-100 bg-amber-50 text-amber-900'}`}>
+                        {userStatusModal.activating ? (
+                            <p>Deseja reativar este usuário?<br /><br />O acesso será restaurado com o mesmo perfil, lojas e permissões que ele possuía anteriormente.</p>
+                        ) : (
+                            <p>Deseja inativar este usuário?<br /><br />O usuário perderá o acesso à plataforma, mas todos os registros, lançamentos e históricos serão preservados.</p>
+                        )}
+                    </div>
+
+                    {!userStatusModal.activating && (
+                        <div className="space-y-1">
+                            <label className="block text-sm font-medium text-gray-700" htmlFor="motivo-inativacao">
+                                Motivo da inativação <span className="text-red-600">*</span>
+                            </label>
+                            <textarea
+                                id="motivo-inativacao"
+                                value={userStatusModal.motivo}
+                                onChange={(event) => setUserStatusModal((current) => ({
+                                    ...current,
+                                    motivo: event.target.value,
+                                    error: '',
+                                }))}
+                                className="w-full min-h-24 rounded-xl border border-gray-300 px-4 py-3 focus:border-pink-500 focus:ring-2 focus:ring-pink-500"
+                                maxLength={1000}
+                                required
+                                disabled={userStatusModal.submitting}
+                            />
+                        </div>
+                    )}
+
+                    {userStatusModal.error && (
+                        <p className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm text-red-700">
+                            {userStatusModal.error}
+                        </p>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-2">
+                        <Button
+                            variant="secondary"
+                            type="button"
+                            onClick={closeUserStatusModal}
+                            disabled={userStatusModal.submitting}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            variant={userStatusModal.activating ? 'primary' : 'danger'}
+                            type="submit"
+                            disabled={userStatusModal.submitting}
+                        >
+                            {userStatusModal.activating ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+                            {userStatusModal.submitting
+                                ? 'Salvando...'
+                                : (userStatusModal.activating ? 'Reativar usuário' : 'Inativar usuário')}
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
             <Modal isOpen={showPasswordModal} onClose={() => setShowPasswordModal(false)} title="Alterar Senha" size="sm">
                 <form onSubmit={handlePasswordChange} className="space-y-4">
                     <Input label="Nova Senha" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Mínimo 6 caracteres" />
@@ -12852,21 +13234,8 @@ const effectiveStoreName = useMemo(() => {
             (p.id && p.id.toLowerCase().includes(term));
         
         const dateMatch = (() => {
-            if (!startDateFilter && !endDateFilter) return true;
-            
             const orderDate = getJSDate(p.createdAt);
-            if (!orderDate) return false;
-            
-            const startDate = startDateFilter ? new Date(startDateFilter) : null;
-            if(startDate) startDate.setHours(0, 0, 0, 0);
-
-            const endDate = endDateFilter ? new Date(endDateFilter) : null;
-            if(endDate) endDate.setHours(23, 59, 59, 999);
-
-            if (startDate && orderDate < startDate) return false;
-            if (endDate && orderDate > endDate) return false;
-            
-            return true;
+            return matchesOrderDateFilter(orderDate, startDateFilter, endDateFilter);
         })();
 
         const statusMatch = statusFilter === 'Todos' || p.status === statusFilter;
@@ -13084,12 +13453,18 @@ const handleSubmit = async (e) => {
         };
 
         if (editingOrder) {
-            const { id, ...updateData } = orderData;
-            await updateItem('pedidos', editingOrder.id, updateData);
-
             const storeId = resolveOrderStoreId();
             const wasFinalized = isFinalizedStatus(editingOrder.status);
             const isNowFinalized = isFinalizedStatus(orderData.status);
+            const { id, ...updateData } = orderData;
+            if (!wasFinalized && isNowFinalized) {
+                updateData.finalizadoEm = serverTimestamp();
+            } else if (wasFinalized && !isNowFinalized) {
+                updateData.finalizadoEm = deleteField();
+                updateData.dataOperacionalFinalizacao = deleteField();
+            }
+            await updateItem('pedidos', editingOrder.id, updateData);
+
             let stockDelta = {};
 
             if (!wasFinalized && isNowFinalized) {
@@ -13102,7 +13477,10 @@ const handleSubmit = async (e) => {
 
             await applyStockDelta(stockDelta, storeId);
         } else {
-            await addItem('pedidos', orderData);
+            const createData = isFinalizedStatus(orderData.status)
+                ? { ...orderData, finalizadoEm: serverTimestamp() }
+                : orderData;
+            await addItem('pedidos', createData);
 
             if (isFinalizedStatus(orderData.status)) {
                 const stockDelta = calculateOrderStockDelta([], orderData.itens || []);
@@ -13297,6 +13675,8 @@ const handleSubmit = async (e) => {
                     const showRideActions = isDeliveryOrder(viewingOrder);
                     const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
 					const frete = parseFloat(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0) || 0;
+                    const freteACombinar = viewingOrder.freteACombinar === true || viewingOrder.tipoFrete === 'a_combinar';
+                    const freteExibido = freteACombinar ? 'A Combinar' : `R$ ${frete.toFixed(2)}`;
 
                     
                     const handleSendToWhatsApp = () => {
@@ -13328,7 +13708,7 @@ const handleSubmit = async (e) => {
                              message += `*Desconto Manual:* - R$ ${viewingOrder.desconto.toFixed(2)}\n`;
                         }
 
-                        message += `*Frete:* R$ ${frete.toFixed(2)}\n`;
+                        message += `*Frete:* ${freteExibido}\n`;
                         message += `*Total:* R$ ${(viewingOrder.total || 0).toFixed(2)}\n`;
                         if(viewingOrder.formaPagamento) message += `*Pagamento:* ${viewingOrder.formaPagamento}\n`;
                         message += `*Status:* ${viewingOrder.status}\n\n`;
@@ -13373,6 +13753,7 @@ const handleSubmit = async (e) => {
                             }
                         }
                         
+                        printWindow.document.write(`<p>Frete:<span style="float: right;">${freteExibido}</span></p>`);
                         printWindow.document.write(`<p class="total">Total:<span style="float: right;">R$ ${(viewingOrder.total || 0).toFixed(2)}</span></p>`);
                         if(viewingOrder.formaPagamento) printWindow.document.write(`<p>Pagamento: ${viewingOrder.formaPagamento}</p>`);
 
@@ -13441,12 +13822,13 @@ const handleSubmit = async (e) => {
                                         </p>
                                     </>
                                 )}
-                                <p className="text-sm text-gray-600">Frete: R$ {frete.toFixed(2)}</p>
+                                <p className="text-sm text-gray-600">Frete: {freteExibido}</p>
                                 <p className="font-bold text-2xl text-pink-600">
                                     Total: R$ ${(viewingOrder.total || 0).toFixed(2)}
                                 </p>
                            </div>
 
+                            <WhatsAppOrderStatus key={`${viewingOrder.lojaId || effectiveStoreId}:${viewingOrder.id}`} storeId={viewingOrder.lojaId || effectiveStoreId} orderId={viewingOrder.id} />
                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
                                  <Button 
                                     onClick={handlePrint}
@@ -13463,7 +13845,7 @@ const handleSubmit = async (e) => {
                                     size="sm"
                                 >
                                     <MessageCircle className="w-4 h-4" />
-                                    Enviar Resumo Cliente
+                                    Abrir resumo no WhatsApp
                                 </Button>
                                 <Button
                                     onClick={() => setOrderToSendToDeliverer(viewingOrder)}
@@ -16743,7 +17125,8 @@ const handleSubmit = async (e) => {
                                 <p><strong>Telefone:</strong> {telefone || 'Não informado'}</p>
                             </div>
                             {/* ... (resto do conteúdo) ... */}
-                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
+                             <WhatsAppOrderStatus key={`${viewingOrder.lojaId || effectiveStoreId}:${viewingOrder.id}`} storeId={viewingOrder.lojaId || effectiveStoreId} orderId={viewingOrder.id} />
+                            <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
                                  <Button 
                                     onClick={handlePrint}
                                     variant="secondary"
@@ -17598,7 +17981,7 @@ const handleSubmit = async (e) => {
       });
       const subtotal = roundCurrency(items.reduce((sum, item) => sum + (Number(item.preco || 0) * Number(item.quantity || 1)), 0));
       const desconto = roundCurrency(Math.min(Math.max(Number(draft.desconto || 0), 0), subtotal));
-      const valorFrete = roundCurrency(Math.max(Number(draft.valorFrete ?? draft.frete ?? 0), 0));
+      const valorFrete = draft.freteACombinar === true ? 0 : roundCurrency(Math.max(Number(draft.valorFrete ?? draft.frete ?? 0), 0));
       return {
         ...draft,
         itens: items,
@@ -17627,6 +18010,7 @@ const handleSubmit = async (e) => {
         itens: items,
         desconto: Number(order?.desconto || order?.cupom?.valorDesconto || 0) || 0,
         valorFrete: Number(order?.valorFrete ?? order?.frete ?? 0) || 0,
+        freteACombinar: order?.freteACombinar === true || order?.tipoFrete === 'a_combinar',
         subtotal: Number(order?.subtotal || 0) || 0,
         total: Number(order?.total || 0) || 0,
         cupom: order?.cupom || null,
@@ -17776,6 +18160,8 @@ const handleSubmit = async (e) => {
           desconto: normalizedForm.desconto,
           valorFrete: normalizedForm.valorFrete,
           frete: normalizedForm.valorFrete,
+          freteACombinar: normalizedForm.freteACombinar === true,
+          tipoFrete: normalizedForm.freteACombinar === true ? 'a_combinar' : 'calculado',
           total: normalizedForm.total,
           cupom: null,
           updatedAt: new Date()

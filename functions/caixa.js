@@ -4,6 +4,7 @@ const {
   ROLE_MANAGER,
   ROLE_OWNER,
   assertSafeIntegerCents,
+  canAdjustCashAfterClosing,
   calculateCashConference,
   calculateCashRefundsCents,
   calculateCashRemovalsCents,
@@ -13,6 +14,7 @@ const {
   datePartsInTimeZone,
   idempotencyDocumentId,
   isFinalizedOrder,
+  nextOperationalDate,
   normalizeIdempotencyKey,
   normalizeOperationalDate,
   normalizeRole,
@@ -102,19 +104,26 @@ const mergeSnapshotRecords = (...snapshots) => {
   return Array.from(records.values());
 };
 
-const publicOperationalRecord = (snapshotOrData, fallbackId = '') => {
+const publicOperationalRecord = (
+    snapshotOrData,
+    fallbackId = '',
+    {includeCorrections = false} = {},
+) => {
   const isSnapshot = snapshotOrData &&
     typeof snapshotOrData.data === 'function';
   const data = isSnapshot ? documentData(snapshotOrData) : snapshotOrData || {};
   const id = isSnapshot ? snapshotOrData.id : fallbackId;
   if (!Object.keys(data).length) return null;
-  return {
+  const response = {
     id,
     lojaId: data.lojaId || '',
     dataOperacional: data.dataOperacional || id,
     valorInicialCentavos: Number.isSafeInteger(data.valorInicialCentavos) ?
       data.valorInicialCentavos :
       null,
+    valorInicialOriginalCentavos: Number.isSafeInteger(
+      data.valorInicialOriginalCentavos,
+    ) ? data.valorInicialOriginalCentavos : null,
     observacaoInicial: data.observacaoInicial || '',
     responsavelInicioUid: data.responsavelInicioUid || '',
     responsavelInicioNome: data.responsavelInicioNome || '',
@@ -124,6 +133,9 @@ const publicOperationalRecord = (snapshotOrData, fallbackId = '') => {
     valorEncerramentoCentavos: Number.isSafeInteger(
       data.valorEncerramentoCentavos,
     ) ? data.valorEncerramentoCentavos : null,
+    valorEncerramentoOriginalCentavos: Number.isSafeInteger(
+      data.valorEncerramentoOriginalCentavos,
+    ) ? data.valorEncerramentoOriginalCentavos : null,
     observacaoEncerramento: data.observacaoEncerramento || '',
     responsavelEncerramentoUid: data.responsavelEncerramentoUid || '',
     responsavelEncerramentoNome: data.responsavelEncerramentoNome || '',
@@ -132,6 +144,12 @@ const publicOperationalRecord = (snapshotOrData, fallbackId = '') => {
     valorEncerramentoRegistradoEm: data.valorEncerramentoRegistradoEm || null,
     temValorEncerramento: data.temValorEncerramento === true,
   };
+  if (includeCorrections) {
+    response.correcoesValores = Array.isArray(data.correcoesValores) ?
+      data.correcoesValores : [];
+    response.ultimaCorrecaoValoresEm = data.ultimaCorrecaoValoresEm || null;
+  }
+  return response;
 };
 
 const publicRemoval = (snapshotOrData, fallbackId = '') => {
@@ -208,6 +226,10 @@ const createCaixaFunctions = ({
     .collection('caixas').doc(dateKey);
   const conferenceRef = (lojaId, dateKey) => storeRef(lojaId)
     .collection('conferenciasCaixa').doc(dateKey);
+  const cashValueAuditRef = (lojaId, dateKey, auditId) => dailyRef(
+    lojaId,
+    dateKey,
+  ).collection('auditoria').doc(auditId);
   const removalsCollection = (lojaId) => storeRef(lojaId)
     .collection('sangriasCaixa');
   const alertsCollection = (lojaId) => storeRef(lojaId).collection('alertas');
@@ -669,6 +691,10 @@ const createCaixaFunctions = ({
     ]));
     return usersSnapshot.docs.flatMap((document) => {
       const profile = document.data() || {};
+      if (profile.ativo === false || String(profile.status || '')
+          .trim().toLowerCase() === 'inativo') {
+        return [];
+      }
       const role = normalizeRole(profile.role || customProfiles.get(document.id)?.role);
       const storeIds = extractStoreIds(profile);
       if (role === ROLE_OWNER) {
@@ -909,6 +935,153 @@ const createCaixaFunctions = ({
       `${previousDifferenceCents} -> ${calculated.differenceCents} centavos; ajuste ${adjustment.id}`,
     );
     return alertReference.id;
+  };
+
+  const reconcileDeclaredValueAlertAfterCorrection = ({
+    transaction,
+    actor,
+    type,
+    dateKey,
+    referencePath,
+    alertSnapshot,
+    recipients,
+    expectedCents,
+    informedCents,
+    correction,
+  }) => {
+    if (!Number.isSafeInteger(informedCents)) return null;
+    const differenceCents = Number.isSafeInteger(expectedCents) ?
+      informedCents - expectedCents : null;
+    const alertId = idempotencyDocumentId(
+      type,
+      actor.lojaId,
+      `${dateKey}:${referencePath}`,
+    );
+    const alertRef = alertsCollection(actor.lojaId).doc(alertId);
+    const existing = documentData(alertSnapshot);
+    const existingRecipients = Array.isArray(existing.destinatariosUids) ?
+      existing.destinatariosUids : [];
+    const currentRecipients = Array.from(new Set(recipients || []));
+    const isInitial = type === 'CAIXA_INICIO_DIVERGENTE';
+    const values = isInitial ? {
+      encerramentoAnteriorCentavos: expectedCents,
+      valorAnteriorCentavos: expectedCents,
+      valorInicialCentavos: informedCents,
+      valorInformadoCentavos: informedCents,
+      diferencaCentavos: differenceCents || 0,
+    } : {
+      valorEsperadoCentavos: expectedCents,
+      valorEncerramentoCentavos: informedCents,
+      valorInformadoCentavos: informedCents,
+      diferencaCentavos: differenceCents || 0,
+    };
+    const auditEntry = {
+      correcaoId: correction.id,
+      tipoAcao: correction.tipoAcao,
+      camposAlterados: correction.camposAlterados,
+      motivo: correction.motivo,
+      usuarioUid: actor.uid,
+      usuarioNome: actor.nome,
+      perfil: actor.role,
+      dataOperacional: dateKey,
+      valorEsperadoCentavos: expectedCents,
+      valorInformadoCentavos: informedCents,
+      diferencaCentavos: differenceCents,
+      registradoEm: correction.registradoEm,
+    };
+
+    if (differenceCents === null || differenceCents === 0) {
+      if (!alertSnapshot?.exists) return null;
+      transaction.set(alertRef, {
+        valores: values,
+        diferencaCentavos: differenceCents || 0,
+        situacao: 'resolvido',
+        resolvidoPorUid: actor.uid,
+        resolvidoPorNome: actor.nome,
+        resolvidoPorEmail: actor.email || '',
+        resolvidoEm: FieldValue.serverTimestamp(),
+        observacaoResolucao: 'Resolvido apos correcao administrativa dos valores do caixa.',
+        historicoDivergencias: FieldValue.arrayUnion(auditEntry),
+        atualizadoEm: FieldValue.serverTimestamp(),
+      }, {merge: true});
+      existingRecipients.forEach((uid) => {
+        transaction.set(notificationRef(uid, alertId), {
+          valores: values,
+          diferencaCentavos: differenceCents || 0,
+          situacao: 'resolvido',
+          resolvidoEm: FieldValue.serverTimestamp(),
+          observacaoResolucao: 'Resolvido apos correcao administrativa dos valores do caixa.',
+          atualizadoEm: FieldValue.serverTimestamp(),
+        }, {merge: true});
+      });
+      setAlertAudit(
+        transaction,
+        actor,
+        alertId,
+        'DIVERGENCIA_RESOLVIDA_APOS_CORRECAO_CAIXA',
+        normalizeAlertSituation(existing.situacao),
+        'resolvido',
+        correction.motivo,
+      );
+      return alertId;
+    }
+
+    const base = {
+      categoria: 'caixa',
+      tipo: type,
+      origem: isInitial ?
+        'divergencia_valor_inicial' : 'divergencia_encerramento',
+      lojaId: actor.lojaId,
+      dataOperacional: dateKey,
+      titulo: isInitial ?
+        'Divergencia no valor inicial do caixa' :
+        'Divergencia no encerramento do caixa',
+      mensagem: isInitial ?
+        'Uma correcao administrativa alterou a conferencia do valor inicial.' :
+        'Uma correcao administrativa alterou a conferencia do encerramento.',
+      severidade: 'warning',
+      valores: values,
+      diferencaCentavos: differenceCents,
+      responsavelUid: actor.uid,
+      responsavelNome: actor.nome,
+      responsavelEmail: actor.email || '',
+      referencia: referencePath,
+      chaveIdempotencia: correction.id,
+      destinatariosUids: currentRecipients,
+      situacao: 'aberto',
+      resolvidoPorUid: null,
+      resolvidoPorNome: null,
+      resolvidoPorEmail: null,
+      resolvidoEm: null,
+      observacaoResolucao: '',
+      isDeleted: false,
+      historicoDivergencias: FieldValue.arrayUnion(auditEntry),
+      atualizadoEm: FieldValue.serverTimestamp(),
+    };
+    if (!alertSnapshot?.exists) base.criadoEm = FieldValue.serverTimestamp();
+    transaction.set(alertRef, base, {merge: true});
+    currentRecipients.forEach((uid) => {
+      transaction.set(notificationRef(uid, alertId), {
+        ...base,
+        alertaId: alertId,
+        alertaRef: alertRef.path,
+        destinatarioUid: uid,
+        lida: false,
+        lidaEm: null,
+      }, {merge: true});
+    });
+    setAlertAudit(
+      transaction,
+      actor,
+      alertId,
+      alertSnapshot?.exists ?
+        'DIVERGENCIA_RECALCULADA_APOS_CORRECAO_CAIXA' :
+        'DIVERGENCIA_CRIADA_APOS_CORRECAO_CAIXA',
+      alertSnapshot?.exists ? normalizeAlertSituation(existing.situacao) : '',
+      'aberto',
+      correction.motivo,
+    );
+    return alertId;
   };
 
   const buildConferenceResponse = (data, actor, id) => {
@@ -1419,6 +1592,435 @@ const createCaixaFunctions = ({
       };
     }),
 
+    corrigirValoresCaixa: onCall({timeoutSeconds: 120}, async (request) => {
+      const actor = await requireCashActor(request, {
+        allowedRoles: [ROLE_OWNER, ROLE_MANAGER],
+      });
+      if (!canAdjustCashAfterClosing(actor.role, actor.permissions)) {
+        throw new HttpsError(
+          'permission-denied',
+          'Seu usuario nao possui permissao para corrigir valores do caixa.',
+        );
+      }
+      const dateKey = requireDate(request);
+      const reason = cleanText(request.data?.motivo, 500);
+      if (!reason) {
+        throw new HttpsError(
+          'invalid-argument',
+          'Informe o motivo da correcao.',
+        );
+      }
+      const hasInitialInput = Object.prototype.hasOwnProperty.call(
+        request.data || {},
+        'novoValorInicialCentavos',
+      );
+      const hasClosingInput = Object.prototype.hasOwnProperty.call(
+        request.data || {},
+        'novoValorEncerramentoCentavos',
+      );
+      if (!hasInitialInput && !hasClosingInput) {
+        throw new HttpsError(
+          'invalid-argument',
+          'Informe ao menos um valor para corrigir.',
+        );
+      }
+      const newInitialCents = hasInitialInput ? assertSafeIntegerCents(
+        request.data.novoValorInicialCentavos,
+        {allowZero: true},
+      ) : null;
+      const newClosingCents = hasClosingInput ? assertSafeIntegerCents(
+        request.data.novoValorEncerramentoCentavos,
+        {allowZero: true},
+      ) : null;
+      if (
+        (hasInitialInput && newInitialCents === null) ||
+        (hasClosingInput && newClosingCents === null)
+      ) {
+        throw new HttpsError(
+          'invalid-argument',
+          'Os novos valores devem ser centavos inteiros iguais ou maiores que zero.',
+        );
+      }
+      const expectedInitialCents = hasInitialInput ? assertSafeIntegerCents(
+        request.data.valorInicialAnteriorCentavos,
+        {allowZero: true},
+      ) : null;
+      const expectedClosingCents = hasClosingInput ? assertSafeIntegerCents(
+        request.data.valorEncerramentoAnteriorCentavos,
+        {allowZero: true},
+      ) : null;
+      if (
+        (hasInitialInput && expectedInitialCents === null) ||
+        (hasClosingInput && expectedClosingCents === null)
+      ) {
+        throw new HttpsError(
+          'invalid-argument',
+          'Os valores anteriores sao obrigatorios para validar a concorrencia.',
+        );
+      }
+
+      const idempotency = requireIdempotency(
+        request,
+        'corrigirValoresCaixa',
+        actor,
+      );
+      const recordRef = dailyRef(actor.lojaId, dateKey);
+      const protectedRef = conferenceRef(actor.lojaId, dateKey);
+      const previousQuery = storeRef(actor.lojaId).collection('caixas')
+        .where('temValorEncerramento', '==', true)
+        .where('dataOperacional', '<', dateKey)
+        .orderBy('dataOperacional', 'desc')
+        .limit(1);
+      const openingAlert = {
+        id: idempotencyDocumentId(
+          'CAIXA_INICIO_DIVERGENTE',
+          actor.lojaId,
+          `${dateKey}:${recordRef.path}`,
+        ),
+      };
+      openingAlert.ref = alertsCollection(actor.lojaId).doc(openingAlert.id);
+      const closingAlert = closingAlertReference(
+        actor,
+        dateKey,
+        protectedRef.path,
+      );
+      const nextDateKey = nextOperationalDate(dateKey);
+      const nextRecordRef = dailyRef(actor.lojaId, nextDateKey);
+      const nextOpeningAlert = {
+        id: idempotencyDocumentId(
+          'CAIXA_INICIO_DIVERGENTE',
+          actor.lojaId,
+          `${nextDateKey}:${nextRecordRef.path}`,
+        ),
+      };
+      nextOpeningAlert.ref = alertsCollection(actor.lojaId)
+        .doc(nextOpeningAlert.id);
+
+      await db.runTransaction(async (transaction) => {
+        const [
+          operationSnap,
+          recordSnap,
+          protectedSnapshot,
+          previousSnapshot,
+          openingAlertSnapshot,
+          closingAlertSnapshot,
+          nextRecordSnapshot,
+          nextOpeningAlertSnapshot,
+        ] = await Promise.all([
+          transaction.get(idempotency.ref),
+          transaction.get(recordRef),
+          transaction.get(protectedRef),
+          transaction.get(previousQuery),
+          transaction.get(openingAlert.ref),
+          transaction.get(closingAlert.ref),
+          transaction.get(nextRecordRef),
+          transaction.get(nextOpeningAlert.ref),
+        ]);
+        if (operationSnap.exists) return;
+        if (!recordSnap.exists) {
+          throw new HttpsError('not-found', 'Caixa nao encontrado.');
+        }
+        const current = documentData(recordSnap);
+        if (!Number.isSafeInteger(current.valorInicialCentavos)) {
+          throw new HttpsError(
+            'failed-precondition',
+            'O caixa nao possui valor inicial valido para correcao.',
+          );
+        }
+        const isClosed = current.temValorEncerramento === true ||
+          Number.isSafeInteger(current.valorEncerramentoCentavos);
+        if (isClosed && !Number.isSafeInteger(
+            current.valorEncerramentoCentavos,
+        )) {
+          throw new HttpsError(
+            'failed-precondition',
+            'O caixa encerrado nao possui valor de encerramento valido para correcao.',
+          );
+        }
+        if (hasClosingInput && !Number.isSafeInteger(
+            current.valorEncerramentoCentavos,
+        )) {
+          throw new HttpsError(
+            'failed-precondition',
+            'O caixa ainda nao possui valor de encerramento para corrigir.',
+          );
+        }
+        if (
+          (hasInitialInput && current.valorInicialCentavos !==
+            expectedInitialCents) ||
+          (hasClosingInput && current.valorEncerramentoCentavos !==
+            expectedClosingCents)
+        ) {
+          throw new HttpsError(
+            'aborted',
+            'Os valores do caixa foram alterados por outro usuario. Atualize a tela e tente novamente.',
+          );
+        }
+
+        const finalInitialCents = hasInitialInput ?
+          newInitialCents : current.valorInicialCentavos;
+        const finalClosingCents = hasClosingInput ?
+          newClosingCents : current.valorEncerramentoCentavos;
+        const changedInitial = finalInitialCents !== current.valorInicialCentavos;
+        const changedClosing = hasClosingInput &&
+          finalClosingCents !== current.valorEncerramentoCentavos;
+        if (!changedInitial && !changedClosing) {
+          throw new HttpsError(
+            'failed-precondition',
+            'O novo valor deve ser diferente do valor atual.',
+          );
+        }
+
+        let components = null;
+        let calculatedBefore = null;
+        let calculatedAfter = null;
+        if (isClosed) {
+          components = await calculateDayInsideTransaction({
+            transaction,
+            actor,
+            dateKey,
+          });
+          calculatedBefore = calculateCashConference({
+            initialCents: current.valorInicialCentavos,
+            cashSalesCents: components.vendasDinheiroCentavos,
+            otherCashEntriesCents: components.outrasEntradasDinheiroCentavos,
+            cashWithdrawalsCents: components.retiradasDespesaCentavos,
+            cashRemovalsCents: components.sangriasCentavos,
+            cashRefundsCents: components.estornosDinheiroCentavos,
+            closingCents: current.valorEncerramentoCentavos,
+          });
+          calculatedAfter = calculateCashConference({
+            initialCents: finalInitialCents,
+            cashSalesCents: components.vendasDinheiroCentavos,
+            otherCashEntriesCents: components.outrasEntradasDinheiroCentavos,
+            cashWithdrawalsCents: components.retiradasDespesaCentavos,
+            cashRemovalsCents: components.sangriasCentavos,
+            cashRefundsCents: components.estornosDinheiroCentavos,
+            closingCents: finalClosingCents,
+          });
+        }
+
+        const previousRecord = previousSnapshot.empty ? {} :
+          previousSnapshot.docs[0].data() || {};
+        const previousClosingCents = Number.isSafeInteger(
+          previousRecord.valorEncerramentoCentavos,
+        ) ? previousRecord.valorEncerramentoCentavos : null;
+        const openingDifferenceCents = Number.isSafeInteger(
+          previousClosingCents,
+        ) ? finalInitialCents - previousClosingCents : null;
+        const nextRecord = documentData(nextRecordSnapshot);
+        const nextInitialCents = Number.isSafeInteger(
+          nextRecord.valorInicialCentavos,
+        ) ? nextRecord.valorInicialCentavos : null;
+        const nextOpeningDifferenceCents = changedClosing &&
+          Number.isSafeInteger(nextInitialCents) ?
+          nextInitialCents - finalClosingCents : null;
+        const needsRecipients = (
+          openingDifferenceCents !== null && openingDifferenceCents !== 0
+        ) || (
+          calculatedAfter?.differenceCents !== undefined &&
+          calculatedAfter.differenceCents !== 0
+        ) || (
+          nextOpeningDifferenceCents !== null &&
+          nextOpeningDifferenceCents !== 0
+        );
+        let recipients = [];
+        if (needsRecipients) {
+          const [configSnap, usersSnap, profilesSnap] = await Promise.all([
+            transaction.get(internalConfigRef(actor.lojaId)),
+            transaction.get(db.collection('users')),
+            transaction.get(db.collection('customProfiles')),
+          ]);
+          recipients = resolveAlertRecipients({
+            usersSnapshot: usersSnap,
+            profilesSnapshot: profilesSnap,
+            lojaId: actor.lojaId,
+            config: normalizeAlertConfig(documentData(configSnap)),
+          });
+        }
+
+        const correctionId = idempotency.keyHash.slice(0, 32);
+        const correction = {
+          id: correctionId,
+          tipoAcao: 'CORRECAO_VALORES_CAIXA',
+          caixaId: recordRef.id,
+          lojaId: actor.lojaId,
+          dataOperacional: dateKey,
+          camposAlterados: [
+            ...(changedInitial ? ['valorInicialCentavos'] : []),
+            ...(changedClosing ? ['valorEncerramentoCentavos'] : []),
+          ],
+          motivo: reason,
+          usuarioUid: actor.uid,
+          usuarioNome: actor.nome,
+          usuarioEmail: actor.email || '',
+          perfil: actor.role,
+          permissaoUtilizada: actor.role === ROLE_OWNER ?
+            'perfil_dono' : 'ajustarCaixaAposEncerramento',
+          caixaEstavaEncerrado: isClosed,
+          caixaPermaneceuEncerrado: isClosed,
+          registradoEm: admin.firestore.Timestamp.now(),
+        };
+        const originalInitialCents = Number.isSafeInteger(
+          current.valorInicialOriginalCentavos,
+        ) ? current.valorInicialOriginalCentavos :
+          current.valorInicialCentavos;
+        const originalClosingCents = Number.isSafeInteger(
+          current.valorEncerramentoOriginalCentavos,
+        ) ? current.valorEncerramentoOriginalCentavos :
+          current.valorEncerramentoCentavos;
+        if (changedInitial) {
+          correction.valorInicialAnteriorCentavos =
+            current.valorInicialCentavos;
+          correction.valorInicialNovoCentavos = finalInitialCents;
+        }
+        if (changedClosing) {
+          correction.valorEncerramentoAnteriorCentavos =
+            current.valorEncerramentoCentavos;
+          correction.valorEncerramentoNovoCentavos = finalClosingCents;
+        }
+        if (calculatedBefore && calculatedAfter) {
+          correction.valorEsperadoAnteriorCentavos = Number.isSafeInteger(
+            documentData(protectedSnapshot).valorEsperadoCentavos,
+          ) ? documentData(protectedSnapshot).valorEsperadoCentavos :
+            calculatedBefore.expectedCents;
+          correction.valorEsperadoNovoCentavos = calculatedAfter.expectedCents;
+          correction.diferencaAnteriorCentavos = Number.isSafeInteger(
+            documentData(protectedSnapshot).diferencaCentavos,
+          ) ? documentData(protectedSnapshot).diferencaCentavos :
+            calculatedBefore.differenceCents;
+          correction.diferencaNovaCentavos = calculatedAfter.differenceCents;
+        }
+
+        transaction.set(recordRef, {
+          valorInicialCentavos: finalInitialCents,
+          valorInicialOriginalCentavos: originalInitialCents,
+          ...(isClosed ? {
+            valorEncerramentoCentavos: finalClosingCents,
+            valorEncerramentoOriginalCentavos: originalClosingCents,
+            temValorEncerramento: true,
+          } : {}),
+          correcoesValores: FieldValue.arrayUnion(correction),
+          ultimaCorrecaoValoresEm: FieldValue.serverTimestamp(),
+          atualizadoEm: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        transaction.set(
+          cashValueAuditRef(actor.lojaId, dateKey, correctionId),
+          correction,
+        );
+
+        if (isClosed && components && calculatedAfter) {
+          transaction.set(protectedRef, {
+            lojaId: actor.lojaId,
+            dataOperacional: dateKey,
+            valorInicialCentavos: finalInitialCents,
+            valorInicialOriginalCentavos: originalInitialCents,
+            vendasDinheiroCentavos: components.vendasDinheiroCentavos,
+            outrasEntradasDinheiroCentavos:
+              components.outrasEntradasDinheiroCentavos,
+            outrasEntradasCentavos:
+              components.outrasEntradasDinheiroCentavos,
+            retiradasDespesaCentavos: components.retiradasDespesaCentavos,
+            retiradasDespesasCentavos: components.retiradasDespesaCentavos,
+            sangriasCentavos: components.sangriasCentavos,
+            estornosDinheiroCentavos: components.estornosDinheiroCentavos,
+            valorEsperadoCentavos: calculatedAfter.expectedCents,
+            valorEncerramentoCentavos: finalClosingCents,
+            valorEncerramentoOriginalCentavos: originalClosingCents,
+            diferencaCentavos: calculatedAfter.differenceCents,
+            temDivergencia: calculatedAfter.differenceCents !== 0,
+            responsavelInicioUid: current.responsavelInicioUid || '',
+            responsavelInicioNome: current.responsavelInicioNome || '',
+            responsavelEncerramentoUid:
+              current.responsavelEncerramentoUid || '',
+            responsavelEncerramentoNome:
+              current.responsavelEncerramentoNome || '',
+            fontes: components.fontes,
+            versaoCalculo: CALCULATION_VERSION,
+            correcoesValores: FieldValue.arrayUnion(correction),
+            ultimaCorrecaoValoresEm: FieldValue.serverTimestamp(),
+            calculadoEm: FieldValue.serverTimestamp(),
+            atualizadoEm: FieldValue.serverTimestamp(),
+          }, {merge: true});
+        }
+
+        if (changedInitial) {
+          reconcileDeclaredValueAlertAfterCorrection({
+            transaction,
+            actor,
+            type: 'CAIXA_INICIO_DIVERGENTE',
+            dateKey,
+            referencePath: recordRef.path,
+            alertSnapshot: openingAlertSnapshot,
+            recipients,
+            expectedCents: previousClosingCents,
+            informedCents: finalInitialCents,
+            correction,
+          });
+        }
+        if (isClosed && calculatedAfter) {
+          reconcileDeclaredValueAlertAfterCorrection({
+            transaction,
+            actor,
+            type: 'CAIXA_ENCERRAMENTO_DIVERGENTE',
+            dateKey,
+            referencePath: protectedRef.path,
+            alertSnapshot: closingAlertSnapshot,
+            recipients,
+            expectedCents: calculatedAfter.expectedCents,
+            informedCents: finalClosingCents,
+            correction,
+          });
+        }
+        if (changedClosing && Number.isSafeInteger(nextInitialCents)) {
+          reconcileDeclaredValueAlertAfterCorrection({
+            transaction,
+            actor,
+            type: 'CAIXA_INICIO_DIVERGENTE',
+            dateKey: nextDateKey,
+            referencePath: nextRecordRef.path,
+            alertSnapshot: nextOpeningAlertSnapshot,
+            recipients,
+            expectedCents: finalClosingCents,
+            informedCents: nextInitialCents,
+            correction,
+          });
+        }
+
+        setActivityLog(
+          transaction,
+          actor,
+          'Valores do caixa corrigidos',
+          `Data operacional: ${dateKey}; campos: ${correction.camposAlterados.join(', ')}; motivo: ${reason}`,
+          recordRef.id,
+        );
+        setIdempotencyResult(
+          transaction,
+          idempotency,
+          actor,
+          'corrigirValoresCaixa',
+          {registroId: recordRef.id, conferenciaId: isClosed ? protectedRef.id : ''},
+        );
+      });
+
+      const [savedRecord, savedConference] = await Promise.all([
+        recordRef.get(),
+        protectedRef.get(),
+      ]);
+      return {
+        success: true,
+        message: 'Valores do caixa corrigidos com sucesso.',
+        registro: publicOperationalRecord(savedRecord, '', {
+          includeCorrections: true,
+        }),
+        conferencia: savedConference.exists ? buildConferenceResponse(
+          savedConference.data() || {},
+          actor,
+          savedConference.id,
+        ) : null,
+      };
+    }),
+
     registrarRetiradaDespesaCaixa: onCall(async (request) => {
       const actor = await requireCashActor(request, {
         permission: 'registrarRetiradaDespesa',
@@ -1468,10 +2070,16 @@ const createCaixaFunctions = ({
         const daily = documentData(recordSnap);
         const isPostClosing = daily.temValorEncerramento === true ||
           Number.isSafeInteger(daily.valorEncerramentoCentavos);
-        if (isPostClosing && actor.role !== ROLE_OWNER) {
+        if (isPostClosing && !canAdjustCashAfterClosing(
+            actor.role,
+            actor.permissions,
+        )) {
+          const isUnauthorizedManager = actor.role === ROLE_MANAGER;
           throw new HttpsError(
-            'failed-precondition',
-            'Nao e possivel registrar retirada depois do encerramento do dia.',
+            isUnauthorizedManager ? 'permission-denied' : 'failed-precondition',
+            isUnauthorizedManager ?
+              'Este caixa ja foi encerrado. Seu usuario nao possui permissao para realizar ajustes apos o encerramento.' :
+              'Nao e possivel registrar retirada depois do encerramento do dia.',
           );
         }
 
@@ -1667,10 +2275,16 @@ const createCaixaFunctions = ({
         }
         const isPostClosing = daily.temValorEncerramento === true ||
           Number.isSafeInteger(daily.valorEncerramentoCentavos);
-        if (isPostClosing && actor.role !== ROLE_OWNER) {
+        if (isPostClosing && !canAdjustCashAfterClosing(
+            actor.role,
+            actor.permissions,
+        )) {
+          const isUnauthorizedManager = actor.role === ROLE_MANAGER;
           throw new HttpsError(
-            'failed-precondition',
-            'Nao e possivel registrar sangria depois do encerramento do dia.',
+            isUnauthorizedManager ? 'permission-denied' : 'failed-precondition',
+            isUnauthorizedManager ?
+              'Este caixa ja foi encerrado. Seu usuario nao possui permissao para realizar ajustes apos o encerramento.' :
+              'Nao e possivel registrar sangria depois do encerramento do dia.',
           );
         }
         if (isPostClosing && !reason) {
@@ -1988,7 +2602,12 @@ const createCaixaFunctions = ({
       const recordSnapshot = await dailyRef(actor.lojaId, dateKey).get();
       const response = {
         success: true,
-        registro: publicOperationalRecord(recordSnapshot),
+        registro: publicOperationalRecord(recordSnapshot, '', {
+          includeCorrections: canAdjustCashAfterClosing(
+            actor.role,
+            actor.permissions,
+          ),
+        }),
       };
 
       if (

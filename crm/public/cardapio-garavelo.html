@@ -576,6 +576,11 @@
                     <option value="Link de Pagamento">Link de Pagamento</option>
                 </select>
                 <p id="payment-error" class="text-red-500 text-sm mt-2 hidden"></p>
+                <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
+                    <input id="platform-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="platform-whatsapp-consent-help">
+                    <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
+                </label>
+                <p id="platform-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD.</p>
             </div>
             <div class="p-6 border-t">
                 <button id="confirm-order-button" class="w-full bg-pink-600 text-white py-3 rounded-lg font-bold hover:bg-pink-700 transition-colors">Confirmar Pedido</button>
@@ -693,6 +698,11 @@
                         <option value="Pix">Pix</option>
                         <option value="Link de Pagamento">Link de Pagamento</option>
                     </select>
+                    <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
+                        <input id="guest-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="guest-whatsapp-consent-help">
+                        <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
+                    </label>
+                    <p id="guest-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD. O botão abaixo continua abrindo sua mensagem para a loja.</p>
                     <button id="send-whatsapp-button" class="w-full bg-green-500 text-white py-3 px-4 rounded-lg font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mt-4">
                         <i class="fa-brands fa-whatsapp"></i> Finalizar e Enviar via WhatsApp
                     </button>
@@ -738,13 +748,16 @@
           const legacyConfigPath = (...segments) => ['lojas', STORE_ID, 'configuracoes', ...segments];
           const STATIC_FRETE_FALLBACK = Object.freeze({
                 valorPorKm: 0,
-                taxaMinima: 0,
+                valorMinimoFrete: 2,
+                 freteACombinar: false,
                 raioMaximoKm: 10,
                 cidadeBase: 'Goiânia'
           });
 
           // Variável global para armazenar os dados de frete
           window.dadosFrete = null;
+          window.freteACombinar = false;
+          window.distanciaFreteKm = null;
 
           async function carregarConfiguracoesFrete() {
                 try {
@@ -752,6 +765,9 @@
                   if (freteSnap.exists()) {
                         const data = freteSnap.data() || {};
                         window.dadosFrete = data.frete || data;
+                        window.freteACombinar = window.dadosFrete.freteACombinar === true;
+                        if (window.freteACombinar) window.valorFrete = 0;
+                        window.updateAllSummaries?.();
                         console.log("✅ Configurações de frete carregadas:", window.dadosFrete);
                         return;
                   }
@@ -759,18 +775,17 @@
                   const legacyFreteSnap = await getDoc(doc(db, ...legacyConfigPath('frete')));
                   if (legacyFreteSnap.exists()) {
                         window.dadosFrete = legacyFreteSnap.data();
+                        window.freteACombinar = window.dadosFrete.freteACombinar === true;
+                        if (window.freteACombinar) window.valorFrete = 0;
+                        window.updateAllSummaries?.();
                         console.warn("⚠️ Usando configuração legada de frete:", window.dadosFrete);
                         return;
                   }
 
-                  const fallbackSnap = await getDoc(doc(db, 'configuracoes', 'frete'));
-                  if (fallbackSnap.exists()) {
-                        window.dadosFrete = fallbackSnap.data();
-                        console.warn("⚠️ Usando fallback padrão de frete:", window.dadosFrete);
-                  } else {
-                        window.dadosFrete = { ...STATIC_FRETE_FALLBACK };
-                        console.warn("⚠️ Documento 'frete' não encontrado. Usando fallback estático local.");
-                  }
+                  window.dadosFrete = { ...STATIC_FRETE_FALLBACK };
+                  window.freteACombinar = false;
+                  window.updateAllSummaries?.();
+                  console.warn('Configuração da loja não encontrada. Usando fallback local.');
                 } catch (error) {
                   const errorCode = String(error?.code || '').toLowerCase();
                   const isPermissionDenied = errorCode.includes('permission-denied') || String(error?.message || '').toLowerCase().includes('insufficient permissions');
@@ -1225,8 +1240,17 @@
         } from "./firebaseClientConfig.js";
 
         // --- VARIÁVEIS GLOBAIS ---
+        function resetWhatsAppConsent() {
+            ['platform-whatsapp-consent', 'guest-whatsapp-consent'].forEach((id) => {
+                const checkbox = document.getElementById(id);
+                if (checkbox) checkbox.checked = false;
+            });
+        }
+        resetWhatsAppConsent();
+        window.addEventListener('pageshow', resetWhatsAppConsent);
         const WHATSAPP_NUMBER = '5562991056075';
         const API_BASE_URL = 'https://us-central1-crmdoceria-9959e.cloudfunctions.net/api';
+        window.API_BASE_URL = API_BASE_URL;
         const DEFAULT_STORE_TIMEZONE = 'America/Sao_Paulo';
         const STORE_ID = window.STORE_ID || 'ana-guimaraes-garavelo';
         const CONFIG_DOC_ID = 'config';
@@ -1439,6 +1463,23 @@
         async function revalidateCheckoutBeforeFinalSubmit(clientInfo) {
             ensureCheckoutNotBlocked();
 
+            if (clientInfo?.clienteEndereco !== 'Retirar na Loja') {
+                const response = await fetch(`${API_BASE_URL}/frete/calcular?lojaId=${encodeURIComponent(STORE_ID)}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({distanciaKm: window.distanciaFreteKm})
+                });
+                const currentQuote = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const message = currentQuote.message || 'Confirme novamente o endereço de entrega.';
+                    setCheckoutBlockingIssue('frete', message);
+                    throw new Error(message);
+                }
+                window.valorFrete = Number(currentQuote.valorFrete);
+                window.freteACombinar = currentQuote.freteACombinar === true;
+                updateAllSummaries();
+            }
+
             if (clientInfo?.clienteEndereco !== 'Retirar na Loja' && !Number.isFinite(window.valorFrete)) {
                 const message = 'Não foi possível validar o frete deste pedido. Confirme o endereço novamente.';
                 setCheckoutBlockingIssue('frete', message);
@@ -1479,6 +1520,7 @@
                     guestAddressFlowState: window.guestAddressFlowState || createInitialGuestAddressFlowState(),
                     guestManualAddressLocationConfirmed: !!window.guestManualAddressLocationConfirmed,
                     valorFrete: Number.isFinite(window.valorFrete) ? window.valorFrete : 0,
+                    distanciaFreteKm: window.distanciaFreteKm,
                     addressStep: Number.isInteger(window.addressFlowState?.currentStep)
                         ? window.addressFlowState.currentStep
                         : (Number.isInteger(addressStep) ? addressStep : 1)
@@ -1506,6 +1548,8 @@
                 window.guestManualAddressLocationConfirmed = !!savedState?.guestManualAddressLocationConfirmed || !!window.guestAddressFlowState?.locationConfirmed;
                 window.guestAddressStep = Number.isInteger(window.guestAddressFlowState?.currentStep) ? window.guestAddressFlowState.currentStep : 1;
                 window.valorFrete = Number.isFinite(savedState?.valorFrete) ? savedState.valorFrete : 0;
+                window.distanciaFreteKm = Number.isFinite(savedState?.distanciaFreteKm) ? savedState.distanciaFreteKm : null;
+                if (window.freteACombinar) window.valorFrete = 0;
                 addressStep = Number.isInteger(savedState?.addressStep) ? savedState.addressStep : 1;
                 if (window.addressFlowState) {
                     window.addressFlowState.currentStep = addressStep;
@@ -1585,7 +1629,11 @@
 
                 const { db, collection, getDocs } = await import('./firebaseClientConfig.js');
 
-                const productsSnapshot = await getDocs(collection(db, ...storePath("produtos")));
+                let productsSnapshot = await getDocs(collection(db, ...storePath("produtos")));
+                if (productsSnapshot.empty) {
+                    console.warn("⚠️ Produtos da loja não encontrados. Usando coleção legada de DEV.");
+                    productsSnapshot = await getDocs(collection(db, "produtos"));
+                }
                 const products = productsSnapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data()
@@ -1799,7 +1847,7 @@
 			const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 			const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
 			const desconto = appliedCupom?.valorDesconto || 0;
-			const total = subtotal - desconto + window.valorFrete;
+			const total = subtotal - desconto + chargedFreight(pendingOrderDetails?.clienteEndereco === "Retirar na Loja");
 
 			cartCount.textContent = totalItems;
 			cartSubtotal.textContent = `R$ ${subtotal.toFixed(2)}`;
@@ -1812,8 +1860,11 @@
 				cartDiscountLine.classList.add('hidden');
 			}
 
-			if (window.valorFrete > 0) {
-				cartShipping.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
+			if (window.freteACombinar && pendingOrderDetails?.clienteEndereco !== 'Retirar na Loja') {
+                cartShipping.textContent = 'A Combinar';
+                cartShippingLine.classList.remove('hidden');
+            } else if (window.valorFrete > 0) {
+                cartShipping.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
 				cartShippingLine.classList.remove('hidden');
 			} else {
                 // Modificação para mostrar R$ 0,00 se o frete for zero, mesmo se a linha não estiver oculta (caso de retirada)
@@ -1949,6 +2000,7 @@
             closeCartButton.addEventListener('click', () => cartModal.classList.add('hidden'));
 
             checkoutButton.addEventListener('click', () => {
+                resetWhatsAppConsent();
                 if (!storeIsOpenNow) {
                     showToast('A loja está fechada no momento. Volte em nosso horário de atendimento.', true);
                     return;
@@ -2332,7 +2384,8 @@
         /* === INÍCIO DA MODIFICAÇÃO === */
 		/* Nova função para lidar com a opção "Retirar na Loja" */
 		function usePickupAddress() {
-			window.valorFrete = 0; // Requisito principal: frete zero
+			window.valorFrete = 0; // Retirada não cobra frete
+			window.distanciaFreteKm = null;
 
 			pendingOrderDetails = {
 				clienteId: currentClient.id,
@@ -2362,10 +2415,12 @@
 
 			if (addressData?.lat && addressData?.lng) {
 				try {
-					await window.aguardarGoogleMaps();
+					if (!window.freteACombinar) await window.aguardarGoogleMaps();
 					const resultado = await window.calcularFreteParaEndereco({ lat: parseFloat(addressData.lat), lng: parseFloat(addressData.lng) });
-					window.valorFrete = parseFloat(resultado.valorFrete);
-					showToast(`Frete: R$ ${window.valorFrete.toFixed(2)}`);
+					window.valorFrete = Number(resultado.valorFrete);
+					window.freteACombinar = resultado.freteACombinar === true;
+					window.distanciaFreteKm = resultado.distanciaKm == null ? null : Number(resultado.distanciaKm);
+					showToast(`Frete: ${freightDisplayValue()}`);
 					clearCheckoutBlockingIssue('frete');
 				} catch (error) {
 					console.error('Erro ao calcular frete:', error);
@@ -2584,16 +2639,26 @@
             }
         }
 
+        function chargedFreight(pickup = false) {
+            return pickup || window.freteACombinar ? 0 : Number(window.valorFrete || 0);
+        }
+
+        function freightDisplayValue() {
+            return window.freteACombinar ? 'A Combinar' : `R$ ${Number(window.valorFrete || 0).toFixed(2)}`;
+        }
+        window.freightDisplayValue = freightDisplayValue;
+
         function updateAllSummaries() {
             updateCartInfo();
             updatePaymentSummary();
             updateGuestSummary();
         }
+        window.updateAllSummaries = updateAllSummaries;
 
-		function updatePaymentSummary() {
+        function updatePaymentSummary() {
 			const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
 			let discount = appliedCupom?.valorDesconto || 0;
-			let total = subtotal - discount + window.valorFrete;
+			let total = subtotal - discount + chargedFreight(pendingOrderDetails?.clienteEndereco === "Retirar na Loja");
 
 			document.getElementById('payment-subtotal').textContent = `R$ ${subtotal.toFixed(2)}`;
 			document.getElementById('payment-total').textContent = `R$ ${total.toFixed(2)}`;
@@ -2606,8 +2671,11 @@
 			if (pendingOrderDetails?.clienteEndereco === "Retirar na Loja") {
 				shippingValuePayment.textContent = 'R$ 0,00';
 				shippingRowPayment.classList.remove('hidden'); // Mostra a linha com R$ 0,00
-			} else if (window.valorFrete > 0) {
-				shippingValuePayment.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
+			} else if (window.freteACombinar) {
+                shippingValuePayment.textContent = 'A Combinar';
+                shippingRowPayment.classList.remove('hidden');
+            } else if (window.valorFrete > 0) {
+                shippingValuePayment.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
 				shippingRowPayment.classList.remove('hidden'); // Mostra a linha com o valor
 			} else {
 				shippingRowPayment.classList.add('hidden'); // Oculta se não for retirada e frete for 0
@@ -2618,7 +2686,7 @@
 		function updateGuestSummary() {
 			const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
 			let discount = appliedCupom?.valorDesconto || 0;
-			let total = subtotal - discount + window.valorFrete;
+			let total = subtotal - discount + chargedFreight(false);
 
 			document.getElementById('guest-subtotal').textContent = `R$ ${subtotal.toFixed(2)}`;
 			document.getElementById('guest-total').textContent = `R$ ${total.toFixed(2)}`;
@@ -2627,8 +2695,11 @@
 
                         const shippingRow = document.getElementById('guest-shipping-row');
                         const shippingValue = document.getElementById('guest-shipping');
-                        if (window.valorFrete > 0) {
-                                shippingValue.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
+                        if (window.freteACombinar) {
+                            shippingValue.textContent = 'A Combinar';
+                            shippingRow.classList.remove('hidden');
+                        } else if (window.valorFrete > 0) {
+                            shippingValue.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
                                 shippingRow.classList.remove('hidden');
                         } else if (window.guestCurrentLatLng && !window.guestManualAddressLocationConfirmed) {
                                 shippingValue.textContent = 'Confirme o local para calcular o frete.';
@@ -2820,6 +2891,10 @@
         }
 
         async function finalizeOrder(clientInfo, clientId, isPlatform) {
+            const whatsappConsent = {
+                accepted: document.getElementById(isPlatform ? 'platform-whatsapp-consent' : 'guest-whatsapp-consent')?.checked === true,
+                version: 'order-confirmation-v1',
+            };
             await revalidateCheckoutBeforeFinalSubmit(clientInfo);
             if (!storeIsOpenNow) {
                 showToast('A loja está fechada no momento. Volte em nosso horário de atendimento.', true);
@@ -2831,10 +2906,11 @@
                 cupomData = { codigo: appliedCupom.codigo, valorDesconto: appliedCupom.valorDesconto };
             }
             const desconto = cupomData?.valorDesconto || 0;
-            const total = subtotal - desconto + window.valorFrete;
+            const total = subtotal - desconto + chargedFreight(clientInfo.clienteEndereco === "Retirar na Loja");
 
             const orderData = {
                 lojaId: STORE_ID,
+                whatsappConsent,
                 cliente: {
                     id: clientId || null,
                     nome: clientInfo.clienteNome,
@@ -2848,6 +2924,7 @@
                 subtotal,
                 desconto,
                 valorFrete: window.valorFrete,
+                distanciaFreteKm: window.distanciaFreteKm,
                 cupom: cupomData,
                 origem: isPlatform ? 'Plataforma' : 'Cardapio Online',
                 status: 'Pendente',
@@ -2880,14 +2957,16 @@
 
                 if (!isPlatform) {
                     let message = `*Novo Pedido* 🎂 (Nº ${docRef.id.substring(0, 5)})\n\n*Itens:*\n${cart.map(item => `• ${item.quantity}x ${item.nome}`).join('\n')}\n\n*Resumo:*\nSubtotal: R$ ${subtotal.toFixed(2)}\n`;
-                    if (cupomData) message += `Desconto (${cupomData.codigo}): -R$ ${desconto.toFixed(2)}\n`;
+                     if (cupomData) message += `Desconto (${cupomData.codigo}): -R$ ${Number(responseData.desconto).toFixed(2)}\n`;
                     // Modificação: Não incluir linha de frete se for retirada na loja
-                    if (clientInfo.clienteEndereco !== "Retirar na Loja" && window.valorFrete > 0) {
-                         message += `Frete: R$ ${window.valorFrete.toFixed(2)}\n`;
+                    if (clientInfo.clienteEndereco !== 'Retirar na Loja' && responseData.freteACombinar) {
+                         message += `Frete: A Combinar\n`;
+                     } else if (clientInfo.clienteEndereco !== 'Retirar na Loja' && responseData.valorFrete > 0) {
+                         message += `Frete: R$ ${Number(responseData.valorFrete).toFixed(2)}\n`;
                     } else if (clientInfo.clienteEndereco === "Retirar na Loja") {
                          message += `*RETIRAR NA LOJA*\n`; // Indica que é para retirada
                     }
-                    message += `*Total: R$ ${total.toFixed(2)}*\n\n*Dados:*\nNome: ${clientInfo.clienteNome}\nTelefone: ${clientInfo.telefone}\nEndereço: ${clientInfo.clienteEndereco}\nPagamento: ${clientInfo.formaPagamento}\n\n_Pedido via Cardápio Online_`;
+                    message += `*Total: R$ ${Number(responseData.total).toFixed(2)}*\n\n*Dados:*\nNome: ${clientInfo.clienteNome}\nTelefone: ${clientInfo.telefone}\nEndereço: ${clientInfo.clienteEndereco}\nPagamento: ${clientInfo.formaPagamento}\n\n_Pedido via Cardápio Online_`;
                     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
                     confirmationModal.classList.remove('hidden');
                 } else {
@@ -2900,6 +2979,10 @@
                 removeCupom();
                 clearCheckoutState();
                 renderCart();
+                resetWhatsAppConsent();
+                if (whatsappConsent.accepted && responseData.whatsappPhoneStatus === 'invalid') {
+                    showToast('Pedido confirmado. O telefone informado não é válido para receber a confirmação pelo WhatsApp.');
+                }
 
             } catch (error) {
                 console.error("Erro ao salvar pedido:", error);
@@ -3059,12 +3142,14 @@
         window.updateGuestSummary();
 
         try {
-            await window.aguardarGoogleMaps();
+            if (!window.freteACombinar) await window.aguardarGoogleMaps();
             const resultado = await window.calcularFreteParaEndereco(normalizedLatLng);
             const valorCalculado = parseFloat(resultado.valorFrete);
             window.valorFrete = Number.isFinite(valorCalculado) ? valorCalculado : 0;
+            window.freteACombinar = resultado.freteACombinar === true;
+            window.distanciaFreteKm = resultado.distanciaKm == null ? null : Number(resultado.distanciaKm);
             window.persistCheckoutState?.();
-            window.showToast(`Frete: R$ ${window.valorFrete.toFixed(2)}`);
+            window.showToast(`Frete: ${window.freightDisplayValue()}`);
             window.clearCheckoutBlockingIssue?.('frete');
         } catch (error) {
             console.error('Falha ao calcular frete para visitante:', error);
@@ -3317,49 +3402,39 @@
 
 	// Função para calcular frete usando Google Distance Matrix API
 	async function calcularFreteParaEndereco(destinoLatLng) {
-		console.log('🚚 Iniciando cálculo de frete...');
-
-		return new Promise((resolve, reject) => {
-			if (!window.dadosFrete) {
-				return reject('Configurações de frete não carregadas');
-			}
-			if (!window.google || !window.google.maps) {
-				return reject('Google Maps não carregado');
-			}
-
-			const loja = {
-				lat: parseFloat(window.dadosFrete.lat),
-				lng: parseFloat(window.dadosFrete.lng)
-			};
-			const valorPorKm = parseFloat(window.dadosFrete.valorPorKm);
-
-			const service = new google.maps.DistanceMatrixService();
-			service.getDistanceMatrix({
-				origins: [loja],
-				destinations: [destinoLatLng],
-				travelMode: google.maps.TravelMode.DRIVING,
-				unitSystem: google.maps.UnitSystem.METRIC
-			}, (response, status) => {
-				if (status !== 'OK' || response.rows[0]?.elements[0]?.status !== 'OK') {
-                    console.error('Erro no Distance Matrix:', status, response);
-					return reject(status);
-				}
-
-				const element = response.rows[0].elements[0];
-				const distanceKm = element.distance.value / 1000;
-				let valorFreteCalculado = distanceKm * valorPorKm;
-
-				if (valorFreteCalculado < 2) {
-					valorFreteCalculado = 2.00;
-				}
-
-				resolve({
-					distanciaKm: distanceKm.toFixed(2),
-					valorFrete: valorFreteCalculado.toFixed(2)
-				});
-			});
-		});
-	}
+        if (!window.dadosFrete) throw new Error('Configurações de frete não carregadas');
+        if (window.freteACombinar) {
+            return {valorFrete: 0, freteACombinar: true, distanciaKm: null};
+        }
+        if (!window.google || !window.google.maps) throw new Error('Google Maps não carregado');
+        const loja = {lat: Number(window.dadosFrete.lat), lng: Number(window.dadosFrete.lng)};
+        if (!Number.isFinite(loja.lat) || Math.abs(loja.lat) > 90 ||
+            !Number.isFinite(loja.lng) || Math.abs(loja.lng) > 180) {
+            throw new Error('Coordenadas da loja inválidas. Corrija latitude e longitude em Configurações → Frete.');
+        }
+        const distanceKm = await new Promise((resolve, reject) => {
+            const service = new google.maps.DistanceMatrixService();
+            service.getDistanceMatrix({
+                origins: [loja], destinations: [destinoLatLng],
+                travelMode: google.maps.TravelMode.DRIVING,
+                unitSystem: google.maps.UnitSystem.METRIC
+            }, (response, status) => {
+                if (status !== 'OK' || response?.rows?.[0]?.elements?.[0]?.status !== 'OK') {
+                    console.error('Erro no Google Distance Matrix:', status, response);
+                    return reject(new Error('Não foi possível calcular a distância de entrega.'));
+                }
+                resolve(response.rows[0].elements[0].distance.value / 1000);
+            });
+        });
+        const response = await fetch(`${window.API_BASE_URL}/frete/calcular?lojaId=${encodeURIComponent(window.STORE_ID)}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({distanciaKm: distanceKm})
+        });
+        const quote = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(quote.message || 'Não foi possível calcular o frete.');
+        return {...quote, distanciaKm: distanceKm};
+    }
     window.calcularFreteParaEndereco = calcularFreteParaEndereco;
 
 	console.log('✅ Módulos de frete e mapa carregados');

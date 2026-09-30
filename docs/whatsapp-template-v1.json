@@ -1,0 +1,20 @@
+{
+  "name": "confirmacao_pedido_v1",
+  "language": "pt_BR",
+  "category": "UTILITY",
+  "components": [
+    {
+      "type": "BODY",
+      "text": "Olá! Recebemos seu pedido {{1}} na Ana Guimarães Doceria.\n\nResumo do pedido: {{2}}\n\nTotal: {{3}}\n\nAgradecemos a sua preferência!",
+      "example": {
+        "body_text": [
+          [
+            "pedido-exemplo-123",
+            "Cliente: Cliente exemplo | Itens: 2x Bolo de chocolate (R$ 30,00 un.); 3x Brigadeiro (R$ 5,00 un.) | Subtotal: R$ 75,00 | Desconto (PEDIDO5): R$ 5,00 | Frete: R$ 8,00 | Endereço: Rua Exemplo, 10 | Pagamento: Pix | Status: Pendente | Observações: Entregar na portaria",
+            "R$ 78,00"
+          ]
+        ]
+      }
+    }
+  ]
+}

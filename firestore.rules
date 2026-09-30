@@ -5,8 +5,19 @@ function isPublicRead() {
   return true;
 }
 
-function isSignedIn() {
+function isAuthenticated() {
   return request.auth != null;
+}
+
+function isSignedIn() {
+  return isAuthenticated()
+    && (
+      !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+      || (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('ativo', true) != false
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'ativo') != 'inativo'
+      )
+    );
 }
 
 function hasCurrentUserProfile() {
@@ -924,7 +935,8 @@ match /integrations/{document=**} {
 }
 
 match /users/{userId} {
-  allow read: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
+  allow get: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
+  allow list: if isSignedIn() && !isReadOnlyAccountant();
   // Administracao de perfis passa pelas Functions. A unica escrita direta
   // aceita e o bootstrap estrito do proprio perfil como cliente sem loja.
   allow create: if isValidOwnClientProfileCreation(userId);
@@ -952,6 +964,11 @@ match /users/{userId} {
       && request.resource.data.updatedAt is timestamp;
     allow delete: if isSignedIn() && request.auth.uid == userId;
   }
+}
+
+// Motivos de inativacao sao privados e acessados somente pelas Functions.
+match /userStatusMetadata/{userId} {
+  allow read, write: if false;
 }
 
 match /customProfiles/{userId} {
@@ -1019,6 +1036,7 @@ match /{collection}/{document=**} {
     && collection != 'integrations'
     && collection != 'users'
     && collection != 'customProfiles'
+    && collection != 'userStatusMetadata'
     && collection != 'transferenciasEntreLojas'
     && collection != 'fechamentosEntreLojas'
     && collection != 'producoesVitrine'
@@ -1032,6 +1050,7 @@ match /{collection}/{document=**} {
     && collection != 'integrations'
     && collection != 'users'
     && collection != 'customProfiles'
+    && collection != 'userStatusMetadata'
     && collection != 'transferenciasEntreLojas'
     && collection != 'fechamentosEntreLojas'
     && collection != 'producoesVitrine'
