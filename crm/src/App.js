@@ -125,13 +125,11 @@ const ROLE_ACCOUNTANT = 'contador';
 const ROLE_CLIENT = 'cliente';
 const ROLE_DEFAULT = ROLE_ATTENDANT;
 const STORE_ALL_KEY = '__all__';
-const DEFAULT_NCM_PRODUCT = '19059090';
 const NCM_PRODUCT_OPTIONS = [
   { value: '19059090', label: '1905.90.90 - bolo, bolo de pote, torta, brownie, cupcake etc.' },
   { value: '17049090', label: '1704.90.90 - doces e confeitos sem cacau' },
   { value: '18069000', label: '1806.90.00 - produtos predominantemente de chocolate/cacau' },
 ];
-const DEFAULT_CFOP_OPERATION = '5101';
 const CFOP_OPERATION_OPTIONS = [
   { value: '5101', label: '5101 - Produção própria dentro de GO' },
   { value: '5102', label: '5102 - Revenda dentro de GO' },
@@ -159,15 +157,16 @@ const createManualInvoiceItemDraft = () => ({
   productId: '',
   code: '',
   description: '',
-  ncm: DEFAULT_NCM_PRODUCT,
-  unit: 'un',
+  ncm: '',
+  unit: '',
   quantity: 1,
   unitPrice: '',
   discount: 0,
-  origin: 0,
-  csosn: '102',
-  pisCst: '49',
-  cofinsCst: '49',
+  origin: '',
+  csosn: '',
+  cst: '',
+  pisCst: '',
+  cofinsCst: '',
   cBenef: ''
 });
 const createManualInvoiceCustomerDraft = () => ({
@@ -181,9 +180,9 @@ const createManualInvoiceCustomerDraft = () => ({
     street: '',
     number: '',
     district: '',
-    city: 'Goiania',
-    cityCode: '5208707',
-    state: 'GO',
+    city: '',
+    cityCode: '',
+    state: '',
     zip: ''
   }
 });
@@ -16824,7 +16823,7 @@ const handleSubmit = async (e) => {
     }));
     const [showAdvancedInvoiceFilters, setShowAdvancedInvoiceFilters] = useState(false);
     const [modelOverride, setModelOverride] = usePersistentState('nota_fiscal_modelOverride', '');
-    const [operationCfop, setOperationCfop] = usePersistentState('nota_fiscal_operationCfop', DEFAULT_CFOP_OPERATION);
+    const [operationCfop, setOperationCfop] = usePersistentState('nota_fiscal_operationCfop', '');
     const [busyOrderId, setBusyOrderId] = useState('');
     const [message, setMessage] = useState(null);
     const [validationByOrder, setValidationByOrder] = useState({});
@@ -16832,6 +16831,7 @@ const handleSubmit = async (e) => {
     const [editingFiscalProduct, setEditingFiscalProduct] = useState(null);
     const [productCorrectionOrderId, setProductCorrectionOrderId] = useState('');
     const [orderToIssue, setOrderToIssue] = useState(null);
+    const [orderDraftId, setOrderDraftId] = useState('');
     const [issueAdditionalInfo, setIssueAdditionalInfo] = useState('');
     const [issueError, setIssueError] = useState('');
     const [invoiceToCancel, setInvoiceToCancel] = useState(null);
@@ -16839,11 +16839,28 @@ const handleSubmit = async (e) => {
     const [showManualInvoiceModal, setShowManualInvoiceModal] = useState(false);
     const [manualInvoiceSaving, setManualInvoiceSaving] = useState(false);
     const [manualInvoiceError, setManualInvoiceError] = useState('');
+    const [manualDraftId, setManualDraftId] = useState('');
+    const [previewDraftId, setPreviewDraftId] = useState('');
+    const [draftCheck, setDraftCheck] = useState(null);
+    const [confirmDraftIssue, setConfirmDraftIssue] = useState(false);
+    const [inutilizationOpen, setInutilizationOpen] = useState(false);
+    const [inutilizationBusy, setInutilizationBusy] = useState(false);
+    const [inutilizationForm, setInutilizationForm] = useState({model: '55', series: '1', start: '', end: '', year: new Date().getUTCFullYear(), reason: ''});
+    const [inutilizationConfirm, setInutilizationConfirm] = useState(false);
+    const [inutilizations, setInutilizations] = useState([]);
+    useEffect(() => {
+      setManualDraftId('');
+      setPreviewDraftId('');
+      setDraftCheck(null);
+      setShowManualInvoiceModal(false);
+      setOrderDraftId('');
+      setOrderToIssue(null);
+    }, [effectiveStoreId]);
     const [manualInvoiceForm, setManualInvoiceForm] = useState(() => ({
       customerMode: 'existing',
       customer: createManualInvoiceCustomerDraft(),
       modelOverride: '',
-      operationCfop: DEFAULT_CFOP_OPERATION,
+      operationCfop: '',
       paymentMethodCode: '',
       additionalInfo: '',
       stockMovementRequested: false,
@@ -16872,14 +16889,15 @@ const handleSubmit = async (e) => {
       productId: '',
       code: '',
       description: '',
-      ncm: DEFAULT_NCM_PRODUCT,
-      cfopNfe: DEFAULT_CFOP_OPERATION,
-      cfopNfce: DEFAULT_CFOP_OPERATION,
-      unit: 'un',
-      origin: 0,
-      csosn: '102',
-      pisCst: '49',
-      cofinsCst: '49',
+      ncm: '',
+      cfopNfe: '',
+      cfopNfce: '',
+      unit: '',
+      origin: '',
+      csosn: '',
+      cst: '',
+      pisCst: '',
+      cofinsCst: '',
       cest: '',
       cBenef: ''
     });
@@ -16996,13 +17014,14 @@ const handleSubmit = async (e) => {
           label: product.nome || fiscal.description || productId,
           code: fiscal.code || product.codigo || productId,
           description: fiscal.description || product.nome || productId,
-          ncm: normalizeFiscalCode(fiscal.ncm || product.fiscal?.ncm || DEFAULT_NCM_PRODUCT),
-          unit: fiscal.unit || fiscal.unidade || product.unidade || 'un',
+          ncm: normalizeFiscalCode(fiscal.ncm || product.fiscal?.ncm),
+          unit: fiscal.unit || fiscal.unidade || product.unidade || '',
           unitPrice: Number(product.precoIfood ?? product.preco ?? 0) || 0,
-          origin: Number(fiscal.origin ?? fiscal.origem ?? product.fiscal?.origin ?? 0),
-          csosn: fiscal.csosn || product.fiscal?.csosn || '102',
-          pisCst: fiscal.pisCst || product.fiscal?.pisCst || '49',
-          cofinsCst: fiscal.cofinsCst || product.fiscal?.cofinsCst || '49',
+          origin: fiscal.origin ?? fiscal.origem ?? product.fiscal?.origin ?? '',
+          csosn: fiscal.csosn || product.fiscal?.csosn || '',
+          cst: fiscal.cst || product.fiscal?.cst || '',
+          pisCst: fiscal.pisCst || product.fiscal?.pisCst || '',
+          cofinsCst: fiscal.cofinsCst || product.fiscal?.cofinsCst || '',
           cBenef: fiscal.cBenef || product.fiscal?.cBenef || '',
           source: 'catalog'
         });
@@ -17016,13 +17035,14 @@ const handleSubmit = async (e) => {
           label: fiscal.description || fiscal.nome || id,
           code: fiscal.code || id,
           description: fiscal.description || fiscal.nome || id,
-          ncm: normalizeFiscalCode(fiscal.ncm || DEFAULT_NCM_PRODUCT),
-          unit: fiscal.unit || fiscal.unidade || 'un',
+          ncm: normalizeFiscalCode(fiscal.ncm),
+          unit: fiscal.unit || fiscal.unidade || '',
           unitPrice: 0,
-          origin: Number(fiscal.origin ?? fiscal.origem ?? 0),
-          csosn: fiscal.csosn || '102',
-          pisCst: fiscal.pisCst || '49',
-          cofinsCst: fiscal.cofinsCst || '49',
+          origin: fiscal.origin ?? fiscal.origem ?? '',
+          csosn: fiscal.csosn || '',
+          cst: fiscal.cst || '',
+          pisCst: fiscal.pisCst || '',
+          cofinsCst: fiscal.cofinsCst || '',
           cBenef: fiscal.cBenef || '',
           source: 'catalog'
         });
@@ -17090,12 +17110,14 @@ const handleSubmit = async (e) => {
       { value: 'all', label: 'Todos os status' },
       { value: 'authorized', label: 'Autorizada' },
       { value: 'rejected', label: 'Rejeitada' },
+      { value: 'draft', label: 'Rascunho' },
       { value: 'pending', label: 'Pendente' },
       { value: 'cancelled', label: 'Cancelada' },
       { value: 'inutilized', label: 'Inutilizada' }
     ];
 
     const statusLabel = {
+      draft: 'Rascunho',
       validating: 'Validando',
       authorized: 'Autorizada',
       rejected: 'Rejeitada',
@@ -17107,6 +17129,7 @@ const handleSubmit = async (e) => {
     };
 
     const statusClass = {
+      draft: 'bg-gray-100 text-gray-700',
       validating: 'bg-blue-100 text-blue-800',
       authorized: 'bg-green-100 text-green-800',
       rejected: 'bg-red-100 text-red-800',
@@ -17863,14 +17886,15 @@ const handleSubmit = async (e) => {
         productId: '',
         code: '',
         description: '',
-        ncm: DEFAULT_NCM_PRODUCT,
-        cfopNfe: DEFAULT_CFOP_OPERATION,
-        cfopNfce: DEFAULT_CFOP_OPERATION,
-        unit: 'un',
-        origin: 0,
-        csosn: '102',
-        pisCst: '49',
-        cofinsCst: '49',
+        ncm: '',
+        cfopNfe: '',
+        cfopNfce: '',
+        unit: '',
+        origin: '',
+        csosn: '',
+        cst: '',
+        pisCst: '',
+        cofinsCst: '',
         cest: '',
         cBenef: ''
       });
@@ -17923,19 +17947,56 @@ const handleSubmit = async (e) => {
     };
 
     const requestOrderValidation = async (order) => {
-      const fn = httpsCallable(functions, 'fiscalValidateOrder');
-      const response = await fn(callablePayload({
+      const save = httpsCallable(functions, 'fiscalSaveDraft');
+      const saved = await save(callablePayload({
         orderId: order.id,
-        modelOverride: modelOverride ? Number(modelOverride) : undefined,
+        model: Number(modelOverride),
+        additionalInfo: order.observacao || order.additionalInfo || '',
         operationCfop
       }));
-      const result = response.data || {};
+      const draftId = saved.data?.draftId;
+      const fn = httpsCallable(functions, 'fiscalCheckDraft');
+      const response = await fn(callablePayload({draftId}));
+      const result = {...(response.data || {}), draftId, model: Number(modelOverride)};
       setValidationByOrder((prev) => ({ ...prev, [order.id]: result }));
       return result;
     };
 
+    const handleSaveOrderDraft = async (order) => {
+      if (isReadOnly || !modelOverride || !effectiveStoreId) {
+        setMessage({type: 'error', text: 'Selecione a loja e o modelo NF-e ou NFC-e.'});
+        return;
+      }
+      setBusyOrderId(`save:${order.id}`);
+      try {
+        const fn = httpsCallable(functions, 'fiscalSaveDraft');
+        await fn(callablePayload({orderId: order.id, model: Number(modelOverride), operationCfop, additionalInfo: order.observacao || order.additionalInfo || ''}));
+        setMessage({type: 'success', text: `Rascunho ${modelOverride === '55' ? 'NF-e' : 'NFC-e'} salvo sem transmissão.`});
+      } catch (error) {
+        setMessage({type: 'error', text: error?.message || 'Não foi possível salvar o rascunho.'});
+      } finally {
+        setBusyOrderId('');
+      }
+    };
+
+    const handleViewOrderDraft = async (invoice) => {
+      if (invoice.status !== 'draft' || !invoice.orderId) return;
+      setModelOverride(String(invoice.model));
+      setActiveTab('emitir');
+      const order = ordersById.get(invoice.orderId);
+      if (!order) return;
+      try {
+        const fn = httpsCallable(functions, 'fiscalCheckDraft');
+        const response = await fn(callablePayload({draftId: invoice.id}));
+        setValidationByOrder((prev) => ({...prev, [invoice.orderId]: {...response.data, model: invoice.model, draftId: invoice.id}}));
+      } catch (error) {
+        setMessage({type: 'error', text: error?.message || 'Não foi possível visualizar o rascunho.'});
+      }
+    };
+
     const handleValidateOrder = async (order) => {
       if (isReadOnly) return;
+      if (!modelOverride) { setMessage({type: 'error', text: 'Selecione NF-e ou NFC-e antes da checagem.'}); return; }
       if (!effectiveStoreId) {
         setMessage({ type: 'error', text: 'Selecione uma loja específica para validar notas.' });
         return;
@@ -17960,6 +18021,7 @@ const handleSubmit = async (e) => {
 
     const handleIssueOrder = async (order) => {
       if (isReadOnly) return;
+      if (!modelOverride) { setMessage({type: 'error', text: 'Selecione NF-e ou NFC-e antes de emitir.'}); return; }
       if (!effectiveStoreId) {
         setMessage({ type: 'error', text: 'Selecione uma loja específica para emitir notas.' });
         return;
@@ -17969,7 +18031,7 @@ const handleSubmit = async (e) => {
 
       try {
         const validation = await requestOrderValidation(order);
-        if (Array.isArray(validation.errors) && validation.errors.length > 0) {
+        if (validation.ok !== true || (Array.isArray(validation.errors) && validation.errors.length > 0)) {
           const hasItemIssues = Array.isArray(validation.itemIssues) && validation.itemIssues.length > 0;
           setMessage({
             type: 'error',
@@ -17980,6 +18042,7 @@ const handleSubmit = async (e) => {
           return;
         }
         setOrderToIssue(order);
+        setOrderDraftId(validation.draftId);
         setIssueAdditionalInfo(order.observacao || order.additionalInfo || '');
         setIssueError('');
       } catch (error) {
@@ -17998,13 +18061,10 @@ const handleSubmit = async (e) => {
       setIssueError('');
 
       try {
-        const fn = httpsCallable(functions, 'fiscalIssueInvoice');
+        const fn = httpsCallable(functions, 'fiscalIssueDraft');
         const response = await fn(callablePayload({
-          orderId: orderToIssue.id,
-          modelOverride: modelOverride ? Number(modelOverride) : undefined,
-          justification: 'Emissão manual pelo painel Nota Fiscal',
-          additionalInfo: issueAdditionalInfo.trim(),
-          operationCfop
+          draftId: orderDraftId,
+          model: Number(modelOverride)
         }));
         setOrderToIssue(null);
         setIssueAdditionalInfo('');
@@ -18054,19 +18114,47 @@ const handleSubmit = async (e) => {
       setManualInvoiceForm({
         customerMode: 'existing',
         customer: createManualInvoiceCustomerDraft(),
-        modelOverride: modelOverride || '',
-        operationCfop: operationCfop || DEFAULT_CFOP_OPERATION,
+        modelOverride: '',
+        operationCfop: '',
         paymentMethodCode: settingsForm.defaultPaymentMethodCode || '99',
         additionalInfo: '',
         stockMovementRequested: false,
         items: [createManualInvoiceItemDraft()]
       });
+      setManualDraftId('');
+      setDraftCheck(null);
       setManualInvoiceError('');
-    }, [modelOverride, operationCfop, settingsForm.defaultPaymentMethodCode]);
+    }, [settingsForm.defaultPaymentMethodCode]);
 
     const handleOpenManualInvoice = () => {
       resetManualInvoiceForm();
       setShowManualInvoiceModal(true);
+    };
+
+    const handleEditManualDraft = (invoice) => {
+      if (isReadOnly || invoice.status !== 'draft' || !invoice.manualInvoice) return;
+      setManualInvoiceForm({
+        ...invoice.manualInvoice,
+        modelOverride: String(invoice.model),
+        items: (invoice.manualInvoice.items || []).map((item, index) => ({...item, draftId: item.draftId || `saved-${index}`}))
+      });
+      setManualDraftId(invoice.id);
+      setDraftCheck(null);
+      setManualInvoiceError('');
+      setPreviewDraftId('');
+      setShowManualInvoiceModal(true);
+    };
+
+    const handlePreviewManualDraft = (invoice) => {
+      if (invoice.status !== 'draft' || !invoice.manualInvoice) return;
+      setManualInvoiceForm({
+        ...invoice.manualInvoice,
+        modelOverride: String(invoice.model),
+        items: (invoice.manualInvoice.items || []).map((item, index) => ({...item, draftId: item.draftId || `saved-${index}`}))
+      });
+      setManualDraftId(invoice.id);
+      setDraftCheck(null);
+      setPreviewDraftId(invoice.id);
     };
 
     const setManualInvoiceCustomerField = (field, value) => {
@@ -18118,13 +18206,14 @@ const handleSubmit = async (e) => {
           productId: '',
           code: '',
           description: '',
-          ncm: DEFAULT_NCM_PRODUCT,
-          unit: 'un',
+          ncm: '',
+          unit: '',
           unitPrice: '',
-          origin: 0,
-          csosn: '102',
-          pisCst: '49',
-          cofinsCst: '49',
+          origin: '',
+          csosn: '',
+          cst: '',
+          pisCst: '',
+          cofinsCst: '',
           cBenef: ''
         });
         return;
@@ -18135,13 +18224,14 @@ const handleSubmit = async (e) => {
         productId: product.id,
         code: product.code,
         description: product.description,
-        ncm: product.ncm || DEFAULT_NCM_PRODUCT,
-        unit: product.unit || 'un',
+        ncm: product.ncm || '',
+        unit: product.unit || '',
         unitPrice: product.unitPrice || '',
-        origin: product.origin ?? 0,
-        csosn: product.csosn || '102',
-        pisCst: product.pisCst || '49',
-        cofinsCst: product.cofinsCst || '49',
+        origin: product.origin ?? '',
+        csosn: product.csosn || '',
+        cst: product.cst || '',
+        pisCst: product.pisCst || '',
+        cofinsCst: product.cofinsCst || '',
         cBenef: product.cBenef || ''
       });
     };
@@ -18162,110 +18252,116 @@ const handleSubmit = async (e) => {
       }));
     };
 
-    const handleIssueManualInvoice = async (event) => {
-      event.preventDefault();
+    const saveManualDraft = async (openPreview = false) => {
       if (isReadOnly || manualInvoiceSaving) return;
       if (!effectiveStoreId) {
-        setManualInvoiceError('Selecione uma loja específica para emitir a nota manual.');
+        setManualInvoiceError('Selecione uma loja específica.');
         return;
       }
-
-      const customer = manualInvoiceForm.customer || {};
-      const customerDocument = onlyDigitsText(customer.document);
-      if (!String(customer.name || '').trim()) {
-        setManualInvoiceError('Informe o nome ou razão social do cliente.');
+      const model = Number(manualInvoiceForm.modelOverride);
+      if (![55, 65].includes(model)) {
+        setManualInvoiceError('Selecione NF-e ou NFC-e antes de salvar.');
         return;
       }
-      if (![11, 14].includes(customerDocument.length)) {
-        setManualInvoiceError('Informe CPF/CNPJ válido para o cliente da nota.');
-        return;
-      }
-      if (!customer.address?.street || !customer.address?.district || !customer.address?.zip) {
-        setManualInvoiceError('Informe endereço, bairro e CEP fiscal do cliente.');
-        return;
-      }
-
-      const items = (manualInvoiceForm.items || []).map((item) => {
-        const quantity = Number(item.quantity || 0);
-        const unitPrice = Number(item.unitPrice || 0);
-        const discount = Number(item.discount || 0);
-        return {
-          ...item,
-          quantity,
-          unitPrice,
-          discount,
-          ncm: normalizeFiscalCode(item.ncm || DEFAULT_NCM_PRODUCT),
-          cfop: manualInvoiceForm.operationCfop
-        };
-      });
-      const invalidItem = items.find((item) => (
-        !String(item.description || '').trim()
-        || normalizeFiscalCode(item.ncm).length !== 8
-        || Number(item.quantity || 0) <= 0
-        || Number(item.unitPrice || 0) < 0
-        || Number(item.discount || 0) < 0
-        || Number(item.discount || 0) > Number(item.quantity || 0) * Number(item.unitPrice || 0)
-      ));
-      if (invalidItem) {
-        setManualInvoiceError('Revise os itens: descrição, NCM, quantidade, valor e desconto precisam estar corretos.');
-        return;
-      }
-
       setManualInvoiceSaving(true);
       setManualInvoiceError('');
-      setMessage(null);
       try {
-        const fn = httpsCallable(functions, 'fiscalIssueManualInvoice');
+        const fn = httpsCallable(functions, 'fiscalSaveDraft');
         const response = await fn(callablePayload({
-          modelOverride: manualInvoiceForm.modelOverride ? Number(manualInvoiceForm.modelOverride) : undefined,
-          operationCfop: manualInvoiceForm.operationCfop,
-          additionalInfo: manualInvoiceForm.additionalInfo.trim(),
-          justification: 'Emissão de nota fiscal manual/avulsa pelo painel Nota Fiscal',
+          draftId: manualDraftId || undefined,
+          model,
           manualInvoice: {
-            customer: {
-              ...customer,
-              document: customerDocument
-            },
-            operationCfop: manualInvoiceForm.operationCfop,
-            paymentMethodCode: manualInvoiceForm.paymentMethodCode || settingsForm.defaultPaymentMethodCode || '99',
-            additionalInfo: manualInvoiceForm.additionalInfo.trim(),
-            stockMovementRequested: Boolean(manualInvoiceForm.stockMovementRequested),
-            items: items.map((item, index) => ({
-              productId: item.productId || '',
-              source: item.source === 'catalog' ? 'catalog' : 'manual',
-              code: item.code || item.productId || `MANUAL-${index + 1}`,
-              description: item.description,
-              ncm: item.ncm,
-              unit: item.unit || 'un',
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              discount: item.discount,
-              origin: Number(item.origin || 0),
-              csosn: item.csosn || '102',
-              pisCst: item.pisCst || '49',
-              cofinsCst: item.cofinsCst || '49',
-              cBenef: item.cBenef || ''
-            }))
+            ...manualInvoiceForm,
+            items: (manualInvoiceForm.items || []).map((item) => ({...item}))
           }
         }));
-        const result = response.data || {};
+        const id = response.data?.draftId;
+        setManualDraftId(id);
+        setDraftCheck(null);
         setShowManualInvoiceModal(false);
-        resetManualInvoiceForm();
-        setActiveTab('notas');
-        if (result.status === 'authorized') {
-          setMessage({ type: 'success', text: result.xMotivo || 'Nota manual autorizada. Baixando DANFE em PDF.' });
-          if (result.invoiceId && result.danfePdfReady) {
-            await downloadInvoiceArtifact(result.invoiceId, 'danfePdf');
-          }
-        } else {
-          setMessage({ type: 'error', text: result.xMotivo || 'Retorno fiscal recebido para a nota manual. Consulte a nota em Notas emitidas.' });
-        }
+        if (openPreview) setPreviewDraftId(id);
+        else setMessage({type: 'success', text: `Rascunho ${model === 55 ? 'NF-e' : 'NFC-e'} salvo sem transmissão fiscal.`});
       } catch (error) {
-        console.error('[NotaFiscal] Emissão manual falhou:', error);
-        setManualInvoiceError(error?.message || 'Não foi possível emitir a nota fiscal manual.');
-        setMessage({ type: 'error', text: error?.message || 'Não foi possível emitir a nota fiscal manual.' });
+        setManualInvoiceError(error?.message || 'Não foi possível salvar o rascunho.');
       } finally {
         setManualInvoiceSaving(false);
+      }
+    };
+
+    const checkManualDraft = async () => {
+      if (!previewDraftId || manualInvoiceSaving) return;
+      setManualInvoiceSaving(true);
+      setDraftCheck(null);
+      try {
+        const fn = httpsCallable(functions, 'fiscalCheckDraft');
+        const response = await fn(callablePayload({draftId: previewDraftId}));
+        setDraftCheck(response.data || null);
+      } catch (error) {
+        setDraftCheck({ok: false, errors: [error?.message || 'Falha ao checar requisitos.'], warnings: []});
+      } finally {
+        setManualInvoiceSaving(false);
+      }
+    };
+
+    const issueManualDraft = async (event) => {
+      event.preventDefault();
+      if (!previewDraftId || !draftCheck?.ok || manualInvoiceSaving) return;
+      setManualInvoiceSaving(true);
+      try {
+        const model = Number(manualInvoiceForm.modelOverride);
+        const fn = httpsCallable(functions, 'fiscalIssueDraft');
+        const response = await fn(callablePayload({draftId: previewDraftId, model}));
+        const result = response.data || {};
+        setConfirmDraftIssue(false);
+        setPreviewDraftId('');
+        setActiveTab('notas');
+        setMessage({type: result.status === 'authorized' ? 'success' : 'error', text: result.xMotivo || `Emissão ${statusLabel[result.status] || result.status}.`});
+        if (result.status === 'authorized' && result.danfePdfReady) await downloadInvoiceArtifact(previewDraftId, 'danfePdf');
+      } catch (error) {
+        setConfirmDraftIssue(false);
+        setDraftCheck({ok: false, errors: [error?.message || 'Emissão não concluída. Consulte o status da nota.'], warnings: []});
+      } finally {
+        setManualInvoiceSaving(false);
+      }
+    };
+
+    useEffect(() => {
+      if (!effectiveStoreId || effectiveStoreId === STORE_ALL_KEY) {
+        setInutilizations([]);
+        return undefined;
+      }
+      return onSnapshot(collection(db, 'lojas', effectiveStoreId, 'fiscalInutilizations'), (snapshot) => {
+        setInutilizations(snapshot.docs.map((entry) => ({id: entry.id, ...entry.data()})));
+      }, () => setInutilizations([]));
+    }, [effectiveStoreId]);
+
+    const submitInutilization = async (event) => {
+      event.preventDefault();
+      if (!inutilizationConfirm) {
+        setInutilizationConfirm(true);
+        return;
+      }
+      if (inutilizationBusy || isReadOnly) return;
+      setInutilizationBusy(true);
+      try {
+        const fn = httpsCallable(functions, 'fiscalInutilizeNumbering');
+        const response = await fn(callablePayload({
+          model: Number(inutilizationForm.model),
+          series: Number(inutilizationForm.series),
+          start: Number(inutilizationForm.start),
+          end: Number(inutilizationForm.end),
+          year: Number(inutilizationForm.year),
+          reason: inutilizationForm.reason.trim()
+        }));
+        const result = response.data || {};
+        setMessage({type: result.status === 'inutilized' ? 'success' : 'error', text: result.xMotivo || `Inutilização: ${result.status}.`});
+        setInutilizationOpen(false);
+        setInutilizationConfirm(false);
+      } catch (error) {
+        setMessage({type: 'error', text: error?.message || 'Não foi possível inutilizar a numeração.'});
+        setInutilizationConfirm(false);
+      } finally {
+        setInutilizationBusy(false);
       }
     };
 
@@ -18677,9 +18773,9 @@ const handleSubmit = async (e) => {
           return {
             code: item.code || item.codigo || fiscalProduct?.code || productId || String(index + 1),
             description: item.description || item.nome || item.produto || fiscalProduct?.description || 'Produto',
-            ncm: formatNcmCode(item.ncm || fiscalProduct?.ncm || DEFAULT_NCM_PRODUCT),
-            cst: item.csosn || item.cst || item.icmsCst || fiscalProduct?.csosn || '102',
-            cfop: item.cfop || item.cfopNfe || item.cfopNfce || fiscalProduct?.cfopNfe || fiscalProduct?.cfop || DEFAULT_CFOP_OPERATION,
+            ncm: formatNcmCode(item.ncm || fiscalProduct?.ncm),
+            cst: item.csosn || item.cst || item.icmsCst || fiscalProduct?.csosn || fiscalProduct?.cst || '',
+            cfop: item.cfop || item.cfopNfe || item.cfopNfce || fiscalProduct?.cfopNfe || fiscalProduct?.cfop || '',
             unit: item.unit || item.unidade || item.uCom || fiscalProduct?.unit || 'un',
             quantity: qtyPlain(quantity),
             unitValue: moneyPlain(unitValue),
@@ -18969,14 +19065,15 @@ const handleSubmit = async (e) => {
         productId: row.id || '',
         code: row.code || '',
         description: row.description || '',
-        ncm: normalizeFiscalCode(row.ncm || DEFAULT_NCM_PRODUCT),
-        cfopNfe: row.cfopNfe || row.cfop || DEFAULT_CFOP_OPERATION,
-        cfopNfce: row.cfopNfce || row.cfop || DEFAULT_CFOP_OPERATION,
-        unit: row.unit || 'un',
-        origin: Number(row.origin ?? 0),
-        csosn: row.csosn || '102',
-        pisCst: row.pisCst || '49',
-        cofinsCst: row.cofinsCst || '49',
+        ncm: normalizeFiscalCode(row.ncm),
+        cfopNfe: row.cfopNfe || row.cfop || '',
+        cfopNfce: row.cfopNfce || row.cfop || '',
+        unit: row.unit || '',
+        origin: row.origin ?? '',
+        csosn: row.csosn || '',
+        cst: row.cst || '',
+        pisCst: row.pisCst || '',
+        cofinsCst: row.cofinsCst || '',
         cest: row.cest || '',
         cBenef: row.cBenef || ''
       });
@@ -19000,9 +19097,9 @@ const handleSubmit = async (e) => {
         productId: issue.productId || product?.id || '',
         code: issue.code || product?.codigo || issue.productId || '',
         description: issue.description || product?.nome || '',
-        ncm: normalizeFiscalCode(issue.ncm || DEFAULT_NCM_PRODUCT),
-        cfopNfe: DEFAULT_CFOP_OPERATION,
-        cfopNfce: DEFAULT_CFOP_OPERATION
+        ncm: normalizeFiscalCode(issue.ncm),
+        cfopNfe: '',
+        cfopNfce: ''
       }));
       setShowProductModal(true);
     };
@@ -19033,11 +19130,12 @@ const handleSubmit = async (e) => {
 
       const commonFiscalPayload = {
         ncm: normalizedNcm,
-        unit: productForm.unit || 'un',
-        origin: Number(productForm.origin || 0),
-        csosn: productForm.csosn || '102',
-        pisCst: productForm.pisCst || '49',
-        cofinsCst: productForm.cofinsCst || '49',
+        unit: productForm.unit || '',
+        origin: productForm.origin === '' ? null : Number(productForm.origin),
+        csosn: productForm.csosn || '',
+        cst: productForm.cst || '',
+        pisCst: productForm.pisCst || '',
+        cofinsCst: productForm.cofinsCst || '',
         cest: productForm.cest || '',
         cBenef: productForm.cBenef || '',
         updatedAt: serverTimestamp()
@@ -19215,12 +19313,13 @@ const handleSubmit = async (e) => {
         onClick: handleOpenPreInvoiceOrderEdit,
         isVisible: (row) => !getPreInvoiceLockedReason(row)
       },
-      { icon: RefreshCw, label: 'Validar', onClick: handleValidateOrder },
-      { icon: Printer, label: 'Emitir', onClick: handleIssueOrder }
+      { icon: Save, label: `Salvar rascunho ${modelOverride === '55' ? 'NF-e' : modelOverride === '65' ? 'NFC-e' : ''}`, onClick: handleSaveOrderDraft, isVisible: (row) => !getPreInvoiceLockedReason(row) },
+      { icon: RefreshCw, label: 'Checar requisitos', onClick: handleValidateOrder },
+      { icon: Printer, label: `Emitir ${modelOverride === '55' ? 'NF-e' : modelOverride === '65' ? 'NFC-e' : 'nota (selecione modelo)'}`, onClick: handleIssueOrder }
     ];
 
     const invoiceColumns = [
-      { header: 'NFC-e', render: (row) => <span className="font-mono text-xs font-semibold text-gray-800">{formatFiscalNumber(row.number)}</span> },
+      { header: 'Número', render: (row) => <span className="font-mono text-xs font-semibold text-gray-800">{row.status === 'draft' ? 'Ainda não atribuído' : formatFiscalNumber(row.number)}</span> },
       { header: 'Série', render: (row) => <span className="font-mono text-xs text-gray-600">{formatFiscalSeries(row.series)}</span> },
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs">{row.orderId?.slice(0, 8) || '-'}</span> },
       { header: 'Origem', render: (row) => {
@@ -19240,10 +19339,12 @@ const handleSubmit = async (e) => {
 
     const invoiceActions = [
       { icon: Eye, label: 'Ver detalhes', onClick: (row) => setInvoiceToView(row) },
-      { icon: FileText, label: 'Baixar/visualizar DANFE PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => row.status === 'authorized' },
+      { icon: Edit, label: 'Editar rascunho', onClick: handleEditManualDraft, isVisible: (row) => !isReadOnly && row.status === 'draft' && !row.orderId },
+      { icon: Eye, label: 'Visualizar Nota', onClick: (row) => row.orderId ? handleViewOrderDraft(row) : handlePreviewManualDraft(row), isVisible: (row) => row.status === 'draft' },
+      { icon: FileText, label: 'Baixar/visualizar DANFE PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
       { icon: Printer, label: 'Exportar DANFE A4', onClick: handleExportDanfeA4, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
-      { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => row.status === 'authorized' },
-      { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' && Boolean(row.orderId) },
+      { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
+      { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' && Boolean(row.receipt) },
       { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => !isReadOnly && row.status === 'authorized' }
     ];
 
@@ -19320,6 +19421,7 @@ const handleSubmit = async (e) => {
           {[
             ['emitir', isReadOnly ? 'Pedidos' : 'Emitir'],
             ['notas', 'Notas emitidas'],
+            ['inutilizacao', 'Inutilizar Numeração'],
             ['produtos', 'Produtos fiscais'],
             ['configuracao', 'Configuração']
           ].map(([id, label]) => (
@@ -19363,11 +19465,12 @@ const handleSubmit = async (e) => {
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(280px,360px)_auto_minmax(240px,1fr)] gap-3 items-end">
                 <Select value={modelOverride} onChange={(e) => setModelOverride(e.target.value)} className="md:w-56">
-                  <option value="">Modelo automático</option>
-                  <option value="55">Forçar NF-e 55</option>
-                  <option value="65">Forçar NFC-e 65</option>
+                  <option value="">Selecione NF-e ou NFC-e</option>
+                  <option value="55">NF-e 55</option>
+                  <option value="65">NFC-e 65</option>
                 </Select>
                 <Select label="CFOP da operação" value={operationCfop} onChange={(e) => setOperationCfop(e.target.value)}>
+                  <option value="">Selecione o CFOP</option>
                   {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </Select>
                 <a href="https://www.confaz.fazenda.gov.br/legislacao/ajustes/sinief/cfop_cvsn_70_vigente" target="_blank" rel="noreferrer" className="self-end pb-3 text-sm text-pink-700 underline hover:text-pink-800">
@@ -19379,7 +19482,7 @@ const handleSubmit = async (e) => {
                   </p>
                   {!isReadOnly && (
                     <Button size="sm" onClick={handleOpenManualInvoice}>
-                      <FileText className="w-4 h-4" /> Emitir Nota Fiscal Manual
+                      <FileText className="w-4 h-4" /> Criar rascunho NF-e/NFC-e
                     </Button>
                   )}
                   <Button
@@ -19403,8 +19506,17 @@ const handleSubmit = async (e) => {
             )}
             {Object.entries(validationByOrder).map(([orderId, result]) => (
               <div key={orderId} className={`p-4 rounded-xl border text-sm ${result.ok === false ? 'bg-red-50 border-red-200 text-red-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
-                <p className="font-semibold">Validação do pedido {orderId.slice(0, 8)}</p>
+                <p className="font-semibold">PRÉVIA — DOCUMENTO NÃO EMITIDO · {result.model === 55 ? 'NF-e' : 'NFC-e'} · pedido {orderId.slice(0, 8)}</p>
                 {result.errors?.length ? <p>{result.errors.join(' ')}</p> : <p>Modelo {result.model}, série {result.series}, próximo número {result.number}. Total: R$ {(result.totals?.invoice || 0).toFixed(2)}</p>}
+                {result.preview && (
+                  <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 text-gray-800">
+                    <p><strong>Emitente:</strong> {result.preview.issuer?.legalName}</p>
+                    <p><strong>Cliente:</strong> {result.preview.customer?.name} · {result.preview.customer?.document}</p>
+                    <p><strong>Série:</strong> {result.preview.series} · <strong>Ambiente:</strong> {result.preview.environment}</p>
+                    <ul className="mt-2 list-disc pl-5">{(result.preview.items || []).map((item, index) => <li key={index}>{item.description} · {item.quantity} {item.unit} · NCM {item.ncm || 'pendente'} · CFOP {item.cfop || 'pendente'} · {formatCurrencyBR(item.total)}</li>)}</ul>
+                    <p className="mt-2 font-semibold">Total: {formatCurrencyBR(result.preview.totals?.invoice || 0)}</p>
+                  </div>
+                )}
                 {!isReadOnly && result.itemIssues?.length ? (
                   <div className="mt-3 space-y-2">
                     <p className="font-medium">Complete o cadastro fiscal do produto para liberar a emissão:</p>
@@ -19414,7 +19526,7 @@ const handleSubmit = async (e) => {
                           <strong>{issue.description}</strong> - pendente: {issue.fields.join(', ')}
                           {issue.fields.length === 1 && issue.fields.includes('NCM') && (
                             <span className="block text-xs text-red-700 mt-1">
-                              Clique para conferir e salvar o NCM. O padrão 1905.90.90 já será sugerido para confeitaria/pastelaria.
+                              Confira o NCM com o responsável fiscal antes de salvar.
                             </span>
                           )}
                         </span>
@@ -19537,6 +19649,16 @@ const handleSubmit = async (e) => {
                 Nenhuma nota encontrada para os filtros selecionados.
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'inutilizacao' && (
+          <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><h2 className="text-lg font-bold text-gray-900">Inutilização de numeração</h2><p className="text-sm text-gray-600">Operação fiscal separada do cancelamento de uma nota autorizada.</p></div>
+              {!isReadOnly && <Button onClick={() => { setInutilizationForm({model: '55', series: String(settingsForm.nfeSeries || 1), start: '', end: '', year: new Date().getUTCFullYear(), reason: ''}); setInutilizationConfirm(false); setInutilizationOpen(true); }}>Inutilizar Numeração</Button>}
+            </div>
+            <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b"><th className="p-2">Modelo</th><th className="p-2">Série</th><th className="p-2">Faixa</th><th className="p-2">Status</th><th className="p-2">Protocolo</th><th className="p-2">Data</th><th className="p-2">Responsável</th><th className="p-2">Justificativa / retorno</th></tr></thead><tbody>{[...inutilizations].sort((a, b) => String(b.id).localeCompare(String(a.id))).map((record) => <tr key={record.id} className="border-b align-top"><td className="p-2">{record.model === 55 ? 'NF-e' : 'NFC-e'}</td><td className="p-2">{record.series}</td><td className="p-2">{record.start}–{record.end}</td><td className="p-2">{record.status}</td><td className="p-2 font-mono">{record.protocol || '-'}</td><td className="p-2">{formatDateTime(record.completedAt || record.createdAt)}</td><td className="p-2">{record.requestedByUid || '-'}</td><td className="p-2">{record.reason}<br /><span className="text-gray-500">{record.xMotivo || ''}</span></td></tr>)}</tbody></table>{inutilizations.length === 0 && <p className="p-4 text-sm text-gray-500">Nenhuma inutilização registrada para esta loja.</p>}</div>
           </div>
         )}
 
@@ -19756,6 +19878,7 @@ const handleSubmit = async (e) => {
                 required={!hasMultipleFiscalProductsSelected}
               />
               <Select label="NCM do produto" value={normalizeFiscalCode(productForm.ncm)} onChange={(e) => setProductForm({ ...productForm, ncm: e.target.value })} required>
+                <option value="">Selecione o NCM</option>
                 {productForm.ncm && !NCM_PRODUCT_OPTIONS.some((option) => option.value === normalizeFiscalCode(productForm.ncm)) && (
                   <option value={normalizeFiscalCode(productForm.ncm)}>{formatNcmCode(productForm.ncm)} - NCM cadastrado</option>
                 )}
@@ -19763,7 +19886,8 @@ const handleSubmit = async (e) => {
               </Select>
               <Input label="Unidade" value={productForm.unit} onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })} />
               <Input label="Origem" type="number" value={productForm.origin} onChange={(e) => setProductForm({ ...productForm, origin: e.target.value })} />
-              <Input label="ICMS/CST" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
+              <Input label="ICMS CSOSN" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
+              <Input label="ICMS CST" value={productForm.cst} onChange={(e) => setProductForm({ ...productForm, cst: e.target.value })} />
               <Input label="CEST" value={productForm.cest} onChange={(e) => setProductForm({ ...productForm, cest: e.target.value })} />
               <Input label="PIS CST" value={productForm.pisCst} onChange={(e) => setProductForm({ ...productForm, pisCst: e.target.value })} />
               <Input label="COFINS CST" value={productForm.cofinsCst} onChange={(e) => setProductForm({ ...productForm, cofinsCst: e.target.value })} />
@@ -19927,24 +20051,26 @@ const handleSubmit = async (e) => {
           </form>
         </Modal>
 
-        <Modal isOpen={Boolean(orderToIssue)} onClose={() => { if (!busyOrderId) { setOrderToIssue(null); setIssueAdditionalInfo(''); setIssueError(''); } }} title="Emitir nota fiscal" size="lg">
+        <Modal isOpen={Boolean(orderToIssue)} onClose={() => { if (!busyOrderId) { setOrderToIssue(null); setIssueAdditionalInfo(''); setIssueError(''); } }} title={`Confirmar emissão de ${modelOverride === '55' ? 'NF-e' : 'NFC-e'}`} size="lg">
           <form onSubmit={handleConfirmIssue} className="space-y-4">
             <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 text-sm text-gray-700">
               <p><strong>Pedido:</strong> {orderToIssue?.id?.slice(0, 8) || '-'}</p>
               <p><strong>Cliente:</strong> {orderToIssue?.clienteNome || '-'}</p>
+              <p><strong>CPF/CNPJ:</strong> {getOrderCustomerDocument(orderToIssue) || '-'}</p>
               <p><strong>Total:</strong> R$ {(orderToIssue?.total || 0).toFixed(2)}</p>
+              <p><strong>Itens:</strong> {orderToIssue?.itens?.length || 0}</p>
             </div>
             <Textarea
               label="Informações adicionais da nota fiscal"
               rows={4}
               maxLength={5000}
               value={issueAdditionalInfo}
-              onChange={(event) => setIssueAdditionalInfo(event.target.value)}
+              readOnly
             />
             {issueError && <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-800">{issueError}</div>}
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="secondary" type="button" disabled={Boolean(busyOrderId)} onClick={() => { setOrderToIssue(null); setIssueAdditionalInfo(''); setIssueError(''); }}>Cancelar</Button>
-              <Button type="submit" disabled={Boolean(busyOrderId)}><Printer className="w-4 h-4" /> {busyOrderId ? 'Emitindo...' : 'Confirmar emissão'}</Button>
+              <Button type="submit" disabled={Boolean(busyOrderId)}><Printer className="w-4 h-4" /> {busyOrderId ? 'Emitindo...' : `Confirmar emissão ${modelOverride === '55' ? 'NF-e' : 'NFC-e'}`}</Button>
             </div>
           </form>
         </Modal>
@@ -19956,10 +20082,10 @@ const handleSubmit = async (e) => {
             setShowManualInvoiceModal(false);
             resetManualInvoiceForm();
           }}
-          title="Emitir Nota Fiscal Manual"
+          title={manualInvoiceForm.modelOverride === '55' ? 'Preparar NF-e' : manualInvoiceForm.modelOverride === '65' ? 'Preparar NFC-e' : 'Preparar nota fiscal'}
           size="xl"
         >
-          <form onSubmit={handleIssueManualInvoice} className="space-y-5">
+          <form onSubmit={(event) => event.preventDefault()} className="space-y-5">
             <section className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Select
@@ -20017,9 +20143,10 @@ const handleSubmit = async (e) => {
                 <Select
                   label="Modelo"
                   value={manualInvoiceForm.modelOverride}
+                  disabled={Boolean(manualDraftId)}
                   onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, modelOverride: event.target.value }))}
                 >
-                  <option value="">Automático</option>
+                  <option value="">Selecione o modelo</option>
                   <option value="55">NF-e 55</option>
                   <option value="65">NFC-e 65</option>
                 </Select>
@@ -20028,6 +20155,7 @@ const handleSubmit = async (e) => {
                   value={manualInvoiceForm.operationCfop}
                   onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, operationCfop: event.target.value }))}
                 >
+                  <option value="">Selecione o CFOP</option>
                   {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </Select>
                 <Input
@@ -20105,13 +20233,18 @@ const handleSubmit = async (e) => {
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                         <Input label="Código" value={item.code || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { code: event.target.value })} />
-                        <Select label="NCM" value={normalizeFiscalCode(item.ncm || DEFAULT_NCM_PRODUCT)} onChange={(event) => updateManualInvoiceItem(item.draftId, { ncm: event.target.value })}>
+                        <Select label="NCM" value={normalizeFiscalCode(item.ncm)} onChange={(event) => updateManualInvoiceItem(item.draftId, { ncm: event.target.value })}>
+                          <option value="">Selecione o NCM</option>
                           {NCM_PRODUCT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                         </Select>
-                        <Input label="Unidade" value={item.unit || 'un'} onChange={(event) => updateManualInvoiceItem(item.draftId, { unit: event.target.value })} />
-                        <Input label="CSOSN/CST" value={item.csosn || '102'} onChange={(event) => updateManualInvoiceItem(item.draftId, { csosn: event.target.value })} />
+                        <Input label="Unidade" value={item.unit || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { unit: event.target.value })} />
+                        <Input label="Origem" type="number" min="0" max="8" value={item.origin ?? ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { origin: event.target.value })} />
+                        <Input label="ICMS CSOSN" value={item.csosn || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { csosn: event.target.value })} />
+                        <Input label="ICMS CST" value={item.cst || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { cst: event.target.value })} />
+                        <Input label="PIS CST" value={item.pisCst || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { pisCst: event.target.value })} />
+                        <Input label="COFINS CST" value={item.cofinsCst || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { cofinsCst: event.target.value })} />
                         <div className="rounded-xl bg-white p-3 text-right text-sm text-gray-700">
                           <p>Total do item</p>
                           <p className="text-lg font-bold text-gray-900">{formatCurrencyBR(Math.max(itemTotal, 0))}</p>
@@ -20166,14 +20299,58 @@ const handleSubmit = async (e) => {
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={manualInvoiceSaving}>
-                <Printer className="w-4 h-4" /> {manualInvoiceSaving ? 'Emitindo...' : 'Emitir Nota Fiscal'}
+              <Button type="button" variant="secondary" onClick={() => saveManualDraft(false)} disabled={manualInvoiceSaving}>
+                <Save className="w-4 h-4" /> {manualInvoiceSaving ? 'Salvando...' : `Salvar rascunho ${manualInvoiceForm.modelOverride === '55' ? 'NF-e' : manualInvoiceForm.modelOverride === '65' ? 'NFC-e' : ''}`}
+              </Button>
+              <Button type="button" onClick={() => saveManualDraft(true)} disabled={manualInvoiceSaving}>
+                <Eye className="w-4 h-4" /> Visualizar Nota
               </Button>
             </div>
           </form>
         </Modal>
 
-        <Modal isOpen={Boolean(invoiceToView)} onClose={() => setInvoiceToView(null)} title="Detalhes da NFC-e" size="xl">
+        <Modal isOpen={Boolean(previewDraftId)} onClose={() => { if (!manualInvoiceSaving) setPreviewDraftId(''); }} title={`PRÉVIA ${manualInvoiceForm.modelOverride === '55' ? 'NF-e / DANFE' : 'NFC-e / cupom'}`} size="xl">
+          <div className="space-y-4">
+            <div className="rounded-xl border-2 border-orange-300 bg-orange-50 p-4 text-center font-bold text-orange-900">PRÉVIA — DOCUMENTO NÃO EMITIDO · SEM VALIDADE FISCAL</div>
+            <div className={`rounded-xl border border-gray-200 bg-white p-5 ${manualInvoiceForm.modelOverride === '65' ? 'mx-auto max-w-md font-mono' : ''}`}>
+              <h3 className="text-center text-lg font-bold">{manualInvoiceForm.modelOverride === '55' ? 'Prévia de NF-e — DANFE' : 'Prévia de NFC-e — DANFE NFC-e'}</h3>
+              <p className="mt-3"><strong>Emitente:</strong> {issuerForm.legalName} · {issuerForm.cnpj}</p>
+              <p><strong>Destinatário:</strong> {manualInvoiceForm.customer?.name || 'Não informado'} · {manualInvoiceForm.customer?.document || 'Documento pendente'}</p>
+              <p><strong>Endereço:</strong> {[manualInvoiceForm.customer?.address?.street, manualInvoiceForm.customer?.address?.number, manualInvoiceForm.customer?.address?.city, manualInvoiceForm.customer?.address?.state, manualInvoiceForm.customer?.address?.zip].filter(Boolean).join(', ') || 'Pendente'}</p>
+              <p><strong>Modelo:</strong> {manualInvoiceForm.modelOverride} · <strong>Série:</strong> {manualInvoiceForm.modelOverride === '55' ? settingsForm.nfeSeries : settingsForm.nfceSeries} · <strong>Número:</strong> ainda não atribuído</p>
+              <div className="mt-3 border-t border-gray-200 pt-2">
+                {(manualInvoiceForm.items || []).map((item, index) => <div key={item.draftId || index} className="border-b border-gray-100 py-2 text-sm"><strong>{item.description || `Item ${index + 1}`}</strong><br />{item.quantity} {item.unit} × {formatCurrencyBR(Number(item.unitPrice || 0))} · NCM {item.ncm || 'pendente'} · CFOP {manualInvoiceForm.operationCfop || 'pendente'} · ICMS {item.csosn || item.cst || 'pendente'} · PIS {item.pisCst || 'pendente'} · COFINS {item.cofinsCst || 'pendente'} · desconto {formatCurrencyBR(Number(item.discount || 0))}</div>)}
+              </div>
+              <p className="mt-3">Produtos: {formatCurrencyBR(manualInvoiceTotals.products)} · Desconto: {formatCurrencyBR(manualInvoiceTotals.discount)}</p>
+              <p className="text-lg font-bold">Total: {formatCurrencyBR(manualInvoiceTotals.invoice)}</p>
+              {manualInvoiceForm.additionalInfo && <p className="mt-2 text-sm"><strong>Observações:</strong> {manualInvoiceForm.additionalInfo}</p>}
+            </div>
+            {draftCheck && <div className={`rounded-xl border p-4 text-sm ${draftCheck.ok ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+              <p className="font-bold">{draftCheck.ok ? 'ESTÁ PRONTA PARA EMISSÃO' : 'POSSUI PENDÊNCIAS'}</p>
+              {(draftCheck.errors || []).map((error, index) => <p key={`error-${index}`}>❌ {error}</p>)}
+              {(draftCheck.warnings || []).map((warning, index) => <p key={`warning-${index}`}>⚠️ {warning}</p>)}
+              {draftCheck.ok && <p>✅ Validação fiscal concluída. O backend checará novamente antes da transmissão.</p>}
+            </div>}
+            <div className="flex flex-wrap justify-end gap-2">
+              {!isReadOnly && <Button variant="secondary" onClick={() => { setPreviewDraftId(''); setShowManualInvoiceModal(true); }} disabled={manualInvoiceSaving}><Edit className="w-4 h-4" /> Voltar para edição</Button>}
+              {!isReadOnly && <Button variant="secondary" onClick={checkManualDraft} disabled={manualInvoiceSaving}><RefreshCw className="w-4 h-4" /> Checar requisitos</Button>}
+              {!isReadOnly && <Button onClick={() => setConfirmDraftIssue(true)} disabled={manualInvoiceSaving || !draftCheck?.ok}><Printer className="w-4 h-4" /> Emitir {manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'}</Button>}
+            </div>
+          </div>
+        </Modal>
+
+        <Modal isOpen={confirmDraftIssue} onClose={() => { if (!manualInvoiceSaving) setConfirmDraftIssue(false); }} title={`Confirmar emissão da ${manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'}?`} size="md">
+          <form onSubmit={issueManualDraft} className="space-y-4">
+            <p><strong>Cliente:</strong> {manualInvoiceForm.customer?.name || '-'}</p>
+            <p><strong>CPF/CNPJ:</strong> {manualInvoiceForm.customer?.document || '-'}</p>
+            <p><strong>Itens:</strong> {manualInvoiceForm.items?.length || 0}</p>
+            <p><strong>Total:</strong> {formatCurrencyBR(manualInvoiceTotals.invoice)}</p>
+            <p className="text-sm text-gray-600">A confirmação envia esta {manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'} ao ambiente fiscal.</p>
+            <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setConfirmDraftIssue(false)} disabled={manualInvoiceSaving}>Cancelar</Button><Button type="submit" disabled={manualInvoiceSaving}>{manualInvoiceSaving ? 'Enviando...' : 'Confirmar emissão'}</Button></div>
+          </form>
+        </Modal>
+
+        <Modal isOpen={Boolean(invoiceToView)} onClose={() => setInvoiceToView(null)} title={`Detalhes da ${invoiceToView?.model === 55 ? 'NF-e' : 'NFC-e'}`} size="xl">
           {invoiceToView && (() => {
             const invoice = invoiceToView;
             const order = getInvoiceOrder(invoice);
@@ -20197,7 +20374,7 @@ const handleSubmit = async (e) => {
                 <DetailSection title="Identificação da nota">
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     <DetailField label="Chave de acesso" value={invoice.key || '-'} mono full />
-                    <DetailField label="Número da NFC-e" value={formatFiscalNumber(invoice.number)} mono />
+                    <DetailField label="Número" value={invoice.status === 'draft' ? 'Não atribuído' : formatFiscalNumber(invoice.number)} mono />
                     <DetailField label="Série" value={formatFiscalSeries(invoice.series)} mono />
                     <DetailField label="Modelo" value={invoice.model || '-'} />
                     <DetailField label="Origem" value={getInvoiceOriginLabel(invoice)} />
@@ -20211,6 +20388,11 @@ const handleSubmit = async (e) => {
                     <DetailField label="Motivo/status SEFAZ" value={reason || '-'} full />
                     <DetailField label="Observação" value={invoice.additionalInfo || '-'} full />
                     <DetailField label="Justificativa de cancelamento" value={invoice.cancelReason || '-'} full />
+                    {invoice.cancelRequestedAt && <DetailField label="Cancelamento solicitado" value={formatDateTime(invoice.cancelRequestedAt)} />}
+                    {invoice.cancelledAt && <DetailField label="Cancelamento registrado" value={formatDateTime(invoice.cancelledAt)} />}
+                    {invoice.cancelProtocol && <DetailField label="Protocolo de cancelamento" value={invoice.cancelProtocol} mono />}
+                    {invoice.cancelCStat && <DetailField label="Código do cancelamento" value={invoice.cancelCStat} />}
+                    {invoice.cancelRequestedByUid && <DetailField label="Solicitado por" value={invoice.cancelRequestedByUid} />}
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button size="sm" variant="secondary" onClick={() => handleCopyInvoiceKey(invoice)}><Key className="w-4 h-4" /> Copiar chave</Button>
@@ -20309,9 +20491,9 @@ const handleSubmit = async (e) => {
 
                 <DetailSection title="Arquivos e ações fiscais">
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoicePdf(invoice)} disabled={invoice.status !== 'authorized'} title="Visualizar ou baixar DANFE/PDF"><FileText className="w-4 h-4" /> DANFE/PDF</Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoicePdf(invoice)} disabled={!['authorized', 'cancelled'].includes(invoice.status)} title="Visualizar ou baixar DANFE/PDF"><FileText className="w-4 h-4" /> DANFE/PDF</Button>
                     <Button size="sm" variant="secondary" onClick={() => handleExportDanfeA4(invoice)} disabled={!['authorized', 'cancelled'].includes(invoice.status)} title="Exportar DANFE em folha A4"><Printer className="w-4 h-4" /> DANFE A4</Button>
-                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoiceXml(invoice)} disabled={invoice.status !== 'authorized'} title="Baixar XML autorizado"><Download className="w-4 h-4" /> XML</Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoiceXml(invoice)} disabled={!['authorized', 'cancelled'].includes(invoice.status)} title="Baixar XML autorizado"><Download className="w-4 h-4" /> XML</Button>
                     <Button size="sm" variant="secondary" onClick={() => handleCopyInvoiceKey(invoice)} title="Copiar chave de acesso"><Key className="w-4 h-4" /> Copiar chave</Button>
                     {sefazUrl && (
                       <a href={sefazUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-md transition-all hover:bg-gray-50" title="Consultar na SEFAZ pela chave de acesso">
@@ -20319,20 +20501,24 @@ const handleSubmit = async (e) => {
                       </a>
                     )}
                     {!isReadOnly && invoice.status === 'authorized' && (
-                      <Button size="sm" variant="danger" onClick={() => { setInvoiceToView(null); handleOpenCancelInvoice(invoice); }} title="Cancelar NFC-e autorizada"><X className="w-4 h-4" /> Cancelar NFC-e</Button>
+                      <Button size="sm" variant="danger" onClick={() => { setInvoiceToView(null); handleOpenCancelInvoice(invoice); }} title={`Cancelar ${invoice.model === 55 ? 'NF-e' : 'NFC-e'} autorizada`}><X className="w-4 h-4" /> Cancelar {invoice.model === 55 ? 'NF-e' : 'NFC-e'}</Button>
                     )}
                   </div>
+                </DetailSection>
+                <DetailSection title="Histórico fiscal">
+                  <div className="space-y-2 text-sm">{(invoice.history || []).map((entry, index) => <div key={index} className="rounded-lg border border-gray-100 bg-white p-2"><strong>{statusLabel[entry.status] || entry.action || entry.status}</strong> · {formatDateTime(entry.at)} · {entry.by || '-'}{entry.message ? ` · ${entry.message}` : ''}{entry.protocol ? ` · protocolo ${entry.protocol}` : ''}</div>)}</div>
                 </DetailSection>
               </div>
             );
           })()}
         </Modal>
 
-        <Modal isOpen={Boolean(invoiceToCancel)} onClose={() => { if (!busyOrderId) { setInvoiceToCancel(null); setCancelReason(''); setCancelError(''); } }} title="Cancelar nota fiscal" size="md">
+        <Modal isOpen={Boolean(invoiceToCancel)} onClose={() => { if (!busyOrderId) { setInvoiceToCancel(null); setCancelReason(''); setCancelError(''); } }} title={`Cancelar ${invoiceToCancel?.model === 55 ? 'NF-e' : 'NFC-e'} autorizada`} size="md">
           <form onSubmit={handleConfirmCancelInvoice} className="space-y-4">
             <div className="rounded-xl bg-red-50 border border-red-100 p-4 text-sm text-red-800">
               <p><strong>Nota:</strong> {invoiceToCancel ? `${invoiceToCancel.model || '-'} / ${invoiceToCancel.series || '-'} / ${invoiceToCancel.number || '-'}` : '-'}</p>
               <p><strong>Chave:</strong> {invoiceToCancel?.key || '-'}</p>
+              <p>Esta ação envia um evento fiscal de cancelamento.</p>
             </div>
             <Textarea
               label="Justificativa do cancelamento"
@@ -20348,6 +20534,19 @@ const handleSubmit = async (e) => {
               <Button variant="secondary" type="button" disabled={Boolean(busyOrderId)} onClick={() => { setInvoiceToCancel(null); setCancelReason(''); setCancelError(''); }}>Voltar</Button>
               <Button variant="danger" type="submit" disabled={Boolean(busyOrderId)}><X className="w-4 h-4" /> {busyOrderId ? 'Cancelando...' : 'Confirmar cancelamento'}</Button>
             </div>
+          </form>
+        </Modal>
+
+        <Modal isOpen={inutilizationOpen} onClose={() => { if (!inutilizationBusy) { setInutilizationOpen(false); setInutilizationConfirm(false); } }} title="Inutilizar Numeração" size="md">
+          <form onSubmit={submitInutilization} className="space-y-4">
+            <p className="text-sm text-gray-600">Esta operação é transmitida à SEFAZ. Use apenas números sem documento emitido ou reservado.</p>
+            <Select label="Modelo" value={inutilizationForm.model} disabled={inutilizationConfirm} onChange={(event) => setInutilizationForm((prev) => ({...prev, model: event.target.value, series: String(event.target.value === '55' ? settingsForm.nfeSeries : settingsForm.nfceSeries)}))}><option value="55">NF-e</option><option value="65">NFC-e</option></Select>
+            <Input label="Série" type="number" min="0" max="999" required disabled={inutilizationConfirm} value={inutilizationForm.series} onChange={(event) => setInutilizationForm((prev) => ({...prev, series: event.target.value}))} />
+            <div className="grid grid-cols-2 gap-3"><Input label="Número inicial" type="number" min="1" required disabled={inutilizationConfirm} value={inutilizationForm.start} onChange={(event) => setInutilizationForm((prev) => ({...prev, start: event.target.value}))} /><Input label="Número final" type="number" min="1" required disabled={inutilizationConfirm} value={inutilizationForm.end} onChange={(event) => setInutilizationForm((prev) => ({...prev, end: event.target.value}))} /></div>
+            <Input label="Ano da integração" type="number" value={inutilizationForm.year} readOnly />
+            <Textarea label="Justificativa" rows={3} minLength={15} maxLength={255} required disabled={inutilizationConfirm} value={inutilizationForm.reason} onChange={(event) => setInutilizationForm((prev) => ({...prev, reason: event.target.value}))} />
+            {inutilizationConfirm && <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900"><strong>Confirmar inutilização da numeração {inutilizationForm.start} a {inutilizationForm.end}?</strong><p>{inutilizationForm.model === '55' ? 'NF-e' : 'NFC-e'} · série {inutilizationForm.series} · ano {inutilizationForm.year}. Esta operação será transmitida ao ambiente fiscal.</p></div>}
+            <div className="flex justify-end gap-2"><Button type="button" variant="secondary" disabled={inutilizationBusy} onClick={() => { if (inutilizationConfirm) setInutilizationConfirm(false); else setInutilizationOpen(false); }}>{inutilizationConfirm ? 'Voltar' : 'Cancelar'}</Button><Button type="submit" disabled={inutilizationBusy}>{inutilizationBusy ? 'Transmitindo...' : inutilizationConfirm ? 'Confirmar inutilização' : 'Continuar'}</Button></div>
           </form>
         </Modal>
       </div>
