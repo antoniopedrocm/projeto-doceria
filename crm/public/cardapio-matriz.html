@@ -2512,7 +2512,6 @@
 
 			if (window.freteACombinar || (addressData?.lat != null && addressData?.lng != null)) {
 				try {
-					if (!window.freteACombinar) await window.aguardarGoogleMaps();
 					const resultado = await window.calcularFreteParaEndereco({ lat: Number(addressData?.lat), lng: Number(addressData?.lng) });
 					window.valorFrete = Number(resultado.valorFrete);
                     window.freteACombinar = resultado.freteACombinar === true;
@@ -3405,7 +3404,6 @@
         window.updateGuestSummary();
 
         try {
-            if (!window.freteACombinar) await window.aguardarGoogleMaps();
             const resultado = await window.calcularFreteParaEndereco(normalizedLatLng);
             const valorCalculado = parseFloat(resultado.valorFrete);
             window.valorFrete = Number.isFinite(valorCalculado) ? valorCalculado : 0;
@@ -3665,44 +3663,47 @@
 
 	// Função para calcular frete usando Google Distance Matrix API
 	async function calcularFreteParaEndereco(destinoLatLng) {
-        if (!window.dadosFrete) throw new Error('Configurações de frete não carregadas');
-        if (window.freteACombinar) {
+        if (window.dadosFrete && window.freteACombinar) {
             return {valorFrete: 0, freteACombinar: true, distanciaKm: null};
-        }
-        if (!window.google || !window.google.maps) throw new Error('Google Maps não carregado');
-        const loja = {lat: Number(window.dadosFrete.lat), lng: Number(window.dadosFrete.lng)};
-        if (window.dadosFrete.lat == null || window.dadosFrete.lng == null ||
-            String(window.dadosFrete.lat).trim() === '' || String(window.dadosFrete.lng).trim() === '' ||
-            !Number.isFinite(loja.lat) || Math.abs(loja.lat) > 90 ||
-            !Number.isFinite(loja.lng) || Math.abs(loja.lng) > 180) {
-            throw new Error('Coordenadas da loja inválidas. Corrija latitude e longitude em Configurações → Frete.');
         }
         if (!destinoLatLng || !Number.isFinite(destinoLatLng.lat) || Math.abs(destinoLatLng.lat) > 90 ||
             !Number.isFinite(destinoLatLng.lng) || Math.abs(destinoLatLng.lng) > 180) {
             throw new Error('Coordenadas do endereço de entrega inválidas.');
         }
-        const distanceKm = await new Promise((resolve, reject) => {
-            const service = new google.maps.DistanceMatrixService();
-            service.getDistanceMatrix({
-                origins: [loja], destinations: [destinoLatLng],
-                travelMode: google.maps.TravelMode.DRIVING,
-                unitSystem: google.maps.UnitSystem.METRIC
-            }, (response, status) => {
-                if (status !== 'OK' || response?.rows?.[0]?.elements?.[0]?.status !== 'OK') {
-                    console.error('Erro no Google Distance Matrix:', status, response);
-                    return reject(new Error('Não foi possível calcular a distância de entrega.'));
-                }
-                resolve(response.rows[0].elements[0].distance.value / 1000);
+        let requestBody = {clienteLat: destinoLatLng.lat, clienteLng: destinoLatLng.lng};
+        if (window.dadosFrete) {
+            const loja = {lat: Number(window.dadosFrete.lat), lng: Number(window.dadosFrete.lng)};
+            if (window.dadosFrete.lat == null || window.dadosFrete.lng == null ||
+                String(window.dadosFrete.lat).trim() === '' || String(window.dadosFrete.lng).trim() === '' ||
+                !Number.isFinite(loja.lat) || Math.abs(loja.lat) > 90 ||
+                !Number.isFinite(loja.lng) || Math.abs(loja.lng) > 180) {
+                throw new Error('Coordenadas da loja inválidas. Corrija latitude e longitude em Configurações → Frete.');
+            }
+            await window.aguardarGoogleMaps();
+            const distanceKm = await new Promise((resolve, reject) => {
+                const service = new google.maps.DistanceMatrixService();
+                service.getDistanceMatrix({
+                    origins: [loja], destinations: [destinoLatLng],
+                    travelMode: google.maps.TravelMode.DRIVING,
+                    unitSystem: google.maps.UnitSystem.METRIC
+                }, (response, status) => {
+                    if (status !== 'OK' || response?.rows?.[0]?.elements?.[0]?.status !== 'OK') {
+                        console.error('Erro no Google Distance Matrix:', status, response);
+                        return reject(new Error('Não foi possível calcular a distância de entrega.'));
+                    }
+                    resolve(response.rows[0].elements[0].distance.value / 1000);
+                });
             });
-        });
+            requestBody = {distanciaKm: distanceKm};
+        }
         const response = await fetch(`${window.API_BASE_URL}/frete/calcular?lojaId=${encodeURIComponent(window.STORE_ID)}`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({distanciaKm: distanceKm})
+            body: JSON.stringify(requestBody)
         });
         const quote = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(quote.message || 'Não foi possível calcular o frete.');
-        return {...quote, distanciaKm: distanceKm};
+        return quote;
     }
     window.calcularFreteParaEndereco = calcularFreteParaEndereco;
 

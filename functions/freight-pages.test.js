@@ -24,6 +24,7 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
       window: {
         dadosFrete: config, freteACombinar: false,
         API_BASE_URL: 'https://example.invalid', STORE_ID: `${page}-store`,
+        aguardarGoogleMaps: async () => undefined,
       },
       google: {maps: {
         DistanceMatrixService: class {getDistanceMatrix(_options, callback) {
@@ -33,7 +34,10 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
       }},
       fetch: async (url, options) => {
         calls.push({url, body: JSON.parse(options.body)});
-        return {ok: true, json: async () => quoteFreight({config, distanceKm: JSON.parse(options.body).distanciaKm})};
+        return {ok: true, json: async () => ({
+          ...quoteFreight({config, distanceKm: JSON.parse(options.body).distanciaKm}),
+          distanciaKm: JSON.parse(options.body).distanciaKm,
+        })};
       },
     };
     context.window.google = context.google;
@@ -44,6 +48,35 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
     assert.deepEqual(calls[0].body, {distanciaKm: 2.5});
     assert.ok(calls[0].url.includes(`lojaId=${page}-store`));
     assert.ok(html.includes('window.API_BASE_URL = API_BASE_URL;'));
+  });
+
+  test(`${page}: ausência da configuração no navegador usa cotação isolada no backend`, async () => {
+    const start = html.indexOf('async function calcularFreteParaEndereco(destinoLatLng)');
+    const end = html.indexOf('window.calcularFreteParaEndereco = calcularFreteParaEndereco;', start);
+    const calls = [];
+    const context = {
+      window: {
+        dadosFrete: null,
+        freteACombinar: false,
+        API_BASE_URL: 'https://example.invalid',
+        STORE_ID: `${page}-store`,
+      },
+      fetch: async (url, options) => {
+        calls.push({url, body: JSON.parse(options.body)});
+        return {ok: true, json: async () => ({
+          valorFrete: 12.38,
+          freteACombinar: false,
+          tipoFrete: 'calculado',
+          distanciaKm: 6.191,
+        })};
+      },
+    };
+    vm.runInNewContext(html.slice(start, end), context);
+    const result = await context.calcularFreteParaEndereco({lat: -16.68, lng: -49.28});
+    assert.equal(result.valorFrete, 12.38);
+    assert.equal(result.distanciaKm, 6.191);
+    assert.deepEqual(calls[0].body, {clienteLat: -16.68, clienteLng: -49.28});
+    assert.ok(calls[0].url.includes(`lojaId=${page}-store`));
   });
 
   test(`${page}: bloqueia origem inválida antes da chamada ao Google`, async () => {
