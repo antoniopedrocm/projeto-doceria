@@ -15,6 +15,8 @@ import {
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
+import { Capacitor } from '@capacitor/core';
+import { shouldUseFirebaseEmulators } from './firebaseRuntime.js';
 import {
   getMessaging,
   getToken,
@@ -26,7 +28,11 @@ import {
 const envVar = (key) => process.env[key] || import.meta.env?.[key] || '';
 const DEV_PROJECT_ID = 'crmdoceria-9959e';
 const LOCAL_PROJECT_ID = 'demo-doceria-checkout';
-const isLocalPreview = typeof window !== 'undefined' && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+const isNativePlatform = Capacitor.isNativePlatform();
+const isLocalPreview = shouldUseFirebaseEmulators({
+  hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+  isNativePlatform,
+});
 
 const normalizeStorageBucket = (bucket) => {
   const normalizedBucket = String(bucket || '').trim().replace(/^gs:\/\//i, '');
