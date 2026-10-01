@@ -207,6 +207,22 @@ test('permissões e loja específica são exigidas', async () => {
   await assert.rejects(api.fiscalSaveDraft({auth: {uid: 'owner'}, data: {lojaId: 'all', model: 55, manualInvoice: form()}}), /Selecione uma loja específica/);
 });
 
+test('NCM adicional é salvo por loja na configuração fiscal e duplicatas são recusadas', async () => {
+  const before = await call('fiscalGetConfiguration', {});
+  assert.equal(before.ncmOptions.some((item) => item.code === '21069090'), false);
+  const saved = await call('fiscalSaveNcmOption', {code: '2106.90.90', description: 'Descrição informada pelo contador'});
+  assert.deepEqual(saved.option, {code: '21069090', description: 'Descrição informada pelo contador'});
+  const after = await call('fiscalGetConfiguration', {});
+  assert.ok(after.ncmOptions.some((item) => item.code === '21069090'));
+  assert.equal(records.get(`lojas/${storeId}/fiscalConfig/settings`).ncmOptions[0].createdByUid, 'owner');
+  await call('fiscalSaveConfiguration', {issuer: {}, settings: {nfeSeries: 1, nfceSeries: 2}});
+  assert.ok((await call('fiscalGetConfiguration', {})).ncmOptions.some((item) => item.code === '21069090'));
+  await assert.rejects(call('fiscalSaveNcmOption', {code: '21069090', description: 'Outra descrição'}), /já está cadastrado/);
+  await assert.rejects(call('fiscalSaveNcmOption', {code: '2106909', description: 'Código curto'}), /8 dígitos/);
+  await assert.rejects(call('fiscalSaveNcmOption', {code: '19059090', description: 'Opção inicial'}), /já está disponível/);
+  await assert.rejects(call('fiscalSaveNcmOption', {code: '23099010', description: 'Cadastro sem acesso'}, 'manager'), /não tem acesso fiscal/);
+});
+
 test('serviço sem rota de inutilização bloqueia antes de reservar a numeração', async () => {
   const previous = global.fetch;
   global.fetch = async (url, options) => new URL(url).pathname === '/capabilities'

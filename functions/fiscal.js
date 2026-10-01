@@ -1699,6 +1699,10 @@ const createFiscalFunctions = ({
         return {
           issuer: issuerSnap.exists ? issuerSnap.data() || {} : null,
           settings: await loadSettings(lojaId),
+          ncmOptions: Array.isArray(rawSettings.ncmOptions)
+            ? rawSettings.ncmOptions.filter((item) => /^\d{8}$/.test(String(item?.code || '')))
+              .map((item) => ({code: item.code, description: cleanText(item.description).slice(0, 120)}))
+            : [],
           certificate: publicCertificateInfo(certificate),
           platformService: requester.role === 'dono' && requester.allStores ? {
             serviceUrl: getServiceConfig().serviceUrl,
@@ -1708,6 +1712,45 @@ const createFiscalFunctions = ({
         };
       } catch (error) {
         logger.error('fiscalGetConfiguration failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
+    fiscalSaveNcmOption: onCall(async (request) => {
+      try {
+        const {uid, lojaId} = await requireCallableContext(request);
+        const inputCode = trimText(request.data?.code);
+        const code = onlyDigits(inputCode);
+        const description = trimText(request.data?.description);
+        if (!/^(?:\d{8}|\d{4}\.\d{2}\.\d{2})$/.test(inputCode) || code.length !== 8) {
+          throw new HttpsError('invalid-argument', 'Informe o NCM com 8 dígitos, com ou sem pontos.');
+        }
+        if (description.length < 3 || description.length > 120) {
+          throw new HttpsError('invalid-argument', 'Informe uma descrição de 3 a 120 caracteres para identificar o NCM.');
+        }
+        if (['19059090', '17049090', '18069000'].includes(code)) {
+          throw new HttpsError('already-exists', 'Este NCM já está disponível na lista inicial.');
+        }
+        const settingsRef = db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings');
+        const option = await db.runTransaction(async (transaction) => {
+          const snap = await transaction.get(settingsRef);
+          const options = Array.isArray(snap.get('ncmOptions')) ? snap.get('ncmOptions') : [];
+          if (options.some((item) => item?.code === code)) {
+            throw new HttpsError('already-exists', 'Este NCM já está cadastrado para esta loja.');
+          }
+          if (options.length >= 500) {
+            throw new HttpsError('resource-exhausted', 'Limite de NCMs cadastrados nesta configuração fiscal atingido.');
+          }
+          transaction.set(settingsRef, {
+            ncmOptions: [...options, {code, description, createdAt: admin.firestore.Timestamp.now(), createdByUid: uid}],
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedByUid: uid,
+          }, {merge: true});
+          return {code, description};
+        });
+        return {option};
+      } catch (error) {
+        logger.error('fiscalSaveNcmOption failed', error);
         throw normalizeHttpsError(error);
       }
     }),
