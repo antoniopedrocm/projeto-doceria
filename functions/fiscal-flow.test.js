@@ -143,6 +143,25 @@ test('rascunho salva sem transmitir, permanece editável e a checagem lista pend
   await assert.rejects(call('fiscalSaveDraft', {draftId: saved.draftId, model: 55, manualInvoice: form()}), /Somente rascunhos/);
 });
 
+test('rascunho manual é salvo mesmo sem modelo e só libera emissão após completar e validar', async () => {
+  const input = form();
+  input.customer.name = '';
+  const issueCallsBefore = sent.filter((item) => item.path === '/issue').length;
+  const saved = await call('fiscalSaveDraft', {model: null, manualInvoice: input});
+  assert.equal(records.get(`lojas/${storeId}/invoices/${saved.draftId}`).status, 'draft');
+  assert.equal(records.get(`lojas/${storeId}/invoices/${saved.draftId}`).model, null);
+  assert.equal(sent.filter((item) => item.path === '/issue').length, issueCallsBefore);
+  const incomplete = await call('fiscalCheckDraft', {draftId: saved.draftId});
+  assert.equal(incomplete.ok, false);
+  assert.match(incomplete.errors.join(' '), /selecione NF-e ou NFC-e/);
+  input.customer.name = 'Maria Silva';
+  await call('fiscalSaveDraft', {draftId: saved.draftId, model: 55, manualInvoice: input});
+  const ready = await call('fiscalCheckDraft', {draftId: saved.draftId});
+  assert.equal(ready.ok, true);
+  assert.equal(records.get(`lojas/${storeId}/invoices/${saved.draftId}`).number, null);
+  assert.equal(sent.filter((item) => item.path === '/issue').length, issueCallsBefore);
+});
+
 test('NFC-e usa modelo próprio; cancelamento e inutilização são operações distintas', async () => {
   const saved = await call('fiscalSaveDraft', {model: 65, manualInvoice: form()});
   assert.equal((await call('fiscalCheckDraft', {draftId: saved.draftId})).ok, true);
@@ -168,7 +187,11 @@ test('pedido antigo pode ser preparado, checado e emitido como NF-e sem gerar NF
     itens: [{produtoId: 'brigadeiro', nome: 'Brigadeiro', preco: 10, quantity: 2, fiscal: {ncm: '19059090', unit: 'un', origin: 0, csosn: '102', pisCst: '49', cofinsCst: '49'}}],
     total: 20,
   });
+  const pending = await call('fiscalSaveDraft', {orderId, model: null, operationCfop: ''});
+  assert.equal(records.get(`lojas/${storeId}/invoices/${pending.draftId}`).number, null);
+  assert.match((await call('fiscalCheckDraft', {draftId: pending.draftId})).errors.join(' '), /selecione NF-e ou NFC-e/);
   const saved = await call('fiscalSaveDraft', {orderId, model: 55, operationCfop: '5101'});
+  assert.equal(saved.draftId, pending.draftId);
   assert.equal(saved.status, 'draft');
   assert.equal(records.get(`lojas/${storeId}/invoices/${saved.draftId}`).number, null);
   assert.equal((await call('fiscalCheckDraft', {draftId: saved.draftId})).ok, true);

@@ -1330,6 +1330,9 @@ const createFiscalFunctions = ({
   };
 
   const checkDraft = async ({lojaId, draftId, draft, uid}) => {
+    if (![55, 65].includes(Number(draft.model))) {
+      return {ok: false, errors: ['Documento: selecione NF-e ou NFC-e.'], warnings: [], preview: null};
+    }
     const errors = [];
     let prepared;
     try {
@@ -1394,9 +1397,9 @@ const createFiscalFunctions = ({
     fiscalSaveDraft: onCall(async (request) => {
       try {
         const {uid, lojaId} = await requireCallableContext(request);
-        const model = Number(request.data?.model);
+        const selectedModel = Number(request.data?.model);
+        const model = [55, 65].includes(selectedModel) ? selectedModel : null;
         const manualInvoice = request.data?.manualInvoice;
-        if (![55, 65].includes(model)) throw new HttpsError('invalid-argument', 'Selecione explicitamente NF-e ou NFC-e.');
         const orderId = trimText(request.data?.orderId);
         if (orderId) {
           if (orderId.includes('/')) throw new HttpsError('invalid-argument', 'Pedido inválido.');
@@ -1409,7 +1412,9 @@ const createFiscalFunctions = ({
           if (!['Finalizado', 'Aprovado', 'ready_for_invoice', 'approved'].includes(order.status) && !order.approvedForInvoice) {
             throw new HttpsError('failed-precondition', 'Pedido ainda não está aprovado para nota fiscal.');
           }
-          const ref = draftRefFor(lojaId, `draft_${orderId}_${model}`);
+          const pendingRef = draftRefFor(lojaId, `draft_${orderId}_pending`);
+          const pendingSnap = model ? await pendingRef.get() : null;
+          const ref = pendingSnap?.exists ? pendingRef : draftRefFor(lojaId, `draft_${orderId}_${model || 'pending'}`);
           const result = await db.runTransaction(async (transaction) => {
             const snap = await transaction.get(ref);
             if (snap.exists && snap.get('status') !== INVOICE_STATUS.DRAFT) throw new HttpsError('failed-precondition', 'A nota deste pedido já iniciou emissão.');
@@ -1418,7 +1423,7 @@ const createFiscalFunctions = ({
               lojaId, orderId, origin: 'order', model, status: INVOICE_STATUS.DRAFT, version, number: null,
               additionalInfo: trimText(request.data?.additionalInfo || order.observacao || order.additionalInfo),
               operationCfop: onlyDigits(request.data?.operationCfop),
-              customerName: trimText(order.clienteNome), total: money(order.total),
+              customerName: trimText(order.clienteNome), total: money(Number(order.total) || 0),
               updatedAt: FieldValue.serverTimestamp(),
               ...(!snap.exists ? {createdAt: FieldValue.serverTimestamp(), createdByUid: uid} : {}),
               history: FieldValue.arrayUnion({status: INVOICE_STATUS.DRAFT, action: snap.exists ? 'edited' : 'created', at: admin.firestore.Timestamp.now(), by: uid}),
@@ -1444,9 +1449,6 @@ const createFiscalFunctions = ({
           }
           if (snap.exists && current.origin !== 'manual') {
             throw new HttpsError('failed-precondition', 'Rascunho de pedido deve ser editado pelo fluxo do pedido.');
-          }
-          if (snap.exists && Number(current.model) !== model) {
-            throw new HttpsError('failed-precondition', 'O modelo do rascunho não pode ser alterado. Crie outro rascunho.');
           }
           const version = Number(current.version || 0) + 1;
           const customer = manualInvoice.customer || {};

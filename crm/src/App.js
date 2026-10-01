@@ -1280,9 +1280,11 @@ const Table = ({ columns, data, actions = [] }) => (
                                         <div className="flex justify-end gap-2">
                                             {visibleActions.map((action, actionIndex) => {
                                                 const actionLabel = typeof action.label === 'function' ? action.label(row) : action.label;
+                                                const actionDisabled = typeof action.isDisabled === 'function' ? action.isDisabled(row) : Boolean(action.disabled);
                                                 return (
-                                                <button key={actionIndex} onClick={() => action.onClick(row)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title={actionLabel}>
+                                                <button key={actionIndex} onClick={() => action.onClick(row)} disabled={actionDisabled} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg p-2 text-sm transition-colors ${actionDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-gray-100'}`} title={actionLabel}>
                                                     <action.icon className="w-4 h-4 text-gray-600" />
+                                                    {action.showLabel && <span>{actionLabel}</span>}
                                                 </button>
                                             )})}
                                         </div>
@@ -1316,8 +1318,9 @@ const Table = ({ columns, data, actions = [] }) => (
                         <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-gray-100">
                             {visibleActions.map((action, actionIndex) => {
                                 const actionLabel = typeof action.label === 'function' ? action.label(row) : action.label;
+                                const actionDisabled = typeof action.isDisabled === 'function' ? action.isDisabled(row) : Boolean(action.disabled);
                                 return (
-                                <button key={actionIndex} onClick={() => action.onClick(row)} className="flex items-center gap-2 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-sm text-gray-700" title={actionLabel}>
+                                <button key={actionIndex} onClick={() => action.onClick(row)} disabled={actionDisabled} className={`flex items-center gap-2 p-2 bg-gray-100 rounded-lg transition-colors text-sm text-gray-700 ${actionDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-gray-200'}`} title={actionLabel}>
                                     <action.icon className="w-4 h-4" />
                                     <span>{actionLabel}</span>
                                 </button>
@@ -16866,6 +16869,12 @@ const handleSubmit = async (e) => {
       stockMovementRequested: false,
       items: [createManualInvoiceItemDraft()]
     }));
+    const manualInvoiceFormRef = useRef(manualInvoiceForm);
+    manualInvoiceFormRef.current = manualInvoiceForm;
+    useEffect(() => {
+      setDraftCheck(null);
+      setManualInvoiceError('');
+    }, [manualInvoiceForm]);
     const [cancelReason, setCancelReason] = useState('');
     const [cancelError, setCancelError] = useState('');
     const [orderToEditBeforeInvoice, setOrderToEditBeforeInvoice] = useState(null);
@@ -17957,38 +17966,21 @@ const handleSubmit = async (e) => {
       const draftId = saved.data?.draftId;
       const fn = httpsCallable(functions, 'fiscalCheckDraft');
       const response = await fn(callablePayload({draftId}));
-      const result = {...(response.data || {}), draftId, model: Number(modelOverride)};
+      const result = {...(response.data || {}), draftId, model: modelOverride ? Number(modelOverride) : null, operationCfop};
       setValidationByOrder((prev) => ({ ...prev, [order.id]: result }));
       return result;
     };
 
-    const handleSaveOrderDraft = async (order) => {
-      if (isReadOnly || !modelOverride || !effectiveStoreId) {
-        setMessage({type: 'error', text: 'Selecione a loja e o modelo NF-e ou NFC-e.'});
-        return;
-      }
-      setBusyOrderId(`save:${order.id}`);
-      try {
-        const fn = httpsCallable(functions, 'fiscalSaveDraft');
-        await fn(callablePayload({orderId: order.id, model: Number(modelOverride), operationCfop, additionalInfo: order.observacao || order.additionalInfo || ''}));
-        setMessage({type: 'success', text: `Rascunho ${modelOverride === '55' ? 'NF-e' : 'NFC-e'} salvo sem transmissão.`});
-      } catch (error) {
-        setMessage({type: 'error', text: error?.message || 'Não foi possível salvar o rascunho.'});
-      } finally {
-        setBusyOrderId('');
-      }
-    };
-
     const handleViewOrderDraft = async (invoice) => {
       if (invoice.status !== 'draft' || !invoice.orderId) return;
-      setModelOverride(String(invoice.model));
+      setModelOverride(invoice.model ? String(invoice.model) : '');
       setActiveTab('emitir');
       const order = ordersById.get(invoice.orderId);
       if (!order) return;
       try {
         const fn = httpsCallable(functions, 'fiscalCheckDraft');
         const response = await fn(callablePayload({draftId: invoice.id}));
-        setValidationByOrder((prev) => ({...prev, [invoice.orderId]: {...response.data, model: invoice.model, draftId: invoice.id}}));
+        setValidationByOrder((prev) => ({...prev, [invoice.orderId]: {...response.data, model: invoice.model, draftId: invoice.id, operationCfop: invoice.operationCfop}}));
       } catch (error) {
         setMessage({type: 'error', text: error?.message || 'Não foi possível visualizar o rascunho.'});
       }
@@ -17996,20 +17988,26 @@ const handleSubmit = async (e) => {
 
     const handleValidateOrder = async (order) => {
       if (isReadOnly) return;
-      if (!modelOverride) { setMessage({type: 'error', text: 'Selecione NF-e ou NFC-e antes da checagem.'}); return; }
       if (!effectiveStoreId) {
         setMessage({ type: 'error', text: 'Selecione uma loja específica para validar notas.' });
         return;
       }
       setBusyOrderId(`validate:${order.id}`);
       setMessage(null);
+      setValidationByOrder((prev) => {
+        const next = {...prev};
+        delete next[order.id];
+        return next;
+      });
 
       try {
         const result = await requestOrderValidation(order);
         const hasErrors = Array.isArray(result.errors) && result.errors.length > 0;
         setMessage({
           type: hasErrors ? 'error' : 'success',
-          text: hasErrors ? result.errors.join(' ') : 'Pedido validado para emissão fiscal.'
+          text: hasErrors
+            ? `Rascunho salvo sem emissão. Pendências: ${result.errors.join(' ')}`
+            : 'Rascunho salvo e validado. Emitir Nota Fiscal está habilitado.'
         });
       } catch (error) {
         console.error('[NotaFiscal] Validação fiscal falhou:', error);
@@ -18030,7 +18028,15 @@ const handleSubmit = async (e) => {
       setMessage(null);
 
       try {
-        const validation = await requestOrderValidation(order);
+        const previous = validationByOrder[order.id];
+        if (!previous?.ok || !previous.draftId || previous.model !== Number(modelOverride) || previous.operationCfop !== operationCfop) {
+          setMessage({type: 'error', text: 'Salve e valide novamente antes de emitir esta nota.'});
+          return;
+        }
+        const fn = httpsCallable(functions, 'fiscalCheckDraft');
+        const response = await fn(callablePayload({draftId: previous.draftId}));
+        const validation = {...(response.data || {}), draftId: previous.draftId, model: previous.model, operationCfop};
+        setValidationByOrder((prev) => ({...prev, [order.id]: validation}));
         if (validation.ok !== true || (Array.isArray(validation.errors) && validation.errors.length > 0)) {
           const hasItemIssues = Array.isArray(validation.itemIssues) && validation.itemIssues.length > 0;
           setMessage({
@@ -18135,7 +18141,7 @@ const handleSubmit = async (e) => {
       if (isReadOnly || invoice.status !== 'draft' || !invoice.manualInvoice) return;
       setManualInvoiceForm({
         ...invoice.manualInvoice,
-        modelOverride: String(invoice.model),
+        modelOverride: invoice.model ? String(invoice.model) : '',
         items: (invoice.manualInvoice.items || []).map((item, index) => ({...item, draftId: item.draftId || `saved-${index}`}))
       });
       setManualDraftId(invoice.id);
@@ -18149,7 +18155,7 @@ const handleSubmit = async (e) => {
       if (invoice.status !== 'draft' || !invoice.manualInvoice) return;
       setManualInvoiceForm({
         ...invoice.manualInvoice,
-        modelOverride: String(invoice.model),
+        modelOverride: invoice.model ? String(invoice.model) : '',
         items: (invoice.manualInvoice.items || []).map((item, index) => ({...item, draftId: item.draftId || `saved-${index}`}))
       });
       setManualDraftId(invoice.id);
@@ -18252,19 +18258,18 @@ const handleSubmit = async (e) => {
       }));
     };
 
-    const saveManualDraft = async (openPreview = false) => {
+    const saveManualDraft = async ({validate = false, openPreview = false} = {}) => {
       if (isReadOnly || manualInvoiceSaving) return;
       if (!effectiveStoreId) {
         setManualInvoiceError('Selecione uma loja específica.');
         return;
       }
-      const model = Number(manualInvoiceForm.modelOverride);
-      if (![55, 65].includes(model)) {
-        setManualInvoiceError('Selecione NF-e ou NFC-e antes de salvar.');
-        return;
-      }
+      const selectedModel = Number(manualInvoiceForm.modelOverride);
+      const model = [55, 65].includes(selectedModel) ? selectedModel : null;
       setManualInvoiceSaving(true);
       setManualInvoiceError('');
+      setDraftCheck(null);
+      const submittedForm = JSON.stringify(manualInvoiceForm);
       try {
         const fn = httpsCallable(functions, 'fiscalSaveDraft');
         const response = await fn(callablePayload({
@@ -18277,10 +18282,32 @@ const handleSubmit = async (e) => {
         }));
         const id = response.data?.draftId;
         setManualDraftId(id);
-        setDraftCheck(null);
-        setShowManualInvoiceModal(false);
-        if (openPreview) setPreviewDraftId(id);
-        else setMessage({type: 'success', text: `Rascunho ${model === 55 ? 'NF-e' : 'NFC-e'} salvo sem transmissão fiscal.`});
+        if (JSON.stringify(manualInvoiceFormRef.current) !== submittedForm) {
+          setManualInvoiceError('Rascunho salvo. Há alterações feitas durante o salvamento; clique em Salvar e Validar novamente.');
+          return;
+        }
+        if (validate) {
+          try {
+            const check = httpsCallable(functions, 'fiscalCheckDraft');
+            const checked = await check(callablePayload({draftId: id}));
+            const result = checked.data || {ok: false, errors: ['Não foi possível concluir a checagem.'], warnings: []};
+            if (JSON.stringify(manualInvoiceFormRef.current) !== submittedForm) {
+              setManualInvoiceError('Rascunho salvo. Há alterações ainda não validadas; clique em Salvar e Validar novamente.');
+              return;
+            }
+            setDraftCheck(result);
+            setManualInvoiceError(result.ok
+              ? 'Rascunho salvo e validado. A emissão já pode ser confirmada.'
+              : 'Rascunho salvo. Corrija as pendências abaixo e clique novamente em Salvar e Validar.');
+          } catch (error) {
+            setDraftCheck({ok: false, errors: [error?.message || 'Não foi possível validar o rascunho salvo.'], warnings: []});
+            setManualInvoiceError('Rascunho salvo. A checagem não foi concluída; tente novamente.');
+          }
+        } else {
+          setShowManualInvoiceModal(false);
+          if (openPreview) setPreviewDraftId(id);
+          else setMessage({type: 'success', text: `Rascunho ${model === 55 ? 'NF-e' : model === 65 ? 'NFC-e' : 'de nota fiscal'} salvo sem transmissão fiscal.`});
+        }
       } catch (error) {
         setManualInvoiceError(error?.message || 'Não foi possível salvar o rascunho.');
       } finally {
@@ -19313,9 +19340,13 @@ const handleSubmit = async (e) => {
         onClick: handleOpenPreInvoiceOrderEdit,
         isVisible: (row) => !getPreInvoiceLockedReason(row)
       },
-      { icon: Save, label: `Salvar rascunho ${modelOverride === '55' ? 'NF-e' : modelOverride === '65' ? 'NFC-e' : ''}`, onClick: handleSaveOrderDraft, isVisible: (row) => !getPreInvoiceLockedReason(row) },
-      { icon: RefreshCw, label: 'Checar requisitos', onClick: handleValidateOrder },
-      { icon: Printer, label: `Emitir ${modelOverride === '55' ? 'NF-e' : modelOverride === '65' ? 'NFC-e' : 'nota (selecione modelo)'}`, onClick: handleIssueOrder }
+      { icon: Save, label: 'Salvar e Validar', showLabel: true, onClick: handleValidateOrder,
+        isVisible: (row) => !getPreInvoiceLockedReason(row), isDisabled: () => busyOrderId !== '' },
+      { icon: Printer, label: `Emitir Nota Fiscal — ${modelOverride === '55' ? 'NF-e' : modelOverride === '65' ? 'NFC-e' : 'selecione o modelo'}`, onClick: handleIssueOrder,
+        showLabel: true,
+        isVisible: (row) => !getPreInvoiceLockedReason(row),
+        isDisabled: (row) => busyOrderId !== '' || validationByOrder[row.id]?.ok !== true || !validationByOrder[row.id]?.draftId
+          || validationByOrder[row.id]?.model !== Number(modelOverride) || validationByOrder[row.id]?.operationCfop !== operationCfop }
     ];
 
     const invoiceColumns = [
@@ -19506,7 +19537,7 @@ const handleSubmit = async (e) => {
             )}
             {Object.entries(validationByOrder).map(([orderId, result]) => (
               <div key={orderId} className={`p-4 rounded-xl border text-sm ${result.ok === false ? 'bg-red-50 border-red-200 text-red-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
-                <p className="font-semibold">PRÉVIA — DOCUMENTO NÃO EMITIDO · {result.model === 55 ? 'NF-e' : 'NFC-e'} · pedido {orderId.slice(0, 8)}</p>
+                <p className="font-semibold">PRÉVIA — DOCUMENTO NÃO EMITIDO · {result.model === 55 ? 'NF-e' : result.model === 65 ? 'NFC-e' : 'modelo pendente'} · pedido {orderId.slice(0, 8)}</p>
                 {result.errors?.length ? <p>{result.errors.join(' ')}</p> : <p>Modelo {result.model}, série {result.series}, próximo número {result.number}. Total: R$ {(result.totals?.invoice || 0).toFixed(2)}</p>}
                 {result.preview && (
                   <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 text-gray-800">
@@ -20143,7 +20174,6 @@ const handleSubmit = async (e) => {
                 <Select
                   label="Modelo"
                   value={manualInvoiceForm.modelOverride}
-                  disabled={Boolean(manualDraftId)}
                   onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, modelOverride: event.target.value }))}
                 >
                   <option value="">Selecione o modelo</option>
@@ -20284,7 +20314,13 @@ const handleSubmit = async (e) => {
             </section>
 
             {manualInvoiceError && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{manualInvoiceError}</div>
+              <div className={`rounded-xl border p-3 text-sm ${draftCheck?.ok ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{manualInvoiceError}</div>
+            )}
+            {draftCheck?.errors?.length > 0 && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                <p className="font-semibold">Campos obrigatórios ou valores incorretos:</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">{draftCheck.errors.map((error, index) => <li key={`${index}-${error}`}>{error}</li>)}</ul>
+              </div>
             )}
 
             <div className="flex justify-end gap-3 pt-2">
@@ -20299,21 +20335,29 @@ const handleSubmit = async (e) => {
               >
                 Cancelar
               </Button>
-              <Button type="button" variant="secondary" onClick={() => saveManualDraft(false)} disabled={manualInvoiceSaving}>
+              <Button type="button" variant="secondary" onClick={() => saveManualDraft()} disabled={manualInvoiceSaving}>
                 <Save className="w-4 h-4" /> {manualInvoiceSaving ? 'Salvando...' : `Salvar rascunho ${manualInvoiceForm.modelOverride === '55' ? 'NF-e' : manualInvoiceForm.modelOverride === '65' ? 'NFC-e' : ''}`}
               </Button>
-              <Button type="button" onClick={() => saveManualDraft(true)} disabled={manualInvoiceSaving}>
+              <Button type="button" variant="secondary" onClick={() => saveManualDraft({openPreview: true})} disabled={manualInvoiceSaving}>
                 <Eye className="w-4 h-4" /> Visualizar Nota
               </Button>
+              <Button type="button" onClick={() => saveManualDraft({validate: true})} disabled={manualInvoiceSaving}>
+                <RefreshCw className="w-4 h-4" /> {manualInvoiceSaving ? 'Salvando...' : 'Salvar e Validar'}
+              </Button>
+              {manualDraftId && draftCheck?.ok && (
+                <Button type="button" onClick={() => { setShowManualInvoiceModal(false); setPreviewDraftId(manualDraftId); setConfirmDraftIssue(true); }} disabled={manualInvoiceSaving}>
+                  <Printer className="w-4 h-4" /> Emitir Nota Fiscal — {manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'}
+                </Button>
+              )}
             </div>
           </form>
         </Modal>
 
-        <Modal isOpen={Boolean(previewDraftId)} onClose={() => { if (!manualInvoiceSaving) setPreviewDraftId(''); }} title={`PRÉVIA ${manualInvoiceForm.modelOverride === '55' ? 'NF-e / DANFE' : 'NFC-e / cupom'}`} size="xl">
+        <Modal isOpen={Boolean(previewDraftId)} onClose={() => { if (!manualInvoiceSaving) setPreviewDraftId(''); }} title={`PRÉVIA ${manualInvoiceForm.modelOverride === '55' ? 'NF-e / DANFE' : manualInvoiceForm.modelOverride === '65' ? 'NFC-e / cupom' : 'Nota Fiscal — modelo pendente'}`} size="xl">
           <div className="space-y-4">
             <div className="rounded-xl border-2 border-orange-300 bg-orange-50 p-4 text-center font-bold text-orange-900">PRÉVIA — DOCUMENTO NÃO EMITIDO · SEM VALIDADE FISCAL</div>
             <div className={`rounded-xl border border-gray-200 bg-white p-5 ${manualInvoiceForm.modelOverride === '65' ? 'mx-auto max-w-md font-mono' : ''}`}>
-              <h3 className="text-center text-lg font-bold">{manualInvoiceForm.modelOverride === '55' ? 'Prévia de NF-e — DANFE' : 'Prévia de NFC-e — DANFE NFC-e'}</h3>
+              <h3 className="text-center text-lg font-bold">{manualInvoiceForm.modelOverride === '55' ? 'Prévia de NF-e — DANFE' : manualInvoiceForm.modelOverride === '65' ? 'Prévia de NFC-e — DANFE NFC-e' : 'Prévia de Nota Fiscal — selecione o modelo'}</h3>
               <p className="mt-3"><strong>Emitente:</strong> {issuerForm.legalName} · {issuerForm.cnpj}</p>
               <p><strong>Destinatário:</strong> {manualInvoiceForm.customer?.name || 'Não informado'} · {manualInvoiceForm.customer?.document || 'Documento pendente'}</p>
               <p><strong>Endereço:</strong> {[manualInvoiceForm.customer?.address?.street, manualInvoiceForm.customer?.address?.number, manualInvoiceForm.customer?.address?.city, manualInvoiceForm.customer?.address?.state, manualInvoiceForm.customer?.address?.zip].filter(Boolean).join(', ') || 'Pendente'}</p>
@@ -20334,7 +20378,7 @@ const handleSubmit = async (e) => {
             <div className="flex flex-wrap justify-end gap-2">
               {!isReadOnly && <Button variant="secondary" onClick={() => { setPreviewDraftId(''); setShowManualInvoiceModal(true); }} disabled={manualInvoiceSaving}><Edit className="w-4 h-4" /> Voltar para edição</Button>}
               {!isReadOnly && <Button variant="secondary" onClick={checkManualDraft} disabled={manualInvoiceSaving}><RefreshCw className="w-4 h-4" /> Checar requisitos</Button>}
-              {!isReadOnly && <Button onClick={() => setConfirmDraftIssue(true)} disabled={manualInvoiceSaving || !draftCheck?.ok}><Printer className="w-4 h-4" /> Emitir {manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'}</Button>}
+              {!isReadOnly && <Button onClick={() => setConfirmDraftIssue(true)} disabled={manualInvoiceSaving || !draftCheck?.ok}><Printer className="w-4 h-4" /> Emitir Nota Fiscal — {manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'}</Button>}
             </div>
           </div>
         </Modal>
@@ -20350,7 +20394,7 @@ const handleSubmit = async (e) => {
           </form>
         </Modal>
 
-        <Modal isOpen={Boolean(invoiceToView)} onClose={() => setInvoiceToView(null)} title={`Detalhes da ${invoiceToView?.model === 55 ? 'NF-e' : 'NFC-e'}`} size="xl">
+        <Modal isOpen={Boolean(invoiceToView)} onClose={() => setInvoiceToView(null)} title={`Detalhes da ${invoiceToView?.model === 55 ? 'NF-e' : invoiceToView?.model === 65 ? 'NFC-e' : 'nota fiscal em preparação'}`} size="xl">
           {invoiceToView && (() => {
             const invoice = invoiceToView;
             const order = getInvoiceOrder(invoice);
