@@ -289,7 +289,7 @@ A numeração abaixo substitui a antiga. Trabalho já iniciado permanece preserv
 | 3 | E-mail/senha: cadastro, login, logout, recuperação e verificação nativa não bloqueante implementados localmente; integração completa pendente |
 | 4 | Customer autenticado: telefone obrigatório sem validação inicial; vínculos Google e e-mail por identidade estável, idempotentes e sem merge automático; integração completa pendente |
 | 5 | Base Minha Conta **parcial**: perfil básico, inclusão/exclusão de endereços, segurança básica, pedidos recentes e política de cartões existem; completar telefone/e-mail, criação da conta, senha, edição/padrão de endereço e texto InfinitePay |
-| 6 | Área do Cliente **parcial**: entrada separada da equipe, sessão pública e checkout sem nova identificação existem; completar M1, shell responsivo, Página Inicial, rotas protegidas e logout consistente |
+| 6 | Área do Cliente **parcial**: entrada separada da equipe, sessão pública, checkout sem nova identificação e M1 de logout/troca entre abas concluídos; completar shell responsivo, Página Inicial e rotas protegidas |
 | 6A | Meu Perfil: consolidar dados pessoais, endereços, segurança por provider e Formas de Pagamento conforme arquitetura definitiva; **parcial** |
 | 6B | Meus Pedidos: lista paginada, detalhe histórico, estados e comprovante com autorização por Customer; **parcial**, pois existe apenas lista resumida limitada a 50 |
 | 6C | Comprar Novamente: reconstrução segura pelo catálogo/loja atuais, conflitos de carrinho e indisponibilidades; **pendente** |
@@ -297,7 +297,7 @@ A numeração abaixo substitui a antiga. Trabalho já iniciado permanece preserv
 | 8 | Configuração gráfica e conta recebedora por loja implementadas localmente: permissão específica, escopo, auditoria transacional, confirmação forte, flags, dados dinâmicos e falha segura. Checkout Pix/cartão via link e `order_nsu` seguem em validação integrada; cartões salvos são gerenciados exclusivamente no checkout InfinitePay |
 | 9 | Webhook: validação, idempotência, reconciliação e confirmação server-side. Parte testada em emulação; completar cenários de recuperação |
 | 10 | Recuperação opcional do legado mediante prova de posse do telefone; somente então associar histórico/endereços. Não implementar OTP agora |
-| 11 | Testes locais completos: celular inalterado, Google/e-mail sem validação inicial, isolamento de Customer/legado e equipe, sessão home/checkout, endereços/histórico, pagamento e recuperação; preservar os testes já úteis e adaptar os incompatíveis |
+| 11 | Validação local concluída: celular inalterado, Google/e-mail sem validação inicial, isolamento de Customer/legado e equipe, sessão home/checkout, endereços/histórico e pagamento; M1 cobre logout e troca de conta entre abas |
 | 12 | Firebase DEV `crmdoceria-9959e` e homologação após marco funcional local e autorização. Sem deploy nesta atualização |
 | 13 | Produção após homologação e autorização, no repositório/diretório próprio, com plano de retorno. Sem promoção automática |
 
@@ -452,3 +452,13 @@ O checkpoint de 2026-09-14 altera somente o rascunho local da autenticação Goo
 - A arquitetura definitiva de cartões permanece: nenhuma carteira local, cartões gerenciados no checkout InfinitePay e nenhuma interface externa prometida sem API/URL oficial. O acesso legado por celular permanece sem OTP e fora da Área do Cliente.
 - Dependências, definição de pronto, estados de loading/erro, responsividade, acessibilidade, logs e matrizes de testes foram incorporados. **Fase 11 permanece em 95% e o total permanece em 90%**; documentação não gera avanço de implementação.
 - Próxima tarefa real continua **M1**, propagação de logout/troca de conta entre abas. Depois, concluir o shell/rotas da fase 6 antes de encerrar Meu Perfil, Meus Pedidos e Comprar Novamente. Nenhum deploy foi realizado.
+
+## Checkpoint de implementação — M1 sessão Customer entre abas — 2026-10-01
+
+- Estado inicial consistente no worktree DEV `C:\Users\antonio.pedro\Projeto\projeto-doceria-main\infinitepay-auth-worktree`, branch `feature/infinitepay-customer-auth`, HEAD `3c3f246d` e origin `antoniopedrocm/projeto-doceria`. Auxiliares não rastreados preexistentes foram preservados; produção não foi alterada.
+- `customer-account.js` agora observa a identidade Firebase por UID e invalida o Customer publicado quando ocorre logout ou troca de conta, inclusive em outra aba. A invalidação chama `onSession(null)` e `onLogout`, permitindo que os três cardápios limpem `currentClient`, pagamento online e dados privados pendentes sem apagar o carrinho público.
+- Respostas assíncronas iniciadas pela conta anterior são descartadas após mudança de UID. Conta sem perfil completo não publica uma sessão vinculada e também não consegue restaurar uma resposta obsoleta. O logout explícito usa a mesma invalidação idempotente, sem emitir callbacks duplicados.
+- O controle puro foi adicionado a `customer-session.mjs`; Matriz, Garavelo, Festas e a home receberam nova versão do módulo para evitar cache do arquivo anterior. Nenhuma regra de autenticação, Customer, loja, checkout, InfinitePay, Firestore ou backend foi modificada.
+- Validação: 45/45 testes direcionados aprovados, incluindo logout remoto, troca de conta, resposta antiga, perfil incompleto, Auth/pagamento/frete e os três cardápios. ESLint direcionado, análise sintática e `git diff --check` passaram. O build React concluiu com os avisos preexistentes de source maps do `native-audio` e bases Browserslist antigas.
+- **Fase 11: 95% → 100%. Total: 90% → 91% (+1 ponto percentual).** A evolução corresponde ao encerramento do último bloqueio local de sessão registrado para a fase 11; não conclui a fase 6, a homologação DEV ou os módulos 6A–6C.
+- Próxima tarefa recomendada: continuar a fase 6 com o shell responsivo e as rotas protegidas de Página Inicial, Meu Perfil, Meus Pedidos e Sair, em um único avanço lógico. Nenhum deploy foi realizado nesta execução.

@@ -1,5 +1,6 @@
 import {auth, functions, httpsCallable} from './firebaseClientConfig.js';
 import {customerAuthErrorMessage} from './customer-auth-errors.mjs';
+import {createCustomerAuthState} from './customer-session.mjs';
 import {GoogleAuthProvider, createUserWithEmailAndPassword, sendEmailVerification,
   sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged,
   signOut, updateProfile, setPersistence, browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
@@ -43,14 +44,26 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const emailEl = name => emailDialog.querySelector(`[data-${name}]`);
   const message = text => {el('message').textContent = text;};
   const emailMessage = (text, isError=false) => {const target=emailEl('email-message');target.textContent=text;target.classList.toggle('text-red-600',isError);target.classList.toggle('text-gray-700',!isError);};
+  const renderSignedOut = () => {el('signed-out').hidden=false;el('phone').hidden=true;el('profile').hidden=true;el('logout').hidden=true;message('Entre com Google ou e-mail para acessar sua conta.');};
+  const clearPublishedSession = () => {current=null;checkoutIntent=false;el('orders').replaceChildren();renderSignedOut();onSession(null);onLogout();};
+  const authState = createCustomerAuthState({onInvalidate:clearPublishedSession});
   const busy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {message(e.message || 'Não foi possível concluir. Tente novamente.');} finally {button.disabled=false;}};
   const emailButtonBusy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
   const emailBusy = (form, fn) => async event => {event.preventDefault();const button=form.querySelector('button:not([type])');button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
   const ensurePersistence = () => setPersistence(auth,browserLocalPersistence);
   function showEmail(mode='login') {const registering=mode==='register';emailEl('login-form').hidden=registering;emailEl('register-form').hidden=!registering;emailEl('email-title').textContent=registering?'Criar conta':'Entrar com e-mail';emailMessage('');if(!emailDialog.open) emailDialog.showModal();}
   async function refresh() {
-    if (!isCustomerUser(auth.currentUser)) {current=null;el('signed-out').hidden=false;el('phone').hidden=true;el('profile').hidden=true;el('logout').hidden=true;message('Entre com Google ou e-mail para acessar sua conta.');return;}
-    const data=await call('customerAccount');current=data.customer || null;el('signed-out').hidden=true;el('phone').hidden=!!current;el('profile').hidden=!current;el('logout').hidden=false;
+    const user=auth.currentUser;
+    if (!isCustomerUser(user)) {authState.observe(null);current=null;renderSignedOut();return;}
+    const snapshot=authState.observe(user.uid);
+    const data=await call('customerAccount');
+    const activeUser=auth.currentUser;
+    if (!isCustomerUser(activeUser) || activeUser.uid!==snapshot.uid) {authState.observe(isCustomerUser(activeUser)?activeUser.uid:null);return;}
+    if (!authState.isCurrent(snapshot)) return;
+    const nextCustomer=data.customer || null;
+    if (!nextCustomer) authState.invalidate();
+    if (nextCustomer && !authState.publish(snapshot)) return;
+    current=nextCustomer;el('signed-out').hidden=true;el('phone').hidden=!!current;el('profile').hidden=!current;el('logout').hidden=false;
     if (!current) {el('new-name').value=data.nome || auth.currentUser.displayName || '';message('Informe seu celular de contato para concluir seu cadastro.');return;}
     onSession(current);message(`Olá, ${current.nome}.`);el('name').value=current.nome;el('birthdate').value=current.aniversario || '';el('phone-state').textContent=`Telefone de contato: ${current.telefone || 'não informado'} (não verificado)`;el('email-state').textContent=current.email?`${current.email} — ${current.emailVerified?'e-mail verificado':'e-mail ainda não verificado'}`:'Conta Google ativa.';el('verify-email').hidden=!current.email || current.emailVerified || !auth.currentUser.providerData.some(p=>p.providerId==='password');el('address').hidden=!showCheckoutAddressAction;el('addresses').replaceChildren();
     current.enderecos.forEach((address,index)=>{const item=document.createElement('li');item.className='flex items-start justify-between gap-3 border rounded p-2';const text=document.createElement('span');text.textContent=`${address.nickname || 'Endereço'}: ${address.enderecoCompleto || address}`;const remove=document.createElement('button');remove.type='button';remove.className='text-red-600 underline';remove.textContent='Excluir';remove.onclick=busy(remove,async()=>{const result=await call('customerDeleteAddress',{index,expectedAddress:typeof address==='string'?address:address.enderecoCompleto});current=result.customer;await refresh();message('Endereço excluído.');});item.append(text,remove);el('addresses').append(item);});if(!current.enderecos.length)el('addresses').textContent='Você ainda não tem endereços salvos.';if(checkoutIntent){checkoutIntent=false;dialog.close();onCustomer(current);}
@@ -66,11 +79,11 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   el('verify-email').onclick=busy(el('verify-email'),async()=>{await sendEmailVerification(auth.currentUser);message('E-mail de verificação enviado.');});
   el('address').onclick=()=>{if(current){dialog.close();onCustomer(current);}};
   el('history').onclick=busy(el('history'),async()=>{const data=await call('customerOrders');el('orders').replaceChildren();for(const o of data.orders){const item=document.createElement('li');item.className='border rounded p-2';const date=o.createdAt?new Date(o.createdAt).toLocaleDateString('pt-BR'):'data indisponível';const items=o.itens.map(i=>`${i.quantity}× ${i.nome}`).join(', ');item.textContent=`${o.lojaId || 'Loja'} • ${date} • ${Number(o.total || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} • ${o.status || 'Sem status'}${o.payment_status?' / '+o.payment_status:''}${o.formaPagamento?' • '+o.formaPagamento:''}${items?' — '+items:''}`;el('orders').append(item);}if(!data.orders.length)el('orders').textContent='Nenhum pedido encontrado.';});
-  el('logout').onclick=busy(el('logout'),async()=>{await signOut(auth);current=null;checkoutIntent=false;el('orders').replaceChildren();dialog.close();onLogout();notify('Você saiu da sua conta.');});
+  el('logout').onclick=busy(el('logout'),async()=>{await signOut(auth);authState.observe(null);authState.invalidate();current=null;checkoutIntent=false;el('orders').replaceChildren();renderSignedOut();dialog.close();notify('Você saiu da sua conta.');});
   emailEl('show-register').onclick=()=>showEmail('register');emailEl('show-login').onclick=()=>showEmail('login');
   emailEl('forgot').onclick=emailButtonBusy(emailEl('forgot'),async()=>{const email=emailEl('login-email').value.trim();if(!email)throw new Error('Informe seu e-mail.');await sendPasswordResetEmail(auth,email);emailMessage('Enviamos as instruções para redefinir sua senha.');});
   emailEl('login-form').onsubmit=emailBusy(emailEl('login-form'),async()=>{await ensurePersistence();await signInWithEmailAndPassword(auth,emailEl('login-email').value.trim(),emailEl('login-password').value);await finishEmailAuth();});
   emailEl('register-form').onsubmit=emailBusy(emailEl('register-form'),async()=>{const name=emailEl('register-name').value.trim();const phone=emailEl('register-phone').value;const password=emailEl('register-password').value;if(password!==emailEl('register-confirm').value)throw new Error('As senhas não conferem.');await ensurePersistence();const credential=await createUserWithEmailAndPassword(auth,emailEl('register-email').value.trim(),password);await updateProfile(credential.user,{displayName:name});sendEmailVerification(credential.user).catch(()=>{});await call('customerCompleteProfile',{nome:name,phone});await finishEmailAuth();});
-  onAuthStateChanged(auth,user=>{if(!isCustomerUser(user)){current=null;markReady();return;}refresh().catch(()=>{}).finally(markReady);});
+  onAuthStateChanged(auth,user=>{const customerUser=isCustomerUser(user);authState.observe(customerUser?user.uid:null);if(!customerUser){current=null;renderSignedOut();markReady();return;}refresh().catch(()=>{}).finally(markReady);});
   return {getCustomer:()=>current,openAccount,ready};
 }
