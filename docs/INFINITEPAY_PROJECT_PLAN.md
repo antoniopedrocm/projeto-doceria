@@ -344,3 +344,10 @@ O checkpoint de 2026-09-14 altera somente o rascunho local da autenticação Goo
 - Commit `73207d7e` publicado na branch `feature/infinitepay-customer-auth`. Deploy seletivo somente de Hosting concluído no Firebase DEV `crmdoceria-9959e`; produção, Functions, Rules e Firestore não foram alterados. A primeira tentativa de publicação não chegou ao Firebase por CA corporativa; a repetição usou a confiança de certificados do sistema e concluiu normalmente.
 - Validação remota: o HTML da Matriz publicado contém o fallback e não contém mais a interrupção antiga. A cotação server-side da Matriz com coordenadas de entrega respondeu `tipoFrete: calculado`, `valorFrete: 12.38` e distância `6.191 km`, usando `ana-guimaraes-doceria-matriz`. Nenhum pedido ou pagamento foi criado.
 - Correção paralela concluída sem avanço de fase: fase 11 permanece em **95%** e o total em **90%**. Próxima tarefa do plano continua M1, propagação de logout/troca de conta entre abas.
+
+## Checkpoint visual dos acessos do cardápio DEV — 2026-10-01
+
+- Os três cardápios mantêm Google e e-mail lado a lado em todas as larguras. Google usa o símbolo colorido em SVG e fundo branco; e-mail usa o rosa da interface. IDs e eventos de autenticação foram preservados.
+- Validação: 27/27 testes direcionados dos cardápios, build React e `git diff --check` aprovados. O modal publicado foi conferido visualmente com os dois botões alinhados e sem quebra de texto.
+- Commit `118a8554` publicado em `feature/infinitepay-customer-auth`; deploy somente de Hosting no Firebase DEV `crmdoceria-9959e`. Functions, Rules, Firestore e produção não foram alterados.
+- Ajuste visual sem avanço de fase: fase 11 permanece em **95%** e o total em **90%**. Próxima tarefa continua M1.
