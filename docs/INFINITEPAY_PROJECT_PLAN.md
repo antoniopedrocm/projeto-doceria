@@ -161,6 +161,79 @@ Esta seção substitui somente decisões anteriores incompatíveis sobre cartõe
 - Se a InfinitePay futuramente disponibilizar API oficial para consultar metadados de cartões do comprador, não implementar automaticamente. Primeiro revisar documentação, autenticação, PCI, privacidade e escopo da API; somente depois considerar uma interface mais rica em Meu Perfil.
 - Esta atualização é exclusivamente documental. Não implementar o módulo de Formas de Pagamento nesta execução.
 
+## Direcionamento vigente — Área autenticada do cliente — 2026-10-01
+
+Esta seção detalha a Área do Cliente sem reiniciar o projeto. Preserva as implementações e decisões anteriores e prevalece sobre descrições menos completas de “Minha Conta”. A documentação deste escopo não altera os percentuais por si só.
+
+### Acesso, navegação e sessão
+
+- A Área do Cliente pertence exclusivamente ao Customer autenticado por Google ou e-mail/senha. **Continuar com celular** permanece identificação legada sem OTP e não concede área persistente; visitante também não recebe acesso privado persistente.
+- A navegação autenticada terá **Página Inicial**, **Meus Pedidos**, **Meu Perfil** e **Sair**, responsiva e coerente com a identidade visual da doceria. Ela deve permanecer separada do CRM, dos menus da equipe e de qualquer permissão administrativa.
+- Página Inicial retorna à experiência pública/cardápio mantendo a sessão. O Customer autenticado navega, monta carrinho e finaliza uma nova compra sem nova identificação; não volta a ver “Como deseja continuar?” enquanto a sessão for válida.
+- Preservar carrinho, loja, etapa do checkout, cupom ainda válido e modalidade/endereço em uso quando aplicável. O logout remove dados privados da interface e bloqueia reabertura por rota, histórico ou cache, sem apagar o carrinho público salvo quando a regra vigente o preservar.
+- Telas equivalentes a `/minha-conta`, `/meu-perfil`, `/meus-pedidos` e `/meus-pedidos/{id}` exigem autenticação real. A nomenclatura e a implementação podem continuar modais/estado interno enquanto não houver roteamento dedicado, mas alteração de URL nunca autoriza acesso.
+- Autenticação não implica autorização administrativa. Customer não recebe CRM, pedidos globais, catálogo administrativo, configurações, financeiro, usuários, InfiniteTag ou permissões de gerente.
+
+### Meu Perfil
+
+| Seção | Comportamento planejado |
+| --- | --- |
+| Dados pessoais | Exibir nome, e-mail, telefone, criação da conta e contatos existentes. Nome é obrigatório, normalizado, limitado e não altera identidade Firebase. |
+| Telefone | Permitir alteração do contato; sempre resetar eventual verificação, não fazer merge pelo número e não liberar legado/histórico por coincidência. Recuperação histórica continua em fase própria com prova de posse. |
+| E-mail | Separar identidade de autenticação de eventual e-mail de contato. Conta de senha altera login apenas pelos mecanismos seguros do Firebase e reautenticação quando exigida. Conta Google mantém o e-mail do provider; não sobrescrever a identidade localmente. Criar `contactEmail` somente se uma necessidade real justificar. |
+| Segurança | Para senha: estado verificado/não verificado, reenvio, recuperação, alteração segura de senha e logout; verificação continua não bloqueante para compra. Para Google: indicar provider vinculado, sem expor tokens. Preparar múltiplos providers futuramente sem implementá-los agora. |
+| Endereços | Listar, adicionar, editar, excluir e definir padrão. Cada endereço mantém apelido, campos estruturados, localização e indicação de padrão conforme o modelo vigente. |
+| Formas de pagamento | Aplicar a arquitetura definitiva acima: nenhum cartão local. Informar armazenamento seguro e gerenciamento durante o checkout InfinitePay, com “🔒 Gerenciado pela InfinitePay”; não prometer área externa sem URL/API oficial. |
+
+- Operações privadas resolvem o Customer a partir do Firebase Auth e do vínculo de identidade no backend. Nunca autorizar por `customerId`, `addressId`, telefone, nome ou e-mail enviados livremente pelo frontend. Rules e Functions devem impedir IDOR entre Customers.
+- Mudança de endereço padrão deve ser atômica. Edição/exclusão deve identificar o endereço de forma estável; índices posicionais podem permanecer apenas como compatibilidade temporária com verificação de concorrência.
+
+### Meus Pedidos e detalhe histórico
+
+- Listar somente pedidos vinculados de forma inequívoca ao Customer autenticado, mais recentes primeiro, com paginação ou carregamento incremental. Pedidos legados identificados apenas por nome/telefone só entram após recuperação segura; nunca associar por coincidência.
+- Cada resumo apresenta, quando disponível: ID amigável, data/hora, loja, total, `order_status`, `payment_status`, forma de pagamento, entrega/retirada e quantidade resumida de itens, com ações **Ver Pedido** e **Comprar Novamente**.
+- O detalhe é histórico e usa snapshots gravados no pedido: itens, quantidades, preços unitários, subtotal, desconto, frete, total, forma e estados do pagamento/pedido, endereço usado ou retirada, loja, data e `receipt_url` quando existir e puder ser exposta com segurança.
+- Preço e demais valores no detalhe são os registrados no pedido original. Pedido não encontrado, sem itens, antigo, cancelado e pagamento falho recebem estados de interface explícitos, sem mensagem técnica bruta.
+
+### Comprar Novamente
+
+- O pedido anterior é referência para construir **um novo carrinho**. Resolver cada item por `productId` estável no catálogo atual da loja original; nome é apenas snapshot/apresentação, não chave quando houver ID.
+- Revalidar loja ativa, produto existente/ativo, vínculo com a loja, preço e estoque atuais. Usar preço atual e avisar mudanças; item removido/inativo/esgotado não é adicionado e recebe mensagem. Estoque parcial segue a regra central do carrinho, nunca ultrapassa o disponível e informa qualquer ajuste.
+- Continuar com itens válidos quando parte estiver indisponível. Se nenhum item puder ser usado, manter o cliente em Meus Pedidos e informar que os itens não estão disponíveis.
+- Carrinho existente nunca é apagado silenciosamente. Oferecer **Adicionar os itens deste pedido**, **Substituir meu carrinho** e **Cancelar**. Ao trocar de loja, explicar a troca e pedir confirmação; não misturar Matriz/Garavelo nem usar catálogo de outra loja como fallback.
+- Após montar o carrinho, seguir o checkout normal. Não reaplicar automaticamente endereço, cupom, desconto, frete, pagamento, `transaction_nsu`, `order_nsu` ou estados antigos. Criar nova intenção, novo pedido, novo `order_nsu`, novo `payment_status` e novo checkout InfinitePay. Cartões salvos, quando usados, continuam sob gestão da InfinitePay.
+- A recompra pode partir de pedido entregue, concluído, cancelado ou com pagamento falho, desde que haja itens recuperáveis; nunca reabrir ou duplicar literalmente o pedido antigo.
+
+### Modelo, autorização e qualidade
+
+- Novos pedidos autenticados mantêm vínculo seguro equivalente a `customerId` + `authUid`, `storeId` e snapshots de item (`productId`, descrição, preço unitário e quantidade). O histórico usa snapshots; a recompra resolve o `productId` atual.
+- Backend e Rules devem provar que Customer A não lê/edita perfil, endereços ou pedidos de Customer B. Nenhuma proteção pode depender somente de esconder controles no frontend.
+- Planejar estados acessíveis para carregamento, vazio, erro, sessão expirada, pedido/endereço não encontrado e item indisponível. Prioridade mobile, validando smartphone estreito/normal, tablet e desktop; labels, foco, contraste, mensagens e modais precisam funcionar por teclado e tecnologia assistiva.
+- Logs nunca contêm senha, token Firebase/OAuth, PAN, CVV ou dados completos de cartão. Se já houver telemetria, podem ser considerados `customer_login`, `profile_updated`, `address_added`, `order_viewed`, `reorder_started` e `reorder_completed`; não adicionar ferramenta de analytics apenas para isso.
+
+### Estado real encontrado nesta atualização
+
+| Bloco | Estado | Evidência e lacuna principal |
+| --- | --- | --- |
+| Autenticação Google/e-mail e separação da equipe | **Implementado** | `customer-account.js`, `customer-home.js` e home do CRM usam conta pública separada; celular/visitante continuam fora da conta forte. |
+| Sessão home/cardápio e salto da identificação | **Implementado parcial** | Sessão local e retomada do checkout existem. Falta M1: logout/troca de conta entre abas deve invalidar o Customer em todos os consumidores. |
+| Shell/menu e rotas protegidas | **Pendente** | Existe botão Área do Cliente e modal Minha Conta, sem menu Página Inicial/Meus Pedidos/Meu Perfil nem rotas dedicadas. |
+| Dados pessoais | **Parcial** | Nome e nascimento podem ser editados; telefone é apenas exibido. Criação da conta, alteração segura de telefone/e-mail e distinção de e-mail de contato faltam. |
+| Segurança da conta | **Parcial** | Login, logout, recuperação de senha, estado e reenvio de verificação existem. Alteração de senha, apresentação correta por provider e robustez pós-logout permanecem. |
+| Endereços | **Parcial** | Listagem, inclusão autenticada e exclusão existem com `authOwnerUid`; o modelo aceita `isDefault`. Edição e seleção explícita de padrão ainda faltam. |
+| Formas de pagamento | **Parcial documental/UI** | Minha Conta já informa que o cartão fica no checkout; ajustar texto/selo conforme arquitetura definitiva, sem carteira local ou listagem. |
+| Meus Pedidos | **Parcial** | Callable autenticada valida `authOwnerUid`, consulta por `clienteId`, ordena e limita a 50; interface mostra resumo simples. Faltam paginação, campos completos, tela de detalhe e comprovante. |
+| Comprar Novamente | **Pendente** | Checkout já revalida produto, preço e estoque em nova compra, mas não existe reconstrução de carrinho a partir do histórico nem tratamento dos cenários definidos. |
+
+### Dependências, testes e definição de pronto
+
+Dependência obrigatória: Google/e-mail Auth → Customer seguro → shell/rotas da Área do Cliente → Meu Perfil e Meus Pedidos → Comprar Novamente → checkout normal → InfinitePay. M1 deve ser corrigido antes de considerar a navegação privada concluída.
+
+- **Perfil/autorização:** autenticado acessa somente o próprio perfil; não autenticado volta ao login; nome e telefone obedecem às regras; mudança de telefone não faz merge; e-mail respeita provider; CRUD e padrão de endereços não permitem IDOR; logout bloqueia dados privados.
+- **Pedidos:** somente pedidos próprios, ordem correta, paginação, pedidos vazios/antigos/cancelados/falhos, `receipt_url` seguro e tentativa de acesso alheio negada.
+- **Recompra:** todos disponíveis; preço alterado; item removido/inativo/esgotado; estoque parcial; todos indisponíveis; carrinho existente; outra loja ou loja inativa; nenhum cupom/frete/endereço/pagamento/NSU/status antigo copiado.
+- O bloco só estará pronto quando menu, Página Inicial, perfil, endereços, segurança por provider, pedidos próprios, detalhe, recompra segura, continuidade do checkout, logout, autorização server-side e validação mobile estiverem concluídos e testados.
+
 ## Direcionamento vigente — 2026-09-21 — InfinitePay por loja
 
 Esta seção incorpora integralmente a atualização de configuração financeira. Preserva as demais decisões e implementações e prevalece sobre notas históricas incompatíveis. Execução documental: fase 5 registrada localmente, próxima execução permanece na fase 7; a configuração gráfica abaixo será implementada na fase 8, sem pular etapas. Estimativa anterior de 60% mantida como referência provisória, sem aumento por esta atualização de requisitos e sujeita à reavaliação na validação integrada.
@@ -215,10 +288,13 @@ A numeração abaixo substitui a antiga. Trabalho já iniciado permanece preserv
 | 2 | Google Auth + sessão pública. Primeiro acesso sem OTP reconciliado; validação integrada e de sessão ainda pendente |
 | 3 | E-mail/senha: cadastro, login, logout, recuperação e verificação nativa não bloqueante implementados localmente; integração completa pendente |
 | 4 | Customer autenticado: telefone obrigatório sem validação inicial; vínculos Google e e-mail por identidade estável, idempotentes e sem merge automático; integração completa pendente |
-| 5 | Minha Conta: perfil, endereços autenticados, pedidos, segurança, estado/reenvio de e-mail e política de pagamento implementados localmente; homologação pendente |
-| 6 | Área do Cliente na home separada da equipe; sessão pública persistente e checkout pulando identificação para Customer vinculado implementados localmente; validação visual pendente |
+| 5 | Base Minha Conta **parcial**: perfil básico, inclusão/exclusão de endereços, segurança básica, pedidos recentes e política de cartões existem; completar telefone/e-mail, criação da conta, senha, edição/padrão de endereço e texto InfinitePay |
+| 6 | Área do Cliente **parcial**: entrada separada da equipe, sessão pública e checkout sem nova identificação existem; completar M1, shell responsivo, Página Inicial, rotas protegidas e logout consistente |
+| 6A | Meu Perfil: consolidar dados pessoais, endereços, segurança por provider e Formas de Pagamento conforme arquitetura definitiva; **parcial** |
+| 6B | Meus Pedidos: lista paginada, detalhe histórico, estados e comprovante com autorização por Customer; **parcial**, pois existe apenas lista resumida limitada a 50 |
+| 6C | Comprar Novamente: reconstrução segura pelo catálogo/loja atuais, conflitos de carrinho e indisponibilidades; **pendente** |
 | 7 | Núcleo implementado e validado localmente em 2026-09-21: reserva, expiração, cupons, estados operacionais e bloqueio de confirmação indevida. Homologação e entrega real de notificações permanecem nas fases 9/11/12 |
-| 8 | Configuração gráfica e conta recebedora por loja implementadas localmente: permissão específica, escopo, auditoria transacional, confirmação forte, flags, dados dinâmicos e falha segura. Checkout Pix/cartão via link e order_nsu seguem em validação integrada; cartão salvo/parcelamento dependem do suporte efetivo |
+| 8 | Configuração gráfica e conta recebedora por loja implementadas localmente: permissão específica, escopo, auditoria transacional, confirmação forte, flags, dados dinâmicos e falha segura. Checkout Pix/cartão via link e `order_nsu` seguem em validação integrada; cartões salvos são gerenciados exclusivamente no checkout InfinitePay |
 | 9 | Webhook: validação, idempotência, reconciliação e confirmação server-side. Parte testada em emulação; completar cenários de recuperação |
 | 10 | Recuperação opcional do legado mediante prova de posse do telefone; somente então associar histórico/endereços. Não implementar OTP agora |
 | 11 | Testes locais completos: celular inalterado, Google/e-mail sem validação inicial, isolamento de Customer/legado e equipe, sessão home/checkout, endereços/histórico, pagamento e recuperação; preservar os testes já úteis e adaptar os incompatíveis |
@@ -367,3 +443,12 @@ O checkpoint de 2026-09-14 altera somente o rascunho local da autenticação Goo
 - Validação: 27/27 testes direcionados dos cardápios, build React e `git diff --check` aprovados. O modal publicado foi conferido visualmente com os dois botões alinhados e sem quebra de texto.
 - Commit `118a8554` publicado em `feature/infinitepay-customer-auth`; deploy somente de Hosting no Firebase DEV `crmdoceria-9959e`. Functions, Rules, Firestore e produção não foram alterados.
 - Ajuste visual sem avanço de fase: fase 11 permanece em **95%** e o total em **90%**. Próxima tarefa continua M1.
+
+## Checkpoint documental — Área autenticada do cliente — 2026-10-01
+
+- Estado inicial: branch `feature/infinitepay-customer-auth`, HEAD `adf0c91a`, um commit documental à frente do remoto e somente auxiliares não rastreados preexistentes. Nenhum código, Rule, configuração, dado ou ambiente foi alterado.
+- O roadmap preserva as fases 0–13 e detalha a expansão da fase 6 em 6A Meu Perfil, 6B Meus Pedidos e 6C Comprar Novamente. A base existente foi classificada pelo código real: autenticação implementada; sessão, perfil, endereços, segurança e pedidos parciais; shell/rotas e recompra pendentes.
+- Foram registradas autorização por Firebase UID/Customer, proteção contra IDOR, tratamento seguro de telefone/e-mail por provider, CRUD/padrão de endereços, histórico por snapshots, detalhe, paginação e recompra sempre baseada em catálogo/preço/estoque/loja atuais.
+- A arquitetura definitiva de cartões permanece: nenhuma carteira local, cartões gerenciados no checkout InfinitePay e nenhuma interface externa prometida sem API/URL oficial. O acesso legado por celular permanece sem OTP e fora da Área do Cliente.
+- Dependências, definição de pronto, estados de loading/erro, responsividade, acessibilidade, logs e matrizes de testes foram incorporados. **Fase 11 permanece em 95% e o total permanece em 90%**; documentação não gera avanço de implementação.
+- Próxima tarefa real continua **M1**, propagação de logout/troca de conta entre abas. Depois, concluir o shell/rotas da fase 6 antes de encerrar Meu Perfil, Meus Pedidos e Comprar Novamente. Nenhum deploy foi realizado.
