@@ -462,3 +462,11 @@ O checkpoint de 2026-09-14 altera somente o rascunho local da autenticação Goo
 - Validação: 45/45 testes direcionados aprovados, incluindo logout remoto, troca de conta, resposta antiga, perfil incompleto, Auth/pagamento/frete e os três cardápios. ESLint direcionado, análise sintática e `git diff --check` passaram. O build React concluiu com os avisos preexistentes de source maps do `native-audio` e bases Browserslist antigas.
 - **Fase 11: 95% → 100%. Total: 90% → 91% (+1 ponto percentual).** A evolução corresponde ao encerramento do último bloqueio local de sessão registrado para a fase 11; não conclui a fase 6, a homologação DEV ou os módulos 6A–6C.
 - Próxima tarefa recomendada: continuar a fase 6 com o shell responsivo e as rotas protegidas de Página Inicial, Meu Perfil, Meus Pedidos e Sair, em um único avanço lógico. Nenhum deploy foi realizado nesta execução.
+
+## Checkpoint operacional — restauração do cardápio Matriz DEV — 2026-10-01
+
+- O Hosting DEV havia sido sobrescrito por um artefato antigo: a página remota usava `ana-guimaraes-matriz`, não continha a sincronização atual nem a Área do Cliente e, por isso, consultava catálogo e configuração operacional fora do caminho canônico. O Firestore correto permaneceu intacto.
+- O build do HEAD `ab31c315` foi conferido antes da publicação: usa exclusivamente `ana-guimaraes-doceria-matriz`, contém o listener atual de produtos e a versão M1 da sessão Customer. A guarda de deploy confirmou o workspace `projeto-doceria-main` e o Firebase Project ID `crmdoceria-9959e`.
+- Deploy seletivo concluído somente para Hosting no Firebase DEV. Functions, Rules, índices, Storage, documentos Firestore e produção não foram alterados.
+- Validação pós-deploy: o HTML remoto não contém o ID antigo; a leitura canônica retornou os três produtos DEV. No navegador, Achadinho de brownie (R$ 12,00) e Bolo no Pote - Meio Amargo (R$ 16,00) aparecem compráveis; Brownie (R$ 7,00) aparece esgotado e desabilitado. `manualOverride.force_open`, timezone `America/Sao_Paulo` e o schedule existente foram respeitados, sem aviso falso de fechamento.
+- Correção operacional sem avanço de fase: fase 11 permanece em **100%** e o total em **91%**. A próxima tarefa continua o shell responsivo e as rotas protegidas da fase 6.
