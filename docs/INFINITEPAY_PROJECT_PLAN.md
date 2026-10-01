@@ -141,9 +141,25 @@ Os caminhos abaixo são relativos ao worktree; linhas referem-se à baseline aci
 ### Pagamentos e responsabilidades
 
 - InfinitePay permanece o gateway: Pix, cartão, parcelamento quando suportado, customer, endereço, `order_nsu`, redirect, webhook e confirmação financeira server-side. Clientes autenticados por Google ou e-mail poderão pagar sem verificação inicial obrigatória de telefone/e-mail.
-- Ana Guimarães mantém Customer, identidades, perfil, telefone, sessão, endereços, histórico, pedidos e status. InfinitePay mantém processamento financeiro, dados PCI e eventuais mecanismos seguros de cartão salvo. Confirmar o suporte efetivo a cartão salvo antes de implementar/promover essa opção; nunca armazenar número completo/PAN, CVV ou dados sensíveis PCI na aplicação.
+- Ana Guimarães mantém Customer, identidades, perfil, telefone, sessão, endereços, histórico, pedidos e status. InfinitePay mantém processamento financeiro, dados PCI e todos os mecanismos de cartão salvo. A aplicação não possuirá carteira própria de cartões e nunca armazenará número completo/PAN, CVV, validade, token próprio de cartão ou dados sensíveis PCI.
 - Preservar `PaymentService → InfinitePayProvider`, configuração por loja, idempotência, conciliação de pedido/conta/valor e confirmação pelo backend. Redirect não comprova pagamento; webhook precisa ser validado e reconciliado. Não liberar estoque/confirmar pedidos com base apenas no navegador.
 - Separar `order_status`: PENDING, CONFIRMED, PREPARING, READY, DELIVERED, CANCELLED; e `payment_status`: PENDING, PAID, FAILED, EXPIRED, REFUNDED. Garantir compatibilidade com legado. Expiração, falha, estorno, reservas, cupons e notificações ainda exigem validação completa; os testes existentes não demonstram que todos esses estados foram implementados.
+
+### Arquitetura definitiva — cartões salvos e InfinitePay — 2026-10-01
+
+Esta seção substitui somente decisões anteriores incompatíveis sobre cartões salvos. Não altera autenticação, Customer, checkout, estados, fases ou percentuais já registrados.
+
+- A aplicação Ana Guimarães **não possuirá carteira própria de cartões**. Não criar coleção, tabela ou estrutura `saved_cards`, `payment_cards` ou equivalente.
+- Não armazenar PAN/número completo, CVV, validade, token de cartão criado pela aplicação nem qualquer dado PCI que não seja explicitamente disponibilizado pela InfinitePay para esse propósito. Cartões salvos pertencem exclusivamente à InfinitePay.
+- Salvamento, seleção, inclusão, uso futuro, gerenciamento e remoção de cartões ocorrerão exclusivamente no checkout oficial da InfinitePay. Atualmente, o comprador pode optar por salvar seus dados durante o pagamento, confirmar o telefone por código via WhatsApp/SMS, reutilizar cartões salvos, adicionar cartões e removê-los no próprio checkout.
+- A confirmação telefônica exigida pela InfinitePay protege o acesso aos cartões salvos dentro do checkout. Ela não altera nem fortalece o fluxo **Continuar com celular** da Ana Guimarães, que permanece como identificação legada sem OTP e sem acesso próprio a cartões.
+- Em **Meu Perfil**, criar a seção **Formas de Pagamento** sem listar cartões inicialmente. Exibir informação equivalente a: “Seus cartões são armazenados com segurança pela InfinitePay.” e “Você poderá salvar, selecionar, adicionar ou remover cartões durante o pagamento.” Pode haver a indicação visual “🔒 Gerenciado pela InfinitePay”.
+- Não criar botão “Gerenciar cartões” que prometa uma área específica enquanto não existir URL ou API oficial documentada pela InfinitePay para gerenciamento sem uma compra. Considerar o gerenciamento disponível durante o checkout.
+- Ao iniciar uma compra, enviar ao checkout InfinitePay, quando disponíveis e conforme o contrato oficial: nome, e-mail, telefone, endereço selecionado, itens, valor, `order_nsu` e o handle/InfiniteTag da loja correta. Esses dados reduzem o preenchimento manual e pertencem ao cliente, pedido e loja correspondentes.
+- A InfinitePay permanece responsável por cartão, cartões salvos, autenticação para acesso a cartões salvos, CVV, dados PCI, antifraude e autorização financeira.
+- A Ana Guimarães permanece responsável por Customer, autenticação Google/e-mail e senha, perfil, endereços, pedidos, histórico, carrinho, loja, `order_status`, `payment_status`, integração e conciliação do pagamento.
+- Se a InfinitePay futuramente disponibilizar API oficial para consultar metadados de cartões do comprador, não implementar automaticamente. Primeiro revisar documentação, autenticação, PCI, privacidade e escopo da API; somente depois considerar uma interface mais rica em Meu Perfil.
+- Esta atualização é exclusivamente documental. Não implementar o módulo de Formas de Pagamento nesta execução.
 
 ## Direcionamento vigente — 2026-09-21 — InfinitePay por loja
 
