@@ -1,7 +1,8 @@
 import InfinitePaySettings from './payments/InfinitePaySettings';
+import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { EMPTY_FREIGHT_CONFIG, loadStoreFreightConfig, validateFreightCoordinates } from './services/freightConfigService';
-import { getOrderFreight, getSavedOrderTotal } from './utils/orderFreight';
+import { getOrderFreight, getSavedOrderTotal, calculateOrderTotal } from './utils/orderFreight';
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
@@ -13602,7 +13603,7 @@ const effectiveStoreName = useMemo(() => {
             itens: items,
             subtotal,
             desconto,
-            total: roundCurrency(subtotal - desconto),
+            total: calculateOrderTotal(order, subtotal, desconto),
             cupom: order.cupom ? { ...order.cupom, valorDesconto: desconto } : null
         };
     };
@@ -13845,7 +13846,7 @@ const effectiveStoreName = useMemo(() => {
                 itens: freshItems,
                 subtotal,
                 desconto,
-                total: roundCurrency(subtotal - desconto),
+                total: calculateOrderTotal(orderData, subtotal, desconto),
                 cupom: couponValidation.cupom
             },
             changes
@@ -13916,7 +13917,7 @@ const effectiveStoreName = useMemo(() => {
                 cupom: couponValidation.cupom,
                 updatedAt: serverTimestamp()
             };
-            finalOrderData.total = roundCurrency(finalOrderData.subtotal - finalOrderData.desconto);
+            finalOrderData.total = calculateOrderTotal(finalOrderData);
 
             const wasFinalized = isFinalizedStatus(previousOrder?.status);
             const isNowFinalized = isFinalizedStatus(finalOrderData.status);
@@ -14122,7 +14123,7 @@ const effectiveStoreName = useMemo(() => {
         setFormData(prev => ({
             ...prev,
             desconto: newDiscount,
-            total: subtotal - newDiscount,
+            total: calculateOrderTotal(prev, subtotal, newDiscount),
             cupom: null // Remove cupom se aplicar desconto manual
         }));
     };
@@ -14182,7 +14183,7 @@ const handleSubmit = async (e) => {
         setEditingOrder(order);
         const subtotal = (order.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
         const desconto = order.cupom?.valorDesconto || order.desconto || 0;
-        const total = subtotal - desconto;
+        const total = calculateOrderTotal(order, subtotal, desconto);
         
         // Garante que todos os campos necessários estejam presentes, mesmo que vazios
 
@@ -14510,6 +14511,7 @@ const handleSubmit = async (e) => {
                                 </p>
                            </div>
 
+                            <WhatsAppOrderStatus key={`${viewingOrder.lojaId || effectiveStoreId}:${viewingOrder.id}`} storeId={viewingOrder.lojaId || effectiveStoreId} orderId={viewingOrder.id} />
                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
                                  <Button 
                                     onClick={handlePrint}
@@ -14526,7 +14528,7 @@ const handleSubmit = async (e) => {
                                     size="sm"
                                 >
                                     <MessageCircle className="w-4 h-4" />
-                                    Enviar Resumo Cliente
+                                    Enviar Resumo Cliente (manual)
                                 </Button>
                                 <Button
                                     onClick={() => setOrderToSendToDeliverer(viewingOrder)}
@@ -17625,6 +17627,7 @@ const handleSubmit = async (e) => {
                                 <p><strong>Telefone:</strong> {telefone || 'Não informado'}</p>
                             </div>
                             {/* ... (resto do conteúdo) ... */}
+                             <WhatsAppOrderStatus key={`${viewingOrder.lojaId || effectiveStoreId}:${viewingOrder.id}`} storeId={viewingOrder.lojaId || effectiveStoreId} orderId={viewingOrder.id} />
                              <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
                                  <Button 
                                     onClick={handlePrint}
@@ -17641,7 +17644,7 @@ const handleSubmit = async (e) => {
                     size="sm"
                 >
                     <MessageCircle className="w-4 h-4" />
-                    Enviar Resumo Cliente
+                    Enviar Resumo Cliente (manual)
                 </Button>
                 <Button
                     onClick={() => setOrderToSendToDeliverer(viewingOrder)}

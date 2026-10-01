@@ -1,4 +1,17 @@
-import { getOrderFreight, getSavedOrderTotal } from './orderFreight';
+import { calculateOrderTotal, getOrderFreight, getSavedOrderTotal } from './orderFreight';
+
+test.each([
+  [{valorFrete: 4}, 12, 0, 16],
+  [{valorFrete: 4}, 12, 2, 14],
+  [{frete: 4}, 12, 0, 16],
+  [{valorFrete: 0}, 12, 0, 12],
+  [{tipoFrete: 'retirada', valorFrete: 4}, 12, 0, 12],
+  [{clienteEndereco: 'Retirar na Loja', frete: 4}, 12, 0, 12],
+  [{freteACombinar: true, valorFrete: 4}, 12, 0, 12],
+  [{}, 12, 0, 12],
+])('total administrativo conserva o snapshot de frete: %j', (order, subtotal, discount, expected) => {
+  expect(calculateOrderTotal(order, subtotal, discount)).toBe(expected);
+});
 
 test('histórico a combinar usa snapshot mesmo com configuração atual diferente', () => {
   const order = {freteACombinar: true, tipoFrete: 'a_combinar', valorFrete: 0, subtotal: 59.4, total: 59.4};

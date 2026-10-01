@@ -590,6 +590,11 @@
                     <option value="Link de Pagamento">Link de Pagamento</option>
                 </select>
                 <p id="payment-error" class="text-red-500 text-sm mt-2 hidden"></p>
+                <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
+                    <input id="platform-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="platform-whatsapp-consent-help">
+                    <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
+                </label>
+                <p id="platform-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD.</p>
             </div>
             <div class="p-6 border-t">
                 <button id="confirm-order-button" class="w-full bg-pink-600 text-white py-3 rounded-lg font-bold hover:bg-pink-700 transition-colors">Confirmar Pedido</button>
@@ -707,6 +712,11 @@
                         <option value="Pix">Pix</option>
                         <option value="Link de Pagamento">Link de Pagamento</option>
                     </select>
+                    <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
+                    <input id="guest-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="guest-whatsapp-consent-help">
+                    <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
+                </label>
+                <p id="guest-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD. O botão abaixo continua abrindo sua mensagem para a loja.</p>
                     <button id="send-whatsapp-button" class="w-full bg-green-500 text-white py-3 px-4 rounded-lg font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mt-4">
                         <i class="fa-brands fa-whatsapp"></i> Finalizar e Enviar via WhatsApp
                     </button>
@@ -1213,6 +1223,15 @@
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js';
         import {STORE_AVAILABILITY, getStoreAvailability, getStoreAvailabilityMessage} from './store-availability.mjs';
+        function resetWhatsAppConsent() {
+            ['platform-whatsapp-consent', 'guest-whatsapp-consent'].forEach((id) => {
+                const checkbox = document.getElementById(id);
+                if (checkbox) checkbox.checked = false;
+            });
+        }
+        resetWhatsAppConsent();
+        window.addEventListener('pageshow', resetWhatsAppConsent);
+
         // --- VARIÁVEIS GLOBAIS ---
         const WHATSAPP_NUMBER = '5562991056075';
         const API_BASE_URL = apiBaseUrl;
@@ -2059,6 +2078,7 @@
             closeCartButton.addEventListener('click', () => cartModal.classList.add('hidden'));
 
             checkoutButton.addEventListener('click', async () => {
+                resetWhatsAppConsent();
                 if (!storeIsOpenNow) {
                     showToast(getStoreAvailabilityMessage(storeAvailability), true);
                     return;
@@ -3151,6 +3171,10 @@
         }
 
         async function finalizeOrder(clientInfo, clientId, isPlatform) {
+            const whatsappConsent = {
+                accepted: document.getElementById(isPlatform ? 'platform-whatsapp-consent' : 'guest-whatsapp-consent')?.checked === true,
+                version: 'order-confirmation-v1',
+            };
             await revalidateCheckoutBeforeFinalSubmit(clientInfo);
             const online = clientInfo.formaPagamento === 'Online';
             if (online && !isLinkedCustomer(currentClient)) throw new Error('Entre com Google ou e-mail em Minha Conta para pagar online.');
@@ -3168,6 +3192,7 @@
 
             const orderData = {
                 lojaId: STORE_ID,
+                whatsappConsent,
                 cliente: {
                     id: clientId || null,
                     nome: clientInfo.clienteNome,
@@ -3209,7 +3234,7 @@
                     throw new Error('Pedido não confirmado. Tente novamente.');
                 }
 
-                if (online) {redirectToPayment(responseData);return;}
+                if (online) {resetWhatsAppConsent();redirectToPayment(responseData);return;}
                 clearCheckoutBlockingIssue();
 
                 const docRef = { id: responseData.id };
@@ -3243,6 +3268,10 @@
                 removeCupom();
                 clearCheckoutState();
                 renderCart();
+                resetWhatsAppConsent();
+                if (whatsappConsent.accepted && responseData.whatsappPhoneStatus === 'invalid') {
+                    showToast('Pedido confirmado. O telefone não é válido para receber a confirmação por WhatsApp.', true);
+                }
 
             } catch (error) {
                 console.error("Erro ao salvar pedido:", error);

@@ -24,7 +24,7 @@ const checkout = async ({storeId, configs, distance = 2, pickup = false}) => {
       update: (r, data) => writes.push({path: r.path, data}),
     }),
   };
-  const context = { ...core, db, app: {post: (_url, fn) => { handler = fn; }},
+  const context = { ...core, buildCheckoutWhatsApp: require('./whatsapp-checkout').buildCheckoutWhatsApp, db, app: {post: (_url, fn) => { handler = fn; }},
     requireStoreId: () => storeId,
     getStoreConfigDoc: (id) => ref(`lojas/${id}/configuracoes/config`),
     assertStoreOpen: () => undefined,

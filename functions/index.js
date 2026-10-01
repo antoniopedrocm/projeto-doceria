@@ -8,7 +8,7 @@
  */
 
 const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
-const {onDocumentUpdated, onDocumentWritten} = require("firebase-functions/v2/firestore");
+const {onDocumentCreated, onDocumentUpdated, onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -16,6 +16,10 @@ const {FieldValue} = require('firebase-admin/firestore');
 const express = require("express");
 const cors = require("cors");
 const crypto = require('crypto');
+const {buildCheckoutWhatsApp} = require('./whatsapp-checkout');
+const {createWhatsAppWorker, createWhatsAppWorkerFunctions} = require('./whatsapp-worker');
+const {createWhatsAppAdminFunctions} = require('./whatsapp-admin');
+const {createWhatsAppWebhook} = require('./whatsapp-webhook');
 const {quoteFreight, totalWithFreight, validateFreightCoordinates,
   loadStoreFreightConfig, orderFreightSnapshot} = require('./freight-core');
 const {createFiscalFunctions} = require('./fiscal');
@@ -38,6 +42,11 @@ const {
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
 const db = admin.firestore();
+const whatsappWorker = createWhatsAppWorker({db, logger});
+Object.assign(exports, createWhatsAppWorkerFunctions({db, onDocumentCreated, onDocumentUpdated, onSchedule, logger, worker: whatsappWorker}));
+Object.assign(exports, createWhatsAppAdminFunctions({db, onCall, HttpsError}));
+exports.whatsappWebhook = onRequest({region: 'southamerica-east1', timeoutSeconds: 60, maxInstances: 2},
+    createWhatsAppWebhook({db, logger}));
 const auth = admin.auth();
 const {createCustomerAccount} = require('./checkout-auth');
 const customerAccounts = createCustomerAccount({admin, db});
@@ -1735,6 +1744,8 @@ app.post("/checkout/confirmar", async (req, res) => {
   }
 
   try {
+    const whatsappConfirmation = buildCheckoutWhatsApp({phone: cliente.telefone,
+      consent: req.body?.whatsappConsent, serverTimestamp: () => FieldValue.serverTimestamp()});
     let paymentConfig, paymentId, ownerUid, orderRef, fingerprint, buyerEmail, checkoutCustomerId;
     if(req.headers.authorization) ownerUid=(await checkoutToken(req)).uid;
     if(online) {
@@ -1929,6 +1940,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         clienteNome: cliente.nome,
         clienteEndereco: cliente.endereco || '',
         telefone: cliente.telefone,
+        whatsappConfirmation,
         formaPagamento: pagamento.forma || pagamento.formaPagamento || '',
         itens: validatedItems,
         subtotal: subtotalFinal,
@@ -1957,10 +1969,11 @@ app.post("/checkout/confirmar", async (req, res) => {
         }
       }
 
-      return {id: orderRef.id, subtotal: subtotalFinal, desconto: descontoFinal, ...freight, total};
+      return {id: orderRef.id, subtotal: subtotalFinal, desconto: descontoFinal, ...freight, total,
+        whatsappPhoneStatus: whatsappConfirmation.phoneStatus};
     });
 
-    if(online) return res.status(200).json({ok:true,...await checkoutPayments.start(paymentId,ownerUid)});
+    if(online) return res.status(200).json({ok:true,...await checkoutPayments.start(paymentId,ownerUid),whatsappPhoneStatus:whatsappConfirmation.phoneStatus});
     return res.status(200).json({ok: true, ...orderId});
   } catch (error) {
     logger.error('Erro ao confirmar checkout:', error);

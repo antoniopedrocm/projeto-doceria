@@ -9,9 +9,10 @@ const admin=require('firebase-admin');
 const {digest}=require('./checkout-auth');
 const originalFetch=global.fetch;
 let links=0;
+const linkBodies=[];
 // Only this test process substitutes the external provider. Production has no mock endpoint.
 global.fetch=async(url,options)=>{
-  if(String(url)==='https://api.checkout.infinitepay.io/links') {links++;return {ok:true,json:async()=>({url:'https://buy.infinitepay.io/test-only'})};}
+  if(String(url)==='https://api.checkout.infinitepay.io/links') {links++;linkBodies.push(JSON.parse(options.body));return {ok:true,json:async()=>({url:'https://buy.infinitepay.io/test-only'})};}
   if(String(url).startsWith('https://api.checkout.infinitepay.io/')) throw new Error('Unexpected provider call in test');
   return originalFetch(url,options);
 };
@@ -49,6 +50,27 @@ test('HTTP online reserva uma vez e devolve o mesmo checkout no retry',async()=>
   assert.equal(order.payment_status,'PENDING');assert.equal(order.order_status,'PENDING');assert.equal(order.status,'Aguardando pagamento');
   assert.equal((await db.doc(`lojas/${store}/produtos/product`).get()).data().estoque,9);
   const conflict=await send({...b,cliente:{...b.cliente,nome:'Outro'}});assert.equal(conflict.status,409);
+});
+
+test('HTTP mantém item 12 + frete 4 no pedido e no valor enviado à InfinitePay',async()=>{
+  await db.doc(`lojas/${store}/produtos/freight-test`).set({nome:'Doce teste',ativo:true,status:'Ativo',preco:12,estoque:2});
+  const b=body();
+  Object.assign(b,{itens:[{produtoId:'freight-test',quantity:1,preco:12}],subtotal:12,valorFrete:4,distanciaFreteKm:2,
+    whatsappConsent:{accepted:true,version:'order-confirmation-v1'},delivery:{pickup:false,lat:-16,lng:-49}});
+  b.cliente.endereco='Rua de teste';
+  const result=await send(b);
+  assert.equal(result.status,200,JSON.stringify(result));
+  const order=(await db.doc(`lojas/${store}/pedidos/${result.data.id}`).get()).data();
+  const payment=(await db.doc(`checkoutPayments/${result.data.paymentId}`).get()).data();
+  assert.equal(order.valorFrete,4);
+  assert.equal(order.total,16);
+  assert.equal(payment.amount,1600);
+  assert.equal(linkBodies.at(-1).items[0].price,1600);
+  assert.equal(linkBodies.at(-1).handle,'merchant-test');
+  assert.equal(order.whatsappConfirmation.consent.granted,true);
+  assert.equal(result.data.whatsappPhoneStatus,'valid');
+  const retry=await send(b);
+  assert.equal(retry.data.id,result.data.id);
 });
 test('falha temporária na consulta do provedor retorna 5xx ao webhook para permitir retry',async()=>{
   const b=body();const created=await send(b);
