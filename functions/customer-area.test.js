@@ -15,6 +15,7 @@ async function fixture({initialUser = user(), sdk = {}, backend = async (name, a
   const {isCustomerIdentity, createCustomerAreaNavigation} = await import('../crm/public/customer-area.mjs');
   const {createCustomerAuthState} = await import('../crm/public/customer-session.mjs');
   const {createCustomerProfileSecurity} = await import('../crm/public/customer-profile.mjs');
+  const {createCustomerOrderHistory} = await import('../crm/public/customer-orders-view.mjs');
   const dom = new JSDOM('<button id="customer-account-button">Minha Conta</button><button id="continue-google-button">Google</button>', {url: 'https://example.test/cardapio-matriz?store=matriz'});
   const {window} = dom;
   window.HTMLDialogElement.prototype.showModal = function() {this.open = true;};
@@ -23,7 +24,7 @@ async function fixture({initialUser = user(), sdk = {}, backend = async (name, a
   let listener;
   const calls = [], sessions = [], logouts = [], checkout = [];
   const context = vm.createContext({document: window.document, window, URL, console,
-    auth, functions: {}, isCustomerUser: isCustomerIdentity, createCustomerAreaNavigation, createCustomerAuthState, createCustomerProfileSecurity,
+    auth, functions: {}, isCustomerUser: isCustomerIdentity, createCustomerAreaNavigation, createCustomerAuthState, createCustomerProfileSecurity, createCustomerOrderHistory,
     EmailAuthProvider: {credential:()=>({})}, reauthenticateWithCredential:async()=>{}, verifyBeforeUpdateEmail:async()=>{}, updatePassword:async()=>{},
     sendEmailVerification:async()=>{}, sendPasswordResetEmail:async()=>{}, reload:async()=>{}, ...sdk,
     customerAuthErrorMessage: error => error.message,
@@ -72,7 +73,7 @@ test('Meu Perfil e Meus Pedidos são telas distintas; voltar à compra mantém s
   await f.navigate('orders');
   assert.equal(f.el('profile').hidden, true);
   assert.equal(f.el('orders-panel').hidden, false);
-  assert.equal(f.el('orders-message').textContent, 'Nenhum pedido encontrado.');
+  assert.equal(f.el('orders-message').textContent, 'Você ainda não realizou nenhum pedido.');
   assert.ok(f.calls.some(call => call.name === 'customerOrders' && Object.keys(call.data).length === 0));
   await f.navigate('home');
   assert.equal(f.dialog.open, false);
@@ -264,4 +265,87 @@ test('logout limpa formulário de endereço e credenciais; resposta de atualiza�
   const pending=f.el('save').onclick({preventDefault(){}});await tick();f.emit(null);
   finish({customer:{...customer(),nome:'Resposta antiga'}});await pending;
   assert.equal(f.api.getCustomer(),null);assert.equal(f.el('name').value,'');assert.equal(f.el('current-password').value,'');assert.equal(f.el('address-enderecoCompleto').value,'');assert.equal(f.el('address-form').hidden,true);
+});
+
+const historicalOrder=(id='historic',storeId='matriz')=>({id,storeId,number:1048,storeName:'Loja histórica',createdAt:'2026-10-01T17:00:00Z',total:14,
+  subtotal:12,desconto:2,frete:4,status:'DELIVERED',payment_status:'PAID',modalidade:'entrega',endereco:'Rua histórica, 20',formaPagamento:'Pix',
+  itemCount:1,itens:[{nome:'Brownie antigo',quantity:1,preco:12,total:12}],receipt_url:'https://receipt.example.com/order'});
+
+test('histórico mostra campos completos e pagina sem duplicar pedidos de lojas distintas',async t=>{
+  const first=historicalOrder(),second=historicalOrder('historic','garavelo');
+  const f=await fixture({backend:async(name,_auth,data)=>name==='customerAccount'?{customer:customer()}:data.cursor?
+    {orders:[first,second],nextCursor:null}:{orders:[first],nextCursor:'lojas/matriz/pedidos/historic'}});t.after(f.close);
+  await f.api.openAccount('orders');
+  assert.match(f.el('orders').textContent,/1048|Loja histórica/);assert.match(f.el('orders').textContent,/Pedido: Entregue/);assert.match(f.el('orders').textContent,/Pagamento: Pago/);
+  assert.equal(f.el('orders-more').hidden,false);await f.el('orders-more').onclick();
+  assert.equal(f.el('orders').children.length,2);assert.equal(f.el('orders-more').hidden,true);
+  assert.equal(f.calls.filter(c=>c.name==='customerOrders')[1].data.cursor,'lojas/matriz/pedidos/historic');
+});
+
+test('detalhe mostra snapshot e comprovante seguro sem alterar carrinho ou endereço atual',async t=>{
+  const order=historicalOrder();const f=await fixture({backend:async name=>name==='customerAccount'?{customer:{...customer(),enderecos:[{id:'now',enderecoCompleto:'Endereço atual'}]}}:
+    name==='customerOrderDetail'?{order}:{orders:[order]}});t.after(f.close);
+  f.window.sessionStorage.setItem('cart','carrinho atual');await f.api.openAccount('orders');
+  await f.el('orders').querySelector('button').onclick();
+  assert.equal(f.el('orders-list').hidden,true);assert.equal(f.el('order-detail').hidden,false);
+  const text=f.el('order-detail-content').textContent;
+  assert.match(text,/Brownie antigo/);assert.match(text,/12,00/);assert.match(text,/14,00/);assert.match(text,/4,00/);assert.match(text,/2,00/);
+  assert.match(text,/Rua histórica/);assert.doesNotMatch(text,/Endereço atual/);assert.match(text,/Pix/);
+  const link=f.el('order-detail-content').querySelector('a');assert.equal(link.href,order.receipt_url);assert.equal(link.target,'_blank');assert.equal(link.rel,'noopener noreferrer');
+  assert.deepEqual(f.calls.find(c=>c.name==='customerOrderDetail').data,{storeId:'matriz',orderId:'historic'});
+  f.el('order-back').onclick();assert.equal(f.el('orders-list').hidden,false);
+  await f.navigate('home');assert.equal(f.window.sessionStorage.getItem('cart'),'carrinho atual');assert.equal(f.checkout.length,0);
+});
+
+test('pedido antigo sem comprovante/campos opcionais não quebra e status de pagamento é independente',async t=>{
+  // eslint-disable-next-line no-script-url -- Unsafe backend link must not reach the DOM.
+  const order={id:'old',storeId:'matriz',total:7,status:'Finalizado',itens:[{nome:'Antigo'}],receipt_url:'javascript:alert(1)'};
+  const f=await fixture({backend:async name=>name==='customerAccount'?{customer:customer()}:name==='customerOrderDetail'?{order}:{orders:[order]}});t.after(f.close);
+  await f.api.openAccount('orders');await f.el('orders').querySelector('button').onclick();
+  const text=f.el('order-detail-content').textContent;assert.match(text,/Data não informada/);assert.match(text,/Pagamento: Não informado/);
+  assert.match(text,/SubtotalNão informado/);assert.equal(f.el('order-detail-content').querySelector('a'),null);
+  assert.doesNotMatch(text,/Comprar Novamente/);
+});
+
+test('detalhe não encontrado não mostra dados e sessão expirada limpa a área',async t=>{
+  let expired=false;
+  const f=await fixture({backend:async name=>{
+    if(name==='customerAccount') return {customer:customer()};
+    if(name==='customerOrderDetail') throw Object.assign(Error('backend private detail'),{code:expired?'functions/unauthenticated':'functions/not-found'});
+    return {orders:[historicalOrder()]};
+  }});t.after(f.close);await f.api.openAccount('orders');await f.el('orders').querySelector('button').onclick();
+  assert.equal(f.el('order-detail-message').textContent,'Pedido não encontrado.');assert.equal(f.el('order-detail-content').textContent,'');
+  f.el('order-back').onclick();expired=true;await f.el('orders').querySelector('button').onclick();
+  assert.equal(f.el('area').hidden,true);assert.equal(f.el('orders').textContent,'');assert.equal(f.api.getCustomer(),null);
+});
+
+test('logout durante consulta de detalhe descarta endereço/comprovante privados',async t=>{
+  let finish;
+  const f=await fixture({backend:async name=>name==='customerAccount'?{customer:customer()}:name==='customerOrderDetail'?
+    new Promise(resolve=>{finish=resolve;}):{orders:[historicalOrder()]}});t.after(f.close);
+  await f.api.openAccount('orders');const pending=f.el('orders').querySelector('button').onclick();await tick();f.emit(null);
+  finish({order:historicalOrder()});await pending;
+  assert.equal(f.el('order-detail-content').textContent,'');assert.equal(f.el('order-detail').hidden,true);assert.equal(f.el('orders').textContent,'');
+});
+
+test('falha de paginação permite retry e troca de Customer descarta cursor anterior',async t=>{
+  let failing=true;
+  const f=await fixture({backend:async(name,auth,data)=>{
+    if(name==='customerAccount') return {customer:customer(auth.currentUser.uid)};
+    if(data.cursor && failing) throw Error('network');
+    return {orders:[historicalOrder(auth.currentUser.uid)],nextCursor:data.cursor?null:`lojas/matriz/pedidos/${auth.currentUser.uid}`};
+  }});t.after(f.close);await f.api.openAccount('orders');await f.el('orders-more').onclick();
+  assert.equal(f.el('orders').children.length,1);assert.match(f.el('orders-message').textContent,/Não foi possível/);assert.equal(f.el('orders-more').disabled,false);
+  failing=false;await f.el('orders-more').onclick();assert.equal(f.el('orders').children.length,1);
+  f.emit(user('uid-b'));await tick();await tick();
+  const last=f.calls.filter(c=>c.name==='customerOrders').at(-1);assert.deepEqual(last.data,{});
+  assert.equal(f.el('orders').children.length,1);assert.equal(f.el('orders').querySelector('button').dataset.orderKey,'matriz/uid-b');
+});
+
+test('estados financeiros não dependem do estado operacional do pedido',async()=>{
+  const {paymentStatus,orderStatus}=await import('../crm/public/customer-orders-view.mjs');
+  for(const [status,label] of [['PENDING','Aguardando pagamento'],['PAID','Pago'],['FAILED','Falhou'],['EXPIRED','Expirado'],['REFUNDED','Estornado']])
+    assert.equal(paymentStatus({status:'CONFIRMED',payment_status:status}),label);
+  assert.equal(paymentStatus({status:'CONFIRMED'}),'Não informado');assert.equal(paymentStatus({payment_status:'PAID',requiresReview:true}),'Em revisão');
+  assert.equal(orderStatus({status:'CANCELLED',payment_status:'REFUNDED'}),'Cancelado');
 });

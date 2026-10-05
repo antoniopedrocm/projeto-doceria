@@ -30,6 +30,16 @@
 }
 .customer-area-dialog [data-profile] button { min-height: 44px; }
 .customer-profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.customer-order-card { border: 1px solid #fbcfe8; border-radius: .75rem; padding: 1rem; overflow-wrap: anywhere; }
+.customer-area-dialog [data-orders-panel] h4 { font-weight: 700; margin: .75rem 0 .25rem; }
+.customer-area-dialog [data-orders-panel] p { margin: .4rem 0; }
+.customer-area-dialog [data-orders-panel] button,
+.customer-area-dialog [data-orders-panel] a { display: inline-flex; align-items: center; min-height: 44px; padding: .5rem .75rem; border: 1px solid #fbcfe8; border-radius: .5rem; color: #9d174d; }
+.customer-area-dialog [data-order-detail-content] { overflow-wrap: anywhere; }
+.customer-area-dialog [data-order-detail-content] ul { list-style: none; padding: 0; }
+.customer-area-dialog [data-order-detail-content] li { padding: .75rem 0; border-bottom: 1px solid #e5e7eb; }
+.customer-area-dialog [data-order-detail-content] dl { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: 1rem 0; }
+.customer-area-dialog [data-order-detail-content] dd { text-align: right; }
 @media (max-width: 480px) {
   .customer-area-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .customer-area-dialog { padding: 1rem; }

@@ -69,6 +69,7 @@ exports.customerAccount = onCall({cors:true}, customerAccounts.account);
 exports.customerCompleteProfile = onCall({cors:true}, customerAccounts.completeProfile);
 exports.customerUpdate = onCall({cors:true}, customerAccounts.update);
 exports.customerOrders = onCall({cors:true}, customerAccounts.orders);
+exports.customerOrderDetail = onCall({cors:true}, customerAccounts.orderDetail);
 exports.customerAddAddress = onCall({cors:true}, customerAccounts.addAddress);
 exports.customerDeleteAddress = onCall({cors:true}, customerAccounts.deleteAddress);
 exports.customerUpdateAddress = onCall({cors:true}, customerAccounts.updateAddress);

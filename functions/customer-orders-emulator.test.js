@@ -1,0 +1,69 @@
+// All writes and Auth users are confined to the local demo emulators.
+process.env.FIRESTORE_EMULATOR_HOST='127.0.0.1:8080';
+process.env.FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099';
+process.env.GCLOUD_PROJECT='demo-doceria-checkout';
+process.env.FUNCTIONS_EMULATOR='true';
+const {test,before,after}=require('node:test');
+const assert=require('node:assert/strict');
+const http=require('node:http'),express=require('express'),admin=require('firebase-admin');
+const functions=require('./index');
+const app=express();app.use(express.json());
+app.post('/list',functions.customerOrders);app.post('/detail',functions.customerOrderDetail);app.post('/profile',functions.customerCompleteProfile);
+const server=http.createServer(app),db=admin.firestore();
+let base,a,b,anonymous,customerA,customerB;
+async function signup(email) {
+  const response=await fetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-api-key',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...(email?{email,password:'test-password-123'}:{}),returnSecureToken:true})});
+  const data=await response.json();assert.ok(data.idToken);return data;
+}
+async function send(route,data={},token=a?.idToken) {
+  const response=await fetch(base+route,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:JSON.stringify({data})});
+  return {status:response.status,body:await response.json()};
+}
+before(async()=>{
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base=`http://127.0.0.1:${server.address().port}`;
+  a=await signup(`history-a-${Date.now()}@example.test`);b=await signup(`history-b-${Date.now()}@example.test`);anonymous=await signup();
+  const pa=await send('/profile',{nome:'Customer A',phone:'+5562999991234'}),pb=await send('/profile',{nome:'Customer B',phone:'+5562999991234'},b.idToken);
+  assert.equal(pa.status,200);assert.equal(pb.status,200);customerA=pa.body.result.customer.id;customerB=pb.body.result.customer.id;
+  const batch=db.batch();
+  for(const store of ['history-matriz','history-garavelo']) batch.set(db.doc(`lojas/${store}`),{nome:`Loja ${store}`});
+  for(let i=0;i<43;i++) batch.set(db.doc(`lojas/${i%2?'history-matriz':'history-garavelo'}/pedidos/history-${String(i).padStart(2,'0')}`),{
+    clienteId:customerA,ownerUid:a.localId,createdAt:admin.firestore.Timestamp.fromMillis(1760000000000+Math.floor(i/2)*1000),
+    total:16,subtotal:12,desconto:0,valorFrete:4,clienteEndereco:'Rua histórica, 20',formaPagamento:'Cartão de Crédito',
+    itens:[{nome:'Brownie na compra',quantity:1,preco:12,total:12}],order_status:'CONFIRMED',payment_status:'PAID',receipt_url:'https://receipt.example.test/old'});
+  batch.set(db.doc('lojas/history-matriz/pedidos/history-private-b'),{clienteId:customerB,ownerUid:b.localId,createdAt:admin.firestore.Timestamp.now(),total:100,endereco:'Private B'});
+  batch.set(db.doc('lojas/history-matriz/pedidos/history-phone-only'),{telefone:'62999991234',createdAt:admin.firestore.Timestamp.now(),total:999});
+  await batch.commit();
+});
+after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await admin.app().delete();});
+test('callable com Auth real pagina por cursor, preserva ordem e isolamento multiloja',async()=>{
+  const first=await send('/list',{customerId:customerB,uid:b.localId});assert.equal(first.status,200);
+  const second=await send('/list',{cursor:first.body.result.nextCursor}),third=await send('/list',{cursor:second.body.result.nextCursor});
+  const pages=[first,second,third].map(r=>r.body.result);
+  assert.deepEqual(pages.map(p=>p.orders.length),[20,20,3]);assert.equal(pages[2].hasMore,false);assert.equal(pages[2].nextCursor,null);
+  const all=pages.flatMap(p=>p.orders);assert.equal(new Set(all.map(o=>`${o.storeId}/${o.id}`)).size,43);
+  assert.deepEqual(all.map(o=>o.id),Array.from({length:43},(_,i)=>`history-${String(42-i).padStart(2,'0')}`));
+  assert.equal(new Set(all.map(o=>o.storeId)).size,2);assert.ok(all.every(o=>o.storeName===`Loja ${o.storeId}`));
+  const ownB=await send('/list',{},b.idToken);assert.deepEqual(ownB.body.result.orders.map(o=>o.id),['history-private-b']);
+});
+test('detalhe lê snapshot financeiro/endereço histórico sem escrever nem consultar catálogo',async()=>{
+  const ref=db.doc('lojas/history-garavelo/pedidos/history-42'),before=(await ref.get()).data();
+  const result=await send('/detail',{storeId:'history-garavelo',orderId:'history-42',customerId:customerB});assert.equal(result.status,200);
+  const order=result.body.result.order;assert.equal(order.total,16);assert.equal(order.frete,4);assert.equal(order.itens[0].preco,12);
+  assert.equal(order.endereco,'Rua histórica, 20');assert.equal(order.receipt_url,'https://receipt.example.test/old');assert.equal(order.payment_status,'PAID');
+  assert.deepEqual((await ref.get()).data(),before);
+});
+test('pedido/cursor de B e inexistente retornam erro indistinguível sem detalhes privados',async()=>{
+  const peer=await send('/detail',{storeId:'history-matriz',orderId:'history-private-b'});
+  const absent=await send('/detail',{storeId:'history-matriz',orderId:'missing'});
+  assert.equal(peer.status,404);assert.deepEqual(peer.body,absent.body);assert.doesNotMatch(JSON.stringify(peer.body),/Private B|100|customer-/);
+  const cursor=await send('/list',{cursor:'lojas/history-matriz/pedidos/history-private-b'});assert.equal(cursor.status,404);
+  const previous=(await send('/list')).body.result.nextCursor;
+  assert.equal((await send('/list',{cursor:previous},b.idToken)).status,404);
+});
+test('ausência de Auth/sessão anônima não concede histórico ou detalhe privado',async()=>{
+  for(const token of [null,anonymous.idToken]) {
+    const list=await send('/list',{customerId:customerA},token),detail=await send('/detail',{storeId:'history-garavelo',orderId:'history-42'},token);
+    assert.equal(list.status,401);assert.equal(detail.status,401);assert.equal(list.body.error.status,'UNAUTHENTICATED');
+  }
+});

@@ -3,6 +3,7 @@ import {customerAuthErrorMessage} from './customer-auth-errors.mjs';
 import {createCustomerAuthState} from './customer-session.mjs';
 import {isCustomerIdentity as isCustomerUser, createCustomerAreaNavigation} from './customer-area.mjs';
 import {createCustomerProfileSecurity} from './customer-profile.mjs';
+import {createCustomerOrderHistory} from './customer-orders-view.mjs';
 import {GoogleAuthProvider, createUserWithEmailAndPassword, sendEmailVerification,
   sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged,
   signOut, updateProfile, setPersistence, browserLocalPersistence, EmailAuthProvider,
@@ -20,7 +21,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   dialog.className = 'customer-area-dialog rounded-lg shadow-xl p-6';
   if (!document.querySelector('[data-customer-area-style]')) {
     const style = document.createElement('link');
-    style.rel = 'stylesheet'; style.href = new URL('./customer-area.css?v=20261005-customer-profile', import.meta.url).href;
+    style.rel = 'stylesheet'; style.href = new URL('./customer-area.css?v=20261005-customer-orders', import.meta.url).href;
     style.setAttribute('data-customer-area-style', ''); document.head.append(style);
   }
   dialog.setAttribute('aria-label', 'Minha Conta');
@@ -58,7 +59,9 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     <section data-password-security hidden><form data-change-email class="space-y-2 mt-3"><label class="block">Novo e-mail<input data-new-email type="email" required autocomplete="email"></label><label class="block">Senha atual<input data-email-current-password type="password" required autocomplete="current-password"></label><button type="submit" class="border rounded p-2">Alterar e-mail</button></form>
     <form data-change-password class="space-y-2 mt-3"><label class="block">Senha atual<input data-current-password type="password" required autocomplete="current-password"></label><label class="block">Nova senha<input data-new-password type="password" minlength="6" required autocomplete="new-password"></label><label class="block">Confirmar nova senha<input data-confirm-password type="password" minlength="6" required autocomplete="new-password"></label><button type="submit" class="border rounded p-2">Alterar senha</button></form><button data-profile-reset type="button" class="underline">Esqueci minha senha</button></section>
     <h3 class="font-bold mt-4">Formas de Pagamento</h3><p>Seus cartões são armazenados com segurança pela InfinitePay. Você poderá salvar, selecionar, adicionar ou remover cartões durante o pagamento.</p><p class="text-sm text-gray-600 mt-2">🔒 Gerenciado pela InfinitePay</p></section>
-    <section data-orders-panel hidden aria-labelledby="customer-orders-heading"><h3 id="customer-orders-heading" data-orders-heading tabindex="-1" class="font-bold mb-3">Meus Pedidos</h3><button data-history type="button" class="underline">Atualizar pedidos recentes</button><p data-orders-message role="status" aria-live="polite" class="my-2"></p><ul data-orders class="space-y-3 my-2"></ul></section>
+    <section data-orders-panel hidden aria-labelledby="customer-orders-heading"><h3 id="customer-orders-heading" data-orders-heading tabindex="-1" class="font-bold mb-3">Meus Pedidos</h3>
+    <div data-orders-list><button data-history type="button" class="underline">Atualizar pedidos</button><p data-orders-message role="status" aria-live="polite" class="my-2"></p><ul data-orders class="space-y-3 my-2"></ul><button data-orders-more type="button" hidden>Carregar mais</button></div>
+    <section data-order-detail hidden><button data-order-back type="button">Voltar aos pedidos</button><h4 data-order-detail-heading tabindex="-1">Detalhe do pedido</h4><p data-order-detail-message role="status" aria-live="polite"></p><div data-order-detail-content></div></section></section>
     </section>
     <button data-logout type="button" class="text-gray-600 underline mt-5" hidden>Sair</button>`;
   document.body.append(dialog);
@@ -93,7 +96,9 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const security = createCustomerProfileSecurity({auth, isAllowed: () => navigation.isAllowed(),
     sdk: {EmailAuthProvider, reauthenticateWithCredential, verifyBeforeUpdateEmail, updatePassword, sendEmailVerification, sendPasswordResetEmail}});
   let editingAddressId = null;
+  let orderHistory;
   const clearPrivateView = () => {
+    orderHistory?.clear();
     ['name', 'birthdate', 'new-name', 'number', 'profile-phone'].forEach(name => {el(name).value = '';});
     ['phone-state', 'email-state', 'orders-message', 'provider-state', 'created-state'].forEach(name => {el(name).textContent = '';});
     dialog.querySelectorAll('[data-profile] input').forEach(input => {input.value = '';if(input.type==='checkbox') input.checked=false;});
@@ -104,6 +109,10 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const renderSignedOut = () => {currentUid=null;navigation.invalidate();clearPrivateView();el('signed-out').hidden=false;el('phone').hidden=true;el('logout').hidden=true;message('Entre com Google ou e-mail para acessar sua conta.');};
   const clearPublishedSession = () => {current=null;checkoutIntent=false;renderSignedOut();onSession(null);onLogout();};
   const authState = createCustomerAuthState({onInvalidate:clearPublishedSession});
+  orderHistory=createCustomerOrderHistory({panel:el('orders-panel'),call,
+    snapshot:()=>({...authState.observe(auth.currentUser?.uid),customerId:current?.id}),
+    isCurrent:snapshot=>authState.isCurrent(snapshot) && navigation.isAllowed() && navigation.getRoute()==='orders' && current?.id===snapshot.customerId,
+    onExpired:()=>authState.invalidate()});
   const busy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {message(customerAuthErrorMessage(e));} finally {button.disabled=false;}};
   const emailButtonBusy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
   const emailBusy = (form, fn) => async event => {event.preventDefault();const button=form.querySelector('button:not([type])');button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
@@ -194,26 +203,8 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   el('address').onclick=()=>{if(current){dialog.close();onCustomer(current);}};
   async function loadOrders() {
     if (!navigation.isAllowed()) {navigation.invalidate();renderSignedOut();return;}
-    const snapshot = authState.observe(auth.currentUser.uid);
-    const customerId = current.id;
-    el('orders-message').textContent = 'Carregando seus pedidos…';
-    try {
-      const data = await call('customerOrders');
-      if (!authState.isCurrent(snapshot) || !navigation.isAllowed() || current.id !== customerId) return;
-      el('orders').replaceChildren();
-      for (const order of data.orders || []) {
-        const item = document.createElement('li'); item.className = 'border rounded p-2';
-        const date = order.createdAt ? new Date(order.createdAt).toLocaleDateString('pt-BR') : 'data indisponível';
-        const items = (order.itens || []).map(i => `${i.quantity}× ${i.nome}`).join(', ');
-        item.textContent = `${order.lojaId || 'Loja'} • ${date} • ${Number(order.total || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} • ${order.status || 'Sem status'}${order.payment_status?' / '+order.payment_status:''}${order.formaPagamento?' • '+order.formaPagamento:''}${items?' — '+items:''}`;
-        el('orders').append(item);
-      }
-      el('orders-message').textContent = data.orders?.length ? '' : 'Nenhum pedido encontrado.';
-    } catch (_) {
-      if (authState.isCurrent(snapshot) && navigation.isAllowed()) el('orders-message').textContent = 'Não foi possível carregar seus pedidos. Tente atualizar novamente.';
-    }
+    await orderHistory.load();
   }
-  el('history').onclick = busy(el('history'), loadOrders);
   dialog.querySelectorAll('[data-customer-route]').forEach(button => {
     button.onclick = busy(button, async () => {
       requestedRoute = button.dataset.customerRoute;

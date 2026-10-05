@@ -1,6 +1,7 @@
 const {createHash, randomUUID} = require('node:crypto');
 const {HttpsError} = require('firebase-functions/v2/https');
 const {FieldValue} = require('firebase-admin/firestore');
+const {createCustomerOrders} = require('./customer-orders');
 const digest = (provider, subject) => createHash('sha256').update(`${provider}:${subject}`).digest('hex');
 const fail = (code, message) => { throw new HttpsError(code, message); };
 function verifiedIdentity(token, user) {
@@ -119,15 +120,6 @@ function createCustomerAccount({admin, db}) {
     });
     return account(request);
   }
-  async function orders(request) {
-    const id = await resolve(request);
-    if (!id.customerId) fail('failed-precondition', 'Informe seu celular de contato.');
-    const customer=await db.collection('clientes').doc(id.customerId).get();
-    if(!customer.exists || customer.data().authOwnerUid!==id.user.uid) fail('permission-denied','Cadastro não autorizado.');
-    // Account ownership is derived from the verified Google sub, never a request customerId.
-    const result = await db.collectionGroup('pedidos').where('clienteId', '==', id.customerId).orderBy('createdAt','desc').limit(50).get();
-    return {orders: result.docs.map(s => {const d=s.data();return {id:s.id, lojaId:d.lojaId || s.ref.parent.parent?.id || '', total:d.total, status:d.order_status || d.status, payment_status:d.payment_status || null, formaPagamento:d.formaPagamento || d.pagamento?.forma || '', createdAt:d.createdAt?.toDate?.().toISOString() || null, itens:(d.itens||[]).map(i=>({nome:String(i.nome || '').slice(0,120),quantity:Number(i.quantity || 0)}))};})};
-  }
   async function addAddress(request) {
     const id=await resolve(request);
     if(!id.customerId) fail('failed-precondition','Informe seu celular de contato.');
@@ -186,7 +178,8 @@ function createCustomerAccount({admin, db}) {
     });
     return account(request);
   }
-  return {account, completeProfile, update, orders, addAddress, resolve, deleteAddress,
+  const history=createCustomerOrders({db,resolve});
+  return {account, completeProfile, update, orders:history.list, orderDetail:history.detail, addAddress, resolve, deleteAddress,
     updateAddress: request=>mutateAddress(request,false), setDefaultAddress: request=>mutateAddress(request,true)};
 }
 module.exports = {createCustomerAccount, verifiedIdentity, normalizeContactPhone, normalizeAddress, normalizeBirthdate, normalizeName, addressRecords, digest};
