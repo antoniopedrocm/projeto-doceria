@@ -72,5 +72,21 @@ const orderFreightSnapshot = ({config, quote, storeId, distanceKm}) => ({
   },
 });
 
+// Claims are only compared with a server quote/saved snapshot, never used to price it.
+const assertFreightClaims = (payload, freight, pickup) => {
+  const changed = () => {throw Object.assign(new Error('O frete mudou. Confirme novamente a entrega.'),
+    {httpStatus: 409, code: 'FREIGHT_CHANGED'});};
+  if (payload.delivery?.pickup != null && payload.delivery.pickup !== pickup) changed();
+  if (freight.tipoFrete !== 'calculado') return; // Existing pickup/a-combinar rules.
+  const numeric = value => (typeof value === 'number' ||
+    (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value)) && Number(value) >= 0;
+  for (const field of ['valorFrete', 'frete']) {
+    if (Object.prototype.hasOwnProperty.call(payload, field) &&
+        (!numeric(payload[field]) || Math.abs(Number(payload[field]) - freight.valorFrete) > 0.009)) changed();
+  }
+  if (payload.distanciaFreteKm != null && (!numeric(payload.distanciaFreteKm) ||
+      Math.abs(Number(payload.distanciaFreteKm) - freight.distanciaFreteKm) > 0.001)) changed();
+};
+
 module.exports = {quoteFreight, totalWithFreight, validateFreightCoordinates,
-  extractFreightConfig, loadStoreFreightConfig, orderFreightSnapshot};
+  extractFreightConfig, loadStoreFreightConfig, orderFreightSnapshot, assertFreightClaims};

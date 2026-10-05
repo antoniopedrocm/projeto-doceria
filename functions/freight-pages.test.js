@@ -7,6 +7,24 @@ const {quoteFreight} = require('./freight-core');
 
 for (const page of ['matriz', 'garavelo', 'festa']) {
   const html = fs.readFileSync(path.join(__dirname, `../crm/public/cardapio-${page}.html`), 'utf8');
+  test(`${page}: revalidação final usa endereço do pedido e atualiza distância/valor oficiais`, async () => {
+    const start = html.indexOf('async function revalidateCheckoutBeforeFinalSubmit(clientInfo)');
+    const end = html.indexOf('function persistCheckoutState()', start);
+    const calls = [];
+    const context = {window: {distanciaFreteKm: 0, valorFrete: 0},
+      API_BASE_URL: 'https://example.test', STORE_ID: `${page}-store`, appliedCupom: null,
+      ensureCheckoutNotBlocked: () => {}, updateAllSummaries: () => {},
+      revalidateCartProductsBeforeSubmit: async () => {},
+      fetch: async (url, options) => {calls.push({url, data: JSON.parse(options.body)});
+        return {ok: true, json: async () => ({valorFrete: 4, distanciaKm: 2, freteACombinar: false})};},
+    };
+    vm.runInNewContext(html.slice(start, end), context);
+    await context.revalidateCheckoutBeforeFinalSubmit({clienteEndereco: 'Rua teste'});
+    assert.deepEqual(calls[0].data, {clienteEndereco: 'Rua teste'});
+    assert.ok(calls[0].url.includes(`lojaId=${page}-store`));
+    assert.equal(context.window.valorFrete, 4);
+    assert.equal(context.window.distanciaFreteKm, 2);
+  });
   test(`${page}: scripts clássicos permanecem válidos`, () => {
     for (const match of html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)) {
       if (/\bsrc=|\btype="module"/.test(match[1]) || !match[2].trim()) continue;

@@ -2,6 +2,7 @@ process.env.FIRESTORE_EMULATOR_HOST='127.0.0.1:8080';
 process.env.FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099';
 process.env.GCLOUD_PROJECT='demo-doceria-checkout';
 process.env.FUNCTIONS_EMULATOR='true';
+process.env.GOOGLE_MAPS_SERVER_API_KEY='test-only-not-a-real-key';
 const {test,after,before}=require('node:test');
 const assert=require('node:assert/strict');
 const http=require('node:http');
@@ -12,6 +13,13 @@ let links=0;
 const linkBodies=[];
 // Only this test process substitutes the external provider. Production has no mock endpoint.
 global.fetch=async(url,options)=>{
+  if(String(url).startsWith('https://maps.googleapis.com/maps/api/distancematrix/json?')) {
+    const params=new URL(url).searchParams;
+    assert.equal(params.get('mode'),'driving');
+    assert.equal(params.get('key'),'test-only-not-a-real-key');
+    const meters=params.get('destinations')==='Rua de teste' ? 2000 : 6000;
+    return {ok:true,json:async()=>({status:'OK',rows:[{elements:[{status:'OK',distance:{value:meters}}]}]})};
+  }
   if(String(url)==='https://api.checkout.infinitepay.io/links') {links++;linkBodies.push(JSON.parse(options.body));return {ok:true,json:async()=>({url:'https://buy.infinitepay.io/test-only'})};}
   if(String(url).startsWith('https://api.checkout.infinitepay.io/')) throw new Error('Unexpected provider call in test');
   return originalFetch(url,options);
@@ -84,6 +92,42 @@ test('HTTP rejeita quantidade duplicada/preço/frete manipulados',async()=>{
   assert.equal((await send({...b,itens:[...b.itens,...b.itens],subtotal:20})).status,400);
   assert.equal((await send({...b,itens:[{...b.itens[0],preco:1}],subtotal:1})).status,409);
   assert.equal((await send({...b,cliente:{...b.cliente,endereco:'Entrega'},delivery:{lat:-17,lng:-49}})).status,409);
+});
+test('HTTP valida frete e distância contra endereço server-side e snapshot no retry',async()=>{
+  const b=body();
+  Object.assign(b,{cliente:{...b.cliente,endereco:'Rua de teste'},valorFrete:4,distanciaFreteKm:2,
+    delivery:{pickup:false,lat:-80,lng:100}});
+  // Caller coordinates cannot replace the persisted delivery address in pricing.
+  const accepted=await send(b);assert.equal(accepted.status,200,JSON.stringify(accepted));
+  const attempts=[{valorFrete:1},{valorFrete:0},{valorFrete:4,frete:0},
+    {valorFrete:false},{distanciaFreteKm:0},{cliente:{...b.cliente,endereco:'Outro endereço'}},
+    {cliente:{...b.cliente,endereco:'Retirar na Loja'},delivery:{pickup:false}}];
+  for(const changes of attempts) {
+    const response=await send({...b,...changes,idempotencyKey:require('node:crypto').randomUUID()});
+    assert.equal(response.status,409,JSON.stringify({changes,response}));
+  }
+  assert.equal((await send({...b,valorFrete:0})).status,409);
+  assert.equal((await send(b)).data.id,accepted.data.id);
+  const legacy=await originalFetch(base+`/pedidos?lojaId=${store}`,{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({itens:b.itens,clienteEndereco:'Rua de teste',distanciaFreteKm:2,frete:0})});
+  assert.equal(legacy.status,409);
+  const alias=await originalFetch(base+`/pedidos?lojaId=${store}`,{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({itens:b.itens,clienteEndereco:'Outro endereço',cliente:{endereco:'Rua de teste'},frete:4,distanciaFreteKm:2})});
+  assert.equal(alias.status,409);
+  const offline=await send({...b,cliente:{...b.cliente,id:null},pagamento:{forma:'Dinheiro'},
+    idempotencyKey:require('node:crypto').randomUUID()},anonymousToken);
+  assert.equal(offline.status,200,JSON.stringify(offline));
+  assert.equal(offline.data.total,14);
+  const configRef=db.doc(`lojas/${store}/configuracoes/config`);
+  const original=(await configRef.get()).data();
+  try {
+    await configRef.set({...original,frete:{...original.frete,valorPorKm:0,valorMinimoFrete:0}});
+    const zero=await send({...b,valorFrete:0,idempotencyKey:require('node:crypto').randomUUID()});
+    assert.equal(zero.status,200,JSON.stringify(zero));
+    assert.equal((await db.doc(`lojas/${store}/pedidos/${zero.data.id}`).get()).data().valorFrete,0);
+  } finally {await configRef.set(original);}
 });
 test('visitante offline preserva criação sem gateway e status não é controlado pelo navegador',async()=>{
   const previousLinks=links;

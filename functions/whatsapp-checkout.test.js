@@ -48,6 +48,8 @@ const runCheckout = async (phone, consent, {freightConfig = {}, checkout = {}} =
   const collection = (name) => ({doc: (id = 'order-test') => ref(`${name}/${id}`)});
   const context = {
     app: {post: (_, fn) => {handler = fn;}}, buildCheckoutWhatsApp, ...core,
+    // Trusted distance double, independent of the production browser/provider.
+    resolveFreightDistance: async () => checkout.distanciaFreteKm ?? 2,
     requireStoreId: () => 'loja-teste', getStoreConfigDoc: () => ref('config'), assertStoreOpen: () => {},
     FieldValue: {serverTimestamp: () => 'SERVER'},
     admin: {firestore: {FieldValue: {serverTimestamp: () => 'SERVER'}}},
@@ -73,7 +75,7 @@ const runCheckout = async (phone, consent, {freightConfig = {}, checkout = {}} =
     return res;
   }};
   await handler({headers: {}, body: {
-    cliente: {nome: 'Cliente teste', telefone: phone}, itens: [{produtoId: 'bolo', nome: 'Bolo', quantity: 2, preco: 10}],
+    cliente: {nome: 'Cliente teste', telefone: phone, endereco: 'Rua teste'}, itens: [{produtoId: 'bolo', nome: 'Bolo', quantity: 2, preco: 10}],
     subtotal: 20, distanciaFreteKm: 2, valorFrete: 5, whatsappConsent: consent,
     whatsappConfirmation: {phoneE164: '+5511999999999', consent: {granted: true}},
     ...checkout,
@@ -109,7 +111,7 @@ test('checkout calcula e grava mínimo ou valor por distância da própria loja'
   for (const [distance, expectedFreight] of [[2.5, 8], [6, 12]]) {
     const {order, response} = await runCheckout('(62) 99123-4567', undefined, {
       freightConfig,
-      checkout: {distanciaFreteKm: distance, valorFrete: 0},
+      checkout: {distanciaFreteKm: distance, valorFrete: expectedFreight},
     });
     assert.equal(order.valorFrete, expectedFreight);
     assert.equal(order.total, 20 + expectedFreight);

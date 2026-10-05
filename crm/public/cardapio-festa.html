@@ -1452,7 +1452,7 @@
                 const response = await fetch(`${API_BASE_URL}/frete/calcular?lojaId=${encodeURIComponent(STORE_ID)}`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({distanciaKm: window.distanciaFreteKm})
+                    body: JSON.stringify({clienteEndereco: clientInfo.clienteEndereco})
                 });
                 const currentQuote = await response.json().catch(() => ({}));
                 if (!response.ok) {
@@ -1461,6 +1461,7 @@
                     throw new Error(message);
                 }
                 window.valorFrete = Number(currentQuote.valorFrete);
+                window.distanciaFreteKm = currentQuote.distanciaKm == null ? null : Number(currentQuote.distanciaKm);
                 window.freteACombinar = currentQuote.freteACombinar === true;
                 updateAllSummaries();
             }

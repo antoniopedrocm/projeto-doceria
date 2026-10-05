@@ -6,7 +6,7 @@ const path = require('node:path');
 const core = require('./freight-core');
 const source = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
 
-const checkout = async ({storeId, configs, distance = 2, pickup = false}) => {
+const checkout = async ({storeId, configs, distance = 2, serverDistance = 2, pickup = false, claimedFreight = 4.52}) => {
   const reads = [];
   const writes = [];
   let handler;
@@ -24,7 +24,8 @@ const checkout = async ({storeId, configs, distance = 2, pickup = false}) => {
       update: (r, data) => writes.push({path: r.path, data}),
     }),
   };
-  const context = { ...core, buildCheckoutWhatsApp: require('./whatsapp-checkout').buildCheckoutWhatsApp, db, app: {post: (_url, fn) => { handler = fn; }},
+  const context = { ...core, resolveFreightDistance: async () => serverDistance,
+    buildCheckoutWhatsApp: require('./whatsapp-checkout').buildCheckoutWhatsApp, db, app: {post: (_url, fn) => { handler = fn; }},
     requireStoreId: () => storeId,
     getStoreConfigDoc: (id) => ref(`lojas/${id}/configuracoes/config`),
     assertStoreOpen: () => undefined,
@@ -40,7 +41,7 @@ const checkout = async ({storeId, configs, distance = 2, pickup = false}) => {
   let body;
   const res = {status: (s) => { status = s; return res; }, json: (b) => { body = b; return res; }};
   await handler({headers: {}, body: {cliente: {nome: 'Teste', telefone: '62999999999', endereco: pickup ? 'Retirar na Loja' : 'Rua teste'},
-    itens: [{produtoId: 'p1', quantity: 1, preco: 59.4}], subtotal: 59.4, distanciaFreteKm: distance, valorFrete: 999}}, res);
+    itens: [{produtoId: 'p1', quantity: 1, preco: 59.4}], subtotal: 59.4, distanciaFreteKm: distance, valorFrete: claimedFreight}}, res);
   return {status, body, reads, writes};
 };
 
@@ -99,4 +100,29 @@ test('leitura legada é isolada e não migra documentos', async () => {
   });
   assert.equal(config.valorPorKm, 2);
   assert.deepEqual(reads, ['lojas/matriz/configuracoes/frete']);
+});
+
+test('frete inferior/zero e distância adulterada são rejeitados antes de qualquer escrita', async () => {
+  for (const attack of [{claimedFreight: 0}, {claimedFreight: 1}, {claimedFreight: 999},
+    {distance: 0}, {distance: 6}, {claimedFreight: false}]) {
+    const result = await checkout({storeId: 'matriz', configs, ...attack});
+    assert.equal(result.status, 409, JSON.stringify(attack));
+    assert.equal(result.writes.length, 0);
+  }
+});
+
+test('configuração de outra loja não permite confirmar frete sem configuração da loja solicitada', async () => {
+  const result = await checkout({storeId: 'matriz', configs: {'lojas/garavelo/configuracoes/config': configs['lojas/garavelo/configuracoes/config']}});
+  assert.equal(result.status, 400);
+  assert.equal(result.writes.length, 0);
+  assert.ok(result.reads.every(p => p.startsWith('lojas/matriz/')));
+});
+
+test('zero legítimo é calculado pela configuração da própria loja', async () => {
+  const local = structuredClone(configs);
+  local['lojas/matriz/configuracoes/config'].frete.valorPorKm = 0;
+  const result = await checkout({storeId: 'matriz', configs: local, claimedFreight: 0});
+  assert.equal(result.status, 200);
+  assert.equal(result.body.valorFrete, 0);
+  assert.equal(result.body.total, 59.4);
 });

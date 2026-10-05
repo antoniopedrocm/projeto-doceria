@@ -21,7 +21,8 @@ const {createWhatsAppWorker, createWhatsAppWorkerFunctions} = require('./whatsap
 const {createWhatsAppAdminFunctions} = require('./whatsapp-admin');
 const {createWhatsAppWebhook} = require('./whatsapp-webhook');
 const {quoteFreight, totalWithFreight, validateFreightCoordinates,
-  loadStoreFreightConfig, orderFreightSnapshot} = require('./freight-core');
+  loadStoreFreightConfig, orderFreightSnapshot, assertFreightClaims} = require('./freight-core');
+const {resolveFreightDistance} = require('./freight-distance');
 const {createFiscalFunctions} = require('./fiscal');
 const {createCaixaFunctions} = require('./caixa');
 const {createEntreLojasFunctions} = require('./entre-lojas');
@@ -1602,20 +1603,25 @@ app.put("/clientes/:id", async (req, res) => {
 });
 
 
-const quoteOrderFreight = async (transaction, storeId, primaryData, payload, pickup) => {
+const quoteOrderFreight = async (transaction, storeId, primaryData, payload, pickup, address) => {
   try {
     const config = pickup ? {} : await loadStoreFreightConfig({
       db, storeId, primaryData, read: (ref) => transaction.get(ref),
     });
     if (!pickup && config.freteACombinar !== true) validateFreightCoordinates(config);
+    const distanceKm = pickup || config.freteACombinar === true ? null : await resolveFreightDistance({
+      config, address,
+    });
     const quote = quoteFreight({
       config,
       pickup,
-      distanceKm: payload?.distanciaFreteKm,
-      requestedFreight: payload?.valorFrete ?? payload?.frete ?? 0,
+      distanceKm,
     });
-    return orderFreightSnapshot({config, quote, storeId, distanceKm: payload?.distanciaFreteKm});
+    const freight = orderFreightSnapshot({config, quote, storeId, distanceKm});
+    assertFreightClaims(payload, freight, pickup);
+    return freight;
   } catch (error) {
+    if (error.httpStatus) throw error;
     throw createHttpError(400, error.message, 'FREIGHT_INVALID');
   }
 };
@@ -1693,6 +1699,7 @@ app.post("/pedidos", async (req, res) => {
         storeConfig,
         req.body,
         req.body?.clienteEndereco === 'Retirar na Loja',
+        req.body?.clienteEndereco,
       );
       const totalFinal = totalWithFreight(subtotalFinal - descontoFinal, freight);
 
@@ -1767,7 +1774,13 @@ app.post("/checkout/confirmar", async (req, res) => {
     const orderId = await db.runTransaction(async (transaction) => {
       if(online) {
         const prior=await transaction.get(db.collection('checkoutPayments').doc(paymentId));
-        if(prior.exists) {if(prior.data().fingerprint!==fingerprint) throw paymentError('O pedido já foi enviado com outros dados. Consulte o pagamento pendente.');return prior.data().orderId;}
+        if(prior.exists) {
+          if(prior.data().fingerprint!==fingerprint) throw paymentError('O pedido já foi enviado com outros dados. Consulte o pagamento pendente.');
+          const savedOrder = await transaction.get(orderRef);
+          if (!savedOrder.exists) throw paymentError('Pedido indisponível. Consulte o pagamento pendente.');
+          assertFreightClaims(req.body, savedOrder.data(), cliente.endereco === 'Retirar na Loja');
+          return prior.data().orderId;
+        }
       }
       const storeConfigRef = getStoreConfigDoc(lojaId);
       const storeConfigSnap = await transaction.get(storeConfigRef);
@@ -1779,6 +1792,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         storeConfig,
         req.body,
         cliente.endereco === 'Retirar na Loja',
+        cliente.endereco,
       );
       const seenProducts=new Set();
       const stockUpdates = [];
@@ -1997,6 +2011,10 @@ app.post("/frete/calcular", async (req, res) => {
         if (freteConfig.freteACombinar === true) {
             return res.status(200).json({...quoteFreight({config: freteConfig}), distanciaKm: null});
         }
+        if (Object.prototype.hasOwnProperty.call(req.body, 'clienteEndereco')) {
+            const distanciaKm = await resolveFreightDistance({config: freteConfig, address: req.body.clienteEndereco});
+            return res.status(200).json({...quoteFreight({config: freteConfig, distanceKm: distanciaKm}), distanciaKm});
+        }
         const {lat: lojaLat, lng: lojaLng} = validateFreightCoordinates(freteConfig);
         if (req.body?.distanciaKm != null) {
             return res.status(200).json({
@@ -2030,7 +2048,7 @@ app.post("/frete/calcular", async (req, res) => {
 
     } catch (error) {
         logger.error("Erro ao calcular frete:", error);
-        return res.status(400).json({message: error.message || 'Erro ao calcular frete.'});
+        return res.status(error.httpStatus || 400).json({message: error.message || 'Erro ao calcular frete.'});
     }
 });
 
