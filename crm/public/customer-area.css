@@ -1,0 +1,30 @@
+.customer-area-dialog {
+  box-sizing: border-box;
+  width: min(36rem, calc(100vw - 2rem));
+  max-width: 36rem;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+.customer-area-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.customer-area-nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .5rem;
+  margin: 1rem 0;
+}
+.customer-area-nav button {
+  min-height: 44px;
+  padding: .5rem;
+  border: 1px solid #fbcfe8;
+  border-radius: .5rem;
+  color: #9d174d;
+  background: white;
+}
+.customer-area-nav button[aria-current="page"] { background: #fce7f3; font-weight: 700; }
+.customer-area-dialog button:focus-visible,
+.customer-area-dialog input:focus-visible { outline: 2px solid #be185d; outline-offset: 2px; }
+.customer-area-dialog [hidden] { display: none !important; }
+@media (max-width: 480px) {
+  .customer-area-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .customer-area-dialog { padding: 1rem; }
+}

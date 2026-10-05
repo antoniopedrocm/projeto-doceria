@@ -1,21 +1,26 @@
 import {auth, functions, httpsCallable} from './firebaseClientConfig.js';
 import {customerAuthErrorMessage} from './customer-auth-errors.mjs';
 import {createCustomerAuthState} from './customer-session.mjs';
+import {isCustomerIdentity as isCustomerUser, createCustomerAreaNavigation} from './customer-area.mjs';
 import {GoogleAuthProvider, createUserWithEmailAndPassword, sendEmailVerification,
   sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged,
   signOut, updateProfile, setPersistence, browserLocalPersistence} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 
-const isCustomerUser = user => !!user && !user.isAnonymous && user.providerData.some(provider =>
-  provider.providerId === 'google.com' || provider.providerId === 'password');
-
 export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onLogout=()=>{}, notify=()=>{}, createAccountButton=true, showCheckoutAddressAction=true}) {
   const call = async (name, data = {}) => (await httpsCallable(functions, name)(data)).data;
   let current = null;
+  let currentUid = null;
+  let requestedRoute = 'profile';
   let checkoutIntent = false;
   let markReady;
   const ready = new Promise(resolve => {markReady=resolve;});
   const dialog = document.createElement('dialog');
-  dialog.className = 'rounded-lg shadow-xl p-6 w-full max-w-lg';
+  dialog.className = 'customer-area-dialog rounded-lg shadow-xl p-6';
+  if (!document.querySelector('[data-customer-area-style]')) {
+    const style = document.createElement('link');
+    style.rel = 'stylesheet'; style.href = new URL('./customer-area.css', import.meta.url).href;
+    style.setAttribute('data-customer-area-style', ''); document.head.append(style);
+  }
   dialog.setAttribute('aria-label', 'Minha Conta');
   dialog.innerHTML = `<form method="dialog" class="flex justify-between items-center"><h2 class="text-xl font-bold text-pink-600">Minha Conta</h2><button aria-label="Fechar minha conta">✕</button></form>
     <p data-message role="status" class="my-4 text-gray-700"></p>
@@ -23,11 +28,19 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     <section data-phone hidden><label class="block">Nome<input data-new-name autocomplete="name" maxlength="120" class="border rounded p-2 w-full"></label><label class="block mt-2">Celular com DDD<input data-number type="tel" autocomplete="tel" class="border rounded p-2 w-full" placeholder="(62) 99999-9999"></label>
     <p class="text-sm text-gray-600 my-2">Usaremos este número para contato sobre pedidos, entrega e WhatsApp. Não enviaremos código nesta etapa.</p>
     <button type="button" data-complete class="bg-pink-600 text-white rounded p-3 my-2">Salvar e continuar</button></section>
-    <section data-profile hidden><label class="block">Meu nome<input data-name autocomplete="name" maxlength="120" class="border rounded p-2 w-full"></label><label class="block mt-2">Data de nascimento<input data-birthdate type="date" autocomplete="bday" class="border rounded p-2 w-full"></label><p data-phone-state class="text-sm text-gray-700 mt-2"></p><button data-save type="button" class="border rounded p-2 my-2">Salvar dados</button>
+    <section data-area hidden>
+    <nav aria-label="Área do Cliente" class="customer-area-nav">
+      <button type="button" data-customer-route="home">Página Inicial</button>
+      <button type="button" data-customer-route="orders">Meus Pedidos</button>
+      <button type="button" data-customer-route="profile">Meu Perfil</button>
+      <button type="button" data-area-logout>Sair</button>
+    </nav>
+    <section data-profile hidden aria-labelledby="customer-profile-heading"><h3 id="customer-profile-heading" data-profile-heading tabindex="-1" class="font-bold mb-3">Meu Perfil</h3><label class="block">Meu nome<input data-name autocomplete="name" maxlength="120" class="border rounded p-2 w-full"></label><label class="block mt-2">Data de nascimento<input data-birthdate type="date" autocomplete="bday" class="border rounded p-2 w-full"></label><p data-phone-state class="text-sm text-gray-700 mt-2"></p><button data-save type="button" class="border rounded p-2 my-2">Salvar dados</button>
     <h3 class="font-bold mt-4">Segurança da Conta</h3><p data-email-state class="text-sm text-gray-700"></p><button data-verify-email type="button" class="text-pink-700 underline" hidden>Reenviar verificação de e-mail</button>
     <h3 class="font-bold mt-4">Meus Endereços</h3><ul data-addresses class="space-y-2 my-2"></ul><button data-address type="button" class="text-pink-700 underline">Gerenciar endereços / continuar pedido</button>
-    <h3 class="font-bold mt-4">Meus Pedidos</h3><button data-history type="button" class="underline">Carregar pedidos recentes</button><ul data-orders class="space-y-3 my-2"></ul>
-    <h3 class="font-bold mt-4">Formas de Pagamento</h3><p>Pix e cartão são informados no checkout seguro da InfinitePay. A Ana Guimarães não armazena os dados completos do seu cartão.</p></section>
+    <h3 class="font-bold mt-4">Formas de Pagamento</h3><p>Seus cartões são armazenados com segurança pela InfinitePay. Você poderá salvar, selecionar, adicionar ou remover cartões durante o pagamento.</p><p class="text-sm text-gray-600 mt-2">🔒 Gerenciado pela InfinitePay</p></section>
+    <section data-orders-panel hidden aria-labelledby="customer-orders-heading"><h3 id="customer-orders-heading" data-orders-heading tabindex="-1" class="font-bold mb-3">Meus Pedidos</h3><button data-history type="button" class="underline">Atualizar pedidos recentes</button><p data-orders-message role="status" aria-live="polite" class="my-2"></p><ul data-orders class="space-y-3 my-2"></ul></section>
+    </section>
     <button data-logout type="button" class="text-gray-600 underline mt-5" hidden>Sair</button>`;
   document.body.append(dialog);
 
@@ -44,8 +57,28 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const emailEl = name => emailDialog.querySelector(`[data-${name}]`);
   const message = text => {el('message').textContent = text;};
   const emailMessage = (text, isError=false) => {const target=emailEl('email-message');target.textContent=text;target.classList.toggle('text-red-600',isError);target.classList.toggle('text-gray-700',!isError);};
-  const renderSignedOut = () => {el('signed-out').hidden=false;el('phone').hidden=true;el('profile').hidden=true;el('logout').hidden=true;message('Entre com Google ou e-mail para acessar sua conta.');};
-  const clearPublishedSession = () => {current=null;checkoutIntent=false;el('orders').replaceChildren();renderSignedOut();onSession(null);onLogout();};
+  const navigation = createCustomerAreaNavigation({
+    getSession: () => ({user: auth.currentUser, customer: current, ownerUid: currentUid}),
+    onChange: route => {
+      el('area').hidden = route === 'login';
+      el('profile').hidden = route !== 'profile';
+      el('orders-panel').hidden = route !== 'orders';
+      dialog.querySelectorAll('[data-customer-route]').forEach(button => {
+        if (button.dataset.customerRoute === route) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+      });
+      if (route === 'home') {if (dialog.open) dialog.close();}
+      else if (dialog.open && ['profile', 'orders'].includes(route)) el(`${route}-heading`).focus();
+    },
+  });
+  const clearPrivateView = () => {
+    ['name', 'birthdate', 'new-name', 'number'].forEach(name => {el(name).value = '';});
+    ['phone-state', 'email-state', 'orders-message'].forEach(name => {el(name).textContent = '';});
+    el('orders').replaceChildren(); el('addresses').replaceChildren();
+    emailDialog.querySelectorAll('input').forEach(input => {input.value = '';});
+  };
+  const renderSignedOut = () => {currentUid=null;navigation.invalidate();clearPrivateView();el('signed-out').hidden=false;el('phone').hidden=true;el('logout').hidden=true;message('Entre com Google ou e-mail para acessar sua conta.');};
+  const clearPublishedSession = () => {current=null;checkoutIntent=false;renderSignedOut();onSession(null);onLogout();};
   const authState = createCustomerAuthState({onInvalidate:clearPublishedSession});
   const busy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {message(e.message || 'Não foi possível concluir. Tente novamente.');} finally {button.disabled=false;}};
   const emailButtonBusy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
@@ -56,30 +89,65 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     const user=auth.currentUser;
     if (!isCustomerUser(user)) {authState.observe(null);current=null;renderSignedOut();return;}
     const snapshot=authState.observe(user.uid);
-    const data=await call('customerAccount');
+    let data;
+    try {data=await call('customerAccount');}
+    catch (_) {
+      if (authState.isCurrent(snapshot)) {authState.invalidate();current=null;renderSignedOut();}
+      throw new Error('Não foi possível carregar sua conta. Tente novamente.');
+    }
     const activeUser=auth.currentUser;
     if (!isCustomerUser(activeUser) || activeUser.uid!==snapshot.uid) {authState.observe(isCustomerUser(activeUser)?activeUser.uid:null);return;}
     if (!authState.isCurrent(snapshot)) return;
     const nextCustomer=data.customer || null;
     if (!nextCustomer) authState.invalidate();
     if (nextCustomer && !authState.publish(snapshot)) return;
-    current=nextCustomer;el('signed-out').hidden=true;el('phone').hidden=!!current;el('profile').hidden=!current;el('logout').hidden=false;
+    current=nextCustomer;currentUid=current ? snapshot.uid : null;navigation.navigate(current ? requestedRoute : 'login');el('signed-out').hidden=true;el('phone').hidden=!!current;el('logout').hidden=!!current;
     if (!current) {el('new-name').value=data.nome || auth.currentUser.displayName || '';message('Informe seu celular de contato para concluir seu cadastro.');return;}
     onSession(current);message(`Olá, ${current.nome}.`);el('name').value=current.nome;el('birthdate').value=current.aniversario || '';el('phone-state').textContent=`Telefone de contato: ${current.telefone || 'não informado'} (não verificado)`;el('email-state').textContent=current.email?`${current.email} — ${current.emailVerified?'e-mail verificado':'e-mail ainda não verificado'}`:'Conta Google ativa.';el('verify-email').hidden=!current.email || current.emailVerified || !auth.currentUser.providerData.some(p=>p.providerId==='password');el('address').hidden=!showCheckoutAddressAction;el('addresses').replaceChildren();
-    current.enderecos.forEach((address,index)=>{const item=document.createElement('li');item.className='flex items-start justify-between gap-3 border rounded p-2';const text=document.createElement('span');text.textContent=`${address.nickname || 'Endereço'}: ${address.enderecoCompleto || address}`;const remove=document.createElement('button');remove.type='button';remove.className='text-red-600 underline';remove.textContent='Excluir';remove.onclick=busy(remove,async()=>{const result=await call('customerDeleteAddress',{index,expectedAddress:typeof address==='string'?address:address.enderecoCompleto});current=result.customer;await refresh();message('Endereço excluído.');});item.append(text,remove);el('addresses').append(item);});if(!current.enderecos.length)el('addresses').textContent='Você ainda não tem endereços salvos.';if(checkoutIntent){checkoutIntent=false;dialog.close();onCustomer(current);}
+    current.enderecos.forEach((address,index)=>{const item=document.createElement('li');item.className='flex items-start justify-between gap-3 border rounded p-2';const text=document.createElement('span');text.textContent=`${address.nickname || 'Endereço'}: ${address.enderecoCompleto || address}`;const remove=document.createElement('button');remove.type='button';remove.className='text-red-600 underline';remove.textContent='Excluir';remove.onclick=busy(remove,async()=>{const result=await call('customerDeleteAddress',{index,expectedAddress:typeof address==='string'?address:address.enderecoCompleto});current=result.customer;await refresh();message('Endereço excluído.');});item.append(text,remove);el('addresses').append(item);});if(!current.enderecos.length)el('addresses').textContent='Você ainda não tem endereços salvos.';if(!checkoutIntent && navigation.getRoute()==='orders') await loadOrders();if(checkoutIntent){checkoutIntent=false;dialog.close();onCustomer(current);}
   }
   async function googleSignIn(){if(!auth.currentUser?.providerData.some(p=>p.providerId==='google.com')){await ensurePersistence();await signInWithPopup(auth,new GoogleAuthProvider());}if(!dialog.open)dialog.showModal();await refresh();}
   async function finishEmailAuth(){emailDialog.close();if(!dialog.open)dialog.showModal();await refresh();}
   const google=document.getElementById('continue-google-button');if(google)google.addEventListener('click',busy(google,async()=>{checkoutIntent=true;await googleSignIn();}));
   const emailButton=document.getElementById('continue-email-button');if(emailButton)emailButton.addEventListener('click',()=>{checkoutIntent=true;showEmail();});
-  let accountButton=document.getElementById('customer-account-button');const cartButton=document.getElementById('cart-button');if(!accountButton && createAccountButton && cartButton){accountButton=document.createElement('button');accountButton.type='button';accountButton.textContent='Minha Conta';accountButton.className='text-pink-700 border border-pink-200 rounded-lg px-3 py-2';cartButton.before(accountButton);}const openAccount=async()=>{checkoutIntent=false;if(!dialog.open)dialog.showModal();await refresh();};if(accountButton)accountButton.addEventListener('click',busy(accountButton,openAccount));
+  let accountButton=document.getElementById('customer-account-button');const cartButton=document.getElementById('cart-button');if(!accountButton && createAccountButton && cartButton){accountButton=document.createElement('button');accountButton.type='button';accountButton.textContent='Minha Conta';accountButton.className='text-pink-700 border border-pink-200 rounded-lg px-3 py-2';cartButton.before(accountButton);}const openAccount=async(route='profile')=>{checkoutIntent=false;requestedRoute=route;if(!dialog.open)dialog.showModal();message('Carregando sua conta…');await refresh();};if(accountButton)accountButton.addEventListener('click',busy(accountButton,openAccount));
   el('account-google').onclick=busy(el('account-google'),googleSignIn);el('account-email').onclick=()=>showEmail();
   el('complete').onclick=busy(el('complete'),async()=>{let digits=el('number').value.replace(/\D/g,'');if(digits.length<=11)digits='55'+digits;if(!/^55\d{10,11}$/.test(digits))throw new Error('Informe o celular com DDD.');await call('customerCompleteProfile',{phone:'+'+digits,nome:el('new-name').value});await refresh();});
   el('save').onclick=busy(el('save'),async()=>{await call('customerUpdate',{nome:el('name').value,aniversario:el('birthdate').value});await refresh();message('Dados salvos.');});
   el('verify-email').onclick=busy(el('verify-email'),async()=>{await sendEmailVerification(auth.currentUser);message('E-mail de verificação enviado.');});
   el('address').onclick=()=>{if(current){dialog.close();onCustomer(current);}};
-  el('history').onclick=busy(el('history'),async()=>{const data=await call('customerOrders');el('orders').replaceChildren();for(const o of data.orders){const item=document.createElement('li');item.className='border rounded p-2';const date=o.createdAt?new Date(o.createdAt).toLocaleDateString('pt-BR'):'data indisponível';const items=o.itens.map(i=>`${i.quantity}× ${i.nome}`).join(', ');item.textContent=`${o.lojaId || 'Loja'} • ${date} • ${Number(o.total || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} • ${o.status || 'Sem status'}${o.payment_status?' / '+o.payment_status:''}${o.formaPagamento?' • '+o.formaPagamento:''}${items?' — '+items:''}`;el('orders').append(item);}if(!data.orders.length)el('orders').textContent='Nenhum pedido encontrado.';});
+  async function loadOrders() {
+    if (!navigation.isAllowed()) {navigation.invalidate();renderSignedOut();return;}
+    const snapshot = authState.observe(auth.currentUser.uid);
+    const customerId = current.id;
+    el('orders-message').textContent = 'Carregando seus pedidos…';
+    try {
+      const data = await call('customerOrders');
+      if (!authState.isCurrent(snapshot) || !navigation.isAllowed() || current.id !== customerId) return;
+      el('orders').replaceChildren();
+      for (const order of data.orders || []) {
+        const item = document.createElement('li'); item.className = 'border rounded p-2';
+        const date = order.createdAt ? new Date(order.createdAt).toLocaleDateString('pt-BR') : 'data indisponível';
+        const items = (order.itens || []).map(i => `${i.quantity}× ${i.nome}`).join(', ');
+        item.textContent = `${order.lojaId || 'Loja'} • ${date} • ${Number(order.total || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} • ${order.status || 'Sem status'}${order.payment_status?' / '+order.payment_status:''}${order.formaPagamento?' • '+order.formaPagamento:''}${items?' — '+items:''}`;
+        el('orders').append(item);
+      }
+      el('orders-message').textContent = data.orders?.length ? '' : 'Nenhum pedido encontrado.';
+    } catch (_) {
+      if (authState.isCurrent(snapshot) && navigation.isAllowed()) el('orders-message').textContent = 'Não foi possível carregar seus pedidos. Tente atualizar novamente.';
+    }
+  }
+  el('history').onclick = busy(el('history'), loadOrders);
+  dialog.querySelectorAll('[data-customer-route]').forEach(button => {
+    button.onclick = busy(button, async () => {
+      requestedRoute = button.dataset.customerRoute;
+      const route = navigation.navigate(requestedRoute);
+      if (route === 'login') {renderSignedOut();return;}
+      if (route === 'orders') await loadOrders();
+    });
+  });
   el('logout').onclick=busy(el('logout'),async()=>{await signOut(auth);authState.observe(null);authState.invalidate();current=null;checkoutIntent=false;el('orders').replaceChildren();renderSignedOut();dialog.close();notify('Você saiu da sua conta.');});
+  el('area-logout').onclick = el('logout').onclick;
   emailEl('show-register').onclick=()=>showEmail('register');emailEl('show-login').onclick=()=>showEmail('login');
   emailEl('forgot').onclick=emailButtonBusy(emailEl('forgot'),async()=>{const email=emailEl('login-email').value.trim();if(!email)throw new Error('Informe seu e-mail.');await sendPasswordResetEmail(auth,email);emailMessage('Enviamos as instruções para redefinir sua senha.');});
   emailEl('login-form').onsubmit=emailBusy(emailEl('login-form'),async()=>{await ensurePersistence();await signInWithEmailAndPassword(auth,emailEl('login-email').value.trim(),emailEl('login-password').value);await finishEmailAuth();});
