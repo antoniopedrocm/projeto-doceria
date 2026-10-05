@@ -56,3 +56,22 @@ test('endereço de outro Customer e vínculo corrompido não autorizam escrita',
   } finally {await identity.update({customerId:'profile-owner'});}
   assert.deepEqual((await other.get()).data(),before);
 });
+
+test('campos opcionais omitidos/vazios/novos persistem com isolamento e obrigatórios protegidos',async()=>{
+  const other=db.doc('clientes/profile-other'), before=(await other.get()).data();
+  await call('addAddress',{address:{...address('Casa'),complement:'Apto 101',complemento:'Apto 101',street:'Rua antiga',referencia:'Portão azul'}});
+  const id=(await ref.get()).data().enderecos.at(-1).id;
+  await call('updateAddress',{addressId:id,address:{nickname:'Casa editada'}});
+  let saved=(await call('account')).customer.enderecos.find(a=>a.id===id);
+  assert.equal(saved.complemento,'Apto 101');assert.equal(saved.referencia,'Portão azul');
+  await call('updateAddress',{customerId:'profile-other',addressId:id,address:{complemento:'',street:'',referencia:''}});
+  saved=(await ref.get()).data().enderecos.find(a=>a.id===id);
+  assert.equal(saved.complemento,'');assert.equal(saved.complement,'');assert.equal(saved.street,'');assert.equal(saved.referencia,'');
+  assert.equal((await call('account')).customer.enderecos.find(a=>a.id===id).complement,'');
+  await call('updateAddress',{addressId:id,address:{complemento:'Casa 2',authOwnerUid:'other-uid',id:'forged'}});
+  saved=(await call('account')).customer.enderecos.find(a=>a.id===id);
+  assert.equal(saved.complemento,'Casa 2');assert.equal(saved.complement,'Casa 2');assert.equal(saved.authOwnerUid,undefined);
+  await assert.rejects(call('updateAddress',{addressId:id,address:{enderecoCompleto:''}}),e=>e.code==='invalid-argument');
+  await assert.rejects(call('updateAddress',{customerId:'profile-other',addressId:'private-id',address:{complemento:''}}),e=>e.code==='not-found');
+  assert.deepEqual((await other.get()).data(),before);
+});

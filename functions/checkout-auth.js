@@ -45,7 +45,7 @@ function addressRecords(customerId, values) {
 function normalizeAddress(value) {
   const address=value && typeof value==='object' ? value : {};
   const clean=(field,max)=>String(address[field] || '').trim().slice(0,max);
-  const normalized={...Object.fromEntries(['cep','street','number','neighborhood','complement'].filter(k=>address[k]).map(k=>[k,clean(k,160)])),enderecoCompleto:clean('enderecoCompleto',300),nickname:clean('nickname',60),
+  const normalized={...Object.fromEntries(['cep','street','number','neighborhood','complement'].filter(k=>Object.prototype.hasOwnProperty.call(address,k)).map(k=>[k,clean(k,160)])),enderecoCompleto:clean('enderecoCompleto',300),nickname:clean('nickname',60),
     referencia:clean('referencia',160),complemento:clean('complemento',120),semNumero:!!address.semNumero,
     isDefault:!!address.isDefault,localizacaoFrequente:!!address.localizacaoFrequente};
   const lat=Number(address.lat),lng=Number(address.lng);
@@ -165,13 +165,19 @@ function createCustomerAccount({admin, db}) {
     const id=await resolve(request);
     if(!id.customerId) fail('failed-precondition','Informe seu celular de contato.');
     if(typeof request.data?.addressId!=='string' || !request.data.addressId) fail('invalid-argument','Endereço inválido.');
-    const replacement=makeDefault ? null : normalizeAddress(request.data.address);
+    const input=request.data.address;
+    if(!makeDefault && (!input || typeof input!=='object' || Array.isArray(input))) fail('invalid-argument','Dados de endereço inválidos.');
     await db.runTransaction(async tx=>{
       const ref=db.collection('clientes').doc(id.customerId); const snap=await tx.get(ref);
       if(!snap.exists || snap.data().authOwnerUid!==id.user.uid) fail('permission-denied','Cadastro não autorizado.');
       let addresses=addressRecords(id.customerId,snap.data().enderecos);
       const index=addresses.findIndex(a=>a.id===request.data.addressId);
       if(index<0) fail('not-found','Endereço não encontrado. Atualize sua conta.');
+      // Merge with the owned record before normalization: omission preserves, explicit empty clears.
+      const edit={...input};
+      if(Object.prototype.hasOwnProperty.call(edit,'complement') && !Object.prototype.hasOwnProperty.call(edit,'complemento')) edit.complemento=edit.complement;
+      if(Object.prototype.hasOwnProperty.call(edit,'complemento') && !Object.prototype.hasOwnProperty.call(edit,'complement')) edit.complement=edit.complemento;
+      const replacement=makeDefault ? null : normalizeAddress({...addresses[index],...edit});
       const useDefault=makeDefault || replacement.isDefault;
       if(useDefault) addresses=addresses.map(a=>({...a,isDefault:false}));
       const frequent=Object.prototype.hasOwnProperty.call(request.data.address || {},'localizacaoFrequente') ? replacement?.localizacaoFrequente : addresses[index].localizacaoFrequente===true;

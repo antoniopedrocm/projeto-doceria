@@ -44,6 +44,62 @@ test('sem alteração de telefone, verificação existente não é apagada',asyn
   const f=fixture();await f.call('update',{nome:'Ana',telefone:'62999991234'});
   assert.equal(f.rows.get('clientes/a').phone_verified_at,'verified');
 });
+
+for (const [scenario, value] of [['omitido',undefined],['vazio',''],['novo','Casa 2']]) {
+  test(`edição de endereço distingue campo opcional ${scenario} e confirma na releitura`,async()=>{
+    const f=fixture();
+    const fields=['cep','street','number','neighborhood','complement','complemento','referencia'];
+    await f.call('addAddress',{address:{...address('Casa',true),...Object.fromEntries(fields.map(k=>[k,'Apto 101'])),semNumero:true,localizacaoFrequente:true}});
+    const id=f.rows.get('clientes/a').enderecos[0].id;
+    const edit=value===undefined ? {nickname:'Editado'} : Object.fromEntries(fields.map(k=>[k,value]));
+    await f.call('updateAddress',{addressId:id,address:edit});
+    const saved=(await f.call('account')).customer.enderecos[0];
+    for(const field of fields) assert.equal(saved[field],value===undefined?'Apto 101':value,field);
+    assert.equal(saved.id,id);assert.equal(saved.isDefault,true);assert.equal(saved.semNumero,true);assert.equal(saved.localizacaoFrequente,true);
+    assert.equal(saved.enderecoCompleto,'Rua Casa, 10');assert.equal(saved.lat,-16);assert.equal(saved.lng,-49);
+  });
+}
+
+test('cenário Astra: payload completo com campos opcionais vazios não restaura valores antigos',async()=>{
+  const f=fixture();await f.call('addAddress',{address:{...address(),street:'Rua antiga',number:'10',cep:'74000-000',complement:'Apto 101',complemento:'Apto 101'}});
+  const id=f.rows.get('clientes/a').enderecos[0].id;
+  await f.call('updateAddress',{addressId:id,address:{...address(),street:'',number:'',cep:'',complement:'',complemento:''}});
+  const saved=(await f.call('account')).customer.enderecos[0];
+  for(const field of ['street','number','cep','complement','complemento']) assert.equal(saved[field],'',field);
+});
+
+test('limpar somente um alias de complemento limpa ambos sem reaparecer após recarregar',async()=>{
+  for(const field of ['complement','complemento']) {
+    const f=fixture();await f.call('addAddress',{address:{...address(),complement:'Apto 101',complemento:'Apto 101'}});
+    const id=f.rows.get('clientes/a').enderecos[0].id;
+    await f.call('updateAddress',{addressId:id,address:{[field]:''}});
+    const saved=(await f.call('account')).customer.enderecos[0];
+    assert.equal(saved.complement,'');assert.equal(saved.complemento,'');
+  }
+});
+
+test('nascimento opcional omitido permanece, vazio limpa e novo valor é persistido',async()=>{
+  const f=fixture();await f.call('update',{nome:'Ana'});
+  assert.equal((await f.call('account')).customer.aniversario,'1990-05-20');
+  await f.call('update',{nome:'Ana',aniversario:''});assert.equal((await f.call('account')).customer.aniversario,'');
+  await f.call('update',{nome:'Ana',aniversario:'2000-02-29'});assert.equal((await f.call('account')).customer.aniversario,'2000-02-29');
+});
+
+test('edição parcial não apaga obrigatórios e ignora propriedades fora da allowlist',async()=>{
+  const f=fixture();await f.call('addAddress',{address:address('Casa',true)});
+  const id=f.rows.get('clientes/a').enderecos[0].id;
+  for(const field of ['nickname','enderecoCompleto','lat','lng']) await assert.rejects(
+    f.call('updateAddress',{addressId:id,address:{[field]:''}}),e=>e.code==='invalid-argument');
+  await assert.rejects(f.call('update',{nome:''}),e=>e.code==='invalid-argument');
+  await assert.rejects(f.call('update',{nome:'Ana',telefone:''}),e=>e.code==='invalid-argument');
+  const before=structuredClone(f.rows.get('clientes/b'));
+  await f.call('updateAddress',{customerId:'b',addressId:id,address:{referencia:'Nova',id:'forged',authOwnerUid:'uid-b',storeId:'b',provider:'google',saved_cards:['bad']}});
+  const saved=(await f.call('account')).customer.enderecos[0];
+  assert.equal(saved.id,id);assert.equal(saved.referencia,'Nova');
+  for(const field of ['authOwnerUid','storeId','provider','saved_cards']) assert.equal(saved[field],undefined);
+  await assert.rejects(f.call('updateAddress',{customerId:'b',addressId:'b-address',address:{complemento:''}}));
+  assert.deepEqual(f.rows.get('clientes/b'),before);
+});
 test('IDs legados são estáveis, leitura não escreve e edição preserva ID',async()=>{
   const f=fixture();f.rows.get('clientes/a').enderecos=[address('Casa',true),{...address('Trabalho'),localizacaoFrequente:true}];
   const first=(await f.call('account')).customer.enderecos;assert.equal(f.writes.length,0);
