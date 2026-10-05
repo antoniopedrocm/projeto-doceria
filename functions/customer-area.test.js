@@ -10,10 +10,11 @@ const user = (uid = 'uid-a', provider = 'password') => ({uid, isAnonymous: false
 const customer = (id = 'a') => ({id, accountLinked: true, nome: `Cliente ${id}`, telefone: '62999991234', enderecos: []});
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture({initialUser = user(), backend = async (name, auth) =>
+async function fixture({initialUser = user(), sdk = {}, backend = async (name, auth) =>
   name === 'customerAccount' ? {customer: customer(auth.currentUser?.uid || 'a')} : {orders: []}} = {}) {
   const {isCustomerIdentity, createCustomerAreaNavigation} = await import('../crm/public/customer-area.mjs');
   const {createCustomerAuthState} = await import('../crm/public/customer-session.mjs');
+  const {createCustomerProfileSecurity} = await import('../crm/public/customer-profile.mjs');
   const dom = new JSDOM('<button id="customer-account-button">Minha Conta</button><button id="continue-google-button">Google</button>', {url: 'https://example.test/cardapio-matriz?store=matriz'});
   const {window} = dom;
   window.HTMLDialogElement.prototype.showModal = function() {this.open = true;};
@@ -22,9 +23,11 @@ async function fixture({initialUser = user(), backend = async (name, auth) =>
   let listener;
   const calls = [], sessions = [], logouts = [], checkout = [];
   const context = vm.createContext({document: window.document, window, URL, console,
-    auth, functions: {}, isCustomerUser: isCustomerIdentity, createCustomerAreaNavigation, createCustomerAuthState,
+    auth, functions: {}, isCustomerUser: isCustomerIdentity, createCustomerAreaNavigation, createCustomerAuthState, createCustomerProfileSecurity,
+    EmailAuthProvider: {credential:()=>({})}, reauthenticateWithCredential:async()=>{}, verifyBeforeUpdateEmail:async()=>{}, updatePassword:async()=>{},
+    sendEmailVerification:async()=>{}, sendPasswordResetEmail:async()=>{}, reload:async()=>{}, ...sdk,
     customerAuthErrorMessage: error => error.message,
-    httpsCallable: (_functions, name) => async data => {calls.push({name, data}); return {data: await backend(name, auth)};},
+    httpsCallable: (_functions, name) => async data => {calls.push({name, data}); return {data: await backend(name, auth, data)};},
     onAuthStateChanged: (_auth, fn) => {listener = fn;},
     signOut: async () => {auth.currentUser = null; listener(null);},
     setPersistence: async () => {}, browserLocalPersistence: {},
@@ -192,4 +195,73 @@ test('falha no histórico permite tentar novamente sem perder a sessão autentic
   await f.el('history').onclick({preventDefault() {}});
   assert.match(f.el('orders').textContent, /Pedido recuperado/);
   assert.equal(f.el('orders-message').textContent, '');
+});
+
+test('perfil salva nome/telefone sem customerId e exibe e-mail, provider e verificação', async t => {
+  const data={...customer(),email:'a@example.com',emailVerified:false,createdAt:'2026-10-01T12:00:00Z'};
+  const f=await fixture({backend:async(name,_auth,fields)=>{
+    if(name==='customerUpdate') Object.assign(data,fields);
+    return {customer:{...data}};
+  }});t.after(f.close);await f.api.openAccount();
+  assert.match(f.el('email-state').textContent,/Não verificado/);assert.match(f.el('provider-state').textContent,/e-mail e senha/);
+  f.el('name').value='Novo nome';f.el('profile-phone').value='62999990000';
+  await f.el('save').onclick({preventDefault(){}});
+  const saved=f.calls.find(c=>c.name==='customerUpdate').data;
+  assert.equal(saved.nome,'Novo nome');assert.equal(saved.telefone,'62999990000');assert.equal(saved.customerId,undefined);
+  assert.equal(f.el('profile-phone').value,'62999990000');assert.match(f.el('created-state').textContent,/Conta criada/);
+});
+
+test('perfil completo oferece CRUD/padrão por ID estável e persiste após reabrir', async t => {
+  const data={...customer(),enderecos:[{id:'address-a',nickname:'Casa',enderecoCompleto:'Rua A',lat:-16,lng:-49,isDefault:false}]};
+  const f=await fixture({backend:async(name,_auth,fields)=>{
+    if(name==='customerAddAddress') data.enderecos.push({...fields.address,id:'address-new'});
+    if(name==='customerUpdateAddress') data.enderecos=data.enderecos.map(a=>a.id===fields.addressId?{...a,...fields.address}:a);
+    if(name==='customerSetDefaultAddress') data.enderecos=data.enderecos.map(a=>({...a,isDefault:a.id===fields.addressId}));
+    if(name==='customerDeleteAddress') data.enderecos=data.enderecos.filter(a=>a.id!==fields.addressId);
+    return {customer:structuredClone(data)};
+  }});t.after(f.close);await f.api.openAccount();
+  const action=text=>[...f.el('addresses').querySelectorAll('button')].find(b=>b.textContent===text);
+  await action('Editar').onclick({preventDefault(){}});f.el('address-nickname').value='Novo apelido';
+  await f.el('address-form').onsubmit({preventDefault(){}});
+  assert.equal(f.calls.find(c=>c.name==='customerUpdateAddress').data.addressId,'address-a');
+  await action('Definir como padrão').onclick({preventDefault(){}});assert.match(f.el('addresses').textContent,/Padrão/);
+  f.el('address-add').onclick();f.el('address-nickname').value='Trabalho';f.el('address-enderecoCompleto').value='Rua B';f.el('address-lat').value='-16';f.el('address-lng').value='-49';
+  await f.el('address-form').onsubmit({preventDefault(){}});assert.equal(data.enderecos.length,2);
+  f.dialog.close();await f.api.openAccount();assert.match(f.el('addresses').textContent,/Novo apelido/);
+  await action('Excluir').onclick({preventDefault(){}});assert.equal(data.enderecos.length,1);
+  const mutations=f.calls.filter(c=>c.name.startsWith('customer') && c.name!=='customerAccount');
+  assert.ok(mutations.every(c=>c.data.customerId===undefined && c.data.index===undefined));
+});
+
+test('Google oculta alterações locais de senha/e-mail e política InfinitePay não lista cartões', async t => {
+  const f=await fixture({initialUser:user('google-a','google.com'),backend:async()=>({customer:{...customer(),authProvider:'google',email:'google@example.com',emailVerified:true}})});t.after(f.close);await f.api.openAccount();
+  assert.equal(f.el('password-security').hidden,true);assert.equal(f.el('verify-email').hidden,true);
+  assert.match(f.el('provider-state').textContent,/Google vinculada/);
+  assert.match(f.el('profile').textContent,/Gerenciado pela InfinitePay/);
+  assert.equal(f.el('profile').querySelector('input[name="card"], input[name="cvv"]'),null);
+});
+
+test('e-mail/senha usam SDK seguro, limpam senhas e atualizam status verificado', async t => {
+  const sdkCalls=[];const currentUser={...user(),email:'a@example.com',getIdToken:async()=>{sdkCalls.push('token');}};
+  let verified=false;
+  const f=await fixture({initialUser:currentUser,sdk:{
+    reauthenticateWithCredential:async()=>{sdkCalls.push('reauth');},
+    verifyBeforeUpdateEmail:async(_user,email)=>{sdkCalls.push(email);},updatePassword:async()=>{sdkCalls.push('password');},
+    sendEmailVerification:async()=>{sdkCalls.push('verify');},reload:async()=>{verified=true;},
+  },backend:async()=>({customer:{...customer(),email:'a@example.com',emailVerified:verified}})});t.after(f.close);await f.api.openAccount();
+  f.el('new-email').value='new@example.com';f.el('email-current-password').value='old-secret';
+  await f.el('change-email').onsubmit({preventDefault(){}});assert.deepEqual(sdkCalls,['reauth','new@example.com']);assert.equal(f.el('email-current-password').value,'');
+  f.el('current-password').value='old';f.el('new-password').value='abcdef';f.el('confirm-password').value='abcdef';
+  await f.el('change-password').onsubmit({preventDefault(){}});assert.equal(sdkCalls.at(-1),'password');assert.equal(f.el('new-password').value,'');
+  await f.el('verify-email').onclick({preventDefault(){}});assert.equal(sdkCalls.at(-1),'verify');
+  await f.el('refresh-email').onclick({preventDefault(){}});assert.match(f.el('email-state').textContent,/— Verificado/);assert.equal(f.el('verify-email').hidden,true);
+});
+
+test('logout limpa formulário de endereço e credenciais; resposta de atualização antiga é descartada', async t => {
+  let finish;
+  const f=await fixture({backend:async name=>name==='customerUpdate'?new Promise(resolve=>{finish=resolve;}):{customer:customer()}});t.after(f.close);await f.api.openAccount();
+  f.el('address-add').onclick();f.el('address-enderecoCompleto').value='Endereço privado';f.el('current-password').value='secret';
+  const pending=f.el('save').onclick({preventDefault(){}});await tick();f.emit(null);
+  finish({customer:{...customer(),nome:'Resposta antiga'}});await pending;
+  assert.equal(f.api.getCustomer(),null);assert.equal(f.el('name').value,'');assert.equal(f.el('current-password').value,'');assert.equal(f.el('address-enderecoCompleto').value,'');assert.equal(f.el('address-form').hidden,true);
 });

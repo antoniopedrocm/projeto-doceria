@@ -1,4 +1,4 @@
-import {installCustomerAccount} from './customer-account.js?v=20261002-area-navigation';
+import {installCustomerAccount} from './customer-account.js?v=20261005-customer-profile';
 
 let customerAccount;
 const openCustomerAccount = async () => {

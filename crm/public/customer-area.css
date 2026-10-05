@@ -24,6 +24,12 @@
 .customer-area-dialog button:focus-visible,
 .customer-area-dialog input:focus-visible { outline: 2px solid #be185d; outline-offset: 2px; }
 .customer-area-dialog [hidden] { display: none !important; }
+.customer-area-dialog [data-profile] input:not([type="checkbox"]) {
+  box-sizing: border-box; width: 100%; min-height: 44px;
+  padding: .5rem; border: 1px solid #d1d5db; border-radius: .375rem;
+}
+.customer-area-dialog [data-profile] button { min-height: 44px; }
+.customer-profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
 @media (max-width: 480px) {
   .customer-area-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .customer-area-dialog { padding: 1rem; }
