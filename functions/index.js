@@ -1,3 +1,5 @@
+const { sanitizeEmployeeWorkSchedule, getPointScheduleDayInfo, isHourlyWorkSchedule,
+  buildPointScheduleUpdate, getHourlyPointSummary, getHourlyPointBalance, hasIncompletePointLunch, hasIncompletePointPeriodLunch, isPointJourneyPending } = require('./point-schedule-core');
 /**
  * Import function triggers from their respective sub-packages:
  *
@@ -472,17 +474,6 @@ const POINT_DEFAULT_EXPECTED_MINUTES = 8 * 60;
 const POINT_DAILY_BANK_LIMIT_MINUTES = 15;
 const POINT_SATURDAY_BANK_LIMIT_MINUTES = 5 * 60;
 const POINT_MISSING_LUNCH_BANK_MINUTES = 60;
-const POINT_WEEK_DAY_VALUES = ['0', '1', '2', '3', '4', '5', '6'];
-const POINT_WORK_SCHEDULE_TYPE_VALUES = ['seg-sex', 'seg-sab-folga', 'personalizada'];
-const DEFAULT_POINT_DAILY_LOADS = {
-  0: '00:00',
-  1: '08:00',
-  2: '08:00',
-  3: '08:00',
-  4: '08:00',
-  5: '08:00',
-  6: '05:00',
-};
 
 const verifyCustomerMetricsStoreAccess = async (uid, lojaId) => {
   if (!uid) {
@@ -506,111 +497,6 @@ const verifyCustomerMetricsStoreAccess = async (uid, lojaId) => {
       'Você não tem permissão para sincronizar clientes desta loja.',
   );
 };
-const DEFAULT_POINT_WORK_SCHEDULE = {
-  tipoEscala: 'seg-sex',
-  diasTrabalho: ['1', '2', '3', '4', '5'],
-  cargaHorariaPorDia: DEFAULT_POINT_DAILY_LOADS,
-  folgaSemanal: '',
-  folgaVariavel: false,
-  horarioPadrao: {
-    entrada: '09:30',
-    almocoSaida: '12:00',
-    almocoRetorno: '13:00',
-    saida: '18:30',
-    intervaloMinutos: 60,
-  },
-};
-
-const parsePointDurationToMinutes = (value, fallback = 0) => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Math.max(0, Math.round(value));
-  }
-  if (typeof value !== 'string') return fallback;
-  const text = value.trim();
-  if (!text) return fallback;
-  const timeMatch = text.match(/^(\d{1,3}):(\d{2})$/);
-  if (timeMatch) {
-    const hours = Number(timeMatch[1]);
-    const minutes = Number(timeMatch[2]);
-    if (Number.isFinite(hours) && Number.isFinite(minutes)) return (hours * 60) + minutes;
-  }
-  const numberMatch = text.replace(',', '.').match(/^(\d+(?:\.\d+)?)$/);
-  if (numberMatch) {
-    const hours = Number(numberMatch[1]);
-    if (Number.isFinite(hours)) return Math.round(hours * 60);
-  }
-  return fallback;
-};
-
-const formatPointDurationInput = (minutes) => {
-  const normalized = Math.max(0, Number(minutes) || 0);
-  const hours = Math.floor(normalized / 60);
-  const mins = normalized % 60;
-  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-};
-
-const sanitizePointTimeInput = (value, fallback = '') => {
-  if (typeof value !== 'string') return fallback;
-  const text = value.trim();
-  return /^\d{1,2}:\d{2}$/.test(text) ? text : fallback;
-};
-
-const sanitizeEmployeeWorkSchedule = (input = null) => {
-  const source = input && typeof input === 'object' ? input : {};
-  const type = POINT_WORK_SCHEDULE_TYPE_VALUES.includes(source.tipoEscala) ?
-    source.tipoEscala :
-    DEFAULT_POINT_WORK_SCHEDULE.tipoEscala;
-  const defaultWorkdays = type === 'seg-sab-folga' ?
-    ['1', '2', '3', '4', '5', '6'] :
-    [...DEFAULT_POINT_WORK_SCHEDULE.diasTrabalho];
-  const rawWorkdays = Array.isArray(source.diasTrabalho) && source.diasTrabalho.length ?
-    source.diasTrabalho :
-    defaultWorkdays;
-  const diasTrabalho = Array.from(new Set(
-      rawWorkdays
-          .map((day) => String(day))
-          .filter((day) => POINT_WEEK_DAY_VALUES.includes(day)),
-  ));
-  const rawLoads = source.cargaHorariaPorDia && typeof source.cargaHorariaPorDia === 'object' ?
-    source.cargaHorariaPorDia :
-    {};
-  const cargaHorariaPorDia = POINT_WEEK_DAY_VALUES.reduce((acc, day) => {
-    const fallbackMinutes = parsePointDurationToMinutes(DEFAULT_POINT_DAILY_LOADS[day], 0);
-    acc[day] = formatPointDurationInput(parsePointDurationToMinutes(rawLoads[day], fallbackMinutes));
-    return acc;
-  }, {});
-  const rawBreak = source.horarioPadrao?.intervaloMinutos;
-
-  return {
-    tipoEscala: type,
-    diasTrabalho,
-    cargaHorariaPorDia,
-    folgaSemanal: POINT_WEEK_DAY_VALUES.includes(String(source.folgaSemanal)) ?
-      String(source.folgaSemanal) :
-      '',
-    folgaVariavel: Boolean(source.folgaVariavel),
-    horarioPadrao: {
-      entrada: sanitizePointTimeInput(source.horarioPadrao?.entrada, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.entrada),
-      almocoSaida: sanitizePointTimeInput(source.horarioPadrao?.almocoSaida, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.almocoSaida),
-      almocoRetorno: sanitizePointTimeInput(source.horarioPadrao?.almocoRetorno, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.almocoRetorno),
-      saida: sanitizePointTimeInput(source.horarioPadrao?.saida, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.saida),
-      intervaloMinutos: Math.max(0, Math.round(Number(rawBreak) || DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.intervaloMinutos)),
-    },
-  };
-};
-
-const getPointScheduleDayInfo = (scheduleInput, date) => {
-  const schedule = sanitizeEmployeeWorkSchedule(scheduleInput);
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return {isWorkday: false, expectedMinutes: 0, isWeeklyDayOff: false, schedule};
-  }
-  const dayKey = String(date.getDay());
-  const isWeeklyDayOff = !schedule.folgaVariavel && schedule.folgaSemanal === dayKey;
-  const isWorkday = schedule.diasTrabalho.includes(dayKey) && !isWeeklyDayOff;
-  const expectedMinutes = isWorkday ? parsePointDurationToMinutes(schedule.cargaHorariaPorDia[dayKey], 0) : 0;
-  return {isWorkday, expectedMinutes, isWeeklyDayOff, schedule};
-};
-
 const pointTimeToMinutes = (value) => {
   if (typeof value !== 'string') return null;
   const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
@@ -749,6 +635,7 @@ const getPointWorkIntervals = (record = {}) => {
     record.periodosTrabalho
       .filter((period) => period && period.ativo !== false)
       .flatMap((period) => {
+        if (isHourlyWorkSchedule(getPointScheduleDayInfo(record.jornadaTrabalho, getPointRecordDate(record)).schedule) && hasIncompletePointLunch(period)) return [];
         const start = period.horaInicio || period.inicio;
         const end = period.horaFim || period.fim;
         const startMinutes = pointTimeToMinutes(start);
@@ -914,6 +801,7 @@ const getExpectedPointMinutesForDay = (record = {}) => {
   const date = getPointRecordDate(record);
   const dayOfWeek = date ? date.getDay() : null;
   const scheduleDay = getPointScheduleDayInfo(record.jornadaTrabalho, date);
+  if (isHourlyWorkSchedule(scheduleDay.schedule)) return { expectedMinutes: 0, hasDate: Boolean(date), isWorkday: false, isWeeklyDayOff: false };
   const expectedMinutes = parseExpectedPointMinutes(
     record.jornadaEsperadaMinutos,
     record.jornadaDiariaMinutos,
@@ -969,6 +857,9 @@ const calculatePointSummary = (record = {}) => {
   const beforeDeductions = mergePointIntervals([...actualIntervals, ...externalIntervals]);
   const effectiveIntervals = subtractPointIntervals(beforeDeductions, privateIntervals);
   const workedMinutes = sumPointIntervals(effectiveIntervals);
+  if (isHourlyWorkSchedule(getPointScheduleDayInfo(record.jornadaTrabalho, getPointRecordDate(record)).schedule)) {
+    return getHourlyPointSummary(workedMinutes, pointInconsistencies(record).length > 0 || hasIncompletePointPeriodLunch(record));
+  }
   const justifiedRegisteredMinutes = sumPointIntervals(mergePointIntervals(justifiedIntervals));
   const {expectedMinutes, hasDate} = getExpectedPointMinutesForDay(record);
   const justifiedAppliedMinutes = Math.min(justifiedRegisteredMinutes, Math.max(expectedMinutes - workedMinutes, 0));
@@ -1022,6 +913,7 @@ const hasMissingLunchBreak = (record = {}, summary = null) => (
 );
 
 const calculatePointBalanceDistribution = (record = {}, summaryInput = null) => {
+  if (isHourlyWorkSchedule(getPointScheduleDayInfo(record.jornadaTrabalho, getPointRecordDate(record)).schedule)) return getHourlyPointBalance();
   const summary = summaryInput || calculatePointSummary(record);
   const irregularityMinutes = summary?.calculable && Number.isFinite(summary?.irregularityMinutes) ?
     summary.irregularityMinutes :
@@ -1141,6 +1033,8 @@ const pointStatusPatch = (record = {}) => {
   }
 
   const issues = pointInconsistencies(record);
+  const isHourly = isHourlyWorkSchedule(getPointScheduleDayInfo(record.jornadaTrabalho, getPointRecordDate(record)).schedule);
+  if (isHourly && hasIncompletePointPeriodLunch(record)) issues.push('Período com marcação de almoço incompleta.');
   if (issues.length) {
     return {
       inconsistente: true,
@@ -1152,7 +1046,7 @@ const pointStatusPatch = (record = {}) => {
   return {
     inconsistente: false,
     necessitaAjuste: false,
-    statusPonto: getPointOpenEvent(record) ? 'Em andamento' : (getPointWorkIntervals(record).length ? 'Completo' : 'Sem registro'),
+    statusPonto: (getPointOpenEvent(record) || (isHourly && isPointJourneyPending(getPointEvents(record)))) ? 'Em andamento' : (getPointWorkIntervals(record).length ? 'Completo' : 'Sem registro'),
     inconsistencias: [],
   };
 };
@@ -3172,7 +3066,7 @@ exports.createUser = onCall(async (request) => {
             null,
             requestedPermissionDetails,
         );
-        const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho);
+        const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule({ ...jornadaTrabalho, historicoEscalas: undefined });
         const sanitizedBankStartDate = normalizePointBankStartDate(dataInicioBancoHoras);
 
         const userRecord = await auth.createUser({
@@ -3290,7 +3184,11 @@ exports.updateUser = onCall(async (request) => {
             uid,
             requestedPermissionDetails,
         );
-        const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
+        const sanitizedWorkSchedule = buildPointScheduleUpdate(
+          existingProfile.jornadaTrabalho || existingProfile.escalaTrabalho || existingProfile.workSchedule,
+          jornadaTrabalho || existingProfile.jornadaTrabalho,
+          new Intl.DateTimeFormat('en-CA', {timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date()),
+        );
         const hasBankStartDatePayload = Object.prototype.hasOwnProperty.call(request.data || {}, "dataInicioBancoHoras");
         const sanitizedBankStartDate = hasBankStartDatePayload
           ? normalizePointBankStartDate(dataInicioBancoHoras)
@@ -3330,7 +3228,7 @@ exports.updateUser = onCall(async (request) => {
             dataInicioBancoHoras: sanitizedBankStartDate,
         }, { merge: true });
 
-        return { message: "Usuário atualizado com sucesso!" };
+        return { message: "Usuário atualizado com sucesso!", jornadaTrabalho: sanitizedWorkSchedule };
     } catch (error) {
         rethrowHttpsError(error);
         logger.error("Erro detalhado ao atualizar usuário:", {

@@ -23,6 +23,7 @@
     "tailwindcss": "^3.4.17"
   },
   "scripts": {
+    "prebuild": "node ../scripts/sync-point-schedule.cjs --check",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",

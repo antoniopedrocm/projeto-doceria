@@ -1,3 +1,5 @@
+import { isHourlyWorkSchedule, getHourlyPointSummary, getHourlyPointBalance, hasIncompletePointLunch, hasIncompletePointPeriodLunch, isPointJourneyPending } from './pointScheduleCore';
+
 const DEFAULT_EXPECTED_MINUTES = 8 * 60;
 const DAILY_BANK_LIMIT_MINUTES = 15;
 const SATURDAY_BANK_LIMIT_MINUTES = 5 * 60;
@@ -423,11 +425,12 @@ const getLegacyWorkIntervals = (record = {}) => {
   return [];
 };
 
-export const getPointWorkIntervals = (record = {}) => {
+export const getPointWorkIntervals = (record = {}, strictLunch = false) => {
   const storedPeriods = Array.isArray(record.periodosTrabalho)
     ? record.periodosTrabalho
       .filter((period) => period && period.ativo !== false)
       .flatMap((period) => {
+        if (strictLunch && hasIncompletePointLunch(period)) return [];
         const start = period.horaInicio || period.inicio;
         const end = period.horaFim || period.fim;
         const lunchStart = parsePointTimeToMinutes(period.horaAlmocoSaida);
@@ -631,11 +634,12 @@ export const calculatePointDayCore = ({
   const dayOfWeek = date instanceof Date && !Number.isNaN(date.getTime()) ? date.getDay() : null;
   const isNeutral = ['ferias', 'abono_falta', 'folga_compensada', 'liberacao_chefia', 'folga', 'feriado'].includes(type);
   const isAbsence = type === 'falta';
-  const expectedMinutes = scheduleDay.isWorkday && !isHoliday
+  const isHourly = isHourlyWorkSchedule(scheduleDay.schedule || record.jornadaTrabalho);
+  const expectedMinutes = !isHourly && scheduleDay.isWorkday && !isHoliday
     ? (Number(scheduleDay.expectedMinutes) || DEFAULT_EXPECTED_MINUTES)
     : 0;
   const supplementalPeriods = getActiveSupplementalPeriods(record);
-  const actualIntervals = getPointWorkIntervals(record);
+  const actualIntervals = getPointWorkIntervals(record, isHourly);
   const externalIntervals = supplementalPeriods
     .filter((period) => period.tipo === 'trabalho_externo')
     .map((period) => toInterval(period.horaInicio, period.horaFim, period))
@@ -666,7 +670,7 @@ export const calculatePointDayCore = ({
     || isAbsence
     || (!hasOpenPeriod && scheduleDay.isWorkday && !isHoliday && !hasAnyTime(record));
   const calculable = !isNeutral && dayOfWeek !== null && hasCalculableContent;
-  const irregularityMinutes = calculable ? consideredMinutes - expectedMinutes : null;
+  const irregularityMinutes = !isHourly && calculable ? consideredMinutes - expectedMinutes : null;
   const summary = {
     workedLabel: calculable || effectiveWorkedMinutes > 0 ? formatMinutes(effectiveWorkedMinutes) : '-',
     irregularidade: irregularityMinutes === null ? '-' : (irregularityMinutes === 0 ? '00:00' : formatMinutes(irregularityMinutes, true)),
@@ -689,7 +693,7 @@ export const calculatePointDayCore = ({
     ? Math.abs(irregularityMinutes)
     : 0;
 
-  if (!isNeutral && bankCalculationEnabled && calculable) {
+  if (!isHourly && !isNeutral && bankCalculationEnabled && calculable) {
     const scheduledSaturday = dayOfWeek === 6 && scheduleDay.schedule?.tipoEscala === 'seg-sab-folga' && scheduleDay.isWorkday;
     const saturdayOutsideSchedule = dayOfWeek === 6 && !scheduledSaturday && effectiveWorkedMinutes > 0;
     if (saturdayOutsideSchedule) {
@@ -735,7 +739,15 @@ export const calculatePointDayCore = ({
     calculable: !isNeutral && calculable
   };
   const status = getStatus(record, type);
-  const baseJustification = dayOfWeek === null
+  if (isHourly && hasIncompletePointPeriodLunch(record)) {
+    status.inconsistente = true;
+    status.necessitaAjuste = true;
+    status.statusPonto = 'Pendente de ajuste';
+    status.inconsistencias.push('Período com marcação de almoço incompleta.');
+  } else if (isHourly && !status.inconsistente && isPointJourneyPending(getPointPunchEvents(record))) {
+    status.statusPonto = 'Em andamento';
+  }
+  const baseJustification = isHourly && type === 'normal' ? (record.justificativa || '-') : dayOfWeek === null
     ? (record.justificativa || '-')
     : getBaseJustification({ record, type, dayOfWeek, isHoliday, scheduleDay, summary });
   const supplementalLabels = supplementalPeriods.map(formatSupplementalPeriodLabel);
@@ -745,8 +757,8 @@ export const calculatePointDayCore = ({
   ].filter(Boolean).join(' · ') || '-';
   return {
     type,
-    summary,
-    balance,
+    summary: isHourly ? { ...summary, ...getHourlyPointSummary(effectiveWorkedMinutes, status.inconsistente) } : summary,
+    balance: isHourly ? getHourlyPointBalance() : balance,
     status,
     baseJustification,
     justification,
