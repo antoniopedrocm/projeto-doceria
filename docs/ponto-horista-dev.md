@@ -1,5 +1,7 @@
 # Investigação antes da implementação — Horista (DEV)
 
+> Correção posterior: a regra deste relatório que carregava banco anterior no resumo de um mês de transição foi substituída. O resumo mensal Horista agora tem banco/carga/extra = 0, apresentados como —, mesmo com dias anteriores de escala fixa. Ver `ponto-horista-correcao-resumo-dev.md`. Os cálculos históricos dos dias anteriores permanecem preservados.
+
 Ambiente: repositório projeto-doceria-main, Firebase crmdoceria-9959e.
 Branch isolada: codex/ponto-horista-dev. Nenhuma alteração no worktree fiscal ou em produção.
 

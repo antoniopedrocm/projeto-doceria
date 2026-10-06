@@ -1,7 +1,8 @@
 import PointWorkScheduleFields from './meuEspaco/PointWorkScheduleFields';
 import { sanitizeEmployeeWorkSchedule, getPointScheduleDayInfo,
   isHourlyWorkSchedule, resolvePointWorkSchedule, getHourlyPointSummary, getHourlyPointBalance,
-  formatPointWorkedMonth, sumPointWorkedMinutes } from './meuEspaco/pointScheduleCore';
+  formatPointWorkedMonth } from './meuEspaco/pointScheduleCore';
+import { summarizePointMonth } from './meuEspaco/pointMonthSummary';
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { Play } from 'lucide-react';
 import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
@@ -6790,15 +6791,12 @@ function App() {
         const employee = getPointSheetEmployee(employeeId, employeeMonthlyRecords);
         const employeeSchedule = getScheduleForEmployeeId(employeeId);
         const bankStartDate = getPointBankStartDateForEmployeeId(employeeId);
-        const hourlyMonth = isHourlyWorkSchedule(resolvePointWorkSchedule(employeeSchedule, recordsQueryMonth + '-' + String(new Date(year, month, 0).getDate()).padStart(2, '0')));
+        const monthSchedule = resolvePointWorkSchedule(employeeSchedule, recordsQueryMonth + '-' + String(new Date(year, month, 0).getDate()).padStart(2, '0'));
+        const hourlyMonth = isHourlyWorkSchedule(monthSchedule);
         const monthlyCalculations = [];
         let hasFixedDays = false;
         const daysInMonth = new Date(year, month, 0).getDate();
         const rows = [];
-        let creditMinutes = 0;
-        let debitMinutes = 0;
-        let bankMovementMinutes = 0;
-        let overtimePayMinutes = 0;
         const nationalHolidays = getBrazilNationalHolidays(year);
 
         for (let day = 1; day <= daysInMonth; day += 1) {
@@ -6818,13 +6816,6 @@ function App() {
           monthlyCalculations.push(dayCalculation);
           if (!isHourlyWorkSchedule(getPointScheduleDayInfo(recordSchedule, date).schedule)) hasFixedDays = true;
           const { summary, balance: balanceDistribution, baseJustification } = dayCalculation;
-          const irregularityMinutes = summary.calculable && Number.isFinite(summary.irregularityMinutes)
-            ? summary.irregularityMinutes
-            : 0;
-          if (irregularityMinutes > 0) creditMinutes += irregularityMinutes;
-          if (irregularityMinutes < 0) debitMinutes += Math.abs(irregularityMinutes);
-          bankMovementMinutes += balanceDistribution.bancoHorasMinutes;
-          overtimePayMinutes += balanceDistribution.horaExtraMinutes;
           const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
           const presentationRows = buildPointPresentationRows(dayRecord, { baseJustification });
           presentationRows.forEach((presentationRow) => {
@@ -6849,9 +6840,11 @@ function App() {
           });
         }
 
-        const balanceMinutes = creditMinutes - debitMinutes;
-        const previousBankMinutes = hourlyMonth && !hasFixedDays ? 0 : await getPreviousBankHoursBalance(employeeId, recordsQueryMonth, employeeSchedule, bankStartDate);
-        const finalBankMinutes = previousBankMinutes + bankMovementMinutes;
+        // Historical bank reconstruction is only applicable to a fixed-scale
+        // monthly summary, even when an hourly month contains earlier fixed days.
+        const previousBalance = hourlyMonth ? 0 : await getPreviousBankHoursBalance(employeeId, recordsQueryMonth, employeeSchedule, bankStartDate);
+        const monthSummary = summarizePointMonth({schedule: monthSchedule, calculations: monthlyCalculations, previousBankMinutes: previousBalance});
+        const { creditMinutes, debitMinutes, balanceMinutes, previousBankMinutes, finalBankMinutes, overtimePayMinutes } = monthSummary;
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -6988,8 +6981,9 @@ function App() {
         doc.text('Resumo do mês', margin, y);
         y += 3.5;
         const summaryBoxes = hourlyMonth ? [
-          ['Horas trabalhadas no mês', formatPointWorkedMonth(sumPointWorkedMinutes(monthlyCalculations))],
-          ['Banco de horas', hasFixedDays ? formatMinutesForPointSheet(finalBankMinutes, { signed: finalBankMinutes !== 0 }) : 'Não se aplica']
+          ['Horas trabalhadas no mês', formatPointWorkedMonth(monthSummary.workedMinutes)],
+          ['Banco de horas', '—'],
+          ['Horas extras', '—']
         ] : [
           ['Créditos Mês', formatMinutesForPointSheet(creditMinutes)],
           ['Débitos Mês', formatMinutesForPointSheet(debitMinutes)],
@@ -7010,14 +7004,14 @@ function App() {
         y += 15;
 
         const bankStartLabel = formatPointBankStartDateLabel(bankStartDate);
-        if (bankStartLabel && (!hourlyMonth || hasFixedDays)) {
+        if (bankStartLabel && !hourlyMonth) {
           setFont(5.8);
           doc.text(`Banco de horas calculado a partir de ${bankStartLabel}.`, margin, y - 2.5);
         }
 
         if (hourlyMonth && hasFixedDays) {
           setFont(5.8);
-          doc.text('Mês de transição: o banco preserva somente os dias de escala fixa e o saldo anterior.', margin, y - 0.5);
+          doc.text('Mês de transição: dias anteriores preservam sua escala; banco e extras não se aplicam ao resumo Horista.', margin, y - 2.5);
         }
         setFont(7);
         doc.text('CONFIRMO A FREQUÊNCIA ACIMA', margin, y);
@@ -7139,10 +7133,11 @@ function App() {
     const summaryEmployeeId = isManager ? (selectedEmployee !== 'all' ? selectedEmployee : '') : userId;
     const summarySchedule = resolvePointWorkSchedule(getScheduleForEmployeeId(summaryEmployeeId), recordsQueryMonth + '-31');
     const showHourlyMonthTotal = Boolean(summaryEmployeeId && isHourlyWorkSchedule(summarySchedule));
-    const hourlyMonthWorkedMinutes = showHourlyMonthTotal ? sumPointWorkedMinutes(
-      groupPointRecordsByDay(records.filter((record) => record.funcionarioId === summaryEmployeeId), { storeId: currentStoreIdForDisplay })
+    const hourlyMonthWorkedMinutes = showHourlyMonthTotal ? summarizePointMonth({
+      schedule: summarySchedule,
+      calculations: groupPointRecordsByDay(records.filter((record) => record.funcionarioId === summaryEmployeeId), { storeId: currentStoreIdForDisplay })
         .map((record) => calculatePointDay(record))
-    ) : 0;
+    }).workedMinutes : 0;
 
     const todayRecord = todayRecordData;
     const todayPointStatus = todayRecord

@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { act as legacyAct, Simulate } from 'react-dom/test-utils';
 import PointWorkScheduleFields from './PointWorkScheduleFields';
 import { calculatePointDayCore } from './pointCalculationCore';
+import { summarizePointMonth } from './pointMonthSummary';
 import { groupPointRecordsByDay } from './pointDayConsolidation';
 import { buildPointPresentationRows } from './pointPresentation';
 import fs from 'fs';
@@ -21,6 +22,69 @@ const calculate = (record = {}, schedule = hourly, date = new Date(2026, 9, 6)) 
   date, scheduleDay: getPointScheduleDayInfo(schedule, date)
 });
 const fiveHours = { horaEntrada: '08:00', horaAlmocoSaida: '11:00', horaAlmocoRetorno: '12:00', horaSaida: '14:00' };
+
+test.each([
+  [240, '4h00'], [0, '0h00'], [5255, '87h35'], [600, '10h00']
+])('monthly Horista policy: %i real minutes, no expected load, bank or overtime', (minutes, label) => {
+  const summary = summarizePointMonth({schedule: hourly, previousBankMinutes: -213 * 60, calculations: [{
+    summary: {workedMinutes: minutes, expectedMinutes: 480, irregularityMinutes: minutes - 480, calculable: true},
+    balance: {bancoHorasMinutes: -480, horaExtraMinutes: 120}
+  }]});
+  expect(formatPointWorkedMonth(summary.workedMinutes)).toBe(label);
+  expect(summary).toMatchObject({bankApplicable: false, expectedMinutes: 0, creditMinutes: 0,
+    debitMinutes: 0, balanceMinutes: 0, previousBankMinutes: 0, bankMovementMinutes: 0,
+    finalBankMinutes: 0, overtimePayMinutes: 0});
+});
+
+test('10h worked in one hourly day is never automatically 2h extra', () => {
+  const result = calculate({horaEntrada: '08:00', horaSaida: '18:00'});
+  expect(result.summary.workedMinutes).toBe(600);
+  expect(result.summary.expectedMinutes).toBe(0);
+  expect(result.balance.horaExtraMinutes).toBe(0);
+  expect(result.balance.bancoHorasMinutes).toBe(0);
+});
+
+test('transition preserves fixed days and old negative balances without carrying them into hourly summary', () => {
+  const fixed = sanitizeEmployeeWorkSchedule({tipoEscala: 'seg-sex'});
+  const schedule = buildPointScheduleUpdate(fixed, hourly, '2026-10-06');
+  const documents = [
+    {dia: '2026-10-05', jornadaTrabalho: fixed, ...fiveHours},
+    {dia: '2026-10-06', jornadaTrabalho: hourly, horaEntrada: '08:00', horaSaida: '12:00'}
+  ];
+  const storedBalance = {saldoBancoHorasFinalMinutes: -12780};
+  const before = JSON.stringify({documents, storedBalance, schedule});
+  const days = documents.map((record) => calculate(record, record.jornadaTrabalho, new Date(`${record.dia}T12:00:00`)));
+  expect(days[0].balance.bancoHorasMinutes).toBe(-180);
+  expect(days[1].balance.bancoHorasMinutes).toBe(0);
+  const missingBefore = calculate({}, schedule, new Date(2026, 9, 1));
+  const missingAfter = calculate({}, schedule, new Date(2026, 9, 7));
+  expect(missingBefore.balance.bancoHorasMinutes).toBe(-480);
+  expect(missingAfter.balance.bancoHorasMinutes).toBe(0);
+  const hourlySummary = summarizePointMonth({schedule: resolvePointWorkSchedule(schedule, '2026-10-31'), calculations: days, previousBankMinutes: storedBalance.saldoBancoHorasFinalMinutes});
+  expect(hourlySummary.workedMinutes).toBe(540);
+  expect(hourlySummary.finalBankMinutes).toBe(0);
+  expect(hourlySummary.overtimePayMinutes).toBe(0);
+  const priorFixedSummary = summarizePointMonth({schedule: resolvePointWorkSchedule(schedule, '2026-09-30'), calculations: [days[0]], previousBankMinutes: storedBalance.saldoBancoHorasFinalMinutes});
+  expect(priorFixedSummary.finalBankMinutes).toBe(-12960);
+  expect(priorFixedSummary.bankApplicable).toBe(true);
+  expect(JSON.stringify({documents, storedBalance, schedule})).toBe(before);
+});
+
+test.each([
+  ['seg-sex', {}, new Date(2026, 9, 6), -180],
+  ['personalizada', {cargaHorariaPorDia: {2: '06:00'}}, new Date(2026, 9, 6), -60],
+  ['seg-sab-folga', {}, new Date(2026, 9, 10), 0]
+])('monthly %s keeps previous bank and daily movements', (tipoEscala, fields, date, bank) => {
+  const schedule = sanitizeEmployeeWorkSchedule({tipoEscala, ...fields});
+  const day = calculate(fiveHours, schedule, date);
+  const monthly = summarizePointMonth({schedule, calculations: [day], previousBankMinutes: -12780});
+  expect(monthly.bankApplicable).toBe(true);
+  expect(monthly.finalBankMinutes).toBe(-12780 + bank);
+  expect(monthly.bankMovementMinutes).toBe(bank);
+  expect(monthly.overtimePayMinutes).toBe(day.balance.horaExtraMinutes);
+  expect(monthly.expectedMinutes).toBe(day.summary.expectedMinutes);
+  expect(monthly.creditMinutes - monthly.debitMinutes).toBe(day.summary.irregularityMinutes || 0);
+});
 
 test('5h worked and 8h old settings produce exactly 5h, with no bank deficit', () => {
   const result = calculate({ ...fiveHours, jornadaEsperadaMinutos: 480 });
@@ -110,7 +174,13 @@ test('consolidation counts duplicate and complementary point documents only once
   expect(total).toBe(300);
 });
 
-test('actual PDF exporter presents 87h35, no bank debit, and ignores bank start for actual work', async () => {
+test.each([
+  ['87h35', 5255, false, false],
+  ['4h00 with historical -213h bank', 240, true, false],
+  ['0h00 with historical -213h bank', 0, true, false],
+  ['10h00 with historical bank', 600, true, false],
+  ['9h00 including a preserved 5h fixed day', 540, true, true]
+])('actual PDF exporter: %s, bank and overtime do not apply', async (_, workedMinutes, transition, historicalDay) => {
   const source = fs.readFileSync(path.join(__dirname, '../App.js'), 'utf8');
   const start = source.indexOf('    const handleExportPointSheet = async () => {');
   const end = source.indexOf('    const filteredRecords = useMemo', start);
@@ -127,18 +197,25 @@ test('actual PDF exporter presents 87h35, no bank debit, and ignores bank start 
     setFont() {} setFontSize() {} setTextColor() {} setLineWidth() {}
     setDrawColor() {} setFillColor() {} line() {} rect() {} addPage() {} setPage() {}
   }
-  const records = Array.from({length: 17}, (_, index) => ({id: `day-${index}`, funcionarioId: 'employee', dia: `2026-10-${String(index + 1).padStart(2, '0')}`, competencia: '2026-10', jornadaTrabalho: hourly, ...fiveHours}));
-  records.push({id: 'last', funcionarioId: 'employee', dia: '2026-10-18', jornadaTrabalho: hourly, horaEntrada: '08:00', horaSaida: '10:35'});
+  const fixed = sanitizeEmployeeWorkSchedule({tipoEscala: 'seg-sex'});
+  const employeeSchedule = transition ? buildPointScheduleUpdate(fixed, hourly, '2026-10-06') : hourly;
+  const records = workedMinutes === 5255
+    ? [...Array.from({length: 17}, (_, index) => ({id: `day-${index}`, funcionarioId: 'employee', dia: `2026-10-${String(index + 1).padStart(2, '0')}`, competencia: '2026-10', jornadaTrabalho: hourly, ...fiveHours})),
+      {id: 'last', funcionarioId: 'employee', dia: '2026-10-18', jornadaTrabalho: hourly, horaEntrada: '08:00', horaSaida: '10:35'}]
+    : workedMinutes ? [{id: 'day', funcionarioId: 'employee', dia: '2026-10-06', jornadaTrabalho: hourly, horaEntrada: '08:00', horaSaida: workedMinutes === 600 ? '18:00' : '12:00'}] : [];
+  if (historicalDay) records.push({id: 'old', funcionarioId: 'employee', dia: '2026-10-05', jornadaTrabalho: fixed, ...fiveHours});
+  const originalRecords = JSON.stringify(records);
   const messages = [];
   const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  const previousBank = jest.fn(async () => -8888);
+  const previousBank = jest.fn(async () => -213 * 60);
+  const monthlySummary = jest.fn(summarizePointMonth);
   const dependencies = {
     window: {jspdf: {jsPDF: PDF}}, records, recordsQueryMonth: '2026-10',
     getSelectedEmployeeIdForExport: () => 'employee', setRegisterMessage: (message) => messages.push(message),
     groupPointRecordsByDay, currentStoreIdForDisplay: 'dev',
     getRecordDateTime: (record) => new Date(`${record.dia}T12:00:00`), getRecordDayKey: (record) => record.dia,
     getPointSheetEmployee: () => ({name: 'Horista', category: 'Funcionária'}),
-    getScheduleForEmployeeId: () => hourly, getPointBankStartDateForEmployeeId: () => '2026-11-01',
+    getScheduleForEmployeeId: () => employeeSchedule, getPointBankStartDateForEmployeeId: () => historicalDay ? '' : '2026-11-01',
     getBrazilNationalHolidays: () => new Set(), toDateInputValue: dateKey,
     getRecordWorkSchedule: (record) => record.jornadaTrabalho,
     isPointBankDateBeforeStart: (day, firstDay) => day < firstDay,
@@ -148,7 +225,7 @@ test('actual PDF exporter presents 87h35, no bank debit, and ignores bank start 
     getPreviousBankHoursBalance: previousBank, companyInfo: {nome: 'DEV'}, activeStoreInfo: {},
     getPointSheetMonthLabel: () => 'Outubro de 2026', formatCompanyAddressForPointSheet: () => '-',
     formatPointBankStartDateLabel: () => '01/11/2026', normalizeSearchText: (value) => value.toLowerCase(),
-    isHourlyWorkSchedule, resolvePointWorkSchedule, getPointScheduleDayInfo, formatPointWorkedMonth, sumPointWorkedMinutes,
+    isHourlyWorkSchedule, resolvePointWorkSchedule, getPointScheduleDayInfo, formatPointWorkedMonth, summarizePointMonth: monthlySummary,
     console, Date
   };
   // Execute the actual local exporter while replacing browser/PDF I/O only.
@@ -157,10 +234,18 @@ test('actual PDF exporter presents 87h35, no bank debit, and ignores bank start 
   await exportSheet();
   expect(messages[messages.length - 1].type).toBe('success');
   expect(printed).toContain('HORAS TRABALHADAS NO MÊS');
-  expect(printed).toContain('87h35');
-  expect(printed).toContain('Não se aplica');
-  expect(printed.some((value) => /DÉBITOS MÊS|^-\d+h/.test(value))).toBe(false);
+  expect(printed).toContain(formatPointWorkedMonth(workedMinutes));
+  const summaryStart = printed.indexOf('Resumo do mês');
+  const summaryEnd = printed.indexOf('CONFIRMO A FREQUÊNCIA ACIMA');
+  const summary = printed.slice(summaryStart, summaryEnd);
+  expect(summary).toContain('—');
+  expect(summary).toContain('HORAS EXTRAS');
+  expect(summary.some((value) => /^-\d/.test(value))).toBe(false);
+  expect(summary.some((value) => /DÉBITOS MÊS|^-\d+h/.test(value))).toBe(false);
+  expect(printed.includes('-03:00')).toBe(Boolean(historicalDay));
   expect(previousBank).not.toHaveBeenCalled();
+  expect(monthlySummary.mock.results[0].value).toMatchObject({workedMinutes, finalBankMinutes: 0, expectedMinutes: 0, overtimePayMinutes: 0});
+  expect(JSON.stringify(records)).toBe(originalRecords);
   expect(saved).toHaveLength(1);
 });
 

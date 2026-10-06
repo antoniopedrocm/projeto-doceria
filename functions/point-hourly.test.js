@@ -106,6 +106,17 @@ test('5h real work has no 8h expected load, deficit or automatic lunch credit', 
   assert.equal(balance.horaExtraMinutes, 0);
 });
 
+test('actual backend: 4h and 10h real work never create bank or automatic overtime', () => {
+  const calculate = loadBackend().handlers.calculate;
+  for (const [horaSaida, workedMinutes] of [['12:00', 240], ['18:00', 600]]) {
+    const {summary, balance} = calculate(point({horaEntrada: '08:00', horaSaida, jornadaEsperadaMinutos: 480}));
+    assert.equal(summary.workedMinutes, workedMinutes);
+    assert.equal(summary.expectedMinutes, 0);
+    assert.equal(balance.bancoHorasMinutes, 0);
+    assert.equal(balance.horaExtraMinutes, 0);
+  }
+});
+
 test('no work, obsolete theoretical fields and weekends never create hourly bank movement', () => {
   const calculate = loadBackend().handlers.calculate;
   for (const dia of ['2026-10-06', '2026-10-10', '2026-10-11']) {
