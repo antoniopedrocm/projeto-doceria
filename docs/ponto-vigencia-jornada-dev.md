@@ -34,4 +34,18 @@ O bundle DEV anterior main.0cf72bb7.js foi conferido: todos os 40 módulos locai
 
 ## Publicação
 
-Componentes necessários e exclusivos: hosting:prod, functions:updateUser, functions:registerEmployeePoint. createUser e listAllUsers não foram alterados nem precisam publicação. Build, commit e verificação dos artefatos servidos serão registrados ao concluir a publicação seletiva em crmdoceria-9959e.
+Componentes necessários e exclusivos: hosting:prod, functions:updateUser, functions:registerEmployeePoint. createUser e listAllUsers não foram alterados nem precisam publicação.
+
+Commit da implementação: **8ac32f53bfb61009fc65484c644416a23be243ed**. Build aprovado neste worktree, com os avisos existentes de lint, Browserslist/Baseline e source maps de native-audio. Bundle **/static/js/main.9dbcb1de.js**, SHA256 **7f8554ce6a654b99c46993084db2d22161cc521bb85c233b4ff0fcdbca989cb5**. Fontes compiladas conferidas contra os arquivos locais: somente App.js, PointWorkScheduleFields.js e pointScheduleCore.js diferem da versão DEV anterior; os outros 37 módulos locais permanecem iguais. iFood Hub e 99Food Hub presentes no bundle; Firebase compilado crmdoceria-9959e, sem referência ao projeto de produção.
+
+Comando seletivo, executado a partir do alias do worktree DEV:
+
+```powershell
+$env:NODE_USE_SYSTEM_CA='1'
+$env:FUNCTIONS_DISCOVERY_TIMEOUT='60'
+firebase deploy --project crmdoceria-9959e --only 'hosting:prod,functions:updateUser,functions:registerEmployeePoint' --non-interactive
+```
+
+Deploy concluído com sucesso: updateUser(us-central1) e registerEmployeePoint(us-central1) atualizadas; Hosting finalizado e liberado em https://crmdoceria-9959e.web.app. O inventário continua com 124 Functions. As outras **122 Functions** preservam o mesmo pacote de fonte; as configurações de execução permaneceram iguais, conferidas por inventário antes/depois.
+
+Conferência HTTP pós-deploy: bundle servido **main.9dbcb1de.js** idêntico ao build local, SHA256 acima. Os 37 módulos sem mudanças continuam idênticos à versão anterior; os três módulos alterados correspondem às fontes locais. Ambos os Hubs permanecem presentes. Os pacotes publicados de updateUser e registerEmployeePoint foram baixados, e index.js/point-schedule-core.js correspondem aos arquivos locais. Os testes de Ponto foram repetidos com as fontes desses pacotes e a política ESM extraída do bundle servido, sem falhas. Nenhum cadastro ou documento real foi alterado para testar. Nenhum deploy em ana-guimaraes foi executado; nenhuma funcionalidade fora do Ponto foi promovida.
