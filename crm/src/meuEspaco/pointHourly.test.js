@@ -12,7 +12,8 @@ import fs from 'fs';
 import path from 'path';
 import {
   buildPointScheduleUpdate, sanitizeEmployeeWorkSchedule, getPointScheduleDayInfo,
-  sumPointWorkedMinutes, formatPointWorkedMonth, resolvePointWorkSchedule, isHourlyWorkSchedule
+  sumPointWorkedMinutes, formatPointWorkedMonth, resolvePointWorkSchedule, isHourlyWorkSchedule,
+  arePointWorkSchedulesEqual, getPointScheduleEffectiveDate, isValidPointScheduleDate, resolvePointRecordWorkSchedule
 } from './pointScheduleCore';
 
 const act = React.act || legacyAct;
@@ -291,4 +292,105 @@ test('user form offers Horista, preserves fixed settings, saves and reopens acro
     container.remove();
     localStorage.removeItem(persistedKey);
   }
+});
+
+test('chosen effective date applies to frontend day/month calculation inclusively and preserves earlier fixed rules', () => {
+  const fixed = sanitizeEmployeeWorkSchedule({tipoEscala: 'seg-sex'});
+  const schedule = buildPointScheduleUpdate(fixed, hourly, '2026-11-01');
+  const original = JSON.stringify(schedule);
+  const before = calculate({...fiveHours, dia: '2026-10-30'}, schedule, new Date(2026, 9, 30));
+  const after = calculate({...fiveHours, dia: '2026-11-02'}, schedule, new Date(2026, 10, 2));
+  expect(before.summary.expectedMinutes).toBe(480);
+  expect(before.balance.bancoHorasMinutes).toBe(-180);
+  expect(after.summary.expectedMinutes).toBe(0);
+  expect(after.balance).toMatchObject({bancoHoras: '—', horaExtra: '—', bancoHorasMinutes: 0, horaExtraMinutes: 0});
+  expect(resolvePointWorkSchedule(schedule, '2026-11-01').tipoEscala).toBe('horista');
+  expect(getPointScheduleEffectiveDate(schedule)).toBe('2026-11-01');
+  expect(summarizePointMonth({schedule: resolvePointWorkSchedule(schedule, '2026-10-31'), calculations: [before], previousBankMinutes: -100}).finalBankMinutes).toBe(-280);
+  expect(summarizePointMonth({schedule: resolvePointWorkSchedule(schedule, '2026-11-30'), calculations: [after], previousBankMinutes: -100}).finalBankMinutes).toBe(0);
+  expect(buildPointScheduleUpdate(schedule, schedule, '2026-10-06')).toEqual(schedule);
+  expect(arePointWorkSchedulesEqual(schedule, {...hourly, historicoEscalas: undefined})).toBe(true);
+  expect(JSON.stringify(schedule)).toBe(original);
+  expect(isValidPointScheduleDate('2026-02-30')).toBe(false);
+  expect(isValidPointScheduleDate('2028-02-29')).toBe(true);
+});
+
+test('date field accepts and retains the selected transition date; reopening shows the saved effective date', () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const Input = ({label, ...props}) => <label>{label}<input {...props} /></label>;
+  const Select = ({label, children, ...props}) => <label>{label}<select {...props}>{children}</select></label>;
+  let submitted;
+  function Form() {
+    const [date, setDate] = useState('2026-10-06');
+    return <>
+      <PointWorkScheduleFields schedule={hourly} bankStartDate="" onBankStartDateChange={() => {}} onScheduleChange={() => {}}
+        effectiveDate={date} onEffectiveDateChange={setDate} showEffectiveDate Input={Input} Select={Select} />
+      <button onClick={() => {submitted = date;}}>Salvar</button>
+    </>;
+  }
+  const root = createRoot(container);
+  try {
+    act(() => root.render(<Form />));
+    const field = container.querySelector('input[type="date"]');
+    expect(field.required).toBe(true);
+    expect(container.textContent).toContain('Aplicar nova jornada a partir de');
+    act(() => Simulate.change(field, {target: {value: '2026-11-01'}}));
+    act(() => Simulate.click(container.querySelector('button')));
+    expect(submitted).toBe('2026-11-01');
+    act(() => root.render(<PointWorkScheduleFields schedule={hourly} bankStartDate="" onBankStartDateChange={() => {}} onScheduleChange={() => {}}
+      savedEffectiveDate={submitted} Input={Input} Select={Select} />));
+    expect(container.textContent).toContain('Vigência registrada da jornada: 01/11/2026');
+    expect(container.querySelector('input[type="date"]')).toBeNull();
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
+});
+
+test.each([true, false])('actual profile submit sends the selected date only when changing the point schedule (%s)', async (changingSchedule) => {
+  const source = fs.readFileSync(path.join(__dirname, '../App.js'), 'utf8');
+  const from = source.indexOf('const handleUserSubmit = async');
+  const to = source.indexOf('    const deleteUserAccount =', from);
+  const payloads = [];
+  const alerts = [];
+  const dependencies = {
+    userFormData: {email: 'employee@example.test', nome: 'Employee', role: 'atendente', lojaId: 'store', lojaIds: ['store'],
+      applyCustomProfile: true, permissions: {}, permissionDetails: {}, jornadaTrabalho: hourly, dataInicioBancoHoras: ''},
+    editingUser: {uid: 'employee'}, pointScheduleNeedsEffectiveDate: changingSchedule, pointScheduleEffectiveDate: '2026-11-01',
+    isValidPointScheduleDate, sanitizeEmployeeWorkSchedule,
+    normalizeRole: (role) => role, normalizePointBankStartDate: (value) => value,
+    sanitizePermissions: (permissions) => permissions, sanitizePermissionDetails: (details) => details,
+    effectiveStoreId: 'store', ROLE_OWNER: 'dono', user: {role: 'dono', auth: {uid: 'owner'}},
+    functions: {}, setShowUserModal: jest.fn(), setUsuarios: jest.fn(),
+    httpsCallable: (_functions, name) => async (payload) => {
+      if (name === 'updateUser') { payloads.push(payload); return {data: {jornadaTrabalho: hourly}}; }
+      return {data: {users: []}};
+    },
+    alert: (message) => alerts.push(message), console,
+  };
+  // eslint-disable-next-line no-new-func
+  const submit = new Function(...Object.keys(dependencies), `${source.slice(from, to)}\nreturn handleUserSubmit;`)(...Object.values(dependencies));
+  await submit({preventDefault: jest.fn()});
+  expect(alerts).toEqual(['Usuário atualizado com sucesso!']);
+  expect(payloads).toHaveLength(1);
+  expect(Object.prototype.hasOwnProperty.call(payloads[0], 'dataInicioJornada')).toBe(changingSchedule);
+  expect(payloads[0].dataInicioJornada).toBe(changingSchedule ? '2026-11-01' : undefined);
+});
+
+
+test('past chosen date overrides legacy fixed snapshots only in the hourly period without mutating history', () => {
+  const fixed = sanitizeEmployeeWorkSchedule({tipoEscala: 'seg-sex'});
+  const schedule = buildPointScheduleUpdate(fixed, hourly, '2026-09-01');
+  const record = {dia: '2026-09-15', jornadaTrabalho: fixed, bancoHorasMinutes: -2464, horaExtraMinutes: 207, ...fiveHours};
+  const original = JSON.stringify({schedule, record});
+  const effective = resolvePointRecordWorkSchedule(schedule, record.jornadaTrabalho, record.dia);
+  const result = calculate(record, effective, new Date(2026, 8, 15));
+  expect(result.summary).toMatchObject({workedMinutes: 300, expectedMinutes: 0});
+  expect(result.balance).toMatchObject({bancoHorasMinutes: 0, horaExtraMinutes: 0});
+  expect(resolvePointRecordWorkSchedule(schedule, fixed, '2026-08-31').tipoEscala).toBe('seg-sex');
+  const back = buildPointScheduleUpdate(schedule, fixed, '2026-11-01');
+  expect(resolvePointRecordWorkSchedule(back, fixed, '2026-11-01').tipoEscala).toBe('seg-sex');
+  expect(JSON.stringify({schedule, record})).toBe(original);
 });

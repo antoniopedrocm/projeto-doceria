@@ -13,8 +13,11 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const loadBackend = (initialUsers = {}) => {
   const users = clone(initialUsers);
   const writes = [];
+  const authUpdates = [];
   const authUsers = Object.fromEntries(Object.entries(users).map(([uid, data]) => [uid, {uid, email: data.email}]));
-  class HttpsError extends Error {}
+  class HttpsError extends Error {
+    constructor(code, message) { super(message || code); this.code = code; }
+  }
   const collection = (name) => ({
     doc: (id) => ({
       set: async (data, options) => {
@@ -53,7 +56,7 @@ const loadBackend = (initialUsers = {}) => {
     auth: {
       createUser: async (data) => {authUsers.employee = {uid: 'employee', ...data}; return authUsers.employee;},
       getUser: async (uid) => authUsers[uid],
-      updateUser: async (uid, data) => Object.assign(authUsers[uid], data),
+      updateUser: async (uid, data) => {authUpdates.push(uid); return Object.assign(authUsers[uid], data);},
       listUsers: async () => ({users: Object.values(authUsers)}),
     },
   });
@@ -70,7 +73,7 @@ const loadBackend = (initialUsers = {}) => {
     assert.ok(from >= 0 && to > from, `handler boundary ${start}`);
     vm.runInContext(source.slice(from, to), context);
   });
-  return {handlers: context.exports, users, writes, context};
+  return {handlers: context.exports, users, writes, authUpdates, context};
 };
 
 const hourly = policy.sanitizeEmployeeWorkSchedule({tipoEscala: 'horista'});
@@ -241,4 +244,94 @@ test('real registerEmployeePoint transaction persists hourly punches, actual hou
   assert.equal(response.record.jornadaTrabalho.tipoEscala, 'horista');
   assert.equal(response.record.statusPonto, 'Completo');
   assert.equal(stored.get('lojas/dev/pontos/employee_2026-10-06').batidas.length, 4);
+});
+
+test('updateUser saves a chosen future date; fixed rules remain until the day before and survive reopen and unrelated edits', async () => {
+  const fixed = policy.sanitizeEmployeeWorkSchedule({tipoEscala: 'personalizada', cargaHorariaPorDia: {2: '06:00'}});
+  const backend = loadBackend({employee: {...userPayload, jornadaTrabalho: fixed}});
+  const updated = await backend.handlers.updateUser({auth: {uid: 'manager'}, data: {
+    ...userPayload, uid: 'employee', dataInicioJornada: '2026-11-01',
+    jornadaTrabalho: {...hourly, historicoEscalas: [{inicio: '', jornadaTrabalho: hourly}]},
+  }});
+  assert.equal(policy.resolvePointWorkSchedule(updated.jornadaTrabalho, '2026-10-31').tipoEscala, 'personalizada');
+  assert.equal(policy.resolvePointWorkSchedule(updated.jornadaTrabalho, '2026-11-01').tipoEscala, 'horista');
+  assert.equal(policy.getPointScheduleEffectiveDate(updated.jornadaTrabalho), '2026-11-01');
+  const reopened = (await backend.handlers.listAllUsers({auth: {uid: 'manager'}})).users[0];
+  const before = clone(reopened.jornadaTrabalho);
+  const unrelated = await backend.handlers.updateUser({auth: {uid: 'manager'}, data: {
+    ...userPayload, uid: 'employee', nome: 'New display name', jornadaTrabalho: reopened.jornadaTrabalho,
+  }});
+  assert.deepEqual(unrelated.jornadaTrabalho, before);
+  assert.deepEqual(backend.writes.map((write) => write.name), ['users', 'users']);
+});
+
+test('updateUser accepts a past effective date without editing historical point documents', async () => {
+  const backend = loadBackend({employee: {...userPayload, jornadaTrabalho: {tipoEscala: 'seg-sex'}}});
+  const updated = await backend.handlers.updateUser({auth: {uid: 'manager'}, data: {...userPayload, uid: 'employee', dataInicioJornada: '2026-09-01'}});
+  assert.equal(policy.resolvePointWorkSchedule(updated.jornadaTrabalho, '2026-08-31').tipoEscala, 'seg-sex');
+  assert.equal(policy.resolvePointWorkSchedule(updated.jornadaTrabalho, '2026-09-01').tipoEscala, 'horista');
+  assert.deepEqual(backend.writes.map((write) => write.name), ['users']);
+});
+
+test('updateUser rejects empty, malformed and impossible effective dates before writing', async () => {
+  for (const date of ['', '01/09/2026', '2026-02-30', '2026-13-01', '2026-09-31']) {
+    const backend = loadBackend({employee: {...userPayload, jornadaTrabalho: {tipoEscala: 'seg-sex'}}});
+    await assert.rejects(backend.handlers.updateUser({auth: {uid: 'manager'}, data: {...userPayload, uid: 'employee', dataInicioJornada: date}}), /data válida/);
+    assert.deepEqual(backend.writes, []);
+    assert.deepEqual(backend.authUpdates, []);
+    assert.equal(backend.users.employee.jornadaTrabalho.tipoEscala, 'seg-sex');
+  }
+});
+
+for (const legacyFixedSnapshot of [false, true]) test(`real registerEmployeePoint persists hourly punches without bank debt (legacy fixed snapshot: ${legacyFixedSnapshot})`, async () => {
+  const backend = loadBackend();
+  const stored = new Map();
+  if (legacyFixedSnapshot) stored.set('lojas/dev/pontos/employee_2026-10-06', {
+    funcionarioId: 'employee', dia: '2026-10-06', competencia: '2026-10',
+    jornadaTrabalho: policy.sanitizeEmployeeWorkSchedule({tipoEscala: 'seg-sex'}),
+    historicoAlteracoes: [{tipo: 'existing-audit', observacoes: 'must remain intact'}],
+  });
+  const context = backend.context;
+  let time = '08:00';
+  let auditId = 0;
+  const reference = (prefix) => ({
+    id: prefix.split('/').pop(), path: prefix,
+    collection: (name) => collection(`${prefix}/${name}`),
+  });
+  const snapshot = (ref) => ({ref, exists: stored.has(ref.path), data: () => stored.get(ref.path)});
+  const collection = (prefix) => ({
+    doc: (id = `audit-${++auditId}`) => reference(`${prefix}/${id}`),
+    where: () => ({query: prefix, where() {return this;}}),
+  });
+  context.db = {
+    collection,
+    runTransaction: async (callback) => callback({
+      get: async (ref) => {
+        if (!ref.query) return snapshot(ref);
+        const docs = [...stored.keys()].filter((key) => key.startsWith(`${ref.query}/`)).map((key) => snapshot(reference(key)));
+        return {empty: docs.length === 0, docs};
+      },
+      set: (ref, data, options) => stored.set(ref.path, clone(options?.merge ? {...stored.get(ref.path), ...data} : data)),
+    }),
+  };
+  context.verifyPointStoreAccess = async () => ({profile: {nome: 'Horista', jornadaTrabalho: legacyFixedSnapshot
+    ? policy.buildPointScheduleUpdate({tipoEscala: 'seg-sex'}, hourly, '2026-10-06') : hourly}});
+  context.getSaoPauloPointNow = () => ({now: new Date(`2026-10-06T${time}:00-03:00`), dayKey: '2026-10-06', competenciaKey: '2026-10', timeLabel: time});
+  context.admin.firestore.Timestamp = {fromDate: (date) => date.toISOString()};
+  context.admin.firestore.FieldValue.arrayUnion = (value) => [value];
+  const from = source.indexOf('const pointPayloadForType =');
+  const to = source.indexOf('exports.api =', from);
+  vm.runInContext(source.slice(from, to), context);
+  let response;
+  for (const [type, at] of [['entrada', '08:00'], ['almoco_inicio', '11:00'], ['almoco_fim', '12:00'], ['saida', '14:00']]) {
+    time = at;
+    response = await context.exports.registerEmployeePoint({auth: {uid: 'employee'}, data: {lojaId: 'dev', type}});
+  }
+  assert.equal(response.record.qtde, '05:00');
+  assert.equal(response.record.bancoHoras, '—');
+  assert.equal(response.record.bancoHorasMinutes, 0);
+  assert.equal(response.record.jornadaTrabalho.tipoEscala, 'horista');
+  assert.equal(response.record.statusPonto, 'Completo');
+  assert.equal(stored.get('lojas/dev/pontos/employee_2026-10-06').batidas.length, 4);
+  if (legacyFixedSnapshot) assert.equal(stored.get('lojas/dev/pontos/employee_2026-10-06').historicoAlteracoes[0].tipo, 'existing-audit');
 });

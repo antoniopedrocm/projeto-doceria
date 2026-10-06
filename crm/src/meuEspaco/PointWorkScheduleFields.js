@@ -4,7 +4,8 @@ import {
   sanitizeEmployeeWorkSchedule, isHourlyWorkSchedule, formatPointDurationInput, parsePointDurationToMinutes
 } from './pointScheduleCore';
 
-export default function PointWorkScheduleFields({ schedule, bankStartDate, onBankStartDateChange, onScheduleChange, Input, Select }) {
+export default function PointWorkScheduleFields({ schedule, bankStartDate, onBankStartDateChange, onScheduleChange,
+  effectiveDate, onEffectiveDateChange, showEffectiveDate = false, savedEffectiveDate = '', Input, Select }) {
   const currentWorkSchedule = sanitizeEmployeeWorkSchedule(schedule);
   return (
 <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
@@ -46,8 +47,23 @@ export default function PointWorkScheduleFields({ schedule, bankStartDate, onBan
                             ))}
                         </Select>
 
+                        {showEffectiveDate ? <>
+                          <Input
+                            label="Aplicar nova jornada a partir de"
+                            type="date"
+                            value={effectiveDate}
+                            onChange={(e) => onEffectiveDateChange(e.target.value)}
+                            required
+                          />
+                          <p className="text-xs text-gray-500 -mt-2">
+                            Até o dia anterior, vale a jornada anterior. A nova jornada começa na data escolhida, inclusive. As marcações existentes são preservadas.
+                          </p>
+                        </> : savedEffectiveDate && <p className="text-xs text-gray-600">
+                          Vigência registrada da jornada: {savedEffectiveDate.split('-').reverse().join('/')}
+                        </p>}
+
                         {isHourlyWorkSchedule(currentWorkSchedule) ? (
-                          <p className="text-sm text-sky-800">Horista: somente horas efetivamente trabalhadas. Não há carga prevista nem débito automático de banco de horas. Mudanças de tipo valem a partir de hoje e preservam a escala dos pontos existentes.</p>
+                          <p className="text-sm text-sky-800">Horista: somente horas efetivamente trabalhadas. Não há carga prevista, banco de horas ou horas extras. Mudanças de jornada seguem a data de vigência e preservam as marcações existentes.</p>
                         ) : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="block text-sm font-medium text-gray-700">Dias trabalhados e carga horária</label>

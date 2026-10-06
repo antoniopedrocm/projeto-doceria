@@ -1,7 +1,7 @@
 import PointWorkScheduleFields from './meuEspaco/PointWorkScheduleFields';
 import { sanitizeEmployeeWorkSchedule, getPointScheduleDayInfo,
   isHourlyWorkSchedule, resolvePointWorkSchedule, getHourlyPointSummary, getHourlyPointBalance,
-  formatPointWorkedMonth } from './meuEspaco/pointScheduleCore';
+  formatPointWorkedMonth, isValidPointScheduleDate, arePointWorkSchedulesEqual, getPointScheduleEffectiveDate, resolvePointRecordWorkSchedule } from './meuEspaco/pointScheduleCore';
 import { summarizePointMonth } from './meuEspaco/pointMonthSummary';
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { Play } from 'lucide-react';
@@ -5872,12 +5872,11 @@ function App() {
       return getPointBankStartDateForEmployeeId(record.funcionarioId);
     };
 
-    const getRecordWorkSchedule = (record = {}) => {
-      if (record.jornadaTrabalho || record.escalaTrabalho || record.workSchedule) {
-        return sanitizeEmployeeWorkSchedule(record.jornadaTrabalho || record.escalaTrabalho || record.workSchedule);
-      }
-      return resolvePointWorkSchedule(getScheduleForEmployeeId(record.funcionarioId), getRecordDayKey(record));
-    };
+    const getRecordWorkSchedule = (record = {}) => resolvePointRecordWorkSchedule(
+      getScheduleForEmployeeId(record.funcionarioId),
+      record.jornadaTrabalho || record.escalaTrabalho || record.workSchedule,
+      getRecordDayKey(record)
+    );
 
     const isVacationRecord = (record = {}) => (
       record.tipoLancamento === 'ferias'
@@ -10485,6 +10484,7 @@ function App() {
         submitting: false,
     });
     const [editingUser, setEditingUser] = useState(null);
+    const [pointScheduleEffectiveDate, setPointScheduleEffectiveDate] = useState('');
     const [selectedExistingUserId, setSelectedExistingUserId] = useState('');
     const [userFormData, setUserFormData] = useState({
         email: "",
@@ -10893,6 +10893,9 @@ const effectiveStoreName = useMemo(() => {
     }, []);
 
     const buildUserFormState = useCallback(async (userToEdit = null) => {
+        setPointScheduleEffectiveDate(new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date()));
         if (!userToEdit) {
             setEditingUser(null);
             setSelectedExistingUserId('');
@@ -11094,6 +11097,10 @@ const effectiveStoreName = useMemo(() => {
 		alert('A senha é obrigatória e deve ter pelo menos 6 caracteres');
 		return;
 	  }
+          if (pointScheduleNeedsEffectiveDate && !isValidPointScheduleDate(pointScheduleEffectiveDate)) {
+                alert('Informe uma data válida para o início da nova jornada.');
+                return;
+          }
           try {
                 const selectedRole = normalizeRole(userFormData.role);
                 const lojasSelecionadas = selectedRole === ROLE_OWNER
@@ -11135,6 +11142,7 @@ const effectiveStoreName = useMemo(() => {
                         permissionDetails: permissionDetailsToPersist,
                         applyCustomProfile,
                         jornadaTrabalho: jornadaTrabalhoToPersist,
+                        ...(pointScheduleNeedsEffectiveDate ? {dataInicioJornada: pointScheduleEffectiveDate} : {}),
                         dataInicioBancoHoras: dataInicioBancoHorasToPersist
                   });
                   jornadaTrabalhoToPersist = sanitizeEmployeeWorkSchedule(updatedProfile.data.jornadaTrabalho);
@@ -11670,6 +11678,10 @@ const effectiveStoreName = useMemo(() => {
     ];
 
     const currentWorkSchedule = sanitizeEmployeeWorkSchedule(userFormData.jornadaTrabalho);
+    const previousWorkSchedule = sanitizeEmployeeWorkSchedule(editingUser?.jornadaTrabalho || editingUser?.escalaTrabalho || editingUser?.workSchedule);
+    const pointScheduleNeedsEffectiveDate = Boolean(editingUser
+      && !arePointWorkSchedulesEqual(previousWorkSchedule, currentWorkSchedule)
+      && (isHourlyWorkSchedule(previousWorkSchedule) || isHourlyWorkSchedule(currentWorkSchedule) || previousWorkSchedule.historicoEscalas?.length));
     
     return (
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
@@ -12373,6 +12385,10 @@ const effectiveStoreName = useMemo(() => {
                       bankStartDate={normalizePointBankStartDate(userFormData.dataInicioBancoHoras)}
                       onBankStartDateChange={(value) => setUserFormData({ ...userFormData, dataInicioBancoHoras: value })}
                       onScheduleChange={updateUserWorkSchedule}
+                      effectiveDate={pointScheduleEffectiveDate}
+                      onEffectiveDateChange={setPointScheduleEffectiveDate}
+                      showEffectiveDate={pointScheduleNeedsEffectiveDate}
+                      savedEffectiveDate={getPointScheduleEffectiveDate(previousWorkSchedule)}
                       Input={Input}
                       Select={Select}
                     />
