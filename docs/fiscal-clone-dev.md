@@ -61,7 +61,7 @@ As Rules locais recuperam somente a proteção fiscal já existente nas Rules pu
 - Cobertura: NF-e/NFC-e autorizadas, rejeitadas/canceladas, novo ID/rascunho, exclusão de identidade fiscal, cópia dos dados editáveis, arredondamentos/totais, edição de cliente/item/quantidade/observação, checagem e correção, preservação do snapshot frente ao cadastro, XML protegido, fallback legado explícito, contador/original intactos, idempotência, modelo, autenticação, permissão e loja.
 - Lint dos arquivos alterados: sem erros. O lint geral de Functions tem dois erros preexistentes `globalThis` em `whatsapp-client.js:37` e `whatsapp.js:12`; não foram alterados. App.js conserva avisos existentes de hooks/variáveis.
 - Build: aprovado, com avisos existentes de source map de `native-audio` e bases Browserslist/Baseline desatualizadas.
-- Build inicial para publicação: `main.668f0ab4.js`; SHA256 `0425a431686f2bcf57c1686145c0a2a3390083447f5f33e878cdc3f6dcf09d9e`.
+- Build final para publicação: `main.45d18dd7.js`; SHA256 `ff7197ee932658af4a586a12d7c9f9638e92eb55db20c75c233259859cbc8315`. A prévia exibe CFOP individual por item e arredonda descontos como o backend.
 - `git diff --check`: aprovado. Alterações limitadas ao módulo fiscal, seu componente, testes e documentação; o suporte compartilhado de Table só adiciona flags opcionais de ações.
 - Windows/JDK 25: o emulator usa `JAVA_TOOL_OPTIONS=-Djdk.net.unixdomain.tmpdir=<worktree>/.java-socket-unavailable` somente no processo, acionando o fallback TCP do JDK; não altera configurações do sistema.
 
@@ -79,7 +79,7 @@ As Rules locais recuperam somente a proteção fiscal já existente nas Rules pu
 - `functions/fiscal-flow.test.js` e `functions/fiscal-flow.integration.test.js`
 - `functions/package.json` e `functions/package-lock.json` (parser XML direto na versão já presente no lock)
 - `firestore.rules` (sincronização da proteção fiscal existente; sem publicação)
-- `docs/fiscal-clone-dev.md`
+- `docs/fiscal-clone-dev.md`, `docs/screenshots/fiscal-clone-confirmacao-dev.jpg` e `docs/screenshots/fiscal-clone-rascunho-dev.jpg`
 
 ## Publicação DEV
 
@@ -88,6 +88,30 @@ Comandos seletivos executados a partir do worktree desta branch, usando o build 
 ```powershell
 firebase deploy --project crmdoceria-9959e --only functions:fiscalCloneInvoice,functions:fiscalSaveDraft,functions:fiscalCheckDraft,functions:fiscalIssueDraft --non-interactive
 firebase deploy --project crmdoceria-9959e --only hosting:prod --non-interactive
+# Ajuste final de configuração: URL do provedor já utilizada pelas demais Functions DEV.
+firebase deploy --project crmdoceria-9959e --only functions:fiscalCheckDraft,functions:fiscalIssueDraft --non-interactive
 ```
 
-O alias de Hosting `prod` neste projeto aponta para o site **crmdoceria-9959e**, confirmado antes da publicação; não aponta para o projeto de produção. Resultado da publicação, verificação da interface e commits serão registrados após conclusão.
+O alias de Hosting `prod` neste projeto aponta para o site **crmdoceria-9959e**, confirmado antes da publicação; não aponta para o projeto de produção. Publicações concluídas com sucesso: as quatro Functions e o Hosting. O bundle HTTP servido é idêntico ao arquivo local da branch (SHA256 acima). Nenhuma publicação no projeto `ana-guimaraes`.
+
+### Verificação da interface publicada
+
+- As 31 notas históricas elegíveis exibem o botão com tooltip **Clonar Nota Fiscal**.
+- Cancelar a confirmação preservou 31 notas; confirmar criou um único documento adicional em Rascunho, abriu automaticamente **Preparar NFC-e**, preservou dados históricos de cliente/item e recalculou o total.
+- A primeira checagem salvou o documento e identificou que as Functions de rascunho não tinham `FISCAL_SERVICE_URL`. O inventário obtido antes desta tarefa confirmou a ausência anterior. A mesma URL HTTPS já usada por `fiscalValidateOrder` no DEV foi aplicada somente a `fiscalCheckDraft` e `fiscalIssueDraft`, por deploy seletivo; não foram alterados os serviços fiscais externos ou suas permissões. O arquivo local de configuração `functions/.env.crmdoceria-9959e` permanece ignorado pelo Git e deve ser preservado para futuros deploys dessas Functions.
+- A rechecagem com o provedor configurado retornou documento válido e habilitou **Emitir Nota Fiscal — NFC-e**. Também foi testado CEP incompleto: **Salvar e Validar** persistiu o rascunho, mostrou **Cliente: CEP deve possuir 8 dígitos** e ocultou a emissão. O CEP histórico foi restaurado, salvo e validado novamente. A prévia foi aberta, a confirmação final de emissão foi cancelada e o documento continuou Rascunho. Fechar e reabrir pelo botão **Editar rascunho** recuperou seus dados persistidos.
+- O novo rascunho mostra número ainda não atribuído e a origem como **Clonada da NFC-e nº 16**, sem autorização ou artefatos herdados. Este rascunho de verificação permanece no DEV e pode ser revisado pelo usuário; não foi emitido.
+- Um problema anterior de remontagem de `NotaFiscal` durante atualizações em tempo real foi corrigido mantendo a identidade do componente com `useMemo`. Seu contexto dinâmico já é recebido integralmente por props. A confirmação e o editor agora permanecem abertos após essas atualizações, inclusive a criação do clone no Firestore.
+- A configuração fiscal da loja indica SEFAZ Produção, mesmo no Firebase DEV. Nenhuma emissão, cancelamento ou inutilização fiscal real foi realizada.
+- Captura da confirmação publicada: `docs/screenshots/fiscal-clone-confirmacao-dev.jpg` e `docs/screenshots/fiscal-clone-rascunho-dev.jpg` (somente confirmação e aviso de rascunho, sem dados pessoais).
+
+### Git
+
+Commits enviados a `origin/codex/fiscal-clone-dev`:
+
+- `3a116fa2` — clonagem, recuperação do fluxo fiscal existente, proteções, testes e documentação.
+- `748639ba` — normalização do fim do arquivo de teste.
+- `37f67715` — CFOP individual e arredondamento na prévia.
+- `2e4b57fb` — estabilidade dos modais/rascunhos diante de atualizações.
+
+O registro final da publicação e a captura são versionados no commit de documentação seguinte.
