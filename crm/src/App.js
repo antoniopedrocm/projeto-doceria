@@ -17046,6 +17046,14 @@ const handleSubmit = async (e) => {
     const [fiscalProductSearchTerm, setFiscalProductSearchTerm] = useState('');
     const [fiscalProductConflictMode, setFiscalProductConflictMode] = useState('fill-empty');
     const [savingFiscalProducts, setSavingFiscalProducts] = useState(false);
+    const [customNcmOptions, setCustomNcmOptions] = useState([]);
+    const [isAddingNcm, setIsAddingNcm] = useState(false);
+    const [newNcmCode, setNewNcmCode] = useState('');
+    const [newNcmDescription, setNewNcmDescription] = useState('');
+    const [ncmOptionError, setNcmOptionError] = useState('');
+    const [savingNcmOption, setSavingNcmOption] = useState(false);
+    const fiscalStoreIdRef = useRef(effectiveStoreId);
+    fiscalStoreIdRef.current = effectiveStoreId;
     const [issuerForm, setIssuerForm] = useState({
       cnpj: '37185245000140',
       legalName: 'ANA GUIMARAES DOCERIA LTDA',
@@ -17096,6 +17104,23 @@ const handleSubmit = async (e) => {
     const storeProducts = data.produtos || [];
     const orders = data.pedidos || [];
     const clients = data.clientes || [];
+    const availableNcmOptions = useMemo(() => {
+      const options = [...NCM_PRODUCT_OPTIONS];
+      const known = new Set(options.map((option) => option.value));
+      customNcmOptions.forEach((item) => {
+        const code = normalizeFiscalCode(item.code);
+        if (code.length !== 8 || known.has(code)) return;
+        known.add(code);
+        options.push({value: code, label: `${formatNcmCode(code)} - ${item.description}`});
+      });
+      fiscalProducts.forEach((item) => {
+        const code = normalizeFiscalCode(item.ncm);
+        if (code.length !== 8 || known.has(code)) return;
+        known.add(code);
+        options.push({value: code, label: `${formatNcmCode(code)} - NCM usado em produto cadastrado`});
+      });
+      return options;
+    }, [customNcmOptions, fiscalProducts]);
     const fiscalProductsById = useMemo(() => {
       const map = new Map();
       fiscalProducts.forEach((item) => {
@@ -17956,6 +17981,8 @@ const handleSubmit = async (e) => {
     };
 
     useEffect(() => {
+      setCustomNcmOptions([]);
+      setIsAddingNcm(false);
       if (!effectiveStoreId) return undefined;
       setConfigLoading(true);
       let cancelled = false;
@@ -17974,6 +18001,7 @@ const handleSubmit = async (e) => {
             serviceUrl: configuration.platformService?.serviceUrl || configuration.settings.serviceUrl || ''
           }));
         }
+        setCustomNcmOptions(Array.isArray(configuration.ncmOptions) ? configuration.ncmOptions : []);
         setCertificateInfo(configuration.certificate || null);
         setPlatformService(configuration.platformService || null);
       }).catch((error) => {
@@ -18018,6 +18046,10 @@ const handleSubmit = async (e) => {
 
     const resetProductForm = () => {
       setEditingFiscalProduct(null);
+      setIsAddingNcm(false);
+      setNewNcmCode('');
+      setNewNcmDescription('');
+      setNcmOptionError('');
       setSelectedFiscalProductIds([]);
       setFiscalProductSearchTerm('');
       setFiscalProductConflictMode('fill-empty');
@@ -19169,6 +19201,44 @@ const handleSubmit = async (e) => {
       setShowProductModal(true);
     };
 
+    const handleCreateNcmOption = async () => {
+      if (isReadOnly || !effectiveStoreId || savingNcmOption) return;
+      const codeInput = newNcmCode.trim();
+      const code = normalizeFiscalCode(codeInput);
+      const description = newNcmDescription.trim();
+      if (!/^(?:\d{8}|\d{4}\.\d{2}\.\d{2})$/.test(codeInput)) {
+        setNcmOptionError('Informe o NCM com 8 dígitos, com ou sem pontos.');
+        return;
+      }
+      if (description.length < 3 || description.length > 120) {
+        setNcmOptionError('Informe uma descrição de 3 a 120 caracteres.');
+        return;
+      }
+      if (NCM_PRODUCT_OPTIONS.some((option) => option.value === code) || customNcmOptions.some((item) => normalizeFiscalCode(item.code) === code)) {
+        setNcmOptionError('Este NCM já está disponível na lista.');
+        return;
+      }
+      setSavingNcmOption(true);
+      setNcmOptionError('');
+      const targetStoreId = effectiveStoreId;
+      try {
+        const saveNcmOption = httpsCallable(functions, 'fiscalSaveNcmOption');
+        const response = await saveNcmOption(callablePayload({code, description}));
+        const option = response.data?.option;
+        if (!option?.code) throw new Error('O NCM não foi retornado pelo servidor. Atualize a tela e confira o cadastro.');
+        if (fiscalStoreIdRef.current !== targetStoreId) return;
+        setCustomNcmOptions((previous) => [...previous, option]);
+        setProductForm((previous) => ({...previous, ncm: option.code}));
+        setIsAddingNcm(false);
+        setNewNcmCode('');
+        setNewNcmDescription('');
+      } catch (error) {
+        if (fiscalStoreIdRef.current === targetStoreId) setNcmOptionError(error?.message || 'Não foi possível cadastrar o NCM.');
+      } finally {
+        setSavingNcmOption(false);
+      }
+    };
+
     const handleSaveFiscalProduct = async (event) => {
       event.preventDefault();
       if (isReadOnly) return;
@@ -19917,12 +19987,34 @@ const handleSubmit = async (e) => {
                 onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
                 required={!hasMultipleFiscalProductsSelected}
               />
-              <Select label="NCM do produto" value={normalizeFiscalCode(productForm.ncm)} onChange={(e) => setProductForm({ ...productForm, ncm: e.target.value })} required>
-                {productForm.ncm && !NCM_PRODUCT_OPTIONS.some((option) => option.value === normalizeFiscalCode(productForm.ncm)) && (
-                  <option value={normalizeFiscalCode(productForm.ncm)}>{formatNcmCode(productForm.ncm)} - NCM cadastrado</option>
-                )}
-                {NCM_PRODUCT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </Select>
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="fiscal-product-ncm" className="block text-sm font-medium text-gray-700">NCM do produto</label>
+                  {!isReadOnly && <button type="button" onClick={() => { setIsAddingNcm(true); setNcmOptionError(''); }} className="text-xs font-medium text-pink-600 hover:text-pink-700">+ Novo NCM</button>}
+                </div>
+                <Select id="fiscal-product-ncm" value={normalizeFiscalCode(productForm.ncm)} onChange={(event) => setProductForm((previous) => ({...previous, ncm: event.target.value}))} required className="mt-1">
+                  <option value="">Selecione o NCM</option>
+                  {productForm.ncm && !availableNcmOptions.some((option) => option.value === normalizeFiscalCode(productForm.ncm)) && (
+                    <option value={normalizeFiscalCode(productForm.ncm)}>{formatNcmCode(productForm.ncm)} - NCM cadastrado</option>
+                  )}
+                  {availableNcmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+              </div>
+              {isAddingNcm && (
+                <div className="md:col-span-2 rounded-xl border border-pink-200 bg-pink-50 p-4 space-y-3" onKeyDown={(event) => { if (event.key === 'Enter' && event.target.tagName === 'INPUT') { event.preventDefault(); handleCreateNcmOption(); } }}>
+                  <p className="text-sm font-medium text-gray-800">Cadastrar NCM para esta loja</p>
+                  <p className="text-xs text-gray-600">Confirme o código e a descrição com o contador. O cadastro não define tributação automaticamente.</p>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Input label="Código NCM" value={newNcmCode} onChange={(event) => { setNewNcmCode(event.target.value); setNcmOptionError(''); }} placeholder="8 dígitos, com ou sem pontos" maxLength={10} />
+                    <Input label="Descrição do NCM" value={newNcmDescription} onChange={(event) => { setNewNcmDescription(event.target.value); setNcmOptionError(''); }} maxLength={120} />
+                  </div>
+                  {ncmOptionError && <p role="alert" className="text-sm text-red-700">{ncmOptionError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="secondary" disabled={savingNcmOption} onClick={() => { setIsAddingNcm(false); setNewNcmCode(''); setNewNcmDescription(''); setNcmOptionError(''); }}>Cancelar</Button>
+                    <Button type="button" disabled={savingNcmOption} onClick={handleCreateNcmOption}>{savingNcmOption ? 'Salvando...' : 'Salvar NCM'}</Button>
+                  </div>
+                </div>
+              )}
               <Input label="Unidade" value={productForm.unit} onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })} />
               <Input label="Origem" type="number" value={productForm.origin} onChange={(e) => setProductForm({ ...productForm, origin: e.target.value })} />
               <Input label="ICMS/CST" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
@@ -19933,7 +20025,7 @@ const handleSubmit = async (e) => {
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="secondary" type="button" disabled={savingFiscalProducts} onClick={() => { setShowProductModal(false); resetProductForm(); }}>Cancelar</Button>
-              <Button type="submit" disabled={savingFiscalProducts}><Save className="w-4 h-4" /> {savingFiscalProducts ? 'Salvando...' : 'Salvar'}</Button>
+              <Button type="submit" disabled={savingFiscalProducts || savingNcmOption}><Save className="w-4 h-4" /> {savingFiscalProducts ? 'Salvando...' : 'Salvar'}</Button>
             </div>
           </form>
         </Modal>
@@ -20270,7 +20362,9 @@ const handleSubmit = async (e) => {
                       <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                         <Input label="Código" value={item.code || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { code: event.target.value })} />
                         <Select label="NCM" value={normalizeFiscalCode(item.ncm || DEFAULT_NCM_PRODUCT)} onChange={(event) => updateManualInvoiceItem(item.draftId, { ncm: event.target.value })}>
-                          {NCM_PRODUCT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          <option value="">Selecione o NCM</option>
+                          {item.ncm && !availableNcmOptions.some((option) => option.value === normalizeFiscalCode(item.ncm)) && <option value={normalizeFiscalCode(item.ncm)}>{formatNcmCode(item.ncm)} - NCM do item</option>}
+                          {availableNcmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                         </Select>
                         <Input label="Unidade" value={item.unit || 'un'} onChange={(event) => updateManualInvoiceItem(item.draftId, { unit: event.target.value })} />
                         <Input label="CSOSN/CST" value={item.csosn || '102'} onChange={(event) => updateManualInvoiceItem(item.draftId, { csosn: event.target.value })} />
