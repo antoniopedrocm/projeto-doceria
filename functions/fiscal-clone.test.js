@@ -32,4 +32,3 @@ test('historical XML extracts only editable snapshot and keeps leading zeros', (
 test('malformed, oversized, DTD and entity XML are rejected', () => {
   for (const invalid of ['<NFe>', '<root/>', '<!DOCTYPE NFe><NFe/>', '<!ENTITY x "a"><NFe/>', 'x'.repeat(2 * 1024 * 1024 + 1)]) assert.throws(() => editableFromXml(invalid));
 });
-
