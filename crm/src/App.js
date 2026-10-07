@@ -16966,7 +16966,9 @@ const handleSubmit = async (e) => {
   };
 
 
-  const NotaFiscal = ({
+  // Keep the fiscal page mounted when realtime data updates its parent.
+  // All changing context is received through props.
+  const NotaFiscal = useMemo(() => function NotaFiscal({
     data,
     addItem,
     updateItem,
@@ -16976,7 +16978,7 @@ const handleSubmit = async (e) => {
     selectedStoreId,
     storeInfoMap,
     currentUser
-  }) => {
+  }) {
     const [activeTab, setActiveTab] = usePersistentState('nota_fiscal_activeTab', 'emitir');
     const [orderSearch, setOrderSearch] = usePersistentState('nota_fiscal_orderSearch', '');
     const [orderFilters, setOrderFilters] = useState(() => ({
@@ -21036,7 +21038,7 @@ const handleSubmit = async (e) => {
         </Modal>
       </div>
     );
-  };
+  }, []);
 
   const PlaceholderPage = ({ title }) => (<div className="p-6"><h1 className="text-3xl font-bold text-pink-600">{title}</h1><p>Em desenvolvimento...</p></div>);
   const userHasPermission = useCallback((menuId) => {
