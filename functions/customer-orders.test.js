@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {createCustomerAccount,digest}=require('./checkout-auth');
-const {serializeOrder,receiptUrl,PAGE_SIZE}=require('./customer-orders');
+const {serializeOrder,receiptUrl,getOrderCreatedAt,PAGE_SIZE,SCAN_BATCH_SIZE,MAX_SCAN_CANDIDATES}=require('./customer-orders');
 function fixture(provider='password') {
   const users=Object.fromEntries(['a','b'].map(uid=>[uid,{uid,email:`${uid}@example.com`,providerData:[{providerId:provider,uid:provider==='google.com'?`google-${uid}`:`${uid}@example.com`}]}]));
   const rows=new Map(),reads=[],queries=[];
@@ -16,10 +16,10 @@ function fixture(provider='password') {
     collectionGroup:name=>{
       assert.equal(name,'pedidos');let owner,start,limit;
       const query={where:(field,op,value)=>{assert.equal(field,'clienteId');assert.equal(op,'==');owner=value;return query;},
-        orderBy:(field,direction)=>{assert.equal(field,'createdAt');assert.equal(direction,'desc');return query;},
+        orderBy:field=>{assert.equal(field.toString(),'__name__');return query;},
         startAfter:value=>{start=value.ref.path;return query;},limit:value=>{limit=value;return query;},
-        get:async()=>{queries.push({owner,start,limit});let values=[...rows].filter(([path,d])=>path.includes('/pedidos/') && d.clienteId===owner && d.createdAt!==undefined)
-          .sort(([p,a],[q,b])=>new Date(b.createdAt)-new Date(a.createdAt) || q.localeCompare(p));
+        get:async()=>{queries.push({owner,start,limit});let values=[...rows].filter(([path,d])=>path.includes('/pedidos/') && d.clienteId===owner)
+          .sort(([p],[q])=>p===q?0:p>q?1:-1);
           if(start) values=values.slice(values.findIndex(([path])=>path===start)+1);
           return {docs:values.slice(0,limit).map(([path])=>snap(path))};}};
       return query;
@@ -39,7 +39,7 @@ test('listagem usa identidade própria, exclui legado por telefone e não mistur
   assert.deepEqual(new Set(a.orders.map(o=>o.storeId)),new Set(['matriz','garavelo']));
   assert.ok(a.orders.every(o=>o.storeName===`Loja ${o.storeId}`));
   assert.deepEqual((await f.call('orders',{},'b')).orders.map(o=>o.id),['cross']);
-  assert.ok(f.queries.every(q=>q.limit===PAGE_SIZE+1));assert.ok(f.reads.every(p=>!p.includes('/produtos/')));
+  assert.ok(f.queries.every(q=>q.limit<=SCAN_BATCH_SIZE));assert.ok(f.reads.every(p=>!p.includes('/produtos/')));
 });
 test('histórico privado recusa visitante, identidade de celular e ownership adulterado',async()=>{
   const f=fixture();await assert.rejects(f.api.orders({data:{customerId:'customer-a'}}),e=>e.code==='unauthenticated');
@@ -50,14 +50,14 @@ test('histórico privado recusa visitante, identidade de celular e ownership adu
 test('Google e password acessam o próprio histórico sem exigir e-mail verificado',async()=>{
   for(const provider of ['google.com','password']) {const f=fixture(provider);f.add('own');assert.equal((await f.call('orders')).orders[0].id,'own');}
 });
-test('paginação por snapshot mantém ordem, desempata datas e não duplica entre páginas',async()=>{
+test('paginação pela data normalizada mantém ordem, desempata datas e não duplica entre páginas',async()=>{
   const f=fixture();for(let i=0;i<43;i++) f.add(`order-${String(i).padStart(2,'0')}`,{createdAt:new Date(1760000000000+Math.floor(i/2)*1000)});
   const first=await f.call('orders');assert.equal(first.orders.length,20);assert.equal(first.hasMore,true);
   const second=await f.call('orders',{cursor:first.nextCursor});const third=await f.call('orders',{cursor:second.nextCursor});
   assert.equal(second.orders.length,20);assert.equal(third.orders.length,3);assert.equal(third.hasMore,false);assert.equal(third.nextCursor,null);
   const all=[...first.orders,...second.orders,...third.orders];assert.equal(new Set(all.map(o=>o.id)).size,43);
   assert.deepEqual(all.map(o=>o.id),Array.from({length:43},(_,i)=>`order-${String(42-i).padStart(2,'0')}`));
-  assert.equal(f.queries[1].start,first.nextCursor);
+  assert.equal(f.queries[1].start,undefined); // Each bounded scan selects the next normalized logical page.
 });
 test('cursor de outro Customer, arbitrário ou de outra coleção não autoriza paginação',async()=>{
   const f=fixture();const path=f.add('private',{clienteId:'customer-b',ownerUid:'b'});
@@ -99,4 +99,68 @@ test('nenhum pedido não produz cursor e pedido único mantém pagamento sem inf
   const f=fixture();assert.deepEqual(await f.call('orders'),{orders:[],nextCursor:null,hasMore:false});
   f.add('single',{order_status:'CONFIRMED',payment_status:'FAILED'});const page=await f.call('orders');
   assert.equal(page.orders.length,1);assert.equal(page.orders[0].payment_status,'FAILED');assert.equal(page.hasMore,false);
+});
+
+test('data centralizada prioriza canônico e aliases históricos válidos sem inventar datas',()=>{
+  assert.equal(getOrderCreatedAt({createdAt:new Date('2026-01-01'),dataPedido:'2027-01-01'}),'2026-01-01T00:00:00.000Z');
+  assert.equal(getOrderCreatedAt({createdAt:'invalid',dataPedido:'2020-03-01T10:00:00Z'}),'2020-03-01T10:00:00.000Z');
+  assert.equal(getOrderCreatedAt({data:'2019-01-01'}),'2019-01-01T00:00:00.000Z');
+  assert.equal(getOrderCreatedAt({createdAt:1760000000000}),'2025-10-09T08:53:20.000Z');
+  for(const value of [{},{createdAt:false},{createdAt:{}},{dataEntrega:'2026-01-01'},{createdAt:'7'}]) assert.equal(getOrderCreatedAt(value),null);
+});
+test('ordenação conserva nanossegundos Firestore antes do desempate por caminho',async()=>{
+  const {Timestamp}=require('firebase-admin/firestore');const f=fixture();
+  f.add('zzz-older',{createdAt:new Timestamp(1760000000,1)});
+  f.add('aaa-newer',{createdAt:new Timestamp(1760000000,2)});
+  assert.deepEqual((await f.call('orders')).orders.map(o=>o.id),['aaa-newer','zzz-older']);
+});
+test('lista inclui próprios sem createdAt, usa fallback histórico e coloca sem data ao final',async()=>{
+  const f=fixture();f.add('current');f.add('old',{createdAt:undefined,dataPedido:'2020-03-01'});
+  f.add('older',{createdAt:null,data:'2019-01-01'});f.add('undated-a',{createdAt:undefined});f.add('undated-b',{createdAt:undefined});
+  f.add('private',{createdAt:undefined,dataPedido:'2030-01-01',clienteId:'customer-b',ownerUid:'b'});
+  f.add('phone-only',{createdAt:undefined,dataPedido:'2030-01-01',clienteId:null,telefone:'62999990000'});
+  const page=await f.call('orders');assert.deepEqual(page.orders.map(o=>o.id),['current','old','older','undated-b','undated-a']);
+  assert.equal(page.orders[1].createdAt,'2020-03-01T00:00:00.000Z');assert.equal(page.orders[3].createdAt,null);
+  assert.equal((await f.call('orderDetail',{storeId:'matriz',orderId:'old'})).order.createdAt,page.orders[1].createdAt);
+});
+test('vinte candidatos filtrados não escondem pedidos elegíveis posteriores',async()=>{
+  const f=fixture();for(let i=0;i<20;i++) f.add(`aaa-${i}`,{ownerUid:'b'});
+  f.add('zzz-valid');assert.deepEqual((await f.call('orders')).orders.map(o=>o.id),['zzz-valid']);
+});
+test('múltiplos lotes vazios/parciais avançam cursor físico e completam 20 elegíveis',async()=>{
+  const f=fixture();for(let i=0;i<250;i++) f.add(`aaa-${String(i).padStart(3,'0')}`,{ownerUid:'b'});
+  for(let i=0;i<43;i++) f.add(`zzz-${String(i).padStart(2,'0')}`,{createdAt:i%2?undefined:new Date('2026-01-01'),...(i%2?{data:'2026-01-01'}:{})},i%3?'matriz':'garavelo');
+  const all=[];let cursor;
+  do {const page=await f.call('orders',cursor?{cursor}:{});all.push(...page.orders);cursor=page.nextCursor;
+    if(page.hasMore) assert.equal(page.orders.length,PAGE_SIZE);
+  } while(cursor);
+  assert.equal(all.length,43);assert.equal(new Set(all.map(o=>`${o.storeId}/${o.id}`)).size,43);
+  const expected=[...f.rows].filter(([p,d])=>p.includes('/pedidos/zzz') && d.clienteId==='customer-a').map(([p])=>p).sort().reverse();
+  assert.deepEqual(all.map(o=>`lojas/${o.storeId}/pedidos/${o.id}`),expected);
+  assert.ok(f.queries.some(q=>q.start?.includes('aaa-')));
+  assert.ok(f.queries.every(q=>q.limit<=SCAN_BATCH_SIZE));
+});
+test('pedidos sem qualquer data paginam deterministicamente e cursor não serve a outro Customer',async()=>{
+  const f=fixture();for(let i=0;i<23;i++) f.add(`undated-${String(i).padStart(2,'0')}`,{createdAt:undefined});
+  const first=await f.call('orders'),second=await f.call('orders',{cursor:first.nextCursor});
+  assert.equal(first.orders.length,20);assert.equal(second.orders.length,3);assert.equal(second.hasMore,false);
+  assert.ok([...first.orders,...second.orders].every(o=>o.createdAt===null));
+  await assert.rejects(f.call('orders',{cursor:first.nextCursor},'b'),e=>e.code==='not-found');
+});
+test('fim real de candidatos filtrados retorna vazio, sem cursor e sem loop',async()=>{
+  const f=fixture();for(let i=0;i<230;i++) f.add(`discard-${i}`,{ownerUid:'b'});
+  assert.deepEqual(await f.call('orders'),{orders:[],nextCursor:null,hasMore:false});assert.equal(f.queries.length,3);
+});
+test('limite defensivo recusa truncamento silencioso e respeita máximo de leituras',async()=>{
+  const f=fixture();for(let i=0;i<=MAX_SCAN_CANDIDATES;i++) f.add(`order-${String(i).padStart(4,'0')}`);
+  await assert.rejects(f.call('orders'),e=>e.code==='resource-exhausted');
+  assert.equal(f.queries.length,MAX_SCAN_CANDIDATES/SCAN_BATCH_SIZE+1);assert.equal(f.queries.at(-1).limit,1);
+});
+test('cursor físico sem avanço é interrompido defensivamente',async()=>{
+  const f=fixture();const path=f.add('repeated');
+  const {createCustomerOrders}=require('./customer-orders');let calls=0;
+  const query={where:()=>query,orderBy:()=>query,startAfter:()=>query,limit:()=>query,get:async()=>{calls++;return {docs:Array(SCAN_BATCH_SIZE).fill(f.snap(path))};}};
+  const api=createCustomerOrders({resolve:async()=>({customerId:'customer-a',user:{uid:'a'}}),
+    db:{collection:()=>({doc:()=>({get:async()=>f.snap('clientes/customer-a')})}),collectionGroup:()=>query}});
+  await assert.rejects(api.list({}),e=>e.code==='internal');assert.equal(calls,1);
 });

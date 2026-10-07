@@ -67,3 +67,34 @@ test('ausência de Auth/sessão anônima não concede histórico ou detalhe priv
     assert.equal(list.status,401);assert.equal(detail.status,401);assert.equal(list.body.error.status,'UNAUTHENTICATED');
   }
 });
+test('Firestore real inclui datas legadas/ausentes e mantém ordenação entre páginas',async()=>{
+  const user=await signup(`history-legacy-${Date.now()}@example.test`);
+  const profile=await send('/profile',{nome:'Legacy dates',phone:'+5562999991234'},user.idToken);
+  const owner={clienteId:profile.body.result.customer.id,ownerUid:user.localId,total:16};
+  const batch=db.batch();
+  for(let i=0;i<23;i++) batch.set(db.doc(`lojas/history-matriz/pedidos/legacy-${String(i).padStart(2,'0')}`),{
+    ...owner,...(i<20?{createdAt:admin.firestore.Timestamp.fromMillis(1760000000000+i*1000)}:i===20?{dataPedido:'2020-03-01'}:i===21?{data:'2019-01-01'}:{})});
+  await batch.commit();
+  const first=(await send('/list',{},user.idToken)).body.result;
+  const second=(await send('/list',{cursor:first.nextCursor},user.idToken)).body.result;
+  assert.equal(first.orders.length,20);assert.deepEqual(second.orders.map(o=>o.id),['legacy-20','legacy-21','legacy-22']);
+  assert.equal(second.orders[0].createdAt,'2020-03-01T00:00:00.000Z');assert.equal(second.orders[2].createdAt,null);
+  assert.equal(second.nextCursor,null);assert.equal(second.hasMore,false);
+  const detail=await send('/detail',{storeId:'history-matriz',orderId:'legacy-20'},user.idToken);
+  assert.equal(detail.body.result.order.createdAt,second.orders[0].createdAt);
+});
+test('Firestore real atravessa lotes totalmente filtrados sem perder pedidos próprios multiloja',async()=>{
+  const user=await signup(`history-filtered-${Date.now()}@example.test`);
+  const profile=await send('/profile',{nome:'Filtered batches',phone:'+5562999991234'},user.idToken);
+  const owner={clienteId:profile.body.result.customer.id,total:16,createdAt:admin.firestore.Timestamp.fromMillis(1760000000000)};
+  const batch=db.batch();
+  for(let i=0;i<220;i++) batch.set(db.doc(`lojas/history-garavelo/pedidos/aaa-filtered-${i}`),{...owner,ownerUid:b.localId});
+  for(let i=0;i<25;i++) batch.set(db.doc(`lojas/${i%2?'history-matriz':'history-garavelo'}/pedidos/zzz-valid-${String(i).padStart(2,'0')}`),{...owner,ownerUid:user.localId});
+  await batch.commit();
+  const first=(await send('/list',{},user.idToken)).body.result;
+  const second=(await send('/list',{cursor:first.nextCursor},user.idToken)).body.result;
+  assert.deepEqual([first.orders.length,second.orders.length],[20,5]);
+  const all=[...first.orders,...second.orders];assert.equal(new Set(all.map(o=>`${o.storeId}/${o.id}`)).size,25);
+  assert.ok(all.every(o=>o.id.startsWith('zzz-valid')));assert.equal(new Set(all.map(o=>o.storeId)).size,2);
+  assert.equal(second.hasMore,false);assert.equal(second.nextCursor,null);
+});
