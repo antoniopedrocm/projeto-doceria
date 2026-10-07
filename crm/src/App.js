@@ -1157,6 +1157,22 @@ const Input = ({ label, error, className = "", ...props }) => (<div className="s
 const Textarea = ({ label, error, className = "", ...props }) => (<div className="space-y-1">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<textarea {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${error ? 'border-red-300' : 'border-gray-300'} ${className}`} />{error && <p className="text-sm text-red-600">{error}</p>}</div>);
 const Select = ({ label, error, className = "", children, ...props }) => (<div className="space-y-1 w-full">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<select {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white ${error ? 'border-red-300' : 'border-gray-300'} ${className}`}>{children}</select>{error && <p className="text-sm text-red-600">{error}</p>}</div>);
 
+const FiscalCodeOptionForm = ({kind, code, description, error, saving, onCodeChange, onDescriptionChange, onSave, onCancel, className = ''}) => (
+  <div className={`rounded-xl border border-pink-200 bg-pink-50 p-4 space-y-3 ${className}`} onKeyDown={(event) => { if (event.key === 'Enter' && event.target.tagName === 'INPUT') { event.preventDefault(); onSave(); } }}>
+    <p className="text-sm font-medium text-gray-800">Cadastrar {kind} para esta loja</p>
+    <p className="text-xs text-gray-600">Confirme o código e a descrição com o contador. O cadastro não define tributação automaticamente.</p>
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <Input label={`Código ${kind}`} value={code} disabled={saving} onChange={(event) => onCodeChange(event.target.value)} placeholder={kind === 'NCM' ? '8 dígitos, com ou sem pontos' : '4 dígitos'} maxLength={kind === 'NCM' ? 10 : 12} />
+      <Input label={`Descrição do ${kind}`} value={description} disabled={saving} onChange={(event) => onDescriptionChange(event.target.value)} maxLength={120} />
+    </div>
+    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    <div className="flex justify-end gap-2">
+      <Button type="button" variant="secondary" disabled={saving} onClick={onCancel}>Cancelar</Button>
+      <Button type="button" disabled={saving} onClick={onSave}>{saving ? 'Salvando...' : `Salvar ${kind}`}</Button>
+    </div>
+  </div>
+);
+
 // Componente de Tabela Responsiva
 const Table = ({ columns, data, actions = [] }) => (
     <>
@@ -17052,6 +17068,14 @@ const handleSubmit = async (e) => {
     const [newNcmDescription, setNewNcmDescription] = useState('');
     const [ncmOptionError, setNcmOptionError] = useState('');
     const [savingNcmOption, setSavingNcmOption] = useState(false);
+    const [customCfopOptions, setCustomCfopOptions] = useState([]);
+    const [cfopOptionsLoading, setCfopOptionsLoading] = useState(false);
+    const [cfopCatalogError, setCfopCatalogError] = useState('');
+    const [isAddingCfop, setIsAddingCfop] = useState(false);
+    const [newCfopCode, setNewCfopCode] = useState('');
+    const [newCfopDescription, setNewCfopDescription] = useState('');
+    const [cfopOptionError, setCfopOptionError] = useState('');
+    const [savingCfopOption, setSavingCfopOption] = useState(false);
     const fiscalStoreIdRef = useRef(effectiveStoreId);
     fiscalStoreIdRef.current = effectiveStoreId;
     const [issuerForm, setIssuerForm] = useState({
@@ -17121,6 +17145,17 @@ const handleSubmit = async (e) => {
       });
       return options;
     }, [customNcmOptions, fiscalProducts]);
+    const availableCfopOptions = useMemo(() => {
+      const options = [...CFOP_OPERATION_OPTIONS];
+      const known = new Set(options.map((option) => option.value));
+      customCfopOptions.forEach((item) => {
+        const code = String(item.code || '');
+        if (!/^\d{4}$/.test(code) || known.has(code)) return;
+        known.add(code);
+        options.push({value: code, label: `${code} - ${item.description}`});
+      });
+      return options;
+    }, [customCfopOptions]);
     const fiscalProductsById = useMemo(() => {
       const map = new Map();
       fiscalProducts.forEach((item) => {
@@ -18014,6 +18049,26 @@ const handleSubmit = async (e) => {
       return () => { cancelled = true; };
     }, [effectiveStoreId]);
 
+    useEffect(() => {
+      setCustomCfopOptions([]);
+      setIsAddingCfop(false);
+      setNewCfopCode('');
+      setNewCfopDescription('');
+      setCfopOptionError('');
+      setCfopCatalogError('');
+      setCfopOptionsLoading(Boolean(effectiveStoreId));
+      if (!effectiveStoreId) return undefined;
+      let cancelled = false;
+      httpsCallable(functions, 'fiscalListCfopOptions')({lojaId: effectiveStoreId}).then((response) => {
+        if (!cancelled) setCustomCfopOptions(Array.isArray(response.data?.options) ? response.data.options : []);
+      }).catch((error) => {
+        if (!cancelled) setCfopCatalogError(error?.message || 'Não foi possível carregar os CFOPs cadastrados.');
+      }).finally(() => {
+        if (!cancelled) setCfopOptionsLoading(false);
+      });
+      return () => { cancelled = true; };
+    }, [effectiveStoreId]);
+
     const callablePayload = (extra = {}) => ({
       lojaId: effectiveStoreId,
       ...extra
@@ -18245,6 +18300,10 @@ const handleSubmit = async (e) => {
     };
 
     const resetManualInvoiceForm = useCallback(() => {
+      setIsAddingCfop(false);
+      setNewCfopCode('');
+      setNewCfopDescription('');
+      setCfopOptionError('');
       setManualInvoiceForm({
         customerMode: 'existing',
         customer: createManualInvoiceCustomerDraft(),
@@ -18358,7 +18417,7 @@ const handleSubmit = async (e) => {
 
     const handleIssueManualInvoice = async (event) => {
       event.preventDefault();
-      if (isReadOnly || manualInvoiceSaving) return;
+      if (isReadOnly || manualInvoiceSaving || savingCfopOption || isAddingCfop) return;
       if (!effectiveStoreId) {
         setManualInvoiceError('Selecione uma loja específica para emitir a nota manual.');
         return;
@@ -19239,6 +19298,42 @@ const handleSubmit = async (e) => {
       }
     };
 
+    const handleCreateCfopOption = async () => {
+      if (isReadOnly || !effectiveStoreId || savingCfopOption || cfopOptionsLoading || manualInvoiceSaving) return;
+      const code = newCfopCode.trim();
+      const description = newCfopDescription.trim();
+      if (!/^\d{4}$/.test(code)) {
+        setCfopOptionError('Informe o CFOP com 4 dígitos.');
+        return;
+      }
+      if (description.length < 3 || description.length > 120) {
+        setCfopOptionError('Informe uma descrição de 3 a 120 caracteres.');
+        return;
+      }
+      if (availableCfopOptions.some((option) => option.value === code)) {
+        setCfopOptionError('Este CFOP já está disponível na lista.');
+        return;
+      }
+      const targetStoreId = effectiveStoreId;
+      setSavingCfopOption(true);
+      setCfopOptionError('');
+      try {
+        const response = await httpsCallable(functions, 'fiscalSaveCfopOption')(callablePayload({code, description}));
+        const option = response.data?.option;
+        if (!option?.code) throw new Error('O CFOP não foi retornado pelo servidor. Atualize a tela e confira o cadastro.');
+        if (fiscalStoreIdRef.current !== targetStoreId) return;
+        setCustomCfopOptions((previous) => [...previous, option]);
+        setManualInvoiceForm((previous) => ({...previous, operationCfop: option.code}));
+        setIsAddingCfop(false);
+        setNewCfopCode('');
+        setNewCfopDescription('');
+      } catch (error) {
+        if (fiscalStoreIdRef.current === targetStoreId) setCfopOptionError(error?.message || 'Não foi possível cadastrar o CFOP.');
+      } finally {
+        setSavingCfopOption(false);
+      }
+    };
+
     const handleSaveFiscalProduct = async (event) => {
       event.preventDefault();
       if (isReadOnly) return;
@@ -19600,7 +19695,8 @@ const handleSubmit = async (e) => {
                   <option value="65">Forçar NFC-e 65</option>
                 </Select>
                 <Select label="CFOP da operação" value={operationCfop} onChange={(e) => setOperationCfop(e.target.value)}>
-                  {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  {operationCfop && !availableCfopOptions.some((option) => option.value === operationCfop) && <option value={operationCfop}>{operationCfop} - CFOP selecionado</option>}
+                  {availableCfopOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </Select>
                 <a href="https://www.confaz.fazenda.gov.br/legislacao/ajustes/sinief/cfop_cvsn_70_vigente" target="_blank" rel="noreferrer" className="self-end pb-3 text-sm text-pink-700 underline hover:text-pink-800">
                   Tabela CFOP
@@ -20001,19 +20097,11 @@ const handleSubmit = async (e) => {
                 </Select>
               </div>
               {isAddingNcm && (
-                <div className="md:col-span-2 rounded-xl border border-pink-200 bg-pink-50 p-4 space-y-3" onKeyDown={(event) => { if (event.key === 'Enter' && event.target.tagName === 'INPUT') { event.preventDefault(); handleCreateNcmOption(); } }}>
-                  <p className="text-sm font-medium text-gray-800">Cadastrar NCM para esta loja</p>
-                  <p className="text-xs text-gray-600">Confirme o código e a descrição com o contador. O cadastro não define tributação automaticamente.</p>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <Input label="Código NCM" value={newNcmCode} onChange={(event) => { setNewNcmCode(event.target.value); setNcmOptionError(''); }} placeholder="8 dígitos, com ou sem pontos" maxLength={10} />
-                    <Input label="Descrição do NCM" value={newNcmDescription} onChange={(event) => { setNewNcmDescription(event.target.value); setNcmOptionError(''); }} maxLength={120} />
-                  </div>
-                  {ncmOptionError && <p role="alert" className="text-sm text-red-700">{ncmOptionError}</p>}
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="secondary" disabled={savingNcmOption} onClick={() => { setIsAddingNcm(false); setNewNcmCode(''); setNewNcmDescription(''); setNcmOptionError(''); }}>Cancelar</Button>
-                    <Button type="button" disabled={savingNcmOption} onClick={handleCreateNcmOption}>{savingNcmOption ? 'Salvando...' : 'Salvar NCM'}</Button>
-                  </div>
-                </div>
+                <FiscalCodeOptionForm kind="NCM" code={newNcmCode} description={newNcmDescription} error={ncmOptionError} saving={savingNcmOption} className="md:col-span-2"
+                  onCodeChange={(value) => { setNewNcmCode(value); setNcmOptionError(''); }}
+                  onDescriptionChange={(value) => { setNewNcmDescription(value); setNcmOptionError(''); }}
+                  onSave={handleCreateNcmOption}
+                  onCancel={() => { setIsAddingNcm(false); setNewNcmCode(''); setNewNcmDescription(''); setNcmOptionError(''); }} />
               )}
               <Input label="Unidade" value={productForm.unit} onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })} />
               <Input label="Origem" type="number" value={productForm.origin} onChange={(e) => setProductForm({ ...productForm, origin: e.target.value })} />
@@ -20206,7 +20294,7 @@ const handleSubmit = async (e) => {
         <Modal
           isOpen={showManualInvoiceModal}
           onClose={() => {
-            if (manualInvoiceSaving) return;
+            if (manualInvoiceSaving || savingCfopOption) return;
             setShowManualInvoiceModal(false);
             resetManualInvoiceForm();
           }}
@@ -20277,13 +20365,18 @@ const handleSubmit = async (e) => {
                   <option value="55">NF-e 55</option>
                   <option value="65">NFC-e 65</option>
                 </Select>
-                <Select
-                  label="CFOP da operação"
-                  value={manualInvoiceForm.operationCfop}
-                  onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, operationCfop: event.target.value }))}
-                >
-                  {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </Select>
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-1">
+                    <label htmlFor="manual-invoice-cfop" className="text-sm font-medium text-gray-700">CFOP da operação</label>
+                    {!isReadOnly && <button type="button" disabled={cfopOptionsLoading || savingCfopOption || manualInvoiceSaving} onClick={() => { setIsAddingCfop(true); setCfopOptionError(''); }} className="text-xs font-medium text-pink-600 hover:text-pink-700 disabled:opacity-50">+ Novo CFOP</button>}
+                  </div>
+                  <Select id="manual-invoice-cfop" value={manualInvoiceForm.operationCfop} className="mt-1" onChange={(event) => setManualInvoiceForm((previous) => ({...previous, operationCfop: event.target.value}))}>
+                    {manualInvoiceForm.operationCfop && !availableCfopOptions.some((option) => option.value === manualInvoiceForm.operationCfop) && <option value={manualInvoiceForm.operationCfop}>{manualInvoiceForm.operationCfop} - CFOP selecionado</option>}
+                    {availableCfopOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </Select>
+                  {cfopOptionsLoading && <p className="mt-1 text-xs text-gray-500">Carregando CFOPs...</p>}
+                  {cfopCatalogError && <p role="alert" className="mt-1 text-xs text-red-700">{cfopCatalogError}</p>}
+                </div>
                 <Input
                   label="Código de pagamento"
                   value={manualInvoiceForm.paymentMethodCode}
@@ -20300,6 +20393,11 @@ const handleSubmit = async (e) => {
                   Baixar estoque ao emitir esta nota?
                 </label>
               </div>
+              {isAddingCfop && !isReadOnly && <FiscalCodeOptionForm kind="CFOP" code={newCfopCode} description={newCfopDescription} error={cfopOptionError} saving={savingCfopOption}
+                onCodeChange={(value) => { setNewCfopCode(value); setCfopOptionError(''); }}
+                onDescriptionChange={(value) => { setNewCfopDescription(value); setCfopOptionError(''); }}
+                onSave={handleCreateCfopOption}
+                onCancel={() => { setIsAddingCfop(false); setNewCfopCode(''); setNewCfopDescription(''); setCfopOptionError(''); }} />}
             </section>
 
             <section className="rounded-xl border border-gray-100 bg-white p-4 space-y-4">
@@ -20414,7 +20512,7 @@ const handleSubmit = async (e) => {
               <Button
                 variant="secondary"
                 type="button"
-                disabled={manualInvoiceSaving}
+                disabled={manualInvoiceSaving || savingCfopOption}
                 onClick={() => {
                   setShowManualInvoiceModal(false);
                   resetManualInvoiceForm();
@@ -20422,7 +20520,7 @@ const handleSubmit = async (e) => {
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={manualInvoiceSaving}>
+              <Button type="submit" disabled={manualInvoiceSaving || savingCfopOption || isAddingCfop}>
                 <Printer className="w-4 h-4" /> {manualInvoiceSaving ? 'Emitindo...' : 'Emitir Nota Fiscal'}
               </Button>
             </div>

@@ -588,6 +588,54 @@ const createFiscalFunctions = ({
     return {uid, lojaId, requester};
   };
 
+  const fiscalCatalogs = {
+    NCM: {field: 'ncmOptions', pattern: /^(?:\d{8}|\d{4}\.\d{2}\.\d{2})$/, defaults: ['19059090', '17049090', '18069000'], format: '8 dígitos, com ou sem pontos'},
+    CFOP: {field: 'cfopOptions', pattern: /^\d{4}$/, defaults: ['5101', '5102', '6101', '6107', '6102', '6108'], format: '4 dígitos'},
+  };
+
+  const requireFiscalCatalogPermission = async (uid) => {
+    const profile = (await db.collection('users').doc(uid).get()).data() || {};
+    if (profile.permissions?.['nota-fiscal'] === false || profile.customPermissions?.['nota-fiscal'] === false) {
+      throw new HttpsError('permission-denied', 'O módulo Nota Fiscal não está habilitado para este usuário.');
+    }
+  };
+
+  const saveFiscalCatalogOption = async (request, kind) => {
+    const {uid, lojaId} = await requireCallableContext(request);
+    await requireFiscalCatalogPermission(uid);
+    const catalog = fiscalCatalogs[kind];
+    const inputCode = trimText(request.data?.code);
+    const code = onlyDigits(inputCode);
+    const description = trimText(request.data?.description);
+    if (!catalog.pattern.test(inputCode)) {
+      throw new HttpsError('invalid-argument', `Informe o ${kind} com ${catalog.format}.`);
+    }
+    if (description.length < 3 || description.length > 120) {
+      throw new HttpsError('invalid-argument', `Informe uma descrição de 3 a 120 caracteres para identificar o ${kind}.`);
+    }
+    if (catalog.defaults.includes(code)) {
+      throw new HttpsError('already-exists', `Este ${kind} já está disponível na lista inicial.`);
+    }
+    const settingsRef = db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings');
+    const option = await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(settingsRef);
+      const options = Array.isArray(snap.get(catalog.field)) ? snap.get(catalog.field) : [];
+      if (options.some((item) => item?.code === code)) {
+        throw new HttpsError('already-exists', `Este ${kind} já está cadastrado para esta loja.`);
+      }
+      if (options.length >= 500) {
+        throw new HttpsError('resource-exhausted', `Limite de ${kind}s cadastrados nesta configuração fiscal atingido.`);
+      }
+      transaction.set(settingsRef, {
+        [catalog.field]: [...options, {code, description, createdAt: admin.firestore.Timestamp.now(), createdByUid: uid}],
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedByUid: uid,
+      }, {merge: true});
+      return {code, description};
+    });
+    return {option};
+  };
+
   const artifactPath = (lojaId, invoiceId, filename) => `fiscal/${lojaId}/invoices/${invoiceId}/${filename}`;
 
   const saveInvoiceArtifact = async ({lojaId, invoiceId, filename, contentType, content, encoding = 'utf8'}) => {
@@ -1420,39 +1468,32 @@ const createFiscalFunctions = ({
 
     fiscalSaveNcmOption: onCall(async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
-        const inputCode = trimText(request.data?.code);
-        const code = onlyDigits(inputCode);
-        const description = trimText(request.data?.description);
-        if (!/^(?:\d{8}|\d{4}\.\d{2}\.\d{2})$/.test(inputCode) || code.length !== 8) {
-          throw new HttpsError('invalid-argument', 'Informe o NCM com 8 dígitos, com ou sem pontos.');
-        }
-        if (description.length < 3 || description.length > 120) {
-          throw new HttpsError('invalid-argument', 'Informe uma descrição de 3 a 120 caracteres para identificar o NCM.');
-        }
-        if (['19059090', '17049090', '18069000'].includes(code)) {
-          throw new HttpsError('already-exists', 'Este NCM já está disponível na lista inicial.');
-        }
-        const settingsRef = db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings');
-        const option = await db.runTransaction(async (transaction) => {
-          const snap = await transaction.get(settingsRef);
-          const options = Array.isArray(snap.get('ncmOptions')) ? snap.get('ncmOptions') : [];
-          if (options.some((item) => item?.code === code)) {
-            throw new HttpsError('already-exists', 'Este NCM já está cadastrado para esta loja.');
-          }
-          if (options.length >= 500) {
-            throw new HttpsError('resource-exhausted', 'Limite de NCMs cadastrados nesta configuração fiscal atingido.');
-          }
-          transaction.set(settingsRef, {
-            ncmOptions: [...options, {code, description, createdAt: admin.firestore.Timestamp.now(), createdByUid: uid}],
-            updatedAt: FieldValue.serverTimestamp(),
-            updatedByUid: uid,
-          }, {merge: true});
-          return {code, description};
-        });
-        return {option};
+        return await saveFiscalCatalogOption(request, 'NCM');
       } catch (error) {
         logger.error('fiscalSaveNcmOption failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
+    fiscalSaveCfopOption: onCall(async (request) => {
+      try {
+        return await saveFiscalCatalogOption(request, 'CFOP');
+      } catch (error) {
+        logger.error('fiscalSaveCfopOption failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
+    fiscalListCfopOptions: onCall(async (request) => {
+      try {
+        const {uid, lojaId} = await requireReadContext(request);
+        await requireFiscalCatalogPermission(uid);
+        const snap = await db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').get();
+        const options = snap.get('cfopOptions');
+        return {options: Array.isArray(options) ? options.filter((item) => /^\d{4}$/.test(String(item?.code || '')))
+          .map((item) => ({code: item.code, description: cleanText(item.description).slice(0, 120)})) : []};
+      } catch (error) {
+        logger.error('fiscalListCfopOptions failed', error);
         throw normalizeHttpsError(error);
       }
     }),
