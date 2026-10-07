@@ -1359,39 +1359,9 @@
         }
 
         async function initApp() {
-            if (window.appInitialized) return;
-            try {
-                if (window.firebaseAnonAuthUnavailable) {
-                    console.warn('⚠️ Autenticação anônima desativada; iniciando em modo visitante.');
-                    await startAppFlow('modo visitante');
-                    return;
-                }
-
-                const auth = getAuth(app);
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        console.log("✅ Usuário autenticado anonimamente:", user.uid);
-                        await startAppFlow('sessão anônima');
-                        return;
-                    }
-
-                    if (window.firebaseAnonAuthUnavailable) {
-                        console.warn('⚠️ Autenticação anônima desativada; prosseguindo sem login.');
-                        await startAppFlow('modo visitante');
-                        return;
-                    }
-
-                    try {
-                        await signInAnonymously(auth);
-                    } catch (error) {
-                        console.warn("⚠️ Falha no login anônimo, continuando sem autenticação:", error);
-                        await startAppFlow('modo visitante');
-                    }
-                });
-            } catch (error) {
-                console.error('❌ Erro ao inicializar aplicação:', error);
-                await startAppFlow('falha na autenticação');
-            }
+            // Auth is resolved independently by firebaseClientConfig/customerAccount.
+            // Public store configuration and products must not wait for that session.
+            await startAppFlow('catálogo público');
         }
 
 
@@ -2097,8 +2067,7 @@
                 }
                 cartModal.classList.add('hidden');
                 persistCheckoutState();
-                // Only a transferred private reorder cart needs the Customer session before restoration.
-            try {if(JSON.parse(sessionStorage.getItem(CHECKOUT_STORAGE_KEY) || 'null')?.reorderOwnerUid) await customerAccount.ready;} catch {clearCheckoutState();}
+                await customerAccount.ready;
                 if (isLinkedCustomer(currentClient)) {
                     openAddressManagementModal(currentClient);
                     return;
@@ -3319,11 +3288,27 @@
         }
         const reorderCart=createPageCartBridge({storeId:STORE_ID,storage:sessionStorage,navigate:url=>window.location.assign(url),readCart:()=>cart,applyCart:applyReorderCart,open:()=>cartModal.classList.remove('hidden')});
         const customerAccount=installCustomerAccount({reorderCart,onCustomer: client => {currentClient=client;syncOnlinePaymentOption(client);identificationModal.classList.add('hidden');openAddressManagementModal(client);},onSession:client=>{if(reorderOwnerUid && reorderOwnerUid!==getAuth(app).currentUser?.uid) {cart=[];pendingOrderDetails={};reorderOwnerUid=null;persistCheckoutState();renderCart();}currentClient=client;syncOnlinePaymentOption(client);},onLogout:()=>{if(reorderOwnerUid) {cart=[];reorderOwnerUid=null;renderCart();}currentClient=null;syncOnlinePaymentOption(null);pendingOrderDetails={};persistCheckoutState();},notify:showToast});
-        const startCheckout = async () => {
-            await customerAccount.ready;
-            restoreCheckoutState();
+        const startCheckout = () => {
+            let transferredState = null;
+            try {
+                const rawState = sessionStorage.getItem(CHECKOUT_STORAGE_KEY);
+                if (JSON.parse(rawState || 'null')?.reorderOwnerUid) transferredState = rawState;
+            } catch {clearCheckoutState();}
+            if (!transferredState) restoreCheckoutState();
             initApp();
             enableOnlinePayment(STORE_ID,()=>currentClient);
+            if (transferredState) {
+                // Restore private transfers only after the session is known, without blocking products.
+                customerAccount.ready.then(() => {
+                    // A public cart edited while the account was loading takes precedence.
+                    if (sessionStorage.getItem(CHECKOUT_STORAGE_KEY) !== transferredState) return;
+                    restoreCheckoutState();
+                    if (allProducts.length) reconcileCartWithLatestProducts();
+                }).catch(error => {
+                    console.warn('Não foi possível restaurar o carrinho transferido:', error);
+                    if (sessionStorage.getItem(CHECKOUT_STORAGE_KEY) === transferredState) clearCheckoutState();
+                });
+            }
         };
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startCheckout, {once:true});
         else startCheckout();
