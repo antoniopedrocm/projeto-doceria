@@ -35,9 +35,11 @@ fiscalGetConfiguration não precisa ser republicada. As demais Functions fiscais
 - Comparação de 40 módulos locais dos source maps anterior e novo: somente App.js mudou. Os outros 39 módulos permanecem iguais, incluindo Ponto, iFood e 99Food.
 - Diff revisado; alterações restritas aos catálogos fiscais e seus testes/documentação.
 
+Build verificado: `main.76d8688a.js`, SHA256 `d411dd25b3f396020845067bdc411462d7169ecd1e1c9990aceecfd3169c115e`. Os botões `+ Novo CFOP` e `+ Novo NCM` estão presentes nas fontes compiladas. Implementação no commit `c4756a30`, enviado ao origin.
+
 ## Deploy seletivo DEV
 
-Comandos previstos:
+Comandos executados com sucesso:
 
 ```text
 firebase deploy --project crmdoceria-9959e --only functions:fiscalSaveCfopOption,functions:fiscalListCfopOptions,functions:fiscalSaveNcmOption --non-interactive
@@ -45,3 +47,11 @@ firebase deploy --project crmdoceria-9959e --only hosting:prod --non-interactive
 ```
 
 O target local prod aponta ao site DEV crmdoceria-9959e. Produção ana-guimaraes não recebe deploy.
+
+Após publicação, o asset-manifest do Hosting retornou HTTP 200 e apontou para main.76d8688a.js. O JavaScript servido tem o mesmo SHA256 do build local e contém Novo CFOP, Novo NCM e fiscalSaveCfopOption.
+
+## Conferência na interface publicada
+
+Em uma aba temporária autenticada do DEV, com a loja Ana Guimaraes Doceria selecionada, foi aberto o modal de nota manual e o botão + Novo CFOP. A árvore DOM confirmou a presença de Cadastrar CFOP para esta loja, Código CFOP, Descrição do CFOP e Salvar CFOP. Ao tentar salvar os campos vazios, apareceu Informe o CFOP com 4 dígitos.; Emitir Nota Fiscal permaneceu desabilitado enquanto o formulário do catálogo estava aberto.
+
+Nenhum CFOP de exemplo foi persistido e nenhuma nota foi transmitida. Persistência e isolamento por loja foram verificados pelos testes automatizados do backend. A captura de imagem do navegador apresentou timeout e, nas tentativas que retornaram imagem, fechou o modal e mostrou apenas a tela anterior; por isso essa imagem não foi utilizada como prova do formulário. A verificação de abertura e validação utilizou a árvore DOM da interface publicada.
