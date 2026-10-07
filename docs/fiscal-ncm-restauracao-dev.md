@@ -34,4 +34,8 @@ Comparação dos 40 módulos locais do source map anterior com a nova base: some
 Comando autorizado: `firebase deploy --project crmdoceria-9959e --only hosting:prod --non-interactive`.
 O nome local do target é `prod`, mas seu site neste Project ID é exclusivamente DEV: `crmdoceria-9959e`.
 
+Implementação: commit `784423d5`, enviado ao origin em `codex/fiscal-ncm-restore-dev`.
+Deploy concluído com `release complete` e `Deploy complete` no Hosting DEV.
+Conferência HTTP posterior: status 200; manifest aponta `main.f12a9d3e.js`; SHA256 do JavaScript servido idêntico ao build local; texto do botão e chamada `fiscalSaveNcmOption` presentes no JavaScript servido. Nenhuma Function, Rule, índice ou dado real foi alterado na publicação. Nenhum deploy em `ana-guimaraes` foi realizado.
+
 Nas próximas publicações DEV, usar esta base consolidada ou incorporar o cadastro de NCM antes do build. Publicar uma branch anterior sem essa alteração substitui o frontend e remove o botão novamente.
