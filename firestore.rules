@@ -632,12 +632,28 @@ function canReadStoreCollection(lojaId, collection) {
       || (collection in ['contas_a_pagar', 'contas_a_receber'] && (
         accountantHasModule('financeiro') || accountantHasModule('relatorios')
       ))
-      || (collection in ['fiscalProducts', 'invoices'] && (
+      || (collection in ['fiscalProducts', 'invoices', 'fiscalInutilizations'] && (
         accountantHasModule('nota-fiscal')
         || accountantHasModule('financeiro')
         || accountantHasModule('relatorios')
       ))
       || (collection in ['meuEspaco', 'pontos', 'ferias', 'feriasAuditoria'] && accountantHasModule('meu-espaco'))
+    ))
+  );
+}
+
+function canReadFiscalRecords(lojaId) {
+  return isSignedIn() && (
+    isOwnerUser()
+    || (isManagerUser() && currentUserHasStore(lojaId) && (
+      currentUserData().get('permissions', {}).get('nota-fiscal', true)
+      || currentUserData().get('permissions', {}).get('financeiro', true)
+      || currentUserData().get('permissions', {}).get('relatorios', true)
+    ))
+    || (isReadOnlyAccountant() && accountantHasStore(lojaId) && (
+      accountantHasModule('nota-fiscal')
+      || accountantHasModule('financeiro')
+      || accountantHasModule('relatorios')
     ))
   );
 }
@@ -751,6 +767,16 @@ match /lojas/{lojaId} {
   // Dados fiscais confidenciais sao lidos e alterados apenas por callables autorizadas.
   match /fiscalConfig/{docId} {
     allow read, write: if false;
+  }
+
+  match /invoices/{invoiceId} {
+    allow read: if canReadFiscalRecords(lojaId);
+    allow write: if false;
+  }
+
+  match /fiscalInutilizations/{operationId} {
+    allow read: if canReadFiscalRecords(lojaId);
+    allow write: if false;
   }
 
   // Dados iFood sao lidos pelo painel, mas toda mutacao passa pelas Functions.
@@ -893,6 +919,10 @@ match /lojas/{lojaId} {
       && collection != 'food99'
       && collection != 'configuracoes'
       && collection != 'fiscalConfig'
+      && collection != 'invoices'
+      && collection != 'fiscalInutilizations'
+      && collection != 'fiscalCounters'
+      && collection != 'fiscalNumberBlocks'
       && collection != 'caixas'
       && collection != 'conferenciasCaixa'
       && collection != 'sangriasCaixa'
@@ -904,6 +934,10 @@ match /lojas/{lojaId} {
       && collection != 'food99'
       && collection != 'configuracoes'
       && collection != 'fiscalConfig'
+      && collection != 'invoices'
+      && collection != 'fiscalCounters'
+      && collection != 'fiscalInutilizations'
+      && collection != 'fiscalNumberBlocks'
       && collection != 'caixas'
       && collection != 'conferenciasCaixa'
       && collection != 'sangriasCaixa'
