@@ -7,6 +7,7 @@ import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMe
 import { Play } from 'lucide-react';
 import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
 import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
+import {findOrderDraft, validateFiscalOrder, createFiscalOrderActions} from './fiscalOrderActions';
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
@@ -17065,6 +17066,7 @@ const handleSubmit = async (e) => {
     const [cancelReason, setCancelReason] = useState('');
     const [cancelError, setCancelError] = useState('');
     const [orderToEditBeforeInvoice, setOrderToEditBeforeInvoice] = useState(null);
+    const [orderDraftToEdit, setOrderDraftToEdit] = useState(null);
     const [orderEditProductSearch, setOrderEditProductSearch] = useState('');
     const [orderEditSaving, setOrderEditSaving] = useState(false);
     const [orderEditError, setOrderEditError] = useState('');
@@ -17914,11 +17916,19 @@ const handleSubmit = async (e) => {
         setMessage({ type: 'error', text: `${lockReason} Não é seguro alterar o pedido nesta etapa.` });
         return;
       }
+      const draft = findOrderDraft(invoices, order.id);
+      setOrderDraftToEdit(draft);
+      if (draft) {
+        setModelOverride(draft.model ? String(draft.model) : '');
+        setOperationCfop(draft.operationCfop || '');
+      }
       setOrderToEditBeforeInvoice(order);
-      setOrderEditForm(normalizeOrderForPreInvoiceEdit(order));
+      setOrderEditForm(normalizeOrderForPreInvoiceEdit(draft
+        ? {...order, observacao: draft.additionalInfo ?? order.observacao}
+        : order));
       setOrderEditProductSearch('');
       setOrderEditError('');
-    }, [getPreInvoiceLockedReason, normalizeOrderForPreInvoiceEdit]);
+    }, [getPreInvoiceLockedReason, normalizeOrderForPreInvoiceEdit, invoices]);
 
     const setOrderEditDraft = (updater) => {
       setOrderEditForm((prev) => buildOrderEditFormWithTotals(typeof updater === 'function' ? updater(prev) : updater));
@@ -18054,7 +18064,19 @@ const handleSubmit = async (e) => {
           updatedAt: new Date()
         };
         await updateItem('pedidos', orderToEditBeforeInvoice.id, payload, effectiveStoreId);
+        setValidationByOrder((prev) => {
+          const next = {...prev};
+          delete next[orderToEditBeforeInvoice.id];
+          return next;
+        });
+        if (orderDraftToEdit) {
+          const save = httpsCallable(functions, 'fiscalSaveDraft');
+          await save(callablePayload({orderId: orderToEditBeforeInvoice.id,
+            model: orderDraftToEdit.model || null, operationCfop: orderDraftToEdit.operationCfop || '',
+            additionalInfo: payload.observacao}));
+        }
         setOrderToEditBeforeInvoice(null);
+        setOrderDraftToEdit(null);
         setOrderEditProductSearch('');
         setOrderEditError('');
         setMessage({ type: 'success', text: 'Pedido atualizado. Agora valide novamente antes de emitir a nota.' });
@@ -18223,20 +18245,29 @@ const handleSubmit = async (e) => {
       }
     };
 
-    const requestOrderValidation = async (order) => {
-      const save = httpsCallable(functions, 'fiscalSaveDraft');
-      const saved = await save(callablePayload({
-        orderId: order.id,
-        model: Number(modelOverride),
-        additionalInfo: order.observacao || order.additionalInfo || '',
-        operationCfop
-      }));
-      const draftId = saved.data?.draftId;
-      const fn = httpsCallable(functions, 'fiscalCheckDraft');
-      const response = await fn(callablePayload({draftId}));
-      const result = {...(response.data || {}), draftId, model: modelOverride ? Number(modelOverride) : null, operationCfop};
+    const requestOrderValidation = async (order, save = true) => {
+      const result = await validateFiscalOrder({order, draft: findOrderDraft(invoices, order.id),
+        model: modelOverride, operationCfop, save,
+        call: async (name, payload) => (await httpsCallable(functions, name)(callablePayload(payload))).data || {}});
       setValidationByOrder((prev) => ({ ...prev, [order.id]: result }));
       return result;
+    };
+
+    const handleCheckOrderRequirements = async (order) => {
+      if (isReadOnly || !effectiveStoreId || busyOrderId || getPreInvoiceLockedReason(order)) return;
+      setBusyOrderId(`check:${order.id}`);
+      setMessage(null);
+      try {
+        const result = await requestOrderValidation(order, false);
+        setMessage({type: result.ok === true ? 'success' : 'error', text: result.ok === true
+          ? 'Requisitos checados. Nenhuma emissão realizada. Para preparar a emissão, use Salvar e Validar.'
+          : `Pendências: ${(result.errors || []).join(' ')}`});
+      } catch (error) {
+        setValidationByOrder((prev) => ({...prev, [order.id]: {ok: false}}));
+        setMessage({type: 'error', text: error?.message || 'Não foi possível checar os requisitos.'});
+      } finally {
+        setBusyOrderId('');
+      }
     };
 
     const handleViewOrderDraft = async (invoice) => {
@@ -19718,21 +19749,9 @@ const handleSubmit = async (e) => {
       } }
     ];
 
-    const orderActions = isReadOnly ? [] : [
-      {
-        icon: Edit,
-        label: 'Editar pedido antes da nota',
-        onClick: handleOpenPreInvoiceOrderEdit,
-        isVisible: (row) => !getPreInvoiceLockedReason(row)
-      },
-      { icon: Save, label: 'Salvar e Validar', showLabel: true, onClick: handleValidateOrder,
-        isVisible: (row) => !getPreInvoiceLockedReason(row), isDisabled: () => busyOrderId !== '' },
-      { icon: Printer, label: `Emitir Nota Fiscal — ${modelOverride === '55' ? 'NF-e' : modelOverride === '65' ? 'NFC-e' : 'selecione o modelo'}`, onClick: handleIssueOrder,
-        showLabel: true,
-        isVisible: (row) => !getPreInvoiceLockedReason(row),
-        isDisabled: (row) => busyOrderId !== '' || validationByOrder[row.id]?.ok !== true || !validationByOrder[row.id]?.draftId
-          || validationByOrder[row.id]?.model !== Number(modelOverride) || validationByOrder[row.id]?.operationCfop !== operationCfop }
-    ];
+    const orderActions = createFiscalOrderActions({readOnly: isReadOnly, icons: {Edit, RefreshCw, Save, Printer},
+      edit: handleOpenPreInvoiceOrderEdit, check: handleCheckOrderRequirements, save: handleValidateOrder, issue: handleIssueOrder,
+      locked: getPreInvoiceLockedReason, busy: busyOrderId !== '', validations: validationByOrder, model: modelOverride, operationCfop});
 
     const invoiceColumns = [
       { header: 'Número', render: (row) => <span className="font-mono text-xs font-semibold text-gray-800">{row.status === 'draft' ? 'Ainda não atribuído' : formatFiscalNumber(row.number)}</span> },
@@ -20339,12 +20358,13 @@ const handleSubmit = async (e) => {
             setOrderEditProductSearch('');
             setOrderEditError('');
           }}
-          title="Editar pedido antes da nota"
+          title={orderDraftToEdit ? `Editar rascunho ${orderDraftToEdit.model === 55 ? 'NF-e' : orderDraftToEdit.model === 65 ? 'NFC-e' : '— modelo pendente'}` : 'Editar pedido antes da nota'}
           size="xl"
         >
           <form onSubmit={handleSavePreInvoiceOrderEdit} data-unsaved-changes={Boolean(orderToEditBeforeInvoice)} className="space-y-5">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               Ajuste aqui os dados que serão usados na emissão fiscal. Depois de salvar, valide o pedido novamente antes de emitir a nota.
+              {orderDraftToEdit && <p className="mt-2 font-semibold">DOCUMENTO NÃO EMITIDO · Rascunho existente: {orderDraftToEdit.id}. Os itens e dados do pedido serão atualizados nesse mesmo rascunho.</p>}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Select label="Cliente cadastrado" value={orderEditForm.clienteId || ''} onChange={(event) => handleOrderEditClientChange(event.target.value)}>
@@ -20476,7 +20496,7 @@ const handleSubmit = async (e) => {
                 Cancelar
               </Button>
               <Button type="submit" disabled={orderEditSaving}>
-                <Save className="w-4 h-4" /> {orderEditSaving ? 'Salvando...' : 'Salvar pedido'}
+                <Save className="w-4 h-4" /> {orderEditSaving ? 'Salvando...' : orderDraftToEdit ? 'Salvar rascunho' : 'Salvar pedido'}
               </Button>
             </div>
           </form>
