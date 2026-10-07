@@ -2,6 +2,7 @@ const {createHash, randomUUID} = require('node:crypto');
 const {HttpsError} = require('firebase-functions/v2/https');
 const {FieldValue} = require('firebase-admin/firestore');
 const {createCustomerOrders} = require('./customer-orders');
+const {createCustomerReorder} = require('./customer-reorder');
 const digest = (provider, subject) => createHash('sha256').update(`${provider}:${subject}`).digest('hex');
 const fail = (code, message) => { throw new HttpsError(code, message); };
 function verifiedIdentity(token, user) {
@@ -64,7 +65,7 @@ function normalizeBirthdate(value) {
   if(year<1900 || date.getUTCFullYear()!==year || date.getUTCMonth()!==month-1 || date.getUTCDate()!==day || date.getTime()>todayUtc) fail('invalid-argument','Informe uma data de nascimento válida.');
   return text;
 }
-function createCustomerAccount({admin, db}) {
+function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNAVAILABLE'}) {
   const stamp = () => FieldValue.serverTimestamp();
   const identities = db.collection('customerAuthIdentities');
   async function identity(request) {
@@ -179,7 +180,8 @@ function createCustomerAccount({admin, db}) {
     return account(request);
   }
   const history=createCustomerOrders({db,resolve});
-  return {account, completeProfile, update, orders:history.list, orderDetail:history.detail, addAddress, resolve, deleteAddress,
+  const reorderPreview=createCustomerReorder({db,readOrder:history.detail,getStoreAvailability});
+  return {account, completeProfile, update, orders:history.list, orderDetail:history.detail, reorderPreview, addAddress, resolve, deleteAddress,
     updateAddress: request=>mutateAddress(request,false), setDefaultAddress: request=>mutateAddress(request,true)};
 }
 module.exports = {createCustomerAccount, verifiedIdentity, normalizeContactPhone, normalizeAddress, normalizeBirthdate, normalizeName, addressRecords, digest};

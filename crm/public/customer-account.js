@@ -3,13 +3,15 @@ import {customerAuthErrorMessage} from './customer-auth-errors.mjs';
 import {createCustomerAuthState} from './customer-session.mjs';
 import {isCustomerIdentity as isCustomerUser, createCustomerAreaNavigation} from './customer-area.mjs';
 import {createCustomerProfileSecurity} from './customer-profile.mjs';
-import {createCustomerOrderHistory} from './customer-orders-view.mjs';
+import {createCustomerOrderHistory} from './customer-orders-view.mjs?v=20261006-customer-reorder';
+import {createCustomerReorderView} from './customer-reorder-view.mjs';
+import {createStoredCartBridge} from './reorder-cart.mjs';
 import {GoogleAuthProvider, createUserWithEmailAndPassword, sendEmailVerification,
   sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, onAuthStateChanged,
   signOut, updateProfile, setPersistence, browserLocalPersistence, EmailAuthProvider,
   reauthenticateWithCredential, verifyBeforeUpdateEmail, updatePassword, reload} from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 
-export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onLogout=()=>{}, notify=()=>{}, createAccountButton=true, showCheckoutAddressAction=true}) {
+export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onLogout=()=>{}, notify=()=>{}, createAccountButton=true, showCheckoutAddressAction=true,reorderCart=null}) {
   const call = async (name, data = {}) => (await httpsCallable(functions, name)(data)).data;
   let current = null;
   let currentUid = null;
@@ -21,7 +23,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   dialog.className = 'customer-area-dialog rounded-lg shadow-xl p-6';
   if (!document.querySelector('[data-customer-area-style]')) {
     const style = document.createElement('link');
-    style.rel = 'stylesheet'; style.href = new URL('./customer-area.css?v=20261005-customer-orders', import.meta.url).href;
+    style.rel = 'stylesheet'; style.href = new URL('./customer-area.css?v=20261006-customer-reorder', import.meta.url).href;
     style.setAttribute('data-customer-area-style', ''); document.head.append(style);
   }
   dialog.setAttribute('aria-label', 'Minha Conta');
@@ -60,7 +62,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     <form data-change-password class="space-y-2 mt-3"><label class="block">Senha atual<input data-current-password type="password" required autocomplete="current-password"></label><label class="block">Nova senha<input data-new-password type="password" minlength="6" required autocomplete="new-password"></label><label class="block">Confirmar nova senha<input data-confirm-password type="password" minlength="6" required autocomplete="new-password"></label><button type="submit" class="border rounded p-2">Alterar senha</button></form><button data-profile-reset type="button" class="underline">Esqueci minha senha</button></section>
     <h3 class="font-bold mt-4">Formas de Pagamento</h3><p>Seus cartões são armazenados com segurança pela InfinitePay. Você poderá salvar, selecionar, adicionar ou remover cartões durante o pagamento.</p><p class="text-sm text-gray-600 mt-2">🔒 Gerenciado pela InfinitePay</p></section>
     <section data-orders-panel hidden aria-labelledby="customer-orders-heading"><h3 id="customer-orders-heading" data-orders-heading tabindex="-1" class="font-bold mb-3">Meus Pedidos</h3>
-    <div data-orders-list><button data-history type="button" class="underline">Atualizar pedidos</button><p data-orders-message role="status" aria-live="polite" class="my-2"></p><ul data-orders class="space-y-3 my-2"></ul><button data-orders-more type="button" hidden>Carregar mais</button></div>
+    <section data-reorder-panel hidden aria-live="polite"></section><div data-orders-list><button data-history type="button" class="underline">Atualizar pedidos</button><p data-orders-message role="status" aria-live="polite" class="my-2"></p><ul data-orders class="space-y-3 my-2"></ul><button data-orders-more type="button" hidden>Carregar mais</button></div>
     <section data-order-detail hidden><button data-order-back type="button">Voltar aos pedidos</button><h4 data-order-detail-heading tabindex="-1">Detalhe do pedido</h4><p data-order-detail-message role="status" aria-live="polite"></p><div data-order-detail-content></div></section></section>
     </section>
     <button data-logout type="button" class="text-gray-600 underline mt-5" hidden>Sair</button>`;
@@ -109,9 +111,13 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const renderSignedOut = () => {currentUid=null;navigation.invalidate();clearPrivateView();el('signed-out').hidden=false;el('phone').hidden=true;el('logout').hidden=true;message('Entre com Google ou e-mail para acessar sua conta.');};
   const clearPublishedSession = () => {current=null;checkoutIntent=false;renderSignedOut();onSession(null);onLogout();};
   const authState = createCustomerAuthState({onInvalidate:clearPublishedSession});
+  const orderSession=()=>({...authState.observe(auth.currentUser?.uid),customerId:current?.id});
+  const orderSessionCurrent=snapshot=>authState.isCurrent(snapshot) && navigation.isAllowed() && navigation.getRoute()==='orders' && current?.id===snapshot.customerId;
+  const reorder=createCustomerReorderView({panel:el('reorder-panel'),call,snapshot:orderSession,isCurrent:orderSessionCurrent,
+    cart:reorderCart || createStoredCartBridge({storage:window.sessionStorage,navigate:url=>window.location.assign(url),getUid:()=>auth.currentUser?.uid}),
+    onExpired:()=>authState.invalidate(),onCartOpen:()=>dialog.close()});
   orderHistory=createCustomerOrderHistory({panel:el('orders-panel'),call,
-    snapshot:()=>({...authState.observe(auth.currentUser?.uid),customerId:current?.id}),
-    isCurrent:snapshot=>authState.isCurrent(snapshot) && navigation.isAllowed() && navigation.getRoute()==='orders' && current?.id===snapshot.customerId,
+    snapshot:orderSession,isCurrent:orderSessionCurrent,onReorder:reorder.start,onClear:reorder.clear,
     onExpired:()=>authState.invalidate()});
   const busy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {message(customerAuthErrorMessage(e));} finally {button.disabled=false;}};
   const emailButtonBusy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};

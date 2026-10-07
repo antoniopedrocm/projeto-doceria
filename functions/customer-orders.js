@@ -64,7 +64,9 @@ function serializeOrder(snapshot, storeName='') {
     const item=value && typeof value==='object' ? value : {};
     const quantity=number(item.quantity ?? item.quantidade), preco=number(item.preco ?? item.unitValue ?? item.valorUnitario);
     const lineTotal=number(item.total ?? item.valorTotal ?? item.subtotal);
-    return {nome:text(item.nome || item.description || item.descricao || item.produto,160),
+    const productId=item.produtoId || item.productId || item.id;
+    return {productId:typeof productId==='string' && /^[a-zA-Z0-9_-]{1,150}$/.test(productId)?productId:null,
+      nome:text(item.nome || item.description || item.descricao || item.produto,160),
       description:text(item.descricao || item.description,300),
       quantity,preco,total:lineTotal ?? (quantity!==null && preco!==null ? number(quantity*preco) : null)};
   });

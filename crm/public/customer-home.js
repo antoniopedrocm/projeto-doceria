@@ -1,4 +1,4 @@
-import {installCustomerAccount} from './customer-account.js?v=20261005-customer-orders';
+import {installCustomerAccount} from './customer-account.js?v=20261006-customer-reorder';
 
 let customerAccount;
 const openCustomerAccount = async () => {

@@ -1219,7 +1219,8 @@
         } from "./firebaseClientConfig.js";
 
         import {apiBaseUrl} from './checkout-environment.js';
-        import {installCustomerAccount} from './customer-account.js?v=20261005-customer-orders';
+        import {createPageCartBridge,stockLimit} from './reorder-cart.mjs';
+        import {installCustomerAccount} from './customer-account.js?v=20261006-customer-reorder';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js';
         import {STORE_AVAILABILITY, getStoreAvailability, getStoreAvailabilityMessage} from './store-availability.mjs';
@@ -1276,6 +1277,7 @@
         let storeAvailability = STORE_AVAILABILITY.CONFIG_UNAVAILABLE;
         let storeIsOpenNow = false;
         let checkoutBlockingIssue = null;
+        let reorderOwnerUid = null;
 
         // --- SELEÇÃO DE ELEMENTOS DOM ---
         const productList = document.getElementById('product-list'),
@@ -1504,6 +1506,7 @@
                 const checkoutState = {
                     storeId: STORE_ID,
                     savedAt: Date.now(),
+                    ...(reorderOwnerUid ? {reorderOwnerUid} : {}),
                     cart: cart.map(item => ({
                         id: item.id || item.produtoId,
                         produtoId: item.produtoId || item.id,
@@ -1534,6 +1537,10 @@
                 if (!rawState) return;
 
                 const savedState = JSON.parse(rawState);
+                if (savedState.reorderOwnerUid && savedState.reorderOwnerUid !== getAuth(app).currentUser?.uid) {
+                    clearCheckoutState(); return;
+                }
+                reorderOwnerUid = savedState.reorderOwnerUid || null;
                 if (savedState?.storeId && savedState.storeId !== STORE_ID) {
                     clearCheckoutState();
                     return;
@@ -1644,7 +1651,7 @@
                 }
 
                 const requestedQuantity = Number(item.quantity || 0);
-                const currentStock = Number(latestProduct.estoque);
+                const currentStock = stockLimit(latestProduct);
                 if (Number.isFinite(currentStock) && currentStock <= 0) {
                     changed = true;
                     messages.push(`${latestProduct.nome || productLabel} está sem estoque e foi removido do carrinho.`);
@@ -1952,7 +1959,7 @@
                 : cart.map(item => `
                     <div class="flex justify-between items-center mb-4 p-3 bg-gray-50 rounded-lg">
                         <div class="flex-1">
-                            <p class="font-bold text-gray-800">${item.nome}</p>
+                            <p class="font-bold text-gray-800">${escapeCheckoutText(item.nome)}</p>
                             <p class="text-sm text-gray-500">R$ ${item.preco.toFixed(2)}</p>
                         </div>
                         <div class="flex items-center gap-3">
@@ -2090,7 +2097,8 @@
                 }
                 cartModal.classList.add('hidden');
                 persistCheckoutState();
-                await customerAccount.ready;
+                // Only a transferred private reorder cart needs the Customer session before restoration.
+            try {if(JSON.parse(sessionStorage.getItem(CHECKOUT_STORAGE_KEY) || 'null')?.reorderOwnerUid) await customerAccount.ready;} catch {clearCheckoutState();}
                 if (isLinkedCustomer(currentClient)) {
                     openAddressManagementModal(currentClient);
                     return;
@@ -3282,8 +3290,37 @@
                 throw error;
             }
         }
-        const customerAccount=installCustomerAccount({onCustomer: client => {currentClient=client;syncOnlinePaymentOption(client);identificationModal.classList.add('hidden');openAddressManagementModal(client);},onSession:client=>{currentClient=client;syncOnlinePaymentOption(client);},onLogout:()=>{currentClient=null;syncOnlinePaymentOption(null);pendingOrderDetails={};persistCheckoutState();},notify:showToast});
-        const startCheckout = () => {
+        function applyReorderCart({items,products,uid}) {
+            const keys=['valorFrete','distanciaFreteKm','guestCurrentLatLng','guestAddressFlowState','guestManualAddressLocationConfirmed','guestAddressStep','currentLatLng','pendingAddressLatLng','manualAddressLocationConfirmed'];
+            const oldWindow=Object.fromEntries(keys.map(key=>[key,window[key]]));
+            const old={cart,allProducts,pendingOrderDetails,appliedCupom,addressStep,checkoutBlockingIssue,reorderOwnerUid,addressFlow:{...window.addressFlowState}};
+            try {
+                cart=items.map(item=>({...item}));
+                const catalog=new Map(allProducts.map(product=>[product.id,product]));
+                products.filter(product=>product.available).forEach(product=>catalog.set(product.id,{...catalog.get(product.id),...product,status:'Ativo',ativo:true,categoria:'Delivery'}));
+                allProducts=[...catalog.values()];
+                pendingOrderDetails={};appliedCupom=null;reorderOwnerUid=uid;checkoutBlockingIssue=null;addressStep=1;
+                window.valorFrete=0;window.distanciaFreteKm=null;window.guestCurrentLatLng=null;
+                window.guestAddressFlowState=createInitialGuestAddressFlowState();window.guestManualAddressLocationConfirmed=false;window.guestAddressStep=1;
+                window.currentLatLng=null;window.pendingAddressLatLng=null;window.manualAddressLocationConfirmed=false;
+                Object.assign(window.addressFlowState,{currentStep:1,autocompleteSelection:'',locationConfirmed:false,currentLatLng:null,pendingAddressLatLng:null,formData:{}});
+                renderCart();updateAllSummaries();
+            } catch(error) {
+                ({cart,allProducts,pendingOrderDetails,appliedCupom,addressStep,checkoutBlockingIssue,reorderOwnerUid}=old);
+                Object.assign(window,oldWindow);Object.assign(window.addressFlowState,old.addressFlow);
+                renderCart();updateAllSummaries();throw error;
+            }
+            resetWhatsAppConsent();
+            if(selectedAddressText) selectedAddressText.textContent='';
+            [paymentMethodSelect,guestPaymentMethodSelect,paymentCupomInput].filter(Boolean).forEach(input=>{input.value='';input.disabled=false;});
+            if(paymentCupomMessage) paymentCupomMessage.textContent='';
+            if(paymentError) paymentError.textContent='';
+            if(paymentVerifyCupomButton) {paymentVerifyCupomButton.textContent='Aplicar';paymentVerifyCupomButton.classList.replace('bg-red-600','bg-gray-600');}
+        }
+        const reorderCart=createPageCartBridge({storeId:STORE_ID,storage:sessionStorage,navigate:url=>window.location.assign(url),readCart:()=>cart,applyCart:applyReorderCart,open:()=>cartModal.classList.remove('hidden')});
+        const customerAccount=installCustomerAccount({reorderCart,onCustomer: client => {currentClient=client;syncOnlinePaymentOption(client);identificationModal.classList.add('hidden');openAddressManagementModal(client);},onSession:client=>{if(reorderOwnerUid && reorderOwnerUid!==getAuth(app).currentUser?.uid) {cart=[];pendingOrderDetails={};reorderOwnerUid=null;persistCheckoutState();renderCart();}currentClient=client;syncOnlinePaymentOption(client);},onLogout:()=>{if(reorderOwnerUid) {cart=[];reorderOwnerUid=null;renderCart();}currentClient=null;syncOnlinePaymentOption(null);pendingOrderDetails={};persistCheckoutState();},notify:showToast});
+        const startCheckout = async () => {
+            await customerAccount.ready;
             restoreCheckoutState();
             initApp();
             enableOnlinePayment(STORE_ID,()=>currentClient);

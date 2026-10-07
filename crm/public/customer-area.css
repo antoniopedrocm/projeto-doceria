@@ -40,6 +40,10 @@
 .customer-area-dialog [data-order-detail-content] li { padding: .75rem 0; border-bottom: 1px solid #e5e7eb; }
 .customer-area-dialog [data-order-detail-content] dl { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: 1rem 0; }
 .customer-area-dialog [data-order-detail-content] dd { text-align: right; }
+.customer-area-dialog [data-reorder-panel] { margin: 1rem 0; padding: 1rem; background: #fdf2f8; border: 1px solid #f9a8d4; border-radius: .75rem; overflow-wrap: anywhere; }
+.customer-area-dialog [data-reorder-panel] ul { padding-left: 1.25rem; }
+.customer-area-dialog [data-orders-panel] button { margin: .25rem .25rem .25rem 0; }
+.customer-area-dialog [data-orders-panel] button:disabled { opacity: .5; cursor: wait; }
 @media (max-width: 480px) {
   .customer-area-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .customer-area-dialog { padding: 1rem; }

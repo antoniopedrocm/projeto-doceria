@@ -50,7 +50,7 @@ exports.whatsappWebhook = onRequest({region: 'southamerica-east1', timeoutSecond
     createWhatsAppWebhook({db, logger}));
 const auth = admin.auth();
 const {createCustomerAccount} = require('./checkout-auth');
-const customerAccounts = createCustomerAccount({admin, db});
+const customerAccounts = createCustomerAccount({admin, db,getStoreAvailability:config=>getStoreAvailability(config)});
 const {createPaymentService, cents, paymentError} = require('./checkout-payment');
 const checkoutPayments = createPaymentService({db, admin});
 const {paymentPrefill}=require('./payment-prefill');
@@ -70,6 +70,7 @@ exports.customerCompleteProfile = onCall({cors:true}, customerAccounts.completeP
 exports.customerUpdate = onCall({cors:true}, customerAccounts.update);
 exports.customerOrders = onCall({cors:true}, customerAccounts.orders);
 exports.customerOrderDetail = onCall({cors:true}, customerAccounts.orderDetail);
+exports.customerReorderPreview = onCall({cors:true}, customerAccounts.reorderPreview);
 exports.customerAddAddress = onCall({cors:true}, customerAccounts.addAddress);
 exports.customerDeleteAddress = onCall({cors:true}, customerAccounts.deleteAddress);
 exports.customerUpdateAddress = onCall({cors:true}, customerAccounts.updateAddress);

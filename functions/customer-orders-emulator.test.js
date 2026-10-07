@@ -9,6 +9,7 @@ const http=require('node:http'),express=require('express'),admin=require('fireba
 const functions=require('./index');
 const app=express();app.use(express.json());
 app.post('/list',functions.customerOrders);app.post('/detail',functions.customerOrderDetail);app.post('/profile',functions.customerCompleteProfile);
+app.post('/reorder',functions.customerReorderPreview);
 const server=http.createServer(app),db=admin.firestore();
 let base,a,b,anonymous,customerA,customerB;
 async function signup(email) {
@@ -26,11 +27,15 @@ before(async()=>{
   const pa=await send('/profile',{nome:'Customer A',phone:'+5562999991234'}),pb=await send('/profile',{nome:'Customer B',phone:'+5562999991234'},b.idToken);
   assert.equal(pa.status,200);assert.equal(pb.status,200);customerA=pa.body.result.customer.id;customerB=pb.body.result.customer.id;
   const batch=db.batch();
-  for(const store of ['history-matriz','history-garavelo']) batch.set(db.doc(`lojas/${store}`),{nome:`Loja ${store}`});
+  for(const store of ['history-matriz','history-garavelo']) {
+    batch.set(db.doc(`lojas/${store}`),{nome:`Loja ${store}`});
+    batch.set(db.doc(`lojas/${store}/configuracoes/config`),{manualOverride:{mode:'force_open'}});
+    batch.set(db.doc(`lojas/${store}/produtos/brownie`),{nome:`Brownie ${store}`,preco:store==='history-matriz'?20:16,estoque:3,categoria:'Delivery',status:'Ativo'});
+  }
   for(let i=0;i<43;i++) batch.set(db.doc(`lojas/${i%2?'history-matriz':'history-garavelo'}/pedidos/history-${String(i).padStart(2,'0')}`),{
     clienteId:customerA,ownerUid:a.localId,createdAt:admin.firestore.Timestamp.fromMillis(1760000000000+Math.floor(i/2)*1000),
     total:16,subtotal:12,desconto:0,valorFrete:4,clienteEndereco:'Rua histórica, 20',formaPagamento:'Cartão de Crédito',
-    itens:[{nome:'Brownie na compra',quantity:1,preco:12,total:12}],order_status:'CONFIRMED',payment_status:'PAID',receipt_url:'https://receipt.example.test/old'});
+    itens:[{produtoId:'brownie',nome:'Brownie na compra',quantity:1,preco:12,total:12}],order_status:'CONFIRMED',payment_status:'PAID',receipt_url:'https://receipt.example.test/old'});
   batch.set(db.doc('lojas/history-matriz/pedidos/history-private-b'),{clienteId:customerB,ownerUid:b.localId,createdAt:admin.firestore.Timestamp.now(),total:100,endereco:'Private B'});
   batch.set(db.doc('lojas/history-matriz/pedidos/history-phone-only'),{telefone:'62999991234',createdAt:admin.firestore.Timestamp.now(),total:999});
   await batch.commit();
@@ -97,4 +102,38 @@ test('Firestore real atravessa lotes totalmente filtrados sem perder pedidos pr�
   const all=[...first.orders,...second.orders];assert.equal(new Set(all.map(o=>`${o.storeId}/${o.id}`)).size,25);
   assert.ok(all.every(o=>o.id.startsWith('zzz-valid')));assert.equal(new Set(all.map(o=>o.storeId)).size,2);
   assert.equal(second.hasMore,false);assert.equal(second.nextCursor,null);
+});
+
+test('recompra callable autentica ownership e lê produto corrente somente da loja original',async()=>{
+  const ref=db.doc('lojas/history-garavelo/pedidos/history-42'),before=(await ref.get()).data();
+  const paymentsBefore=(await db.collection('checkoutPayments').get()).size;
+  const result=await send('/reorder',{storeId:'history-garavelo',orderId:'history-42',customerId:customerB});
+  assert.equal(result.status,200);assert.equal(result.body.result.order.itens[0].productId,'brownie');
+  assert.equal(result.body.result.products[0].preco,16);assert.equal(result.body.result.products[0].nome,'Brownie history-garavelo');
+  assert.doesNotMatch(JSON.stringify(result.body.result),/receipt_url|Rua histórica|payment_status/);
+  assert.deepEqual((await ref.get()).data(),before);assert.equal((await db.collection('checkoutPayments').get()).size,paymentsBefore);
+  const matrix=await send('/reorder',{storeId:'history-matriz',orderId:'history-41'});assert.equal(matrix.body.result.products[0].preco,20);
+});
+test('recompra privada recusa visitante/telefone anônimo, Customer alheio e orderId inexistente',async()=>{
+  for(const token of [null,anonymous.idToken,b.idToken]) {
+    const response=await send('/reorder',{storeId:'history-garavelo',orderId:'history-42',customerId:customerA},token);
+    assert.equal(response.status,token===b.idToken?404:401);
+  }
+  const peer=await send('/reorder',{storeId:'history-matriz',orderId:'history-private-b'});
+  const missing=await send('/reorder',{storeId:'history-matriz',orderId:'missing'});assert.deepEqual(peer.body,missing.body);
+  assert.equal((await send('/reorder',{storeId:'history-matriz',orderId:'history-phone-only'})).status,404);
+});
+test('recompra respeita horário e falha segura sem configuração sem alterar histórico',async()=>{
+  const ref=db.doc('lojas/history-garavelo/configuracoes/config'),previous=(await ref.get()).data();
+  try {
+    await ref.set({manualOverride:{mode:'force_closed'}});
+    assert.equal((await send('/reorder',{storeId:'history-garavelo',orderId:'history-42'})).status,400);
+    await ref.delete();assert.equal((await send('/reorder',{storeId:'history-garavelo',orderId:'history-42'})).body.error.status,'FAILED_PRECONDITION');
+  } finally {await ref.set(previous);}
+});
+test('recompra não usa produto de outra loja como fallback e limita IDs enviados',async()=>{
+  await db.doc('lojas/history-matriz/produtos/only-matrix').set({nome:'Matriz only',preco:1,categoria:'Delivery'});
+  const result=await send('/reorder',{storeId:'history-garavelo',orderId:'history-42',cartProductIds:['only-matrix']});
+  assert.deepEqual(result.body.result.products.map(p=>p.id),['brownie']);
+  assert.equal((await send('/reorder',{storeId:'history-garavelo',orderId:'history-42',cartProductIds:['../private']})).status,400);
 });

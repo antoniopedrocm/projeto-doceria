@@ -154,7 +154,7 @@ for (const menu of ['matriz', 'garavelo', 'festa']) {
         assert.ok(checkbox.closest('label').textContent.includes(CONSENT_TEXT));
       }
       const resetCode = html.slice(html.indexOf('        function resetWhatsAppConsent()'), html.indexOf("        window.addEventListener('pageshow', resetWhatsAppConsent);") + "        window.addEventListener('pageshow', resetWhatsAppConsent);".length);
-      const finalizeCode = html.slice(html.indexOf('        async function finalizeOrder('), html.indexOf('        const customerAccount=installCustomerAccount', html.indexOf('        async function finalizeOrder(')));
+      const finalizeCode = html.slice(html.indexOf('        async function finalizeOrder('), html.indexOf('        function applyReorderCart(', html.indexOf('        async function finalizeOrder(')));
       for (const isPlatform of [true, false]) {
         for (const accepted of [true, false]) {
           let sent;

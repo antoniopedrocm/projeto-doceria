@@ -2,13 +2,14 @@ const money=value=>value!==null && value!==undefined && value!=='' && Number.isF
 const date=value=>value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleString('pt-BR') : 'Data não informada';
 export const orderStatus=order=>({PENDING:order.payment_status==='PENDING'?'Aguardando pagamento':'Pendente',CONFIRMED:'Confirmado',PREPARING:'Em Produção',READY:'Pronto para Entrega',DELIVERED:'Entregue',CANCELLED:'Cancelado'})[order.status] || order.status || 'Não informado';
 export const paymentStatus=order=>order.requiresReview ? 'Em revisão' : ({PENDING:'Aguardando pagamento',PAID:'Pago',FAILED:'Falhou',EXPIRED:'Expirado',REFUNDED:'Estornado'})[order.payment_status] || order.payment_status || 'Não informado';
-export function createCustomerOrderHistory({panel,call,snapshot,isCurrent,onExpired}) {
+export function createCustomerOrderHistory({panel,call,snapshot,isCurrent,onExpired,onReorder,onClear=()=>{}}) {
   const el=name=>panel.querySelector(`[data-${name}]`);
   const doc=panel.ownerDocument;
   let orders=[],cursor=null,generation=0,detailGeneration=0,loading=false;
   const active=(session,revision)=>revision===generation && isCurrent(session);
   const node=(tag,content)=>{const element=doc.createElement(tag);element.textContent=content;return element;};
   const clear=()=>{
+    onClear();
     generation++;detailGeneration++;orders=[];cursor=null;loading=false;
     el('orders').replaceChildren();el('order-detail-content').replaceChildren();el('orders-message').textContent='';el('order-detail-message').textContent='';
     el('order-detail').hidden=true;el('orders-list').hidden=false;el('orders-more').hidden=true;el('orders-more').disabled=false;
@@ -28,9 +29,14 @@ export function createCustomerOrderHistory({panel,call,snapshot,isCurrent,onExpi
       const count=order.itemCount ?? (Array.isArray(order.itens) && order.itens.every(i=>i.quantity!==null && i.quantity!==undefined) ? order.itens.reduce((sum,i)=>sum+(Number(i.quantity) || 0),0) : null);
       item.append(node('p',count===null?'Quantidade de itens não informada':`${count} item(ns)`),node('p',(order.itens || []).map(i=>i.nome).filter(Boolean).join(', ')));
       const button=node('button','Ver pedido');button.type='button';button.dataset.orderKey=`${order.storeId || order.lojaId}/${order.id}`;
-      button.disabled=!order.id || !(order.storeId || order.lojaId);button.onclick=()=>openDetail(order);item.append(button);el('orders').append(item);
+      button.disabled=!order.id || !(order.storeId || order.lojaId);button.onclick=()=>openDetail(order);item.append(button);reorderButton(item,order);el('orders').append(item);
     }
     el('orders-more').hidden=!cursor;el('orders-more').disabled=loading;
+  }
+  function reorderButton(container,order) {
+    if(!onReorder || !order.itens?.some(item=>item.productId)) return;
+    const button=node('button','Comprar Novamente');button.type='button';button.dataset.reorderButton='';
+    button.onclick=()=>onReorder(order);container.append(button);
   }
   function renderDetail(order) {
     const content=el('order-detail-content');content.replaceChildren();summary(content,order);
@@ -44,7 +50,7 @@ export function createCustomerOrderHistory({panel,call,snapshot,isCurrent,onExpi
     for(const [label,value] of [['Subtotal',order.subtotal],['Desconto',order.desconto],['Frete',order.frete],['Total',order.total]]) {
       totals.append(node('dt',label),node('dd',label==='Frete' && order.freteACombinar ? 'A combinar' : money(value)));
     }
-    content.append(totals,node('p',`Forma de pagamento: ${order.formaPagamento || 'Não informada'}`));
+    content.append(totals,node('p',`Forma de pagamento: ${order.formaPagamento || 'Não informada'}`));reorderButton(content,order);
     if(order.modalidade==='entrega') content.append(node('h4','Endereço utilizado no pedido'),node('p',order.endereco || 'Não informado'));
     try {
       const url=new URL(order.receipt_url);
