@@ -17296,7 +17296,7 @@ const handleSubmit = async (e) => {
       const products = (manualInvoiceForm.items || []).reduce((sum, item) => (
         sum + roundCurrency(Number(item.quantity || 0) * Number(item.unitPrice || 0))
       ), 0);
-      const discount = (manualInvoiceForm.items || []).reduce((sum, item) => sum + Number(item.discount || 0), 0);
+      const discount = (manualInvoiceForm.items || []).reduce((sum, item) => sum + roundCurrency(Number(item.discount || 0)), 0);
       return {
         products: roundCurrency(products),
         discount: roundCurrency(discount),
@@ -20801,7 +20801,7 @@ const handleSubmit = async (e) => {
               <p><strong>Endereço:</strong> {[manualInvoiceForm.customer?.address?.street, manualInvoiceForm.customer?.address?.number, manualInvoiceForm.customer?.address?.city, manualInvoiceForm.customer?.address?.state, manualInvoiceForm.customer?.address?.zip].filter(Boolean).join(', ') || 'Pendente'}</p>
               <p><strong>Modelo:</strong> {manualInvoiceForm.modelOverride} · <strong>Série:</strong> {manualInvoiceForm.modelOverride === '55' ? settingsForm.nfeSeries : settingsForm.nfceSeries} · <strong>Número:</strong> ainda não atribuído</p>
               <div className="mt-3 border-t border-gray-200 pt-2">
-                {(manualInvoiceForm.items || []).map((item, index) => <div key={item.draftId || index} className="border-b border-gray-100 py-2 text-sm"><strong>{item.description || `Item ${index + 1}`}</strong><br />{item.quantity} {item.unit} × {formatCurrencyBR(Number(item.unitPrice || 0))} · NCM {item.ncm || 'pendente'} · CFOP {manualInvoiceForm.operationCfop || 'pendente'} · ICMS {item.csosn || item.cst || 'pendente'} · PIS {item.pisCst || 'pendente'} · COFINS {item.cofinsCst || 'pendente'} · desconto {formatCurrencyBR(Number(item.discount || 0))}</div>)}
+                {(manualInvoiceForm.items || []).map((item, index) => <div key={item.draftId || index} className="border-b border-gray-100 py-2 text-sm"><strong>{item.description || `Item ${index + 1}`}</strong><br />{item.quantity} {item.unit} × {formatCurrencyBR(Number(item.unitPrice || 0))} · NCM {item.ncm || 'pendente'} · CFOP {item.cfop || manualInvoiceForm.operationCfop || 'pendente'} · ICMS {item.csosn || item.cst || 'pendente'} · PIS {item.pisCst || 'pendente'} · COFINS {item.cofinsCst || 'pendente'} · desconto {formatCurrencyBR(Number(item.discount || 0))}</div>)}
               </div>
                 <p className="mt-3">Produtos: {formatCurrencyBR(manualInvoiceTotals.products)} · Desconto: {formatCurrencyBR(manualInvoiceTotals.discount)} · Frete: {formatCurrencyBR(manualInvoiceTotals.freight)} · Seguro: {formatCurrencyBR(manualInvoiceTotals.insurance)} · Outras despesas: {formatCurrencyBR(manualInvoiceTotals.other)}</p>
               <p className="text-lg font-bold">Total: {formatCurrencyBR(manualInvoiceTotals.invoice)}</p>
