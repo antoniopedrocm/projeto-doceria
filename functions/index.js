@@ -65,16 +65,24 @@ async function checkoutToken(req) {
   if (!token) throw paymentError('Entre novamente para continuar.',401);
   try {return await auth.verifyIdToken(token, true);} catch {throw paymentError('Sessão inválida.',401);}
 }
-exports.customerAccount = onCall({cors:true}, customerAccounts.account);
-exports.customerCompleteProfile = onCall({cors:true}, customerAccounts.completeProfile);
-exports.customerUpdate = onCall({cors:true}, customerAccounts.update);
-exports.customerOrders = onCall({cors:true}, customerAccounts.orders);
-exports.customerOrderDetail = onCall({cors:true}, customerAccounts.orderDetail);
-exports.customerReorderPreview = onCall({cors:true}, customerAccounts.reorderPreview);
-exports.customerAddAddress = onCall({cors:true}, customerAccounts.addAddress);
-exports.customerDeleteAddress = onCall({cors:true}, customerAccounts.deleteAddress);
-exports.customerUpdateAddress = onCall({cors:true}, customerAccounts.updateAddress);
-exports.customerSetDefaultAddress = onCall({cors:true}, customerAccounts.setDefaultAddress);
+const LOOKUP_CLIENT_ALLOWED_ORIGINS = [
+  'https://www.anaguimaraesdoceria.com.br',
+  'https://anaguimaraesdoceria.com.br',
+  'https://crmdoceria-9959e.web.app',
+  'https://crmdoceria-9959e.firebaseapp.com',
+  'http://localhost:5000',
+  'http://127.0.0.1:5000',
+];
+exports.customerAccount = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.account);
+exports.customerCompleteProfile = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.completeProfile);
+exports.customerUpdate = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.update);
+exports.customerOrders = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.orders);
+exports.customerOrderDetail = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.orderDetail);
+exports.customerReorderPreview = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.reorderPreview);
+exports.customerAddAddress = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.addAddress);
+exports.customerDeleteAddress = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.deleteAddress);
+exports.customerUpdateAddress = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.updateAddress);
+exports.customerSetDefaultAddress = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.setDefaultAddress);
 const STORE_INFO_DOC_ID = 'dados';
 const CONFIG_DOC_ID = 'config';
 const ROLE_OWNER = 'dono';
@@ -2147,14 +2155,7 @@ app.post("/cupons/verificar", async (req, res) => {
 });
 
 
-const LOOKUP_CLIENT_ALLOWED_ORIGINS = [
-  'https://www.anaguimaraesdoceria.com.br',
-  'https://anaguimaraesdoceria.com.br',
-  'https://crmdoceria-9959e.web.app',
-  'https://crmdoceria-9959e.firebaseapp.com',
-  'http://localhost:5000',
-  'http://127.0.0.1:5000',
-];
+
 
 exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
   try {
