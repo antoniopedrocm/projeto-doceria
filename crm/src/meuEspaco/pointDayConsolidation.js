@@ -1,4 +1,8 @@
-import { parsePointTimeToMinutes, resolvePointType } from './pointCalculationCore';
+import {
+  buildPointPunchEventsFromTimes,
+  parsePointTimeToMinutes,
+  resolvePointType
+} from './pointCalculationCore';
 import { buildPointPresentationRows } from './pointPresentation';
 
 const getDayKey = (record = {}) => String(record.dia || record.dayKey || '').trim();
@@ -18,6 +22,7 @@ const getTimestampMillis = (value) => {
   const parsed = value instanceof Date ? value : new Date(value);
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
 };
+
 const getRecordOrder = (record = {}, index = 0) => Math.max(
   getTimestampMillis(record.updatedAt),
   getTimestampMillis(record.atualizadoEm),
@@ -31,7 +36,12 @@ const getRecordRows = (record = {}) => buildPointPresentationRows(record, {
 
 const getRecordStartMinutes = (record = {}) => {
   const starts = getRecordRows(record)
-    .map((row) => row.startMinutes)
+    .flatMap((row) => [
+      row.startMinutes,
+      parsePointTimeToMinutes(row.horaAlmocoSaida),
+      parsePointTimeToMinutes(row.horaAlmocoRetorno),
+      row.endMinutes
+    ])
     .filter((value) => Number.isFinite(value) && value >= 0);
   return starts.length ? Math.min(...starts) : 24 * 60;
 };
@@ -55,6 +65,135 @@ const buildConsolidatedWorkPeriod = (row, record, recordIndex, rowIndex) => ({
   ativo: row.source?.ativo !== false
 });
 
+const JOURNEY_TIME_FIELDS = ['horaInicio', 'horaAlmocoSaida', 'horaAlmocoRetorno', 'horaFim'];
+
+const hasJourneyTime = (journey = {}) => JOURNEY_TIME_FIELDS.some((field) => (
+  parsePointTimeToMinutes(journey[field]) !== null
+));
+
+const getJourneyBounds = (journey = {}) => {
+  const values = JOURNEY_TIME_FIELDS
+    .map((field) => parsePointTimeToMinutes(journey[field]))
+    .filter((value) => value !== null);
+  return values.length
+    ? { start: Math.min(...values), end: Math.max(...values) }
+    : { start: null, end: null };
+};
+
+const isChronologicalJourney = (journey = {}) => {
+  const values = JOURNEY_TIME_FIELDS
+    .map((field) => parsePointTimeToMinutes(journey[field]))
+    .filter((value) => value !== null);
+  return values.every((value, index) => index === 0 || value > values[index - 1]);
+};
+
+const getJourneySessionKey = (journey = {}) => String(
+  journey.jornadaId
+  || journey.sessionId
+  || journey.shiftId
+  || journey.workSessionId
+  || journey.attendanceSessionId
+  || ''
+).trim();
+
+const getMatchingTimeCount = (left = {}, right = {}) => JOURNEY_TIME_FIELDS.reduce((count, field) => (
+  left[field] && right[field] && left[field] === right[field] ? count + 1 : count
+), 0);
+
+const canBelongToJourney = (journey, candidate) => {
+  const journeySession = getJourneySessionKey(journey);
+  const candidateSession = getJourneySessionKey(candidate);
+  if (journeySession && candidateSession) return journeySession === candidateSession;
+  if (getMatchingTimeCount(journey, candidate) > 0) return true;
+
+  const journeyBounds = getJourneyBounds(journey);
+  const candidateBounds = getJourneyBounds(candidate);
+  if (journeyBounds.start === null || candidateBounds.start === null) return false;
+  const overlaps = candidateBounds.start <= journeyBounds.end && candidateBounds.end >= journeyBounds.start;
+  if (overlaps) return true;
+
+  const journeyExit = parsePointTimeToMinutes(journey.horaFim);
+  const candidateEntry = parsePointTimeToMinutes(candidate.horaInicio);
+  if (journeyExit !== null && candidateEntry !== null && candidateEntry > journeyExit) return false;
+
+  // Sem saída final, eventos posteriores ainda pertencem à jornada aberta.
+  return journeyExit === null;
+};
+
+const mergeJourneyCandidate = (journey, candidate) => {
+  const shouldOverride = candidate.sourcePriority > journey.sourcePriority
+    || (candidate.sourcePriority === journey.sourcePriority && candidate.sourceOrder >= journey.sourceOrder);
+  const proposed = { ...journey };
+  JOURNEY_TIME_FIELDS.forEach((field) => {
+    if (!candidate[field]) return;
+    if (!proposed[field] || shouldOverride) proposed[field] = candidate[field];
+  });
+
+  if (!isChronologicalJourney(proposed)) {
+    JOURNEY_TIME_FIELDS.forEach((field) => {
+      if (!journey[field] && candidate[field]) proposed[field] = candidate[field];
+      else proposed[field] = journey[field] || '';
+    });
+  }
+
+  const candidateIsManager = candidate.origem === 'gestor';
+  return {
+    ...proposed,
+    origem: candidateIsManager ? 'gestor' : (journey.origem || candidate.origem),
+    justificativa: candidate.justificativa || journey.justificativa || '',
+    entryEvent: candidate.entryEvent || journey.entryEvent || null,
+    exitEvent: candidate.exitEvent || journey.exitEvent || null,
+    sourceRecordId: candidate.sourceRecordId || journey.sourceRecordId || '',
+    sourceRecordIds: Array.from(new Set([
+      ...(journey.sourceRecordIds || []),
+      candidate.sourceRecordId
+    ].filter(Boolean))),
+    sourcePriority: Math.max(journey.sourcePriority, candidate.sourcePriority),
+    sourceOrder: Math.max(journey.sourceOrder, candidate.sourceOrder)
+  };
+};
+
+const consolidateWorkJourneys = (activeRecords = []) => {
+  const candidates = activeRecords.flatMap(({ record, index, order }) => {
+    const sourcePriority = record.manualPeloGestor || record.lancamentoManualGestor ? 1 : 0;
+    return getRecordRows(record)
+      .filter((row) => ['work', 'manual', 'day'].includes(row.rowType))
+      .map((row, rowIndex) => ({
+        ...buildConsolidatedWorkPeriod(row, record, index, rowIndex),
+        jornadaId: getJourneySessionKey(row.source || record),
+        sourcePriority,
+        sourceOrder: order,
+        sourceRowIndex: rowIndex
+      }))
+      .filter(hasJourneyTime);
+  }).sort((left, right) => {
+    const leftBounds = getJourneyBounds(left);
+    const rightBounds = getJourneyBounds(right);
+    return (leftBounds.start ?? 24 * 60) - (rightBounds.start ?? 24 * 60)
+      || left.sourceOrder - right.sourceOrder
+      || left.sourceRowIndex - right.sourceRowIndex;
+  });
+
+  const journeys = [];
+  candidates.forEach((candidate) => {
+    const matchingIndex = journeys.findIndex((journey) => canBelongToJourney(journey, candidate));
+    if (matchingIndex === -1) {
+      journeys.push({
+        ...candidate,
+        sourceRecordIds: candidate.sourceRecordId ? [candidate.sourceRecordId] : []
+      });
+      return;
+    }
+    journeys[matchingIndex] = mergeJourneyCandidate(journeys[matchingIndex], candidate);
+  });
+
+  return journeys
+    .filter(hasJourneyTime)
+    .sort((left, right) => (
+      (getJourneyBounds(left).start ?? 24 * 60) - (getJourneyBounds(right).start ?? 24 * 60)
+    ));
+};
+
 const getActiveSupplementalPeriods = (record = {}) => (
   Array.isArray(record.periodosComplementares)
     ? record.periodosComplementares.filter((period) => period && period.ativo !== false)
@@ -77,28 +216,14 @@ export const consolidatePointDayRecords = (records = [], { storeId = '' } = {}) 
     getRecordStartMinutes(left.record) - getRecordStartMinutes(right.record)
     || left.order - right.order
   ));
-  const primary = orderedByPeriod[orderedByPeriod.length - 1].record;
-  const workPeriods = [];
+  const primary = [...activeRecords]
+    .sort((left, right) => left.order - right.order || left.index - right.index)
+    .pop().record;
+  const workPeriods = consolidateWorkJourneys(activeRecords);
   const supplementalPeriods = [];
-  const workPeriodKeys = new Set();
   const supplementalPeriodKeys = new Set();
 
   orderedByPeriod.forEach(({ record, index }) => {
-    getRecordRows(record)
-      .filter((row) => row.rowType === 'work' || row.rowType === 'manual')
-      .forEach((row, rowIndex) => {
-        const periodKey = [
-          row.horaEntrada,
-          row.horaAlmocoSaida,
-          row.horaAlmocoRetorno,
-          row.horaSaida,
-          row.origin,
-          row.ownJustification || row.source?.justificativa || ''
-        ].join('|');
-        if (workPeriodKeys.has(periodKey)) return;
-        workPeriodKeys.add(periodKey);
-        workPeriods.push(buildConsolidatedWorkPeriod(row, record, index, rowIndex));
-      });
     getActiveSupplementalPeriods(record).forEach((period) => {
       const periodKey = [period.tipo, period.horaInicio, period.horaFim].join('|');
       if (supplementalPeriodKeys.has(periodKey)) return;
@@ -118,6 +243,20 @@ export const consolidatePointDayRecords = (records = [], { storeId = '' } = {}) 
   const employeeId = getEmployeeKey(metadataSource);
   const dayKey = getDayKey(metadataSource);
   const resolvedStoreId = getStoreKey(metadataSource, storeId);
+  const firstJourney = workPeriods[0] || {};
+  const canonicalPunches = workPeriods.flatMap((journey, index) => buildPointPunchEventsFromTimes({
+    horaEntrada: journey.horaInicio,
+    horaAlmocoSaida: journey.horaAlmocoSaida,
+    horaAlmocoRetorno: journey.horaAlmocoRetorno,
+    horaSaida: journey.horaFim,
+    localizacaoEntrada: journey.entryEvent?.localizacao || null,
+    localizacaoEntradaEndereco: journey.entryEvent?.endereco || '',
+    localizacaoSaida: journey.exitEvent?.localizacao || null,
+    localizacaoSaidaEndereco: journey.exitEvent?.endereco || ''
+  }, {
+    origem: journey.origem,
+    idPrefix: `jornada_${index + 1}`
+  }).map((event) => ({ ...event, jornadaId: journey.jornadaId || `jornada_${index + 1}` })));
 
   return {
     ...metadataSource,
@@ -136,6 +275,12 @@ export const consolidatePointDayRecords = (records = [], { storeId = '' } = {}) 
     lancamentoFerias: hasPeriodContent ? false : metadataSource.lancamentoFerias,
     folga: hasPeriodContent ? false : metadataSource.folga,
     feriado: hasPeriodContent ? false : metadataSource.feriado,
+    horaEntrada: workPeriods.length ? (firstJourney.horaInicio || '') : (metadataSource.horaEntrada || ''),
+    horaAlmocoSaida: workPeriods.length ? (firstJourney.horaAlmocoSaida || '') : (metadataSource.horaAlmocoSaida || ''),
+    horaAlmocoRetorno: workPeriods.length ? (firstJourney.horaAlmocoRetorno || '') : (metadataSource.horaAlmocoRetorno || ''),
+    horaSaida: workPeriods.length ? (firstJourney.horaFim || '') : (metadataSource.horaSaida || ''),
+    batidas: canonicalPunches,
+    batidasSincronizadasComAjuste: true,
     periodosTrabalho: workPeriods,
     periodosComplementares: supplementalPeriods,
     sourceRecordIds: activeRecords.map(({ record }) => record.id).filter(Boolean),

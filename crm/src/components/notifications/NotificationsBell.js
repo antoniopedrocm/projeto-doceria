@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bell, CheckCheck, Eye, EyeOff, Filter, X } from 'lucide-react';
 import { formatCentsBRL, isCashNotification } from '../../caixa/caixaCore';
 import {
@@ -33,7 +33,6 @@ const NotificationsBell = ({
   onToggle,
   onClose,
   onOpenOrders,
-  onOpenOrder,
   storeInfoMap = {},
 }) => {
   const role = normalizeRole(user?.role);
@@ -48,25 +47,6 @@ const NotificationsBell = ({
   const [busyIds, setBusyIds] = useState(new Set());
   const [isMarkingAll, setIsMarkingAll] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const rootRef = useRef(null);
-
-  useEffect(() => {
-    if (!isOpen) return undefined;
-
-    const closeOnOutsidePointer = (event) => {
-      if (!rootRef.current?.contains(event.target)) onClose();
-    };
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') onClose();
-    };
-
-    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [isOpen, onClose]);
 
   const loadCashNotifications = useCallback(async () => {
     if (!canReceiveCashAlerts || !uid) {
@@ -182,11 +162,7 @@ const NotificationsBell = ({
           type="button"
           key={order.id}
           className="block w-full border-b p-2 text-left hover:bg-gray-50"
-          onClick={() => {
-            if (onOpenOrder) onOpenOrder(order);
-            else onOpenOrders();
-            onClose();
-          }}
+          onClick={() => { onOpenOrders(); onClose(); }}
         >
           <p className="font-semibold">{order.clienteNome || 'Cliente'}</p>
           <p className="text-sm text-gray-500">ID: {order.id?.substring(0, 8) || 'N/A'}</p>
@@ -311,7 +287,7 @@ const NotificationsBell = ({
   );
 
   return (
-    <div ref={rootRef} className="relative">
+    <div className="relative">
       <button type="button" onClick={onToggle} className="relative rounded-full p-2 hover:bg-gray-100" aria-label="Abrir notificações">
         <Bell className="h-5 w-5 text-gray-600" />
         {badgeCount > 0 && (

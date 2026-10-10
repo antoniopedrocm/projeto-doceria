@@ -1,4 +1,5 @@
 import {
+  canAdjustCaixaAfterClosing,
   formatCentsBRL,
   getDocumentCents,
   getDefaultCaixaPermissionsForRole,
@@ -13,6 +14,7 @@ describe('permissões do caixa', () => {
       registrarEncerramento: true,
       registrarRetiradaDespesa: true,
       registrarSangria: false,
+      ajustarCaixaAposEncerramento: false,
       visualizarSangrias: false,
       visualizarConferencia: false,
       visualizarValoresCalculados: false,
@@ -20,14 +22,27 @@ describe('permissões do caixa', () => {
     });
   });
 
-  test.each(['gerente', 'dono'])('%s recebe todas as permissões gerenciais', (role) => {
-    expect(Object.values(getDefaultCaixaPermissionsForRole(role)).every(Boolean)).toBe(true);
+  test('gerente precisa de autorização individual para ajustes e correções', () => {
+    const permissions = getDefaultCaixaPermissionsForRole('gerente');
+    expect(permissions.registrarSangria).toBe(true);
+    expect(permissions.ajustarCaixaAposEncerramento).toBe(false);
+    expect(canAdjustCaixaAfterClosing('gerente', permissions)).toBe(false);
+    expect(canAdjustCaixaAfterClosing('gerente', {
+      ...permissions,
+      ajustarCaixaAposEncerramento: true,
+    })).toBe(true);
+  });
+
+  test('dono sempre pode ajustar e corrigir o caixa', () => {
+    expect(Object.values(getDefaultCaixaPermissionsForRole('dono')).every(Boolean)).toBe(true);
+    expect(canAdjustCaixaAfterClosing('dono', {})).toBe(true);
   });
 
   test('permissões personalizadas preservam defaults de campos novos', () => {
     expect(sanitizeCaixaPermissions({ registrarSangria: false }, 'gerente')).toMatchObject({
       registrarInicio: true,
       registrarSangria: false,
+      ajustarCaixaAposEncerramento: false,
       visualizarConferencia: true,
     });
   });

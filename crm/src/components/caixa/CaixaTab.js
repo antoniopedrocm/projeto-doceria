@@ -2,14 +2,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Banknote,
   CalendarDays,
+  Edit3,
   History,
   Plus,
   Save,
   Search,
   ShieldCheck,
   WalletCards,
+  X,
 } from 'lucide-react';
 import {
+  canAdjustCaixaAfterClosing,
   createIdempotencyKey,
   formatCentsBRL,
   getDocumentCents,
@@ -20,6 +23,7 @@ import {
 } from '../../caixa/caixaCore';
 import {
   ajustarSangriaCaixa,
+  corrigirValoresCaixa,
   listarConferenciasCaixa,
   listarSangriasCaixa,
   obterRegistroDiarioCaixa,
@@ -27,6 +31,7 @@ import {
   registrarSangriaCaixa,
   registrarValorInicialCaixa,
 } from '../../services/caixaService';
+import PostClosingConfirmation from './PostClosingConfirmation';
 
 const getErrorMessage = (error, fallback) => String(
   error?.details?.message || error?.message || fallback,
@@ -132,6 +137,40 @@ const ValueSummary = ({ label, cents, registrant, timestamp, observation }) => (
   </div>
 );
 
+const CashCorrectionConfirmation = ({ correction, isSaving, onCancel, onConfirm }) => {
+  if (!correction) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Confirmar correção do caixa?</h3>
+            <p className="mt-1 text-sm text-gray-500">A alteração financeira será auditada e não reabrirá o caixa.</p>
+          </div>
+          <button type="button" onClick={onCancel} disabled={isSaving} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" aria-label="Cancelar correção">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-4 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          {correction.initial && (
+            <p><strong>Valor de abertura:</strong> {formatCentsBRL(correction.initial.previous)} → {formatCentsBRL(correction.initial.next)}</p>
+          )}
+          {correction.closing && (
+            <p><strong>Valor de encerramento:</strong> {formatCentsBRL(correction.closing.previous)} → {formatCentsBRL(correction.closing.next)}</p>
+          )}
+          <p><strong>Motivo:</strong> {correction.reason}</p>
+        </div>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={isSaving} className={secondaryButtonClassName}>Cancelar</button>
+          <button type="button" onClick={onConfirm} disabled={isSaving} className={primaryButtonClassName}>
+            <Save className="h-4 w-4" /> {isSaving ? 'Salvando...' : 'Salvar correção'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const CaixaTab = ({
   currentUser,
   effectiveStoreId,
@@ -146,6 +185,10 @@ const CaixaTab = ({
     currentUser?.permissionDetails?.caixa || currentUser?.customPermissionDetails?.caixa,
     currentUser?.role,
   ), [currentUser]);
+  const canCorrectCashValues = useMemo(() => canAdjustCaixaAfterClosing(
+    currentUser?.role,
+    permissions,
+  ), [currentUser?.role, permissions]);
 
   const storeOptions = useMemo(() => {
     const ids = new Set((availableStores || []).filter(Boolean));
@@ -169,11 +212,23 @@ const CaixaTab = ({
   const closingSubmittingRef = useRef(false);
   const initialIdempotencyRef = useRef(createIdempotencyKey('caixa-inicio'));
   const closingIdempotencyRef = useRef(createIdempotencyKey('caixa-encerramento'));
+  const correctionIdempotencyRef = useRef(createIdempotencyKey('caixa-correcao-valores'));
+  const [correctionForm, setCorrectionForm] = useState({
+    isOpen: false,
+    initialValue: '',
+    closingValue: '',
+    reason: '',
+  });
+  const [pendingCorrection, setPendingCorrection] = useState(null);
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  const correctionSubmittingRef = useRef(false);
 
   const [sangriaValue, setSangriaValue] = useState('');
   const [sangriaReason, setSangriaReason] = useState('');
   const [sangriaObservation, setSangriaObservation] = useState('');
   const [sangriaDestination, setSangriaDestination] = useState('');
+  const [sangriaMovementTime, setSangriaMovementTime] = useState('');
+  const [pendingPostClosingSangria, setPendingPostClosingSangria] = useState(null);
   const [savingSangria, setSavingSangria] = useState(false);
   const [sangrias, setSangrias] = useState([]);
   const [sangriaStart, setSangriaStart] = useState(getMonthStartDate());
@@ -211,7 +266,10 @@ const CaixaTab = ({
   useEffect(() => {
     initialIdempotencyRef.current = createIdempotencyKey(`${storeId || 'sem-loja'}:${operationalDate}:inicio`);
     closingIdempotencyRef.current = createIdempotencyKey(`${storeId || 'sem-loja'}:${operationalDate}:encerramento`);
+    correctionIdempotencyRef.current = createIdempotencyKey(`${storeId || 'sem-loja'}:${operationalDate}:correcao-valores`);
     sangriaIdempotencyRef.current = createIdempotencyKey(`${storeId || 'sem-loja'}:${operationalDate}:sangria`);
+    setCorrectionForm({ isOpen: false, initialValue: '', closingValue: '', reason: '' });
+    setPendingCorrection(null);
   }, [operationalDate, storeId]);
 
   const areaOptions = useMemo(() => {
@@ -326,6 +384,95 @@ const CaixaTab = ({
     }
   };
 
+  const openCorrectionForm = () => {
+    setCorrectionForm({
+      isOpen: true,
+      initialValue: Number.isSafeInteger(initialCents)
+        ? (initialCents / 100).toFixed(2).replace('.', ',') : '',
+      closingValue: Number.isSafeInteger(closingCents)
+        ? (closingCents / 100).toFixed(2).replace('.', ',') : '',
+      reason: '',
+    });
+    setPendingCorrection(null);
+    setRecordFeedback({ type: '', text: '' });
+    correctionIdempotencyRef.current = createIdempotencyKey(`${storeId}:${operationalDate}:correcao-valores`);
+  };
+
+  const closeCorrectionForm = () => {
+    if (savingCorrection) return;
+    setCorrectionForm({ isOpen: false, initialValue: '', closingValue: '', reason: '' });
+    setPendingCorrection(null);
+  };
+
+  const reviewCashCorrection = (event) => {
+    event.preventDefault();
+    const reason = correctionForm.reason.trim();
+    if (!reason) {
+      setRecordFeedback({ type: 'error', text: 'Informe o motivo da correção.' });
+      return;
+    }
+    const requestedInitial = correctionForm.initialValue.trim() === ''
+      ? initialCents : parseCurrencyToCents(correctionForm.initialValue);
+    const requestedClosing = correctionForm.closingValue.trim() === ''
+      ? closingCents : parseCurrencyToCents(correctionForm.closingValue);
+    if (hasInitial && (!Number.isSafeInteger(requestedInitial) || requestedInitial < 0)) {
+      setRecordFeedback({ type: 'error', text: 'Informe um valor de abertura válido.' });
+      return;
+    }
+    if (hasClosing && (!Number.isSafeInteger(requestedClosing) || requestedClosing < 0)) {
+      setRecordFeedback({ type: 'error', text: 'Informe um valor de encerramento válido.' });
+      return;
+    }
+    const initial = hasInitial && requestedInitial !== initialCents
+      ? { previous: initialCents, next: requestedInitial } : null;
+    const closing = hasClosing && requestedClosing !== closingCents
+      ? { previous: closingCents, next: requestedClosing } : null;
+    if (!initial && !closing) {
+      setRecordFeedback({ type: 'error', text: 'Altere ao menos um dos valores antes de continuar.' });
+      return;
+    }
+    setRecordFeedback({ type: '', text: '' });
+    setPendingCorrection({ initial, closing, reason });
+  };
+
+  const confirmCashCorrection = async () => {
+    if (!pendingCorrection || correctionSubmittingRef.current) return;
+    correctionSubmittingRef.current = true;
+    setSavingCorrection(true);
+    try {
+      const payload = {
+        lojaId: storeId,
+        dataOperacional: operationalDate,
+        motivo: pendingCorrection.reason,
+        idempotencyKey: correctionIdempotencyRef.current,
+      };
+      if (pendingCorrection.initial) {
+        payload.valorInicialAnteriorCentavos = pendingCorrection.initial.previous;
+        payload.novoValorInicialCentavos = pendingCorrection.initial.next;
+      }
+      if (pendingCorrection.closing) {
+        payload.valorEncerramentoAnteriorCentavos = pendingCorrection.closing.previous;
+        payload.novoValorEncerramentoCentavos = pendingCorrection.closing.next;
+      }
+      const response = await corrigirValoresCaixa(payload);
+      if (response?.registro) setRecord(response.registro);
+      setCorrectionForm({ isOpen: false, initialValue: '', closingValue: '', reason: '' });
+      setPendingCorrection(null);
+      setRecordFeedback({ type: 'success', text: 'Correção salva com auditoria e recálculo concluídos.' });
+      correctionIdempotencyRef.current = createIdempotencyKey(`${storeId}:${operationalDate}:correcao-valores`);
+      await loadRecord();
+    } catch (error) {
+      setPendingCorrection(null);
+      setRecordFeedback({
+        type: 'error',
+        text: getErrorMessage(error, 'Não foi possível corrigir os valores do caixa.'),
+      });
+    } finally {
+      correctionSubmittingRef.current = false;
+      setSavingCorrection(false);
+    }
+  };
+
   const filteredWithdrawals = useMemo(() => (retiradas || []).filter((item) => (
     !item?.lojaId || !storeId || item.lojaId === storeId
   )), [retiradas, storeId]);
@@ -365,6 +512,38 @@ const CaixaTab = ({
     if (activeArea === 'sangrias') loadSangrias();
   }, [activeArea, loadSangrias]);
 
+  const saveSangria = async (payload, postClosing = false) => {
+    if (sangriaSubmittingRef.current) return;
+    sangriaSubmittingRef.current = true;
+    setSavingSangria(true);
+    setSangriaFeedback({ type: '', text: '' });
+    try {
+      await registrarSangriaCaixa(payload);
+      setSangriaValue('');
+      setSangriaReason('');
+      setSangriaObservation('');
+      setSangriaDestination('');
+      setSangriaMovementTime('');
+      setPendingPostClosingSangria(null);
+      setSangriaFeedback({
+        type: 'success',
+        text: postClosing
+          ? 'Lançamento registrado com sucesso. A conferência do caixa foi recalculada.'
+          : 'Sangria registrada com sucesso.',
+      });
+      sangriaIdempotencyRef.current = createIdempotencyKey(`${storeId}:${operationalDate}:sangria`);
+      await Promise.all([loadSangrias(), loadRecord()]);
+    } catch (error) {
+      setSangriaFeedback({
+        type: 'error',
+        text: getErrorMessage(error, 'Não foi possível registrar a sangria.'),
+      });
+    } finally {
+      sangriaSubmittingRef.current = false;
+      setSavingSangria(false);
+    }
+  };
+
   const handleSangriaSubmit = async (event) => {
     event.preventDefault();
     if (sangriaSubmittingRef.current) return;
@@ -377,40 +556,39 @@ const CaixaTab = ({
       setSangriaFeedback({ type: 'error', text: 'Informe um valor de sangria maior que zero.' });
       return;
     }
+    if (hasClosing && !canCorrectCashValues) {
+      setSangriaFeedback({ type: 'error', text: 'Seu usuário não possui permissão para realizar ajustes após o encerramento.' });
+      return;
+    }
+    if (hasClosing && !sangriaReason.trim()) {
+      setSangriaFeedback({ type: 'error', text: 'Informe o motivo do lançamento após o encerramento.' });
+      return;
+    }
     if (!sangriaReason.trim() && !sangriaObservation.trim()) {
       setSangriaFeedback({ type: 'error', text: 'Informe o motivo ou uma observação.' });
       return;
     }
 
-    sangriaSubmittingRef.current = true;
-    setSavingSangria(true);
-    setSangriaFeedback({ type: '', text: '' });
-    try {
-      await registrarSangriaCaixa({
-        lojaId: storeId,
-        dataOperacional: operationalDate,
-        valorCentavos: valueCents,
-        motivo: sangriaReason.trim(),
-        observacao: sangriaObservation.trim(),
-        destino: sangriaDestination.trim(),
-        idempotencyKey: sangriaIdempotencyRef.current,
-      });
-      setSangriaValue('');
-      setSangriaReason('');
-      setSangriaObservation('');
-      setSangriaDestination('');
-      setSangriaFeedback({ type: 'success', text: 'Sangria registrada com sucesso.' });
-      sangriaIdempotencyRef.current = createIdempotencyKey(`${storeId}:${operationalDate}:sangria`);
-      await loadSangrias();
-    } catch (error) {
-      setSangriaFeedback({
-        type: 'error',
-        text: getErrorMessage(error, 'Não foi possível registrar a sangria.'),
-      });
-    } finally {
-      sangriaSubmittingRef.current = false;
-      setSavingSangria(false);
+    const payload = {
+      lojaId: storeId,
+      dataOperacional: operationalDate,
+      valorCentavos: valueCents,
+      motivo: sangriaReason.trim(),
+      observacao: sangriaObservation.trim(),
+      destino: sangriaDestination.trim(),
+      horaMovimentacao: sangriaMovementTime,
+      idempotencyKey: sangriaIdempotencyRef.current,
+    };
+    if (hasClosing) {
+      setPendingPostClosingSangria(payload);
+      return;
     }
+    await saveSangria(payload, false);
+  };
+
+  const confirmPostClosingSangria = async () => {
+    if (!pendingPostClosingSangria) return;
+    await saveSangria(pendingPostClosingSangria, true);
   };
 
   const openSangriaAdjustment = (item) => {
@@ -546,6 +724,59 @@ const CaixaTab = ({
 
           <Feedback feedback={recordFeedback} />
 
+          {canCorrectCashValues && hasInitial && !correctionForm.isOpen && (
+            <button type="button" onClick={openCorrectionForm} className={secondaryButtonClassName}>
+              <Edit3 className="h-4 w-4" /> Corrigir caixa
+            </button>
+          )}
+
+          {canCorrectCashValues && correctionForm.isOpen && (
+            <form onSubmit={reviewCashCorrection} className="space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div>
+                <h3 className="font-semibold text-amber-950">Corrigir valores declarados</h3>
+                <p className="mt-1 text-xs text-amber-800">Altere somente os campos incorretos. Vendas e movimentações não serão modificadas, e o caixa permanecerá no estado atual.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="space-y-1 text-sm font-medium text-gray-700">
+                  <span>Novo valor de abertura (R$)</span>
+                  <input inputMode="decimal" value={correctionForm.initialValue} onChange={(event) => setCorrectionForm((current) => ({ ...current, initialValue: event.target.value }))} className={inputClassName} placeholder="0,00" />
+                  <span className="block text-xs font-normal text-gray-500">Atual: {formatCentsBRL(initialCents)}</span>
+                </label>
+                {hasClosing && (
+                  <label className="space-y-1 text-sm font-medium text-gray-700">
+                    <span>Novo valor de encerramento (R$)</span>
+                    <input inputMode="decimal" value={correctionForm.closingValue} onChange={(event) => setCorrectionForm((current) => ({ ...current, closingValue: event.target.value }))} className={inputClassName} placeholder="0,00" />
+                    <span className="block text-xs font-normal text-gray-500">Atual: {formatCentsBRL(closingCents)}</span>
+                  </label>
+                )}
+              </div>
+              <label className="block space-y-1 text-sm font-medium text-gray-700">
+                <span>Motivo da correção</span>
+                <textarea rows="3" value={correctionForm.reason} onChange={(event) => setCorrectionForm((current) => ({ ...current, reason: event.target.value }))} className={inputClassName} required />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button type="submit" disabled={savingCorrection} className={primaryButtonClassName}>Revisar correção</button>
+                <button type="button" onClick={closeCorrectionForm} disabled={savingCorrection} className={secondaryButtonClassName}>Cancelar</button>
+              </div>
+            </form>
+          )}
+
+          {Array.isArray(record?.correcoesValores) && record.correcoesValores.length > 0 && (
+            <details className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-700">
+              <summary className="cursor-pointer font-semibold">Histórico de correções ({record.correcoesValores.length})</summary>
+              <div className="mt-3 space-y-3">
+                {record.correcoesValores.map((correction) => (
+                  <div key={correction.id} className="border-t border-gray-200 pt-3 first:border-0 first:pt-0">
+                    {Number.isSafeInteger(correction.valorInicialNovoCentavos) && <p>Abertura: {formatCentsBRL(correction.valorInicialAnteriorCentavos)} → {formatCentsBRL(correction.valorInicialNovoCentavos)}</p>}
+                    {Number.isSafeInteger(correction.valorEncerramentoNovoCentavos) && <p>Encerramento: {formatCentsBRL(correction.valorEncerramentoAnteriorCentavos)} → {formatCentsBRL(correction.valorEncerramentoNovoCentavos)}</p>}
+                    <p>Motivo: {correction.motivo}</p>
+                    <p>{correction.usuarioNome || correction.usuarioEmail || correction.usuarioUid || '-'} • {formatDateTime(correction.registradoEm)}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             {permissions.registrarInicio && (
               <div className="space-y-3 rounded-xl border border-gray-200 p-4">
@@ -613,17 +844,34 @@ const CaixaTab = ({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-gray-500">Cada retirada fica vinculada à loja, data e responsável.</p>
           {permissions.registrarRetiradaDespesa && (
-            <button type="button" onClick={() => onNewRetirada(storeId, operationalDate)} disabled={!storeId} className={primaryButtonClassName}>
+            <button
+              type="button"
+              onClick={() => onNewRetirada(storeId, operationalDate, hasClosing)}
+              disabled={!storeId || (hasClosing && !canCorrectCashValues)}
+              className={primaryButtonClassName}
+            >
               <Plus className="h-4 w-4" /> Nova retirada para despesa
             </button>
           )}
         </div>
+
+        {hasClosing && canCorrectCashValues && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            Este caixa já possui encerramento. O lançamento será registrado como ajuste pós-encerramento e a conferência será recalculada.
+          </p>
+        )}
+        {hasClosing && !canCorrectCashValues && permissions.registrarRetiradaDespesa && (
+          <p className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+            Este dia já foi encerrado. Somente o Dono pode registrar uma retirada retroativa.
+          </p>
+        )}
 
         <div className="hidden overflow-x-auto rounded-xl border border-gray-200 md:block">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-3">Data</th>
+                <th className="px-4 py-3">Lançamento</th>
                 <th className="px-4 py-3">Motivo</th>
                 <th className="px-4 py-3">Valor</th>
                 <th className="px-4 py-3">Responsável</th>
@@ -634,6 +882,14 @@ const CaixaTab = ({
               {filteredWithdrawals.map((item) => (
                 <tr key={item.id}>
                   <td className="px-4 py-3">{formatDate(getRetiradaDate(item))}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600">
+                    <p>{formatDateTime(firstValue(item, ['registradoEm', 'createdAt', 'dataLancamento']))}</p>
+                    {item.lancamentoPosEncerramento && (
+                      <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">
+                        Ajuste pós-encerramento
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-medium text-gray-900">{item.motivo || item.descricao || '-'}</td>
                   <td className="px-4 py-3 font-semibold text-rose-600">{formatCentsBRL(getDocumentCents(item, 'valorCentavos', 'valor') || 0)}</td>
                   <td className="px-4 py-3">{getRetiradaRegistrant(item)}</td>
@@ -651,6 +907,11 @@ const CaixaTab = ({
                 <div>
                   <p className="font-semibold text-gray-900">{item.motivo || item.descricao || '-'}</p>
                   <p className="mt-1 text-xs text-gray-500">{formatDate(getRetiradaDate(item))} • {getRetiradaRegistrant(item)}</p>
+                  {item.lancamentoPosEncerramento && (
+                    <p className="mt-1 text-xs font-semibold text-amber-700">
+                      Lançada em {formatDateTime(firstValue(item, ['registradoEm', 'createdAt', 'dataLancamento']))} • Ajuste pós-encerramento
+                    </p>
+                  )}
                 </div>
                 <p className="font-bold text-rose-600">{formatCentsBRL(getDocumentCents(item, 'valorCentavos', 'valor') || 0)}</p>
               </div>
@@ -690,7 +951,11 @@ const CaixaTab = ({
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 <span>Motivo</span>
-                <input value={sangriaReason} onChange={(event) => setSangriaReason(event.target.value)} className={inputClassName} />
+                <input value={sangriaReason} onChange={(event) => setSangriaReason(event.target.value)} className={inputClassName} required={hasClosing} />
+              </label>
+              <label className="space-y-1 text-sm font-medium text-gray-700">
+                <span>Horário da movimentação (opcional)</span>
+                <input type="time" value={sangriaMovementTime} onChange={(event) => setSangriaMovementTime(event.target.value)} className={inputClassName} />
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 <span>Observação</span>
@@ -698,8 +963,17 @@ const CaixaTab = ({
               </label>
             </div>
             {!hasInitial && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Informe primeiro o valor inicial deste dia.</p>}
-            {hasClosing && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Não é possível registrar sangria depois do encerramento deste dia.</p>}
-            <button type="submit" disabled={savingSangria || !hasInitial || hasClosing} className={primaryButtonClassName}>
+            {hasClosing && canCorrectCashValues && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Este caixa já possui encerramento. O lançamento será registrado como ajuste pós-encerramento e a conferência será recalculada. O motivo é obrigatório.
+              </p>
+            )}
+            {hasClosing && !canCorrectCashValues && (
+              <p className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+                Não é possível registrar sangria depois do encerramento deste dia.
+              </p>
+            )}
+            <button type="submit" disabled={savingSangria || !hasInitial || (hasClosing && !canCorrectCashValues)} className={primaryButtonClassName}>
               <Save className="h-4 w-4" /> {savingSangria ? 'Registrando...' : 'Registrar sangria'}
             </button>
           </form>
@@ -729,8 +1003,16 @@ const CaixaTab = ({
                     <div>
                       <p className="font-semibold text-gray-900">{item.motivo || item.observacao || 'Sangria'}</p>
                       <p className="mt-1 text-xs text-gray-500">
-                        {formatDateTime(firstValue(item, ['criadoEm', 'createdAt', 'registradoEm']))} • {firstValue(item, ['responsavelNome', 'registradoPorNome', 'responsavelEmail', 'responsavelUid'], '-')}
+                        Movimentação: {formatDate(item.dataMovimentacao || item.dataOperacional)}{item.horaMovimentacao ? ` às ${item.horaMovimentacao}` : ''} • {firstValue(item, ['responsavelNome', 'registradoPorNome', 'responsavelEmail', 'responsavelUid'], '-')}
                       </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Lançada em: {formatDateTime(firstValue(item, ['criadoEm', 'createdAt', 'registradoEm', 'dataLancamento']))}
+                      </p>
+                      {item.lancamentoPosEncerramento && (
+                        <span className="mt-2 inline-flex rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                          Ajuste pós-encerramento
+                        </span>
+                      )}
                     </div>
                     <p className="text-lg font-bold text-gray-900">{formatCentsBRL(getDocumentCents(item, 'valorCentavos', 'valor') || 0)}</p>
                   </div>
@@ -881,6 +1163,50 @@ const CaixaTab = ({
                     </p>
                   )}
                 </div>
+                {Array.isArray(item.correcoesValores) && item.correcoesValores.length > 0 && (
+                  <details className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-blue-900">Correções de valores ({item.correcoesValores.length})</summary>
+                    <div className="mt-2 space-y-3">
+                      {item.correcoesValores.map((correction) => (
+                        <div key={correction.id} className="border-t border-blue-200 pt-3 text-xs text-blue-950 first:border-0 first:pt-0">
+                          {Number.isSafeInteger(correction.valorInicialNovoCentavos) && <p>Abertura: {formatCentsBRL(correction.valorInicialAnteriorCentavos)} → {formatCentsBRL(correction.valorInicialNovoCentavos)}</p>}
+                          {Number.isSafeInteger(correction.valorEncerramentoNovoCentavos) && <p>Encerramento: {formatCentsBRL(correction.valorEncerramentoAnteriorCentavos)} → {formatCentsBRL(correction.valorEncerramentoNovoCentavos)}</p>}
+                          <p>Motivo: {correction.motivo || '-'}</p>
+                          <p>Alterado por: {correction.usuarioNome || correction.usuarioEmail || correction.usuarioUid || '-'}</p>
+                          <p>Data/hora: {formatDateTime(correction.registradoEm)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+                {Array.isArray(item.ajustesPosEncerramento) && item.ajustesPosEncerramento.length > 0 && (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-sm font-semibold text-amber-900">Ajustes pós-encerramento</p>
+                    <div className="mt-2 space-y-3">
+                      {item.ajustesPosEncerramento.map((adjustment) => (
+                        <div key={adjustment.id || adjustment.movimentacaoId} className="border-t border-amber-200 pt-3 text-xs text-amber-900 first:border-0 first:pt-0">
+                          <p className="font-semibold">
+                            {adjustment.tipoMovimentacao === 'sangria' ? 'Sangria' : 'Retirada para despesa'} • {formatCentsBRL(adjustment.valorCentavos)}
+                          </p>
+                          <p>Movimentação: {formatDate(adjustment.dataMovimentacao || adjustment.dataOperacionalAfetada)}{adjustment.horaMovimentacao ? ` às ${adjustment.horaMovimentacao}` : ''}</p>
+                          <p>Lançada em: {formatDateTime(adjustment.registradoEm)}</p>
+                          <p>Responsável pelo lançamento: {adjustment.usuarioNome || adjustment.usuarioEmail || adjustment.usuarioUid || '-'}</p>
+                          <p>Motivo: {adjustment.motivo || '-'}</p>
+                          {permissions.visualizarValoresCalculados && (
+                            <p>
+                              Valor esperado: {formatCentsBRL(adjustment.valorEsperadoAntesCentavos)} → {formatCentsBRL(adjustment.valorEsperadoDepoisCentavos)}
+                            </p>
+                          )}
+                          {permissions.visualizarDivergencias && (
+                            <p>
+                              Diferença: {formatCentsBRL(adjustment.diferencaAntesCentavos)} → {formatCentsBRL(adjustment.diferencaDepoisCentavos)}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </article>
             );
           })}
@@ -917,6 +1243,18 @@ const CaixaTab = ({
       {activeArea === 'sangrias' && permissions.visualizarSangrias && renderSangriasArea()}
       {activeArea === 'sangrias' && permissions.registrarSangria && !permissions.visualizarSangrias && renderSangriasArea()}
       {activeArea === 'historico' && permissions.visualizarConferencia && renderHistoryArea()}
+      <PostClosingConfirmation
+        isOpen={Boolean(pendingPostClosingSangria)}
+        isSaving={savingSangria}
+        onCancel={() => !savingSangria && setPendingPostClosingSangria(null)}
+        onConfirm={confirmPostClosingSangria}
+      />
+      <CashCorrectionConfirmation
+        correction={pendingCorrection}
+        isSaving={savingCorrection}
+        onCancel={() => !savingCorrection && setPendingCorrection(null)}
+        onConfirm={confirmCashCorrection}
+      />
     </div>
   );
 };

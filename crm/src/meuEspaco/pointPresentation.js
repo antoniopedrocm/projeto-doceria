@@ -14,6 +14,7 @@ const FULL_DAY_TYPE_LABELS = {
   folga: 'Folga',
   feriado: 'Feriado'
 };
+
 const SUPPLEMENTAL_ROW_LABELS = {
   abono_periodo: 'Abono de período',
   liberacao_chefia_periodo: 'Liberação Chefia',
@@ -40,7 +41,10 @@ const buildEventWorkRows = (record = {}) => {
   let current = null;
   getPointPunchEvents(record).forEach((event, eventIndex) => {
     if (event.tipo === 'entrada') {
-      if (current) rows.push(current);
+      // Uma nova entrada só inicia outra jornada depois de uma saída final.
+      // Entradas repetidas em uma jornada ainda aberta são dados redundantes
+      // (ou uma correção antiga), não uma segunda linha.
+      if (current) return;
       const origin = getEventOrigin(event, record);
       current = {
         id: `trabalho-${event.id || eventIndex}`,
@@ -86,12 +90,26 @@ const buildEventWorkRows = (record = {}) => {
 const isStoredPeriodCoveredByRow = (period = {}, row = {}) => {
   const start = parsePointTimeToMinutes(period.horaInicio || period.inicio);
   const end = parsePointTimeToMinutes(period.horaFim || period.fim);
-  return start !== null
-    && end !== null
-    && row.startMinutes !== null
-    && row.endMinutes !== null
-    && start >= row.startMinutes
-    && end <= row.endMinutes;
+  if (start === null || row.startMinutes === null) return false;
+
+  const lunchStart = parsePointTimeToMinutes(row.horaAlmocoSaida);
+  const lunchReturn = parsePointTimeToMinutes(row.horaAlmocoRetorno);
+  const completedSegments = [
+    lunchStart !== null ? [row.startMinutes, lunchStart] : null,
+    lunchReturn !== null && row.endMinutes !== null ? [lunchReturn, row.endMinutes] : null,
+    lunchStart === null && row.endMinutes !== null ? [row.startMinutes, row.endMinutes] : null
+  ].filter(Boolean);
+
+  if (end !== null && completedSegments.some(([segmentStart, segmentEnd]) => (
+    start >= segmentStart && end <= segmentEnd
+  ))) return true;
+
+  // Registros consolidados representam a jornada inteira, inclusive quando
+  // ainda está aberta e portanto não possuem horaFim.
+  return start === row.startMinutes
+    && (end === null || row.endMinutes === null || end === row.endMinutes)
+    && (!period.horaAlmocoSaida || period.horaAlmocoSaida === row.horaAlmocoSaida)
+    && (!period.horaAlmocoRetorno || period.horaAlmocoRetorno === row.horaAlmocoRetorno);
 };
 
 const buildStoredWorkRows = (record = {}, eventRows = []) => (

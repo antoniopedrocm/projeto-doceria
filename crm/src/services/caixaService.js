@@ -9,6 +9,7 @@ const call = async (name, payload = {}) => {
 
 export const registrarValorInicialCaixa = (payload) => call('registrarValorInicialCaixa', payload);
 export const registrarEncerramentoCaixa = (payload) => call('registrarEncerramentoCaixa', payload);
+export const corrigirValoresCaixa = (payload) => call('corrigirValoresCaixa', payload);
 export const registrarRetiradaDespesaCaixa = (payload) => call('registrarRetiradaDespesaCaixa', payload);
 export const registrarSangriaCaixa = (payload) => call('registrarSangriaCaixa', payload);
 export const ajustarSangriaCaixa = (payload) => call('ajustarSangriaCaixa', payload);

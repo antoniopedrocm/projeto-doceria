@@ -247,4 +247,77 @@ describe('linhas de apresentação do Meu Espaço', () => {
     const rows = records.flatMap((record) => buildPointPresentationRows(record));
     expect(rows.filter((row) => row.showDailyTotals)).toHaveLength(records.length);
   });
+
+  test('13 — saída para almoço mantém uma única linha enquanto a jornada está aberta', () => {
+    const rows = buildPointPresentationRows({
+      ...baseRecord,
+      batidas: [
+        { id: 'entrada', tipo: 'entrada', hora: '09:30', origem: 'funcionaria' },
+        { id: 'almoco', tipo: 'almoco_inicio', hora: '12:04', origem: 'funcionaria' }
+      ],
+      periodosTrabalho: [{
+        id: 'segmento-antes-almoco',
+        horaInicio: '09:30',
+        horaFim: '12:04',
+        origem: 'funcionaria',
+        ativo: true
+      }]
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      horaEntrada: '09:30',
+      horaAlmocoSaida: '12:04',
+      horaAlmocoRetorno: '',
+      horaSaida: ''
+    });
+  });
+
+  test('14 — horário corrigido pelo gestor prevalece sobre batidas antigas', () => {
+    const rows = buildPointPresentationRows({
+      ...baseRecord,
+      tipoLancamento: 'manual_pelo_gestor',
+      lancamentoManualGestor: true,
+      manualPeloGestor: true,
+      horaEntrada: '09:30',
+      horaAlmocoSaida: '12:04',
+      batidas: [{ id: 'antiga', tipo: 'almoco_inicio', hora: '12:04', origem: 'funcionaria' }]
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      rowType: 'manual',
+      horaEntrada: '09:30',
+      horaAlmocoSaida: '12:04'
+    });
+  });
+
+  test('15 — entrada repetida sem saída final não abre segunda jornada', () => {
+    const rows = buildPointPresentationRows({
+      ...baseRecord,
+      batidas: [
+        { id: 'e1', tipo: 'entrada', hora: '08:00' },
+        { id: 'e2', tipo: 'entrada', hora: '09:00' },
+        { id: 'a1', tipo: 'almoco_inicio', hora: '12:00' }
+      ]
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ horaEntrada: '08:00', horaAlmocoSaida: '12:00' });
+  });
+
+  test('16 — saída final seguida de nova entrada abre uma segunda jornada', () => {
+    const rows = buildPointPresentationRows({
+      ...baseRecord,
+      batidas: [
+        { id: 'e1', tipo: 'entrada', hora: '08:00' },
+        { id: 's1', tipo: 'saida', hora: '12:00' },
+        { id: 'e2', tipo: 'entrada', hora: '15:00' },
+        { id: 's2', tipo: 'saida', hora: '18:00' }
+      ]
+    });
+    expect(rows.map((row) => [row.horaEntrada, row.horaSaida])).toEqual([
+      ['08:00', '12:00'],
+      ['15:00', '18:00']
+    ]);
+  });
 });

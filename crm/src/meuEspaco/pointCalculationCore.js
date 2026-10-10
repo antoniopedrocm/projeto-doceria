@@ -1,3 +1,5 @@
+import { isHourlyWorkSchedule, getHourlyPointSummary, getHourlyPointBalance, hasIncompletePointLunch, hasIncompletePointPeriodLunch, isPointJourneyPending } from './pointScheduleCore';
+
 const DEFAULT_EXPECTED_MINUTES = 8 * 60;
 const DAILY_BANK_LIMIT_MINUTES = 15;
 const SATURDAY_BANK_LIMIT_MINUTES = 5 * 60;
@@ -9,6 +11,7 @@ export const POINT_SUPPLEMENTAL_TYPES = {
   trabalho_externo: 'Trabalho externo',
   saida_particular: 'Saída particular / período a descontar'
 };
+
 const JUSTIFIED_PERIOD_TYPES = new Set(['abono_periodo', 'liberacao_chefia_periodo']);
 
 export const canManagePointRecords = (role) => {
@@ -192,36 +195,188 @@ export const formatSupplementalPeriodLabel = (period = {}) => {
   return `${label} ${period.horaInicio || '--:--'}–${period.horaFim || '--:--'}`;
 };
 
-const legacyPunchEvents = (record = {}) => [
-  record.horaEntrada && {
-    tipo: 'entrada',
-    hora: record.horaEntrada,
-    origem: record.manualPeloGestor || record.lancamentoManualGestor ? 'gestor' : 'funcionaria',
-    localizacao: record.localizacaoEntrada || null,
-    endereco: record.localizacaoEntradaEndereco || ''
-  },
-  record.horaAlmocoSaida && {
-    tipo: 'almoco_inicio',
-    hora: record.horaAlmocoSaida,
-    origem: record.manualPeloGestor || record.lancamentoManualGestor ? 'gestor' : 'funcionaria'
-  },
-  record.horaAlmocoRetorno && {
-    tipo: 'almoco_fim',
-    hora: record.horaAlmocoRetorno,
-    origem: record.manualPeloGestor || record.lancamentoManualGestor ? 'gestor' : 'funcionaria'
-  },
-  record.horaSaida && {
-    tipo: 'saida',
-    hora: record.horaSaida,
-    origem: record.manualPeloGestor || record.lancamentoManualGestor ? 'gestor' : 'funcionaria',
-    localizacao: record.localizacaoSaida || null,
-    endereco: record.localizacaoSaidaEndereco || ''
+export const buildPointPunchEventsFromTimes = (record = {}, metadata = {}) => {
+  const origin = metadata.origem
+    || (record.manualPeloGestor || record.lancamentoManualGestor ? 'gestor' : 'funcionaria');
+  const managerId = metadata.gestorId || record.gestorId || '';
+  const managerName = metadata.gestorNome || record.gestorNome || '';
+  const recordedAt = metadata.registradoEm || '';
+  const common = {
+    origem: origin,
+    ...(managerId ? { gestorId: managerId } : {}),
+    ...(managerName ? { gestorNome: managerName } : {}),
+    ...(recordedAt ? { registradoEm: recordedAt } : {})
+  };
+  const eventId = (type, time) => metadata.idPrefix
+    ? `${metadata.idPrefix}_${type}`
+    : `horario_${type}_${time}`;
+
+  return [
+    record.horaEntrada && {
+      ...common,
+      id: eventId('entrada', record.horaEntrada),
+      tipo: 'entrada',
+      hora: record.horaEntrada,
+      localizacao: record.localizacaoEntrada || null,
+      endereco: record.localizacaoEntradaEndereco || ''
+    },
+    record.horaAlmocoSaida && {
+      ...common,
+      id: eventId('almoco_inicio', record.horaAlmocoSaida),
+      tipo: 'almoco_inicio',
+      hora: record.horaAlmocoSaida
+    },
+    record.horaAlmocoRetorno && {
+      ...common,
+      id: eventId('almoco_fim', record.horaAlmocoRetorno),
+      tipo: 'almoco_fim',
+      hora: record.horaAlmocoRetorno
+    },
+    record.horaSaida && {
+      ...common,
+      id: eventId('saida', record.horaSaida),
+      tipo: 'saida',
+      hora: record.horaSaida,
+      localizacao: record.localizacaoSaida || null,
+      endereco: record.localizacaoSaidaEndereco || ''
+    }
+  ].filter(Boolean);
+};
+
+const POINT_TIME_EVENT_FIELDS = {
+  entrada: 'horaEntrada',
+  almoco_inicio: 'horaAlmocoSaida',
+  almoco_fim: 'horaAlmocoRetorno',
+  saida: 'horaSaida'
+};
+
+const POINT_EVENT_DESCRIPTIONS = {
+  entrada: 'entrada',
+  almoco_inicio: 'início do almoço',
+  almoco_fim: 'retorno do almoço',
+  saida: 'saída'
+};
+
+export const getFirstPointJourneyTimes = (record = {}) => {
+  const times = {
+    horaEntrada: '',
+    horaAlmocoSaida: '',
+    horaAlmocoRetorno: '',
+    horaSaida: ''
+  };
+  for (const event of getPointPunchEvents(record)) {
+    const field = POINT_TIME_EVENT_FIELDS[event.tipo];
+    if (field && !times[field]) times[field] = event.hora || '';
+    if (event.tipo === 'saida') break;
   }
-].filter(Boolean);
+  return times;
+};
+
+export const pointCurrentTimesMatch = (record = {}, expectedTimes = {}) => {
+  const fields = Object.values(POINT_TIME_EVENT_FIELDS);
+  const normalizedExpected = fields.reduce((times, field) => ({
+    ...times,
+    [field]: expectedTimes[field] || ''
+  }), {});
+  const topLevelMatches = fields.every((field) => (record[field] || '') === normalizedExpected[field]);
+  if (!topLevelMatches) return false;
+  const structuredTimes = getFirstPointJourneyTimes(record);
+  return fields.every((field) => structuredTimes[field] === normalizedExpected[field]);
+};
+
+// Substitui somente a jornada exibida no formulário. Eventos após a primeira
+// saída pertencem a jornadas posteriores reais e são preservados integralmente.
+export const applyPointJourneyTimeCorrection = (record = {}, nextTimes = {}, metadata = {}) => {
+  const events = getPointPunchEvents(record);
+  const firstExitIndex = events.findIndex((event) => event.tipo === 'saida');
+  const firstJourneyEvents = firstExitIndex === -1 ? events : events.slice(0, firstExitIndex + 1);
+  const laterJourneyEvents = firstExitIndex === -1 ? [] : events.slice(firstExitIndex + 1);
+  const existingByType = new Map();
+  firstJourneyEvents.forEach((event) => {
+    if (POINT_TIME_EVENT_FIELDS[event.tipo] && !existingByType.has(event.tipo)) {
+      existingByType.set(event.tipo, event);
+    }
+  });
+
+  const correctedAt = metadata.corrigidoEm || metadata.registradoEm || new Date().toISOString();
+  const managerId = metadata.gestorId || '';
+  const managerName = metadata.gestorNome || '';
+  const correctionReason = String(metadata.motivoCorrecao || '').trim();
+  const journeyId = metadata.jornadaId
+    || firstJourneyEvents.find((event) => event.jornadaId)?.jornadaId
+    || 'jornada_1';
+  const idPrefix = metadata.idPrefix || `ajuste_${String(correctedAt).replace(/\D/g, '')}`;
+
+  const correctedJourneyEvents = Object.entries(POINT_TIME_EVENT_FIELDS).flatMap(([type, field]) => {
+    const time = nextTimes[field] || '';
+    if (!time) return [];
+    const existing = existingByType.get(type) || {};
+    return [{
+      ...existing,
+      id: existing.id || `${idPrefix}_${type}`,
+      tipo: type,
+      descricao: existing.descricao || POINT_EVENT_DESCRIPTIONS[type],
+      hora: time,
+      jornadaId: existing.jornadaId || journeyId,
+      origemOriginal: existing.origemOriginal || existing.origem || '',
+      origem: 'gestor',
+      corrigido: true,
+      corrigidoEm: correctedAt,
+      ...(managerId ? { gestorId: managerId, corrigidoPor: managerId } : {}),
+      ...(managerName ? { gestorNome: managerName, corrigidoPorNome: managerName } : {}),
+      ...(correctionReason ? { motivoCorrecao: correctionReason } : {}),
+      ...(!existing.registradoEm ? { registradoEm: correctedAt } : {})
+    }];
+  });
+
+  return [...correctedJourneyEvents, ...laterJourneyEvents];
+};
+
+export const buildPointWorkPeriodsFromEvents = (events = []) => {
+  const periods = [];
+  let openEvent = null;
+  events.filter(Boolean).forEach((event) => {
+    if (event.tipo === 'entrada' || event.tipo === 'almoco_fim') {
+      openEvent = event;
+      return;
+    }
+    if ((event.tipo === 'saida' || event.tipo === 'almoco_inicio') && openEvent) {
+      const interval = toInterval(openEvent.hora, event.hora, event);
+      if (interval) {
+        periods.push({
+          id: `${openEvent.id || openEvent.registradoEm}_${event.id || event.registradoEm}`,
+          horaInicio: openEvent.hora,
+          horaFim: event.hora,
+          origem: openEvent.origem || 'funcionaria',
+          jornadaId: openEvent.jornadaId || event.jornadaId || '',
+          entradaBatidaId: openEvent.id || '',
+          saidaBatidaId: event.id || '',
+          ativo: true
+        });
+      }
+      openEvent = null;
+    }
+  });
+  return periods;
+};
+
+const legacyPunchEvents = (record = {}) => buildPointPunchEventsFromTimes(record);
+
+const hasManagerTimeCorrection = (record = {}) => Boolean(
+  (record.manualPeloGestor || record.lancamentoManualGestor)
+  && [record.horaEntrada, record.horaAlmocoSaida, record.horaAlmocoRetorno, record.horaSaida].some(hasTime)
+);
 
 export const getPointPunchEvents = (record = {}) => {
   const storedEvents = Array.isArray(record.batidas) ? record.batidas.filter(Boolean) : [];
-  const events = storedEvents.length ? storedEvents : legacyPunchEvents(record);
+  // Ajustes antigos atualizaram os quatro campos consolidados, mas deixaram
+  // `batidas` com o estado anterior. Até esses documentos serem novamente
+  // salvos, os horários corrigidos são a fonte vigente da jornada.
+  const shouldUseCorrectedTimes = hasManagerTimeCorrection(record)
+    && record.batidasSincronizadasComAjuste !== true;
+  const events = shouldUseCorrectedTimes || !storedEvents.length
+    ? legacyPunchEvents(record)
+    : storedEvents;
   return events
     .map((event, index) => ({
       ...event,
@@ -230,6 +385,7 @@ export const getPointPunchEvents = (record = {}) => {
     }))
     .filter((event) => hasTime(event.hora));
 };
+
 
 const getEventWorkIntervals = (record = {}) => {
   const events = getPointPunchEvents(record);
@@ -269,11 +425,12 @@ const getLegacyWorkIntervals = (record = {}) => {
   return [];
 };
 
-export const getPointWorkIntervals = (record = {}) => {
+export const getPointWorkIntervals = (record = {}, strictLunch = false) => {
   const storedPeriods = Array.isArray(record.periodosTrabalho)
     ? record.periodosTrabalho
       .filter((period) => period && period.ativo !== false)
       .flatMap((period) => {
+        if (strictLunch && hasIncompletePointLunch(period)) return [];
         const start = period.horaInicio || period.inicio;
         const end = period.horaFim || period.fim;
         const lunchStart = parsePointTimeToMinutes(period.horaAlmocoSaida);
@@ -477,11 +634,12 @@ export const calculatePointDayCore = ({
   const dayOfWeek = date instanceof Date && !Number.isNaN(date.getTime()) ? date.getDay() : null;
   const isNeutral = ['ferias', 'abono_falta', 'folga_compensada', 'liberacao_chefia', 'folga', 'feriado'].includes(type);
   const isAbsence = type === 'falta';
-  const expectedMinutes = scheduleDay.isWorkday && !isHoliday
+  const isHourly = isHourlyWorkSchedule(scheduleDay.schedule || record.jornadaTrabalho);
+  const expectedMinutes = !isHourly && scheduleDay.isWorkday && !isHoliday
     ? (Number(scheduleDay.expectedMinutes) || DEFAULT_EXPECTED_MINUTES)
     : 0;
   const supplementalPeriods = getActiveSupplementalPeriods(record);
-  const actualIntervals = getPointWorkIntervals(record);
+  const actualIntervals = getPointWorkIntervals(record, isHourly);
   const externalIntervals = supplementalPeriods
     .filter((period) => period.tipo === 'trabalho_externo')
     .map((period) => toInterval(period.horaInicio, period.horaFim, period))
@@ -512,7 +670,7 @@ export const calculatePointDayCore = ({
     || isAbsence
     || (!hasOpenPeriod && scheduleDay.isWorkday && !isHoliday && !hasAnyTime(record));
   const calculable = !isNeutral && dayOfWeek !== null && hasCalculableContent;
-  const irregularityMinutes = calculable ? consideredMinutes - expectedMinutes : null;
+  const irregularityMinutes = !isHourly && calculable ? consideredMinutes - expectedMinutes : null;
   const summary = {
     workedLabel: calculable || effectiveWorkedMinutes > 0 ? formatMinutes(effectiveWorkedMinutes) : '-',
     irregularidade: irregularityMinutes === null ? '-' : (irregularityMinutes === 0 ? '00:00' : formatMinutes(irregularityMinutes, true)),
@@ -535,7 +693,7 @@ export const calculatePointDayCore = ({
     ? Math.abs(irregularityMinutes)
     : 0;
 
-  if (!isNeutral && bankCalculationEnabled && calculable) {
+  if (!isHourly && !isNeutral && bankCalculationEnabled && calculable) {
     const scheduledSaturday = dayOfWeek === 6 && scheduleDay.schedule?.tipoEscala === 'seg-sab-folga' && scheduleDay.isWorkday;
     const saturdayOutsideSchedule = dayOfWeek === 6 && !scheduledSaturday && effectiveWorkedMinutes > 0;
     if (saturdayOutsideSchedule) {
@@ -581,7 +739,15 @@ export const calculatePointDayCore = ({
     calculable: !isNeutral && calculable
   };
   const status = getStatus(record, type);
-  const baseJustification = dayOfWeek === null
+  if (isHourly && hasIncompletePointPeriodLunch(record)) {
+    status.inconsistente = true;
+    status.necessitaAjuste = true;
+    status.statusPonto = 'Pendente de ajuste';
+    status.inconsistencias.push('Período com marcação de almoço incompleta.');
+  } else if (isHourly && !status.inconsistente && isPointJourneyPending(getPointPunchEvents(record))) {
+    status.statusPonto = 'Em andamento';
+  }
+  const baseJustification = isHourly && type === 'normal' ? (record.justificativa || '-') : dayOfWeek === null
     ? (record.justificativa || '-')
     : getBaseJustification({ record, type, dayOfWeek, isHoliday, scheduleDay, summary });
   const supplementalLabels = supplementalPeriods.map(formatSupplementalPeriodLabel);
@@ -591,8 +757,8 @@ export const calculatePointDayCore = ({
   ].filter(Boolean).join(' · ') || '-';
   return {
     type,
-    summary,
-    balance,
+    summary: isHourly ? { ...summary, ...getHourlyPointSummary(effectiveWorkedMinutes, status.inconsistente) } : summary,
+    balance: isHourly ? getHourlyPointBalance() : balance,
     status,
     baseJustification,
     justification,

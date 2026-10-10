@@ -1,25 +1,28 @@
 import ApplicationGate from './customer/ApplicationGate';
 import InfinitePaySettings from './payments/InfinitePaySettings';
+import { calculateOrderTotal } from './utils/orderFreight';
+import PointWorkScheduleFields from './meuEspaco/PointWorkScheduleFields';
+import { sanitizeEmployeeWorkSchedule, getPointScheduleDayInfo,
+  isHourlyWorkSchedule, resolvePointWorkSchedule, getHourlyPointSummary, getHourlyPointBalance,
+  formatPointWorkedMonth, isValidPointScheduleDate, arePointWorkSchedulesEqual, getPointScheduleEffectiveDate, resolvePointRecordWorkSchedule } from './meuEspaco/pointScheduleCore';
+import { summarizePointMonth } from './meuEspaco/pointMonthSummary';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import { Play } from 'lucide-react';
 import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { EMPTY_FREIGHT_CONFIG, loadStoreFreightConfig, validateFreightCoordinates } from './services/freightConfigService';
-import { getOrderFreight, getSavedOrderTotal, calculateOrderTotal } from './utils/orderFreight';
+import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
+import {findOrderDraft, validateFiscalOrder, createFiscalOrderActions} from './fiscalOrderActions';
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
   Clock, Edit, Trash2, Eye, X, Save, MessageCircle, Cake, Gift, ChevronLeft, ChevronRight, Printer, Home, Store, BookOpen, Instagram, MapPin, Image as ImageIcon, MessageSquare, VolumeX, ArrowUpCircle, ArrowDownCircle, Banknote, PackagePlus, Ticket,
-  Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle, Download,
-  UserX, UserCheck
+  Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle, Download, Copy,
+  UserX, UserCheck // Ícones de status de usuário
 } from 'lucide-react';
-
-// --- CORREÇÃO ---
-// Importando 'functions' do seu arquivo de configuração do Firebase.
 import {
   auth,
   db,
   storage,
   functions,
-  apiBaseUrl,
   onSnapshot,
   getDoc,
   getDocs,
@@ -27,28 +30,60 @@ import {
   runWithRetry,
   setFirestoreTelemetryContext
 } from './firebaseConfig.js';
-//import { firebaseConfig } from './firebaseConfig.js';
-
-// --- CORREÇÃO ---
-// Importando 'httpsCallable' para poder chamar suas Cloud Functions.
 import { httpsCallable } from "firebase/functions";
-
-// Importações do Firebase SDK
-// ATUALIZADO: Adicionado fluxo com redirect para login Google e reset de senha
-import { onIdTokenChanged, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, sendPasswordResetEmail, setPersistence, browserLocalPersistence, indexedDBLocalPersistence, browserSessionPersistence, getIdToken } from "firebase/auth";
-// CORRIGIDO: Adicionado 'getDocs' à importação
-import { collection, query, doc, setDoc, addDoc, updateDoc, where, limit, orderBy, Timestamp, serverTimestamp, arrayUnion, writeBatch, waitForPendingWrites, runTransaction } from "firebase/firestore";
+import { onIdTokenChanged, indexedDBLocalPersistence, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence, getIdToken } from "firebase/auth";
+import { collection, query, doc, setDoc, addDoc, updateDoc, where, limit, orderBy, Timestamp, serverTimestamp, arrayUnion, writeBatch, waitForPendingWrites, runTransaction, deleteField, getDocFromServer } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
-// --- CORREÇÃO: Importa o novo AudioManager ---
-import { audioManager } from './utils/AudioManager.js';
-import { registerDeviceForPush, listenForForegroundMessages, subscribeToServiceWorkerMessages } from './utils/notifications.js';
+import { audioManager, isIOSWebBrowser } from './utils/AudioManager.js';
+import {
+  clearAlarmPause,
+  getAlarmPauseStorageKey,
+  readAlarmPause,
+  readAlarmPauseUntil,
+  saveAlarmPauseUntil,
+} from './utils/alarmPauseStorage.js';
+import { clearNativeAlarmContext, syncNativeAlarmPause } from './utils/alarmPauseNative.js';
+import {
+  getPendingOrderIdsForStore,
+  isPendingOrder,
+  resolveOrderAlarmCondition,
+} from './utils/orderAlarmRules.js';
+import {
+  claimOrderAlertForRuntime,
+  getPushPermissionStatus,
+  isNativeAndroidPushRuntime,
+  listenForForegroundMessages,
+  PUSH_PERMISSION_STATUS,
+  registerDeviceForPush,
+  subscribeToServiceWorkerMessages,
+} from './utils/notifications.js';
 import { updateStock as updateStockService } from './services/stockService.js';
+import { EMPTY_FREIGHT_CONFIG, loadStoreFreightConfig, validateFreightCoordinates } from './services/freightConfigService.js';
 import ReceitasList from './components/fornecedores/ReceitasList';
 import ReceitasModal from './components/fornecedores/ReceitasModal';
-import FinancialControlPanel from './components/financeiro/FinancialControlPanel';
+import ProducaoVitrine from './components/fornecedores/ProducaoVitrine';
+import IfoodHub from './components/ifood/IfoodHub';
+import Food99Hub from './components/food99/Food99Hub';
+import CaixaTab from './components/caixa/CaixaTab';
+import AlertasNotificacoesTab from './components/configuracoes/AlertasNotificacoesTab';
+import EntreLojasReport from './components/relatorios/EntreLojasReport';
+import NotificationsBell from './components/notifications/NotificationsBell';
+import SearchableClientSelect from './components/orders/SearchableClientSelect';
 import {
+  CAIXA_PERMISSION_KEYS,
+  CAIXA_PERMISSION_LABELS,
+  canAdjustCaixaAfterClosing,
+  getDefaultCaixaPermissionsForRole,
+  getEmptyCaixaPermissions,
+  sanitizeCaixaPermissions,
+  createIdempotencyKey,
+} from './caixa/caixaCore';
+import { obterRegistroDiarioCaixa, registrarRetiradaDespesaCaixa } from './services/caixaService';
+import PostClosingConfirmation from './components/caixa/PostClosingConfirmation';
+import {
+  applyPointJourneyTimeCorrection,
   buildPointAuditEntry,
+  buildPointWorkPeriodsFromEvents,
   buildSupplementalPeriodAuditEntry,
   calculatePointDayCore,
   canManagePointRecords,
@@ -57,64 +92,328 @@ import {
   getPointRecordLogicalId,
   getPointWorkIntervals,
   parsePointTimeToMinutes,
+  pointCurrentTimesMatch,
   POINT_SUPPLEMENTAL_TYPES,
   resolvePointType,
   validateSupplementalPeriod
 } from './meuEspaco/pointCalculationCore';
 import { buildPointPresentationRows } from './meuEspaco/pointPresentation';
 import { consolidatePointDayRecords, groupPointRecordsByDay } from './meuEspaco/pointDayConsolidation';
-import CaixaTab from './components/caixa/CaixaTab';
-import AlertasNotificacoesTab from './components/configuracoes/AlertasNotificacoesTab';
-import NotificationsBell from './components/notifications/NotificationsBell';
 import {
-  CAIXA_PERMISSION_KEYS,
-  CAIXA_PERMISSION_LABELS,
-  getDefaultCaixaPermissionsForRole,
-  getEmptyCaixaPermissions,
-  sanitizeCaixaPermissions,
-  createIdempotencyKey,
-} from './caixa/caixaCore';
-import { registrarRetiradaDespesaCaixa } from './services/caixaService';
-import {
-  canViewEntreLojasClosing,
-  canViewEntreLojasTransfer,
-  deduplicateEntreLojasTransfers,
-  filterEntreLojasTransfers,
   getClosingActionPermissions,
   getEntreLojasStoreRelation,
-  getEntreLojasVisibleTransferStatuses,
-  getTransferActionPermissions,
-  summarizeEntreLojasTransfers
+  getTransferActionPermissions
 } from './utils/entreLojasPermissions';
+import { matchesOrderDateFilter } from './utils/orderDateFilter';
+import { getExplicitTransferStatuses } from './utils/transferStatusVisibility';
+import { fetchAuthorizedTransferDestinations } from './services/entreLojasService';
+import { Car as RideCar } from 'lucide-react';
 import {
-  PURCHASE_PAYMENT_METHOD,
-  PURCHASE_PAYMENT_TYPE,
-  buildPurchaseOrderFinancialEntries,
-  buildPurchaseOrderMoneyFields,
-  buildPurchaseOrderStockMovementId,
-  buildSuggestedPaymentSchedule,
-  calculateItemsSubtotalCents,
-  cleanSupplierName,
-  findEquivalentSupplier,
-  formatCentsAsCurrency,
-  hydratePurchaseOrder,
-  moneyInputToCents,
-  normalizeSupplierName,
-  paymentConfigurationSignature,
-  resolvePurchaseOrderPaymentSchedule,
-  resolvePurchaseOrderSubtotalCents,
-  resolvePurchaseOrderTotalCents,
-  searchSuppliers,
-  validatePurchaseOrderPayment
-} from './fornecedores/purchaseOrderCore';
+  build99OpenUrl,
+  buildRideAddresses,
+  buildUberRideUrl,
+  getOrderStoreId,
+  isDeliveryOrder
+} from './utils/rideService';
+const AUTH_PROFILE_CACHE_PREFIX = 'auth-profile-cache-v1';
+const getSafeStorage = (storageName) => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const storage = window[storageName];
+    const testKey = '__storage_test__';
+    storage.setItem(testKey, '1');
+    storage.removeItem(testKey);
+    return storage;
+  } catch (error) {
+    return null;
+  }
+};
+const safeStorageSet = (storageName, key, value) => {
+  try {
+    getSafeStorage(storageName)?.setItem(key, value);
+  } catch (error) {
+    // Storage can be unavailable on iOS private mode or embedded browsers.
+  }
+};
+const GOOGLE_AUTH_FLOW_STARTED_AT_KEY = 'google-auth-flow-started-at';
+const safeStorageRemove = (storageName, key) => {
+  try {
+    getSafeStorage(storageName)?.removeItem(key);
+  } catch (error) {
+    // Ignore unavailable storage.
+  }
+};
+const getAuthProfileCacheKey = (uid) => `${AUTH_PROFILE_CACHE_PREFIX}:${uid}`;
+const safeStorageGet = (storageName, key) => {
+  try {
+    return getSafeStorage(storageName)?.getItem(key) || '';
+  } catch (error) {
+    return '';
+  }
+};
+const parseTimeToMinutes = (value) => {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
 
-// --- importação para Android
-import { NativeAudio } from '@capacitor-community/native-audio';
-import { Capacitor } from '@capacitor/core';
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+
+  return (hours * 60) + minutes;
+};
+const getNowInTimeZone = (timezone, now = new Date()) => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone || DEFAULT_STORE_TIMEZONE,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(now);
+  const weekdayRaw = parts.find((part) => part.type === 'weekday')?.value?.toLowerCase() || 'sun';
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
+  const weekdayMap = { sun: 'sun', mon: 'mon', tue: 'tue', wed: 'wed', thu: 'thu', fri: 'fri', sat: 'sat' };
+  const weekday = weekdayMap[weekdayRaw.slice(0, 3)] || 'sun';
+
+  return { weekday, minutes: (hour * 60) + minute };
+};
+const shouldEnforceStoreOpenState = (storeConfig = {}) => {
+  const overrideMode = storeConfig?.manualOverride?.mode || 'auto';
+  if (overrideMode === 'force_open' || overrideMode === 'force_closed') return true;
+
+  const schedule = storeConfig?.schedule || {};
+  return Object.values(schedule).some((dayConfig) => dayConfig?.enabled);
+};
+const DEBUG_CACHE_SYNC = (() => {
+  if (typeof window !== 'undefined') {
+    try {
+      return window.DEBUG_CACHE_SYNC === true || window.localStorage?.getItem('DEBUG_CACHE_SYNC') === 'true';
+    } catch (error) {
+      return window.DEBUG_CACHE_SYNC === true;
+    }
+  }
+
+  return process.env.REACT_APP_DEBUG_CACHE_SYNC === 'true';
+})();
+const debugCacheSync = (...args) => {
+  if (DEBUG_CACHE_SYNC) {
+    console.debug('[CacheSync]', ...args);
+  }
+
+};
+const isStoreOpenNow = (storeConfig = {}, now = new Date()) => {
+  const overrideMode = storeConfig?.manualOverride?.mode || 'auto';
+  if (overrideMode === 'force_open') return true;
+  if (overrideMode === 'force_closed') return false;
+  if (!shouldEnforceStoreOpenState(storeConfig)) return true;
+
+  const timezone = storeConfig?.timezone || DEFAULT_STORE_TIMEZONE;
+  const schedule = storeConfig?.schedule || {};
+  const { weekday, minutes } = getNowInTimeZone(timezone, now);
+  const todayConfig = schedule[weekday];
+  if (!todayConfig || !todayConfig.enabled) return false;
+
+  const openMinutes = parseTimeToMinutes(todayConfig.open);
+  const closeMinutes = parseTimeToMinutes(todayConfig.close);
+  if (openMinutes === null || closeMinutes === null) return false;
+  if (closeMinutes <= openMinutes) return false;
+
+  return minutes >= openMinutes && minutes < closeMinutes;
+};
+const getOrderItemQuantity = (item) => {
+  const parsed = Number(item?.quantity ?? item?.quantidade ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+const setPreferredAuthPersistence = async (contextLabel) => {
+  const localPersistenceStrategies = [
+    ['localStorage', browserLocalPersistence],
+    ['indexedDB', indexedDBLocalPersistence],
+  ];
+  let localPersistenceError = null;
+
+  for (const [storageLabel, persistence] of localPersistenceStrategies) {
+    try {
+      await setPersistence(auth, persistence);
+      return;
+    } catch (persistError) {
+      localPersistenceError = persistError;
+      console.warn(`[Auth][${contextLabel}] ${storageLabel} local persistence failed:`, persistError?.code || persistError);
+    }
+  }
+
+  console.warn(`[Auth][${contextLabel}] persistent login unavailable, falling back to session:`, localPersistenceError?.code || localPersistenceError);
+  await setPersistence(auth, browserSessionPersistence);
+};
+const buildFallbackAuthenticatedUserData = (authUser) => buildUserDataFromProfile(authUser, {
+  email: authUser?.email || '',
+  nome: authUser?.displayName || authUser?.email || 'Usuário',
+  role: ROLE_CLIENT,
+  lojaIds: [],
+  permissions: getDefaultPermissionsForRole(ROLE_CLIENT)
+});
+const getCachedAuthenticatedProfile = (authUser) => {
+  if (!authUser?.uid) return null;
+
+  try {
+    const cached = safeStorageGet('localStorage', getAuthProfileCacheKey(authUser.uid));
+    if (!cached) return null;
+    const parsed = JSON.parse(cached);
+    if (parsed?.uid !== authUser.uid) return null;
+    return parsed;
+  } catch (error) {
+    return null;
+  }
+};
+const buildUserDataFromCache = (authUser, cachedProfile) => {
+  if (!authUser || !cachedProfile) return null;
+  const role = normalizeRole(cachedProfile.role);
+  const lojaIds = extractStoreIdsFromProfile(cachedProfile);
+  const customProfileData = cachedProfile.customPermissions || cachedProfile.customPermissionDetails
+    ? {
+        permissions: cachedProfile.customPermissions,
+        permissionDetails: cachedProfile.customPermissionDetails,
+      }
+    : null;
+
+  return {
+    ...buildUserDataFromProfile(authUser, {
+      ...cachedProfile,
+      role,
+      lojaIds,
+      permissions: cachedProfile.permissions,
+      permissionDetails: cachedProfile.permissionDetails,
+    }, customProfileData),
+    canAccessAllStores: Boolean(cachedProfile.canAccessAllStores)
+  , onIdTokenChanged};
+};
+const clearGoogleAuthFlow = () => {
+  ['sessionStorage', 'localStorage'].forEach((storageName) => {
+    safeStorageRemove(storageName, GOOGLE_AUTH_FLOW_KEY);
+    safeStorageRemove(storageName, GOOGLE_AUTH_FLOW_STARTED_AT_KEY);
+  });
+};
+const cacheAuthenticatedProfile = (authUser, userData) => {
+  if (!authUser?.uid || !userData) return;
+
+  const payload = {
+    uid: authUser.uid,
+    email: authUser.email || '',
+    nome: authUser.displayName || authUser.email || 'Usuário',
+    role: userData.role,
+    lojaId: userData.lojaId || null,
+    lojaIds: userData.lojaIds || [],
+    permissions: userData.permissions || {},
+    customPermissions: userData.customPermissions || null,
+    permissionDetails: userData.permissionDetails || null,
+    customPermissionDetails: userData.customPermissionDetails || null,
+    hasCustomProfile: Boolean(userData.hasCustomProfile),
+    canAccessAllStores: Boolean(userData.canAccessAllStores),
+    ativo: userData.ativo !== false,
+    status: userData.status || USER_STATUS_ACTIVE,
+    authDisabled: userData.authDisabled === true,
+    updatedAt: Date.now()
+  };
+
+  safeStorageSet('localStorage', getAuthProfileCacheKey(authUser.uid), JSON.stringify(payload));
+};
+const buildUserDataFromProfile = (authUser, profile = {}, customProfileData = null) => {
+  const role = normalizeRole(profile.role);
+  const lojaIds = extractStoreIdsFromProfile(profile);
+  const permissionsDefaults = getDefaultPermissionsForRole(role);
+  const customPermissions = customProfileData?.permissions
+    ? sanitizePermissions(customProfileData.permissions, role)
+    : null;
+  const permissions = customPermissions || sanitizePermissions(profile.permissions, role) || permissionsDefaults;
+  const customPermissionDetails = customProfileData
+    ? sanitizePermissionDetails(customProfileData.permissionDetails, role, permissions)
+    : null;
+  const permissionDetails = {...(customPermissionDetails || sanitizePermissionDetails(profile.permissionDetails, role, permissions)), 'entre-lojas': {...profile.permissionDetails?.['entre-lojas'], statuses: getExplicitTransferStatuses(profile.permissionDetails, ENTRE_LOJAS_TRANSFER_STATUS_VALUES)}};
+
+  return {
+    auth: authUser,
+    role,
+    lojaIds,
+    lojaId: lojaIds[0] || null,
+    canAccessAllStores: role === ROLE_OWNER && lojaIds.length === 0,
+    permissions,
+    customPermissions,
+    permissionDetails,
+    customPermissionDetails,
+    hasCustomProfile: Boolean(customProfileData),
+    jornadaTrabalho: sanitizeEmployeeWorkSchedule(profile.jornadaTrabalho || profile.escalaTrabalho || profile.workSchedule),
+    dataInicioBancoHoras: profile.dataInicioBancoHoras || '',
+    ativo: isUserAccountActive(profile),
+    status: isUserAccountActive(profile) ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
+    authDisabled: profile.authDisabled === true || profile.firebaseAuthDisabled === true,
+  };
+};
+const USER_INACTIVE_ACCESS_DENIED = 'auth/user-inactive';
+const CLIENT_ADMIN_ACCESS_DENIED = 'auth/client-admin-access-denied';
+
+
+
+
+
+
+
+
+
+
+
+
+
+// --- CORREÇÃO ---
+// Importando 'functions' do seu arquivo de configuração do Firebase.
+
+//import { firebaseConfig } from './firebaseConfig.js';
+
+// --- CORREÇÃO ---
+// Importando 'httpsCallable' para poder chamar suas Cloud Functions.
+
+
+// Importações do Firebase SDK
+// ATUALIZADO: Adicionado fluxo com redirect para login Google e reset de senha
+
+// CORRIGIDO: Adicionado 'getDocs' à importação
+
+
+
+// --- CORREÇÃO: Importa o novo AudioManager ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ✅ CORREÇÃO: URL local para evitar erro de pré-condição no Firebase Storage
-const ALARM_SOUND_URL = '/audio/alarm.mp3';
-const API_BASE_URL = apiBaseUrl;
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://us-central1-crmdoceria-9959e.cloudfunctions.net/api';
 
 const ROLE_OWNER = 'dono';
 const ROLE_MANAGER = 'gerente';
@@ -122,8 +421,6 @@ const ROLE_ATTENDANT = 'atendente';
 const ROLE_ACCOUNTANT = 'contador';
 const ROLE_CLIENT = 'cliente';
 const ROLE_DEFAULT = ROLE_ATTENDANT;
-const CLIENT_ADMIN_ACCESS_DENIED = 'auth/client-admin-access-denied';
-const USER_INACTIVE_ACCESS_DENIED = 'auth/user-inactive';
 const STORE_ALL_KEY = '__all__';
 const USER_STATUS_ACTIVE = 'ativo';
 const USER_STATUS_INACTIVE = 'inativo';
@@ -133,7 +430,6 @@ const NCM_PRODUCT_OPTIONS = [
   { value: '17049090', label: '1704.90.90 - doces e confeitos sem cacau' },
   { value: '18069000', label: '1806.90.00 - produtos predominantemente de chocolate/cacau' },
 ];
-const DEFAULT_CFOP_OPERATION = '5101';
 const CFOP_OPERATION_OPTIONS = [
   { value: '5101', label: '5101 - Produção própria dentro de GO' },
   { value: '5102', label: '5102 - Revenda dentro de GO' },
@@ -161,15 +457,16 @@ const createManualInvoiceItemDraft = () => ({
   productId: '',
   code: '',
   description: '',
-  ncm: DEFAULT_NCM_PRODUCT,
-  unit: 'un',
+  ncm: '',
+  unit: '',
   quantity: 1,
   unitPrice: '',
   discount: 0,
-  origin: 0,
-  csosn: '102',
-  pisCst: '49',
-  cofinsCst: '49',
+  origin: '',
+  csosn: '',
+  cst: '',
+  pisCst: '',
+  cofinsCst: '',
   cBenef: ''
 });
 const createManualInvoiceCustomerDraft = () => ({
@@ -183,14 +480,13 @@ const createManualInvoiceCustomerDraft = () => ({
     street: '',
     number: '',
     district: '',
-    city: 'Goiania',
-    cityCode: '5208707',
-    state: 'GO',
+    city: '',
+    cityCode: '',
+    state: '',
     zip: ''
   }
 });
 const DEFAULT_FORNECEDOR_CATEGORIES = ['Insumos', 'Embalagens', 'Bebidas', 'Decoração', 'Serviços'];
-const DEFAULT_RECEITA_CATEGORIES = ['Bolos', 'Doces', 'Salgados', 'Bebidas', 'Outros'];
 const TRANSFER_TABLE_COLUMN_OPTIONS = [
   { id: 'numero', label: 'Nº' },
   { id: 'origem', label: 'Origem' },
@@ -208,14 +504,8 @@ const DEFAULT_ALARM_PAUSE_MINUTES = 5;
 const MIN_ALARM_PAUSE_MINUTES = 1;
 const MAX_ALARM_PAUSE_MINUTES = 120;
 const GOOGLE_AUTH_FLOW_KEY = 'google-auth-flow-in-progress';
-const GOOGLE_AUTH_FLOW_STARTED_AT_KEY = 'google-auth-flow-started-at';
 const GOOGLE_AUTH_FLOW_REDIRECT = 'redirect';
 const GOOGLE_AUTH_FLOW_POPUP = 'popup';
-const GOOGLE_AUTH_FLOW_MAX_AGE_MS = 10 * 60 * 1000;
-const AUTH_PROFILE_CACHE_PREFIX = 'auth-profile-cache-v1';
-const AUTH_STATE_READY_TIMEOUT_MS = 4000;
-const AUTH_TOKEN_REFRESH_TIMEOUT_MS = 2500;
-const AUTH_SILENT_REFRESH_INTERVAL_MS = 45 * 60 * 1000;
 
 const normalizeFiscalCode = (value) => String(value || '').replace(/\D/g, '');
 const formatNcmCode = (value) => {
@@ -545,201 +835,6 @@ const requestCompatibleGeolocation = async ({ source = 'app' } = {}) => {
     originalMessage: lastError?.message
   });
 };
-
-const isIOSBrowser = () => {
-  if (typeof navigator === 'undefined') return false;
-  const userAgent = navigator.userAgent || '';
-  const platform = navigator.platform || '';
-  const hasTouchMac = platform === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1;
-  return /iphone|ipad|ipod/i.test(userAgent) || hasTouchMac;
-};
-
-const isMobileBrowser = () => {
-  if (typeof navigator === 'undefined') return false;
-  return isIOSBrowser() || /android|mobile|tablet|phone/i.test(navigator.userAgent || '');
-};
-
-const getSafeStorage = (storageName) => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const storage = window[storageName];
-    const testKey = '__storage_test__';
-    storage.setItem(testKey, '1');
-    storage.removeItem(testKey);
-    return storage;
-  } catch (error) {
-    return null;
-  }
-};
-
-const safeStorageGet = (storageName, key) => {
-  try {
-    return getSafeStorage(storageName)?.getItem(key) || '';
-  } catch (error) {
-    return '';
-  }
-};
-
-const safeStorageSet = (storageName, key, value) => {
-  try {
-    getSafeStorage(storageName)?.setItem(key, value);
-  } catch (error) {
-    // Storage can be unavailable on iOS private mode or embedded browsers.
-  }
-};
-
-const safeStorageRemove = (storageName, key) => {
-  try {
-    getSafeStorage(storageName)?.removeItem(key);
-  } catch (error) {
-    // Ignore unavailable storage.
-  }
-};
-
-const setGoogleAuthFlow = (flow) => {
-  const startedAt = String(Date.now());
-  ['sessionStorage', 'localStorage'].forEach((storageName) => {
-    safeStorageSet(storageName, GOOGLE_AUTH_FLOW_KEY, flow);
-    safeStorageSet(storageName, GOOGLE_AUTH_FLOW_STARTED_AT_KEY, startedAt);
-  });
-};
-
-const clearGoogleAuthFlow = () => {
-  ['sessionStorage', 'localStorage'].forEach((storageName) => {
-    safeStorageRemove(storageName, GOOGLE_AUTH_FLOW_KEY);
-    safeStorageRemove(storageName, GOOGLE_AUTH_FLOW_STARTED_AT_KEY);
-  });
-};
-
-const getGoogleAuthFlow = () => {
-  const flow = safeStorageGet('sessionStorage', GOOGLE_AUTH_FLOW_KEY) || safeStorageGet('localStorage', GOOGLE_AUTH_FLOW_KEY);
-  const startedAt = Number(safeStorageGet('sessionStorage', GOOGLE_AUTH_FLOW_STARTED_AT_KEY) || safeStorageGet('localStorage', GOOGLE_AUTH_FLOW_STARTED_AT_KEY) || 0);
-  if (flow && startedAt && Date.now() - startedAt > GOOGLE_AUTH_FLOW_MAX_AGE_MS) {
-    clearGoogleAuthFlow();
-    return '';
-  }
-  return flow;
-};
-
-const getFirebaseAuthDomain = () => auth?.config?.authDomain || '';
-
-const isAuthDomainCurrentHost = () => {
-  if (typeof window === 'undefined') return false;
-  const currentHost = window.location.hostname || '';
-  const authDomain = getFirebaseAuthDomain();
-  return Boolean(currentHost && authDomain && currentHost === authDomain);
-};
-
-const createGoogleProvider = () => {
-  const provider = new GoogleAuthProvider();
-  return provider;
-};
-
-const getGoogleSignInStrategy = () => {
-  const mobile = isMobileBrowser();
-  const safari = isSafariBrowser();
-  const ios = isIOSBrowser();
-  const sameAuthDomain = isAuthDomainCurrentHost();
-  const shouldUseRedirect = (ios || safari) && sameAuthDomain;
-
-  return {
-    method: shouldUseRedirect ? GOOGLE_AUTH_FLOW_REDIRECT : GOOGLE_AUTH_FLOW_POPUP,
-    mobile,
-    safari,
-    ios,
-    sameAuthDomain,
-    shouldUseRedirect,
-    authDomain: getFirebaseAuthDomain(),
-    currentHost: typeof window !== 'undefined' ? window.location.hostname : ''
-  };
-};
-
-const setPreferredAuthPersistence = async (contextLabel) => {
-  const localPersistenceStrategies = [
-    ['localStorage', browserLocalPersistence],
-    ['indexedDB', indexedDBLocalPersistence],
-  ];
-  let localPersistenceError = null;
-
-  for (const [storageLabel, persistence] of localPersistenceStrategies) {
-    try {
-      await setPersistence(auth, persistence);
-      return;
-    } catch (persistError) {
-      localPersistenceError = persistError;
-      console.warn(`[Auth][${contextLabel}] ${storageLabel} local persistence failed:`, persistError?.code || persistError);
-    }
-  }
-
-  console.warn(`[Auth][${contextLabel}] persistent login unavailable, falling back to session:`, localPersistenceError?.code || localPersistenceError);
-  await setPersistence(auth, browserSessionPersistence);
-};
-
-const waitForFirebaseAuthReady = async (timeoutMs = AUTH_STATE_READY_TIMEOUT_MS) => {
-  if (typeof auth?.authStateReady !== 'function') {
-    return auth.currentUser || null;
-  }
-
-  try {
-    await Promise.race([
-      auth.authStateReady(),
-      new Promise((resolve) => setTimeout(resolve, timeoutMs))
-    ]);
-  } catch (error) {
-    console.warn('[Auth][SessionRestore] authStateReady failed:', error?.code || error);
-  }
-
-  return auth.currentUser || null;
-};
-
-const withTimeout = (promise, timeoutMs, timeoutMessage) => Promise.race([
-  promise,
-  new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
-  })
-]);
-
-const refreshFirebaseTokenSilently = async (contextLabel, { force = false } = {}) => {
-  const authUser = auth.currentUser || null;
-  if (!authUser) return null;
-
-  try {
-    await withTimeout(
-      getIdToken(authUser, force),
-      AUTH_TOKEN_REFRESH_TIMEOUT_MS,
-      'Tempo limite ao renovar a sessão Firebase.'
-    );
-  } catch (refreshError) {
-    console.warn(`[Auth][${contextLabel}] token refresh skipped:`, refreshError?.code || refreshError);
-  }
-
-  return authUser;
-};
-
-const getGoogleAuthErrorMessage = (error, strategy = {}) => {
-  if (error?.code === 'auth/user-disabled' || error?.code === USER_INACTIVE_ACCESS_DENIED) {
-    return 'Sua conta está inativa. Entre em contato com o responsável pela empresa.';
-  }
-  if (error?.code === 'auth/popup-closed-by-user') {
-    return 'A janela do Google foi fechada antes de concluir o login. Toque em “Entrar com Google” novamente e aguarde voltar para o sistema.';
-  }
-  if (error?.code === 'auth/popup-blocked') {
-    return 'O navegador bloqueou a janela do Google. Permita pop-ups para este site ou tente abrir pelo navegador padrão do celular.';
-  }
-  if (error?.code === 'auth/web-storage-unsupported') {
-    return 'O navegador bloqueou o armazenamento necessário para o login. Desative modo privado ou tente pelo navegador padrão do celular.';
-  }
-  if (error?.code === 'auth/network-request-failed') {
-    return 'Falha de conexão durante o login com Google. Verifique a internet e tente novamente.';
-  }
-  if (error?.code === 'auth/unauthorized-domain') {
-    return 'Este domínio ainda não está autorizado no Firebase Authentication. Verifique os domínios autorizados do projeto Firebase.';
-  }
-  if (strategy.mobile && !strategy.sameAuthDomain) {
-    return 'Não foi possível concluir o login com Google neste navegador. Tente novamente pelo navegador padrão do celular.';
-  }
-  return 'Ocorreu um erro ao entrar com Google. Tente novamente.';
-};
 const CONFIG_COLLECTIONS = new Set(['cupons', 'logs']);
 const MENU_PERMISSION_KEYS = [
   'pagina-inicial',
@@ -754,9 +849,11 @@ const MENU_PERMISSION_KEYS = [
   'meu-espaco',
   'financeiro',
   'nota-fiscal',
+  'ifood',
+  'food99',
   'configuracoes'
 ];
-const ACCOUNTANT_RESTRICTED_MODULES = new Set(['configuracoes']);
+const ACCOUNTANT_RESTRICTED_MODULES = new Set(['ifood', 'food99', 'configuracoes']);
 const ENTRE_LOJAS_TRANSFER_STATUS_OPTIONS = [
   { value: 'rascunho', label: 'Rascunho' },
   { value: 'aguardando_conferencia', label: 'Aguardando conferência' },
@@ -839,264 +936,10 @@ const getDefaultStoreHoursConfig = () => ({
   }
 });
 
-
-const DEBUG_CACHE_SYNC = (() => {
-  if (typeof window !== 'undefined') {
-    try {
-      return window.DEBUG_CACHE_SYNC === true || window.localStorage?.getItem('DEBUG_CACHE_SYNC') === 'true';
-    } catch (error) {
-      return window.DEBUG_CACHE_SYNC === true;
-    }
-  }
-
-  return process.env.REACT_APP_DEBUG_CACHE_SYNC === 'true';
-})();
-
-const debugCacheSync = (...args) => {
-  if (DEBUG_CACHE_SYNC) {
-    console.debug('[CacheSync]', ...args);
-  }
-
-};
-
-const POINT_WORK_SCHEDULE_TYPES = [
-  { value: 'seg-sex', label: 'Segunda a sexta' },
-  { value: 'seg-sab-folga', label: 'Segunda a sábado com uma folga semanal' },
-  { value: 'personalizada', label: 'Personalizada' },
-];
-
-const POINT_WEEK_DAYS = [
-  { value: '1', label: 'Segunda' },
-  { value: '2', label: 'Terça' },
-  { value: '3', label: 'Quarta' },
-  { value: '4', label: 'Quinta' },
-  { value: '5', label: 'Sexta' },
-  { value: '6', label: 'Sábado' },
-  { value: '0', label: 'Domingo' },
-];
-
-const DEFAULT_POINT_DAILY_LOADS = {
-  0: '00:00',
-  1: '08:00',
-  2: '08:00',
-  3: '08:00',
-  4: '08:00',
-  5: '08:00',
-  6: '05:00',
-};
-
-const DEFAULT_POINT_WORK_SCHEDULE = {
-  tipoEscala: 'seg-sex',
-  diasTrabalho: ['1', '2', '3', '4', '5'],
-  cargaHorariaPorDia: DEFAULT_POINT_DAILY_LOADS,
-  folgaSemanal: '',
-  folgaVariavel: false,
-  horarioPadrao: {
-    entrada: '09:30',
-    almocoSaida: '12:00',
-    almocoRetorno: '13:00',
-    saida: '18:30',
-    intervaloMinutos: 60,
-  },
-};
-
-const parsePointDurationToMinutes = (value, fallback = 0) => {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.round(value));
-  if (typeof value !== 'string') return fallback;
-  const text = value.trim();
-  if (!text) return fallback;
-  const timeMatch = text.match(/^(\d{1,3}):(\d{2})$/);
-  if (timeMatch) {
-    const hours = Number(timeMatch[1]);
-    const minutes = Number(timeMatch[2]);
-    if (Number.isFinite(hours) && Number.isFinite(minutes)) return (hours * 60) + minutes;
-  }
-  const numberMatch = text.replace(',', '.').match(/^(\d+(?:\.\d+)?)$/);
-  if (numberMatch) {
-    const hours = Number(numberMatch[1]);
-    if (Number.isFinite(hours)) return Math.round(hours * 60);
-  }
-  return fallback;
-};
-
-const formatPointDurationInput = (minutes) => {
-  const normalized = Math.max(0, Number(minutes) || 0);
-  const hours = Math.floor(normalized / 60);
-  const mins = normalized % 60;
-  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-};
-
-const sanitizePointTimeInput = (value, fallback = '') => {
-  if (typeof value !== 'string') return fallback;
-  const text = value.trim();
-  return /^\d{1,2}:\d{2}$/.test(text) ? text : fallback;
-};
-
-const sanitizeEmployeeWorkSchedule = (input = null) => {
-  const source = input && typeof input === 'object' ? input : {};
-  const type = POINT_WORK_SCHEDULE_TYPES.some((item) => item.value === source.tipoEscala)
-    ? source.tipoEscala
-    : DEFAULT_POINT_WORK_SCHEDULE.tipoEscala;
-  const defaultWorkdays = type === 'seg-sab-folga'
-    ? ['1', '2', '3', '4', '5', '6']
-    : [...DEFAULT_POINT_WORK_SCHEDULE.diasTrabalho];
-  const rawWorkdays = Array.isArray(source.diasTrabalho) && source.diasTrabalho.length
-    ? source.diasTrabalho
-    : defaultWorkdays;
-  const diasTrabalho = Array.from(new Set(
-    rawWorkdays
-      .map((day) => String(day))
-      .filter((day) => POINT_WEEK_DAYS.some((option) => option.value === day))
-  ));
-  const rawLoads = source.cargaHorariaPorDia && typeof source.cargaHorariaPorDia === 'object'
-    ? source.cargaHorariaPorDia
-    : {};
-  const cargaHorariaPorDia = POINT_WEEK_DAYS.reduce((acc, day) => {
-    const fallbackMinutes = parsePointDurationToMinutes(DEFAULT_POINT_DAILY_LOADS[day.value], 0);
-    acc[day.value] = formatPointDurationInput(parsePointDurationToMinutes(rawLoads[day.value], fallbackMinutes));
-    return acc;
-  }, {});
-  const rawBreak = source.horarioPadrao?.intervaloMinutos;
-
-  return {
-    tipoEscala: type,
-    diasTrabalho,
-    cargaHorariaPorDia,
-    folgaSemanal: POINT_WEEK_DAYS.some((day) => day.value === String(source.folgaSemanal)) ? String(source.folgaSemanal) : '',
-    folgaVariavel: Boolean(source.folgaVariavel),
-    horarioPadrao: {
-      entrada: sanitizePointTimeInput(source.horarioPadrao?.entrada, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.entrada),
-      almocoSaida: sanitizePointTimeInput(source.horarioPadrao?.almocoSaida, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.almocoSaida),
-      almocoRetorno: sanitizePointTimeInput(source.horarioPadrao?.almocoRetorno, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.almocoRetorno),
-      saida: sanitizePointTimeInput(source.horarioPadrao?.saida, DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.saida),
-      intervaloMinutos: Math.max(0, Math.round(Number(rawBreak) || DEFAULT_POINT_WORK_SCHEDULE.horarioPadrao.intervaloMinutos)),
-    },
-  };
-};
-
-const getPointScheduleDayInfo = (scheduleInput, date) => {
-  const schedule = sanitizeEmployeeWorkSchedule(scheduleInput);
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return { isWorkday: false, expectedMinutes: 0, isWeeklyDayOff: false, schedule };
-  }
-  const dayKey = String(date.getDay());
-  const isWeeklyDayOff = !schedule.folgaVariavel && schedule.folgaSemanal === dayKey;
-  const isWorkday = schedule.diasTrabalho.includes(dayKey) && !isWeeklyDayOff;
-  const expectedMinutes = isWorkday ? parsePointDurationToMinutes(schedule.cargaHorariaPorDia[dayKey], 0) : 0;
-  return { isWorkday, expectedMinutes, isWeeklyDayOff, schedule };
-};
-
-const parseTimeToMinutes = (value) => {
-  if (typeof value !== 'string') return null;
-  const match = value.match(/^(\d{2}):(\d{2})$/);
-  if (!match) return null;
-
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-
-  return (hours * 60) + minutes;
-};
-
-const getNowInTimeZone = (timezone, now = new Date()) => {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone || DEFAULT_STORE_TIMEZONE,
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(now);
-  const weekdayRaw = parts.find((part) => part.type === 'weekday')?.value?.toLowerCase() || 'sun';
-  const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
-  const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
-  const weekdayMap = { sun: 'sun', mon: 'mon', tue: 'tue', wed: 'wed', thu: 'thu', fri: 'fri', sat: 'sat' };
-  const weekday = weekdayMap[weekdayRaw.slice(0, 3)] || 'sun';
-
-  return { weekday, minutes: (hour * 60) + minute };
-};
-
-const shouldEnforceStoreOpenState = (storeConfig = {}) => {
-  const overrideMode = storeConfig?.manualOverride?.mode || 'auto';
-  if (overrideMode === 'force_open' || overrideMode === 'force_closed') return true;
-
-  const schedule = storeConfig?.schedule || {};
-  return Object.values(schedule).some((dayConfig) => dayConfig?.enabled);
-};
-
-const isStoreOpenNow = (storeConfig = {}, now = new Date()) => {
-  const overrideMode = storeConfig?.manualOverride?.mode || 'auto';
-  if (overrideMode === 'force_open') return true;
-  if (overrideMode === 'force_closed') return false;
-  if (!shouldEnforceStoreOpenState(storeConfig)) return true;
-
-  const timezone = storeConfig?.timezone || DEFAULT_STORE_TIMEZONE;
-  const schedule = storeConfig?.schedule || {};
-  const { weekday, minutes } = getNowInTimeZone(timezone, now);
-  const todayConfig = schedule[weekday];
-  if (!todayConfig || !todayConfig.enabled) return false;
-
-  const openMinutes = parseTimeToMinutes(todayConfig.open);
-  const closeMinutes = parseTimeToMinutes(todayConfig.close);
-  if (openMinutes === null || closeMinutes === null) return false;
-  if (closeMinutes <= openMinutes) return false;
-
-  return minutes >= openMinutes && minutes < closeMinutes;
-};
-
-const roundCurrency = (value) => Number((Number(value || 0)).toFixed(2));
-
-const getOrderItemProductId = (item) => item?.produtoId || item?.productId || item?.id || null;
-
-const getOrderItemQuantity = (item) => {
-  const parsed = Number(item?.quantity ?? item?.quantidade ?? 0);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-};
-
-const getClientPrimaryAddressText = (cliente = {}) => {
-  if (typeof cliente.endereco === 'string' && cliente.endereco.trim()) {
-    return cliente.endereco.trim();
-  }
-
-  const firstAddress = Array.isArray(cliente.enderecos) ? cliente.enderecos[0] : null;
-  if (!firstAddress) return '';
-  if (typeof firstAddress === 'string') return firstAddress;
-  if (firstAddress.enderecoCompleto) return firstAddress.enderecoCompleto;
-
-  return [
-    firstAddress.rua,
-    firstAddress.numero,
-    firstAddress.complemento,
-    firstAddress.bairro,
-    firstAddress.cidade,
-    firstAddress.cep,
-  ].filter(Boolean).join(', ');
-};
-
-const ORDER_PAYMENT_OPTIONS = [
-  'Pix dinâmico / link gerado',
-  'Pix fixo / QR Code fixo',
-  'Link de cartão de crédito',
-  'Link de cartão de débito',
-  'Cartão de Crédito',
-  'Cartão de Débito',
-  'Dinheiro',
-  'Link de Pagamento',
-  'Pix',
-];
-const DEFAULT_ORDER_PAYMENT_METHOD = ORDER_PAYMENT_OPTIONS[0];
-
-const isProductInactive = (product = {}) => {
-  const status = product.status || 'Ativo';
-  return product.ativo === false || status === 'Inativo' || status !== 'Ativo';
-};
-
 const COLLECTIONS_TO_SYNC = [
   'produtos',
   'subcategorias',
   'categoriasFornecedores',
-  'categoriasReceitas',
   'contas_a_pagar',
   'contas_a_receber',
   'fornecedores',
@@ -1107,7 +950,16 @@ const COLLECTIONS_TO_SYNC = [
   'receitas',
   'fiscalProducts',
   'invoices',
-  'agendaLembretes',
+  'ifoodOrders',
+  'ifoodAlerts',
+  'ifoodProductMappings',
+  'ifoodAudit',
+  'ifoodHealth',
+  'food99Orders',
+  'food99Alerts',
+  'food99ProductMappings',
+  'food99Audit',
+  'food99Health',
   'logs',
   'cupons',
   'pedidos'
@@ -1237,7 +1089,17 @@ const getDefaultPermissionsForRole = (role) => {
       'meu-espaco': true,
       financeiro: true,
       'nota-fiscal': true,
+      ifood: true,
+      food99: true,
       configuracoes: true,
+    };
+  }
+
+  if (normalizedRole === ROLE_CLIENT) {
+    return {
+      ...base,
+      'pagina-inicial': true,
+      'meu-espaco': true,
     };
   }
 
@@ -1249,14 +1111,6 @@ const getDefaultPermissionsForRole = (role) => {
       relatorios: true,
       financeiro: true,
       'nota-fiscal': true,
-    };
-  }
-
-  if (normalizedRole === ROLE_CLIENT) {
-    return {
-      ...base,
-      'pagina-inicial': true,
-      'meu-espaco': true,
     };
   }
 
@@ -1299,14 +1153,15 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
   const normalizedRole = normalizeRole(role);
   return {
     'entre-lojas': {
-      statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : []
+      statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : [],
+      manageTransferDestinations: normalizedRole === ROLE_OWNER
     },
     caixa: permissions?.fornecedores
       ? getDefaultCaixaPermissionsForRole(role)
       : getEmptyCaixaPermissions(),
     configuracoes: {
-      manage_payment_settings: normalizedRole === ROLE_OWNER,
       gerenciarStatusUsuarios: normalizedRole === ROLE_OWNER,
+      manage_payment_settings: normalizedRole === ROLE_OWNER,
     },
   };
 };
@@ -1322,7 +1177,7 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
     ? (Array.isArray(entreLojasDetails.statuses)
       ? entreLojasDetails.statuses
       : (Array.isArray(entreLojasDetails.status) ? entreLojasDetails.status : []))
-    : (permissions?.['entre-lojas'] ? ENTRE_LOJAS_TRANSFER_STATUS_VALUES : []);
+    : [];
 
   const validStatuses = permissions?.['entre-lojas']
     ? rawStatuses
@@ -1332,7 +1187,11 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
 
   return {
     'entre-lojas': {
-      statuses: Array.from(new Set(validStatuses))
+      statuses: Array.from(new Set(validStatuses)),
+      manageTransferDestinations: normalizedRole === ROLE_OWNER || (
+        normalizedRole === ROLE_MANAGER &&
+        entreLojasDetails?.manageTransferDestinations === true
+      )
     },
     caixa: permissions?.fornecedores
       ? sanitizeCaixaPermissions(caixaDetails, role)
@@ -1351,19 +1210,53 @@ const isUserAccountActive = (profile = {}) => {
   const status = String(profile.status || '').trim().toLowerCase();
   return profile.ativo !== false &&
     profile.authDisabled !== true &&
-    profile.firebaseAuthDisabled !== true &&
     status !== USER_STATUS_INACTIVE;
 };
 
+// Shared schedule model and Horista policy (also used by Firebase Functions).
 const getEntreLojasAllowedStatusesFromProfile = (profile) => {
   if (!profile) return [];
   const role = normalizeRole(profile.role);
-  const permissionsSource = profile.customPermissions || profile.permissions;
-  const permissions = sanitizePermissions(permissionsSource, role);
+  const permissions = sanitizePermissions(profile.permissions, role);
   if (!permissions['entre-lojas']) return [];
-  const detailsSource = profile.customPermissionDetails || profile.permissionDetails;
-  const details = sanitizePermissionDetails(detailsSource, role, permissions);
-  return details['entre-lojas']?.statuses || [];
+  return getExplicitTransferStatuses(profile.permissionDetails, ENTRE_LOJAS_TRANSFER_STATUS_VALUES);
+};
+
+const ACCOUNTANT_COLLECTION_PERMISSIONS = {
+  produtos: ['produtos', 'relatorios'],
+  subcategorias: ['produtos'],
+  categoriasFornecedores: ['fornecedores'],
+  contas_a_pagar: ['financeiro', 'relatorios'],
+  contas_a_receber: ['financeiro', 'relatorios'],
+  fornecedores: ['fornecedores'],
+  pedidosCompra: ['fornecedores'],
+  estoque: ['fornecedores', 'relatorios'],
+  kardex: ['fornecedores', 'relatorios'],
+  perdasDescarte: ['fornecedores', 'relatorios'],
+  receitas: ['fornecedores'],
+  fiscalProducts: ['nota-fiscal'],
+  invoices: ['nota-fiscal', 'financeiro', 'relatorios'],
+  ifoodOrders: ['ifood'],
+  ifoodAlerts: ['ifood'],
+  ifoodProductMappings: ['ifood'],
+  ifoodAudit: ['ifood'],
+  ifoodHealth: ['ifood'],
+  food99Orders: ['food99'],
+  food99Alerts: ['food99'],
+  food99ProductMappings: ['food99'],
+  food99Audit: ['food99'],
+  food99Health: ['food99'],
+  logs: ['configuracoes'],
+  cupons: ['configuracoes'],
+  pedidos: ['dashboard', 'pedidos', 'financeiro', 'relatorios', 'nota-fiscal'],
+};
+
+const getCollectionsToSyncForUser = (userProfile) => {
+  if (userProfile?.role !== ROLE_ACCOUNTANT) return COLLECTIONS_TO_SYNC;
+  const permissions = sanitizePermissions(userProfile.customPermissions || userProfile.permissions, userProfile.role);
+  return COLLECTIONS_TO_SYNC.filter((collectionName) => (
+    ACCOUNTANT_COLLECTION_PERMISSIONS[collectionName] || []
+  ).some((permission) => permissions[permission]));
 };
 
 const extractStoreIdsFromProfile = (profile) => {
@@ -1375,108 +1268,6 @@ const extractStoreIdsFromProfile = (profile) => {
   if (typeof lojaId === 'string' && lojaId.trim().length) return [lojaId.trim()];
   return [];
 };
-
-const getAuthProfileCacheKey = (uid) => `${AUTH_PROFILE_CACHE_PREFIX}:${uid}`;
-
-const buildUserDataFromProfile = (authUser, profile = {}, customProfileData = null) => {
-  const role = normalizeRole(profile.role);
-  const lojaIds = extractStoreIdsFromProfile(profile);
-  const permissionsDefaults = getDefaultPermissionsForRole(role);
-  const customPermissions = customProfileData?.permissions
-    ? sanitizePermissions(customProfileData.permissions, role)
-    : null;
-  const permissions = customPermissions || sanitizePermissions(profile.permissions, role) || permissionsDefaults;
-  const customPermissionDetails = customProfileData
-    ? sanitizePermissionDetails(customProfileData.permissionDetails, role, permissions)
-    : null;
-  const permissionDetails = customPermissionDetails || sanitizePermissionDetails(profile.permissionDetails, role, permissions);
-
-  return {
-    auth: authUser,
-    role,
-    lojaIds,
-    lojaId: lojaIds[0] || null,
-    canAccessAllStores: role === ROLE_OWNER && lojaIds.length === 0,
-    permissions,
-    customPermissions,
-    permissionDetails,
-    customPermissionDetails,
-    hasCustomProfile: Boolean(customProfileData),
-    ativo: isUserAccountActive(profile),
-    status: isUserAccountActive(profile) ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
-    authDisabled: profile.authDisabled === true || profile.firebaseAuthDisabled === true,
-  };
-};
-
-const cacheAuthenticatedProfile = (authUser, userData) => {
-  if (!authUser?.uid || !userData) return;
-
-  const payload = {
-    uid: authUser.uid,
-    email: authUser.email || '',
-    nome: authUser.displayName || authUser.email || 'Usuário',
-    role: userData.role,
-    lojaId: userData.lojaId || null,
-    lojaIds: userData.lojaIds || [],
-    permissions: userData.permissions || {},
-    customPermissions: userData.customPermissions || null,
-    permissionDetails: userData.permissionDetails || null,
-    customPermissionDetails: userData.customPermissionDetails || null,
-    hasCustomProfile: Boolean(userData.hasCustomProfile),
-    canAccessAllStores: Boolean(userData.canAccessAllStores),
-    ativo: userData.ativo !== false,
-    status: userData.status || USER_STATUS_ACTIVE,
-    authDisabled: userData.authDisabled === true,
-    updatedAt: Date.now()
-  };
-
-  safeStorageSet('localStorage', getAuthProfileCacheKey(authUser.uid), JSON.stringify(payload));
-};
-
-const getCachedAuthenticatedProfile = (authUser) => {
-  if (!authUser?.uid) return null;
-
-  try {
-    const cached = safeStorageGet('localStorage', getAuthProfileCacheKey(authUser.uid));
-    if (!cached) return null;
-    const parsed = JSON.parse(cached);
-    if (parsed?.uid !== authUser.uid) return null;
-    return parsed;
-  } catch (error) {
-    return null;
-  }
-};
-
-const buildUserDataFromCache = (authUser, cachedProfile) => {
-  if (!authUser || !cachedProfile) return null;
-  const role = normalizeRole(cachedProfile.role);
-  const lojaIds = extractStoreIdsFromProfile(cachedProfile);
-  const customProfileData = cachedProfile.customPermissions || cachedProfile.customPermissionDetails
-    ? {
-        permissions: cachedProfile.customPermissions,
-        permissionDetails: cachedProfile.customPermissionDetails,
-      }
-    : null;
-
-  return {
-    ...buildUserDataFromProfile(authUser, {
-      ...cachedProfile,
-      role,
-      lojaIds,
-      permissions: cachedProfile.permissions,
-      permissionDetails: cachedProfile.permissionDetails,
-    }, customProfileData),
-    canAccessAllStores: Boolean(cachedProfile.canAccessAllStores)
-  };
-};
-
-const buildFallbackAuthenticatedUserData = (authUser) => buildUserDataFromProfile(authUser, {
-  email: authUser?.email || '',
-  nome: authUser?.displayName || authUser?.email || 'Usuário',
-  role: ROLE_CLIENT,
-  lojaIds: [],
-  permissions: getDefaultPermissionsForRole(ROLE_CLIENT)
-});
 
 const formatPhoneForWhatsApp = (phone) => {
   if (!phone) return '';
@@ -1553,6 +1344,54 @@ const getOrderAddressDetails = (order, clientes = []) => {
   return { cliente, enderecoTexto, locationLink };
 };
 
+const roundCurrency = (value) => Number((Number(value || 0)).toFixed(2));
+
+const isProductInactive = (product = {}) => {
+  const status = product.status || 'Ativo';
+  return product.ativo === false || status === 'Inativo' || status !== 'Ativo';
+};
+
+const getOrderItemProductId = (item) => item?.produtoId || item?.productId || item?.id || null;
+
+const getClientPrimaryAddressText = (cliente = {}) => {
+  if (typeof cliente.endereco === 'string' && cliente.endereco.trim()) {
+    return [
+      [cliente.endereco.trim(), cliente.numero].filter(Boolean).join(', '),
+      cliente.complemento,
+      cliente.bairro,
+      [cliente.cidade, cliente.uf || cliente.estado].filter(Boolean).join(' - '),
+      cliente.cep ? `CEP ${cliente.cep}` : ''
+    ].filter(Boolean).join(', ');
+  }
+
+  const firstAddress = Array.isArray(cliente.enderecos) ? cliente.enderecos[0] : null;
+  if (!firstAddress) return '';
+  if (typeof firstAddress === 'string') return firstAddress;
+  if (firstAddress.enderecoCompleto) return firstAddress.enderecoCompleto;
+
+  return [
+    firstAddress.rua,
+    firstAddress.numero,
+    firstAddress.complemento,
+    firstAddress.bairro,
+    [firstAddress.cidade, firstAddress.uf || firstAddress.estado].filter(Boolean).join(' - '),
+    firstAddress.cep ? `CEP ${firstAddress.cep}` : '',
+  ].filter(Boolean).join(', ');
+};
+
+const ORDER_PAYMENT_OPTIONS = [
+  'Pix dinâmico / link gerado',
+  'Pix fixo / QR Code fixo',
+  'Link de cartão de crédito',
+  'Link de cartão de débito',
+  'Cartão de Crédito',
+  'Cartão de Débito',
+  'Dinheiro',
+  'Link de Pagamento',
+  'Pix',
+];
+const DEFAULT_ORDER_PAYMENT_METHOD = ORDER_PAYMENT_OPTIONS[0];
+
 // Hook customizado para estado persistente na sessão
 const usePersistentState = (key, defaultValue) => {
   // Inicializa o estado apenas uma vez com o valor do sessionStorage
@@ -1586,30 +1425,9 @@ const usePersistentState = (key, defaultValue) => {
   return [state, setState];
 };
 
-const DIRTY_FORM_SELECTOR = 'form[data-unsaved-changes="true"]';
-
-const hasUnsavedFormChanges = () => (
-  typeof document !== 'undefined' && Boolean(document.querySelector(DIRTY_FORM_SELECTOR))
-);
-
-// Inner pages close over App services; this stable host keeps their hook state during live updates.
-const InlinePageHost = ({ renderPage }) => renderPage();
 
 // Componentes de UI
-const Modal = ({ isOpen, onClose, title, children, size = "md", closeOnEscape = false }) => {
-  useEffect(() => {
-    if (!isOpen || !closeOnEscape) return undefined;
-
-    const handleEscape = (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      onClose();
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [closeOnEscape, isOpen, onClose]);
-
+const Modal = ({ isOpen, onClose, title, children, size = "md" }) => {
   if (!isOpen) return null;
   const sizeClasses = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
   return ( <div className="fixed inset-0 z-50 flex items-center justify-center p-4"> <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} /> <div className={`relative bg-white rounded-2xl shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col`}> <div className="flex items-center justify-between p-6 border-b border-gray-100"> <h2 className="text-xl font-semibold text-gray-800">{title}</h2> <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"> <X className="w-5 h-5" /> </button> </div> <div className="p-6 overflow-y-auto"> {children} </div> </div> </div> );
@@ -1628,6 +1446,22 @@ const Button = ({ children, variant = "primary", size = "md", onClick, className
 const Input = ({ label, error, className = "", ...props }) => (<div className="space-y-1 w-full">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<input {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${error ? 'border-red-300' : 'border-gray-300'} ${className}`} />{error && <p className="text-sm text-red-600">{error}</p>}</div>);
 const Textarea = ({ label, error, className = "", ...props }) => (<div className="space-y-1">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<textarea {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${error ? 'border-red-300' : 'border-gray-300'} ${className}`} />{error && <p className="text-sm text-red-600">{error}</p>}</div>);
 const Select = ({ label, error, className = "", children, ...props }) => (<div className="space-y-1 w-full">{label && <label className="block text-sm font-medium text-gray-700">{label}</label>}<select {...props} className={`w-full px-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white ${error ? 'border-red-300' : 'border-gray-300'} ${className}`}>{children}</select>{error && <p className="text-sm text-red-600">{error}</p>}</div>);
+
+const FiscalCodeOptionForm = ({kind, code, description, error, saving, onCodeChange, onDescriptionChange, onSave, onCancel, className = ''}) => (
+  <div className={`rounded-xl border border-pink-200 bg-pink-50 p-4 space-y-3 ${className}`} onKeyDown={(event) => { if (event.key === 'Enter' && event.target.tagName === 'INPUT') { event.preventDefault(); onSave(); } }}>
+    <p className="text-sm font-medium text-gray-800">Cadastrar {kind} para esta loja</p>
+    <p className="text-xs text-gray-600">Confirme o código e a descrição com o contador. O cadastro não define tributação automaticamente.</p>
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <Input label={`Código ${kind}`} value={code} disabled={saving} onChange={(event) => onCodeChange(event.target.value)} placeholder={kind === 'NCM' ? '8 dígitos, com ou sem pontos' : '4 dígitos'} maxLength={kind === 'NCM' ? 10 : 12} />
+      <Input label={`Descrição do ${kind}`} value={description} disabled={saving} onChange={(event) => onDescriptionChange(event.target.value)} maxLength={120} />
+    </div>
+    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    <div className="flex justify-end gap-2">
+      <Button type="button" variant="secondary" disabled={saving} onClick={onCancel}>Cancelar</Button>
+      <Button type="button" disabled={saving} onClick={onSave}>{saving ? 'Salvando...' : `Salvar ${kind}`}</Button>
+    </div>
+  </div>
+);
 
 // Componente de Tabela Responsiva
 const Table = ({ columns, data, actions = [] }) => (
@@ -1655,9 +1489,11 @@ const Table = ({ columns, data, actions = [] }) => (
                                         <div className="flex justify-end gap-2">
                                             {visibleActions.map((action, actionIndex) => {
                                                 const actionLabel = typeof action.label === 'function' ? action.label(row) : action.label;
+                                                const actionDisabled = typeof action.isDisabled === 'function' ? action.isDisabled(row) : Boolean(action.disabled);
                                                 return (
-                                                <button key={actionIndex} onClick={() => action.onClick(row)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors" title={actionLabel}>
+                                                <button key={actionIndex} onClick={() => action.onClick(row)} disabled={actionDisabled} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg p-2 text-sm transition-colors ${actionDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-gray-100'}`} title={actionLabel}>
                                                     <action.icon className="w-4 h-4 text-gray-600" />
+                                                    {action.showLabel && <span>{actionLabel}</span>}
                                                 </button>
                                             )})}
                                         </div>
@@ -1691,8 +1527,9 @@ const Table = ({ columns, data, actions = [] }) => (
                         <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-gray-100">
                             {visibleActions.map((action, actionIndex) => {
                                 const actionLabel = typeof action.label === 'function' ? action.label(row) : action.label;
+                                const actionDisabled = typeof action.isDisabled === 'function' ? action.isDisabled(row) : Boolean(action.disabled);
                                 return (
-                                <button key={actionIndex} onClick={() => action.onClick(row)} className="flex items-center gap-2 p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-sm text-gray-700" title={actionLabel}>
+                                <button key={actionIndex} onClick={() => action.onClick(row)} disabled={actionDisabled} className={`flex items-center gap-2 p-2 bg-gray-100 rounded-lg transition-colors text-sm text-gray-700 ${actionDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-gray-200'}`} title={actionLabel}>
                                     <action.icon className="w-4 h-4" />
                                     <span>{actionLabel}</span>
                                 </button>
@@ -2073,6 +1910,53 @@ const toDateInputValue = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const RideConfirmationModal = ({ request, onClose, onConfirm }) => {
+  if (!request) return null;
+
+  const isUber = request.service === 'uber';
+  const serviceName = isUber ? 'Uber' : '99';
+
+  return (
+    <Modal isOpen={!!request} onClose={onClose} title="Solicitar corrida" size="md">
+      <div className="space-y-4 text-sm text-gray-700">
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Origem</p>
+          <p className="font-semibold text-gray-900">{request.addresses.origin.name}</p>
+          <p className="mt-1">{request.addresses.origin.address}</p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Destino</p>
+          <p className="font-semibold text-gray-900">{request.addresses.destination.name}</p>
+          <p className="mt-1">{request.addresses.destination.address}</p>
+        </div>
+
+        {!isUber && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800">
+            A 99 não publica atualmente parâmetros oficiais para preencher origem e destino. O aplicativo será aberto pelo link oficial; confira os endereços acima antes de solicitar a corrida.
+          </p>
+        )}
+
+        <p className="text-xs text-gray-500">
+          A corrida não será solicitada automaticamente. Confira categoria e preço no aplicativo antes de confirmar.
+        </p>
+
+        <div className="flex flex-col-reverse justify-end gap-3 pt-2 sm:flex-row">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            onClick={onConfirm}
+            className={isUber
+              ? 'bg-gradient-to-r from-gray-800 to-black text-white hover:from-black hover:to-gray-900'
+              : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900 hover:from-yellow-500 hover:to-amber-600'}
+          >
+            <RideCar className="h-4 w-4" /> Abrir {serviceName}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 const normalizePointBankStartDate = (value) => {
   if (!value) return '';
   if (typeof value?.toDate === 'function') {
@@ -2126,160 +2010,6 @@ const normalizeSearchText = (value) => String(value || '')
   .toLowerCase()
   .trim();
 
-const EMPTY_CLIENT_FORM = {
-  nome: '',
-  email: '',
-  telefone: '',
-  cpf: '',
-  documento: '',
-  aniversario: '',
-  cep: '',
-  endereco: '',
-  bairro: '',
-  cidade: 'Goiânia',
-  uf: 'GO',
-  codigoIbge: '5208707',
-  status: 'Ativo'
-};
-
-const readFirstAddress = (client = {}) => {
-  if (Array.isArray(client.enderecos) && client.enderecos[0] && typeof client.enderecos[0] === 'object') {
-    return client.enderecos[0];
-  }
-  return {};
-};
-
-const readObjectAddress = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
-
-const pickClientAddressValue = (sources, keys, fallback = '') => {
-  for (const source of sources) {
-    if (!source || typeof source !== 'object') continue;
-    for (const key of keys) {
-      const value = source[key];
-      if (value !== undefined && value !== null && value !== '') {
-        return value;
-      }
-    }
-  }
-  return fallback;
-};
-
-const normalizeClientDateInput = (value) => {
-  if (!value) return '';
-  if (typeof value === 'string') {
-    const text = value.trim();
-    if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
-
-    const brDate = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (brDate) return `${brDate[3]}-${brDate[2]}-${brDate[1]}`;
-  }
-
-  const date = getJSDate(value);
-  if (date) return toDateInputValue(date);
-
-  return '';
-};
-
-const normalizeClientForForm = (client = {}) => {
-  const firstAddress = readFirstAddress(client);
-  const address = readObjectAddress(client.address);
-  const enderecoObject = readObjectAddress(client.endereco);
-  const sources = [address, firstAddress, enderecoObject, client];
-  const documentValue = client.documento || client.cpfCnpj || client.cpf_cnpj || client.cpf || client.cnpj || '';
-  const streetValue = typeof client.endereco === 'string'
-    ? client.endereco
-    : pickClientAddressValue(sources, ['street', 'logradouro', 'rua', 'endereco', 'enderecoCompleto']);
-
-  return {
-    ...EMPTY_CLIENT_FORM,
-    ...client,
-    nome: client.nome || '',
-    email: client.email || '',
-    telefone: client.telefone || client.phone || '',
-    cpf: documentValue,
-    documento: documentValue,
-    aniversario: normalizeClientDateInput(client.aniversario || client.dataAniversario || client.birthDate),
-    cep: onlyDigitsText(pickClientAddressValue(sources, ['cep', 'zip', 'enderecoCep'])),
-    endereco: streetValue || '',
-    bairro: pickClientAddressValue(sources, ['bairro', 'district', 'bairroFiscal', 'neighborhood']),
-    cidade: pickClientAddressValue(sources, ['cidade', 'city', 'municipio'], EMPTY_CLIENT_FORM.cidade),
-    uf: String(pickClientAddressValue(sources, ['uf', 'state'], EMPTY_CLIENT_FORM.uf)).toUpperCase().slice(0, 2),
-    codigoIbge: onlyDigitsText(pickClientAddressValue(sources, ['codigoIbge', 'codigoMunicipio', 'cityCode', 'ibge'], EMPTY_CLIENT_FORM.codigoIbge)),
-    status: client.status || EMPTY_CLIENT_FORM.status
-  };
-};
-
-const buildClientFiscalPayload = (formData, originalClient = null) => {
-  const nome = String(formData.nome || '').trim();
-  const email = String(formData.email || '').trim();
-  const telefone = onlyDigitsText(formData.telefone);
-  const documento = onlyDigitsText(formData.cpf || formData.documento);
-  const cep = onlyDigitsText(formData.cep);
-  const endereco = String(formData.endereco || '').trim();
-  const bairro = String(formData.bairro || '').trim();
-  const cidade = String(formData.cidade || '').trim();
-  const uf = String(formData.uf || '').trim().toUpperCase().slice(0, 2);
-  const codigoIbge = onlyDigitsText(formData.codigoIbge);
-  const firstAddress = readFirstAddress(originalClient || formData);
-  const otherAddresses = Array.isArray(originalClient?.enderecos) ? originalClient.enderecos.slice(1) : [];
-  const existingAddress = readObjectAddress(originalClient?.address || formData.address);
-  const address = {
-    ...existingAddress,
-    street: endereco,
-    logradouro: endereco,
-    endereco,
-    zip: cep,
-    cep,
-    district: bairro,
-    bairro,
-    city: cidade,
-    cidade,
-    state: uf,
-    uf,
-    cityCode: codigoIbge,
-    codigoMunicipio: codigoIbge,
-    codigoIbge
-  };
-  const primaryAddress = {
-    ...firstAddress,
-    enderecoCompleto: endereco,
-    endereco,
-    rua: endereco,
-    logradouro: endereco,
-    cep,
-    bairro,
-    cidade,
-    uf,
-    cityCode: codigoIbge,
-    codigoMunicipio: codigoIbge,
-    codigoIbge,
-    principal: firstAddress.principal ?? true
-  };
-  const payload = {
-    ...formData,
-    nome,
-    email,
-    telefone,
-    cpf: documento,
-    documento,
-    cpfCnpj: documento,
-    aniversario: formData.aniversario || '',
-    cep,
-    endereco,
-    bairro,
-    cidade,
-    uf,
-    codigoIbge,
-    codigoMunicipio: codigoIbge,
-    address,
-    enderecos: [primaryAddress, ...otherAddresses],
-    status: formData.status || EMPTY_CLIENT_FORM.status
-  };
-
-  delete payload.id;
-  return payload;
-};
-
 const formatFiscalNumber = (value, size = 9) => {
   const digits = onlyDigitsText(value);
   return digits ? digits.padStart(size, '0') : '-';
@@ -2300,143 +2030,29 @@ const maskCpfCnpj = (value) => {
   return digits || '-';
 };
 
-const padDatePart = (value) => String(value).padStart(2, '0');
-
-const formatDateKey = (year, monthIndex, day) => `${year}-${padDatePart(monthIndex + 1)}-${padDatePart(day)}`;
-
-const parseDateKey = (value) => {
-  if (!value) return null;
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-').map((part) => Number(part));
-    const date = new Date(year, month - 1, day);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-  return getJSDate(value);
-};
-
-const getDateKeyFromValue = (value) => {
-  const parsed = parseDateKey(value);
-  if (!parsed) return '';
-  return formatDateKey(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-};
-
-const addDays = (date, days) => {
-  const nextDate = new Date(date);
-  nextDate.setDate(nextDate.getDate() + days);
-  return nextDate;
-};
-
-const getEasterDate = (year) => {
-  const a = year % 19;
-  const b = Math.floor(year / 100);
-  const c = year % 100;
-  const d = Math.floor(b / 4);
-  const e = b % 4;
-  const f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30;
-  const i = Math.floor(c / 4);
-  const k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7;
-  const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
-  const day = ((h + l - 7 * m + 114) % 31) + 1;
-  return new Date(year, month, day);
-};
-
-const getBrazilNationalHolidays = (year) => {
-  const easter = getEasterDate(year);
-  const holidays = [
-    { date: formatDateKey(year, 0, 1), name: 'Confraternização Universal' },
-    { date: getDateKeyFromValue(addDays(easter, -2)), name: 'Sexta-feira Santa' },
-    { date: formatDateKey(year, 3, 21), name: 'Tiradentes' },
-    { date: formatDateKey(year, 4, 1), name: 'Dia do Trabalho' },
-    { date: formatDateKey(year, 8, 7), name: 'Independência do Brasil' },
-    { date: formatDateKey(year, 9, 12), name: 'Nossa Senhora Aparecida' },
-    { date: formatDateKey(year, 10, 2), name: 'Finados' },
-    { date: formatDateKey(year, 10, 15), name: 'Proclamação da República' },
-    { date: formatDateKey(year, 10, 20), name: 'Consciência Negra' },
-    { date: formatDateKey(year, 11, 25), name: 'Natal' }
-  ];
-
-  return holidays.reduce((acc, holiday) => {
-    acc[holiday.date] = holiday.name;
-    return acc;
-  }, {});
-};
-
-const ACCOUNTANT_COLLECTION_PERMISSIONS = {
-  produtos: ['produtos', 'relatorios'],
-  subcategorias: ['produtos'],
-  categoriasFornecedores: ['fornecedores'],
-  categoriasReceitas: ['fornecedores'],
-  contas_a_pagar: ['financeiro', 'relatorios'],
-  contas_a_receber: ['financeiro', 'relatorios'],
-  fornecedores: ['fornecedores'],
-  pedidosCompra: ['fornecedores'],
-  estoque: ['fornecedores', 'relatorios'],
-  kardex: ['fornecedores', 'relatorios'],
-  perdasDescarte: ['fornecedores', 'relatorios'],
-  receitas: ['fornecedores'],
-  fiscalProducts: ['nota-fiscal'],
-  invoices: ['nota-fiscal', 'financeiro', 'relatorios'],
-  agendaLembretes: ['agenda'],
-  logs: ['configuracoes'],
-  cupons: ['configuracoes'],
-  pedidos: ['dashboard', 'pedidos', 'financeiro', 'relatorios', 'nota-fiscal'],
-};
-
-const getCollectionsToSyncForUser = (userProfile) => {
-  if (normalizeRole(userProfile?.role) !== ROLE_ACCOUNTANT) return COLLECTIONS_TO_SYNC;
-  const permissions = sanitizePermissions(userProfile.customPermissions || userProfile.permissions, userProfile.role);
-  return COLLECTIONS_TO_SYNC.filter((collectionName) => (
-    ACCOUNTANT_COLLECTION_PERMISSIONS[collectionName] || []
-  ).some((permission) => permissions[permission]));
-};
-
 // --- NOVOS COMPONENTES ---
-
-const createNewPurchaseOrderFormData = () => hydratePurchaseOrder({
-    fornecedorId: '',
-    itens: [],
-    valorTotal: 0,
-    dataPedido: new Date().toISOString().split('T')[0],
-    dataPrevistaEntrega: '',
-    status: 'Pendente',
-    observacaoGeral: '',
-    formaPagamento: PURCHASE_PAYMENT_METHOD.CREDIT_CARD,
-    tipoPagamento: PURCHASE_PAYMENT_TYPE.SINGLE,
-    diaVencimentoCartao: '',
-    primeiroVencimento: '',
-    quantidadeParcelas: 1,
-    cronogramaPagamento: [],
-    mercadoriaEmMaos: false,
-    configuracaoPagamentoDefinida: true
-});
 
 const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, effectiveStoreId, updateStock, currentUser, availableStores, storeInfoMap }) => {
     const [activeTab, setActiveTab] = usePersistentState('fornecedores_activeTab', 'fornecedores');
-    
+    const currentCashPermissions = useMemo(() => sanitizeCaixaPermissions(
+        currentUser?.permissionDetails?.caixa || currentUser?.customPermissionDetails?.caixa,
+        currentUser?.role
+    ), [currentUser]);
+    const canAdjustAfterClosing = useMemo(() => canAdjustCaixaAfterClosing(
+        currentUser?.role,
+        currentCashPermissions
+    ), [currentCashPermissions, currentUser?.role]);
+
     // States
     const [searchTerm, setSearchTerm] = usePersistentState('fornecedores_searchTerm', '');
-    
+
     const [showFornecedorModal, setShowFornecedorModal] = useState(false);
     const [editingFornecedor, setEditingFornecedor] = useState(null);
     const [fornecedorFormData, setFornecedorFormData] = useState({});
-    
+
     const [showPedidoModal, setShowPedidoModal] = useState(false);
     const [editingPedido, setEditingPedido] = useState(null);
-    const [pedidoFormData, setPedidoFormData] = useState(createNewPurchaseOrderFormData);
-    const [fornecedorPedidoBusca, setFornecedorPedidoBusca] = useState('');
-    const [fornecedorPedidoDropdownOpen, setFornecedorPedidoDropdownOpen] = useState(false);
-    const [showQuickFornecedorModal, setShowQuickFornecedorModal] = useState(false);
-    const [quickFornecedorNome, setQuickFornecedorNome] = useState('');
-    const [isSavingQuickFornecedor, setIsSavingQuickFornecedor] = useState(false);
-    const [fornecedorCriadoNoPedido, setFornecedorCriadoNoPedido] = useState(false);
-    const [isSavingPedido, setIsSavingPedido] = useState(false);
-    const receivingPedidoIdsRef = useRef(new Set());
-    const pedidoSavingRef = useRef(false);
-    const pedidoDocumentIdRef = useRef(createIdempotencyKey('pedido-compra').replace(/:/g, '_'));
+    const [pedidoFormData, setPedidoFormData] = useState({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente' });
 
     const [showEstoqueModal, setShowEstoqueModal] = useState(false);
     const [editingEstoque, setEditingEstoque] = useState(null);
@@ -2449,9 +2065,11 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     const [showRetiradaCaixaModal, setShowRetiradaCaixaModal] = useState(false);
     const [editingReceita, setEditingReceita] = useState(null);
     const [receitaFormData, setReceitaFormData] = useState({});
-    const [retiradaCaixaFormData, setRetiradaCaixaFormData] = useState({ data: new Date().toISOString().split('T')[0], motivo: '', valor: '', observacoes: '' });
+    const [retiradaCaixaFormData, setRetiradaCaixaFormData] = useState({ data: new Date().toISOString().split('T')[0], hora: '', motivo: '', valor: '', observacoes: '' });
     const [retiradaCaixaStoreId, setRetiradaCaixaStoreId] = useState(effectiveStoreId || '');
     const [isSavingRetiradaCaixa, setIsSavingRetiradaCaixa] = useState(false);
+    const [retiradaCaixaPostClosing, setRetiradaCaixaPostClosing] = useState(false);
+    const [pendingPostClosingRetirada, setPendingPostClosingRetirada] = useState(null);
     const retiradaCaixaSubmittingRef = useRef(false);
     const retiradaCaixaIdempotencyRef = useRef(createIdempotencyKey('retirada-despesa'));
     const [editingPerda, setEditingPerda] = useState(null);
@@ -2459,15 +2077,11 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
 
     const [stockMovementModal, setStockMovementModal] = useState({ isOpen: false, type: 'entrada', item: null });
     const [stockMovementQuantity, setStockMovementQuantity] = useState('');
-    
+
     const [isAddingFornecedorCategoria, setIsAddingFornecedorCategoria] = useState(false);
     const [newFornecedorCategoria, setNewFornecedorCategoria] = useState('');
     const [isSavingFornecedorCategoria, setIsSavingFornecedorCategoria] = useState(false);
     const [previousFornecedorCategoria, setPreviousFornecedorCategoria] = useState('');
-    const [isAddingReceitaCategoria, setIsAddingReceitaCategoria] = useState(false);
-    const [newReceitaCategoria, setNewReceitaCategoria] = useState('');
-    const [isSavingReceitaCategoria, setIsSavingReceitaCategoria] = useState(false);
-    const [previousReceitaCategoria, setPreviousReceitaCategoria] = useState('');
 
     const resetFornecedorForm = () => {
         setFornecedorFormData({ nome: '', cnpj_cpf: '', contato_telefone: '', contato_email: '', contato_whatsapp: '', endereco_completo: '', endereco_cep: '', categoria: DEFAULT_FORNECEDOR_CATEGORIES[0], dados_bancarios: '', observacoes: '', status: 'Ativo' });
@@ -2476,23 +2090,11 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         setIsSavingFornecedorCategoria(false);
         setPreviousFornecedorCategoria('');
     };
-    const resetPedidoForm = () => {
-        setPedidoFormData(createNewPurchaseOrderFormData());
-        setFornecedorPedidoBusca('');
-        setFornecedorPedidoDropdownOpen(false);
-        setFornecedorCriadoNoPedido(false);
-        pedidoDocumentIdRef.current = createIdempotencyKey('pedido-compra').replace(/:/g, '_');
-    };
+    const resetPedidoForm = () => setPedidoFormData({ fornecedorId: '', itens: [], valorTotal: 0, dataPedido: new Date().toISOString().split('T')[0], dataPrevistaEntrega: '', status: 'Pendente' });
     const resetEstoqueForm = () => setEstoqueFormData({ nome: '', categoria: DEFAULT_FORNECEDOR_CATEGORIES[0], fornecedorId: '', quantidade: '', unidade: 'un', custoUnitario: '', nivelMinimo: '' });
     const resetPerdaForm = () => setPerdaFormData({ produtoId: '', produtoNome: '', custoUnitario: '', quantidade: '', dataDescarte: new Date().toISOString().split('T')[0], motivo: 'Vencimento', outroMotivo: '' });
-    const resetReceitaForm = () => {
-        setReceitaFormData({ nome: '', categoria: '', ingredientes: '', modoPreparo: '', tempoPreparo: '', rendimento: '', custoEstimado: '', observacoes: '' });
-        setIsAddingReceitaCategoria(false);
-        setNewReceitaCategoria('');
-        setIsSavingReceitaCategoria(false);
-        setPreviousReceitaCategoria('');
-    };
-    const resetRetiradaCaixaForm = () => setRetiradaCaixaFormData({ data: new Date().toISOString().split('T')[0], motivo: '', valor: '', observacoes: '' });
+    const resetReceitaForm = () => setReceitaFormData({ nome: '', categoria: '', ingredientes: '', modoPreparo: '', tempoPreparo: '', rendimento: '', custoEstimado: '', observacoes: '' });
+    const resetRetiradaCaixaForm = () => setRetiradaCaixaFormData({ data: new Date().toISOString().split('T')[0], hora: '', motivo: '', valor: '', observacoes: '' });
 
     const openStockMovementModal = (item, type) => {
         setStockMovementModal({ isOpen: true, type, item });
@@ -2560,74 +2162,16 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         return unique;
     }, [data.categoriasFornecedores, fornecedorFormData.categoria, estoqueFormData.categoria]);
 
-    const receitaCategories = useMemo(() => {
-        const customCategories = (data.categoriasReceitas || [])
-            .map(item => {
-                if (!item) return null;
-                if (typeof item === 'string') return item;
-                return item.nome;
-            })
-            .filter(Boolean);
+	useEffect(() => {
+		const total = (pedidoFormData.itens || []).reduce((sum, item) =>
+			sum + ((item.quantidade || 0) * (item.custoUnitario || 0)), 0
+		);
 
-        const combined = [...DEFAULT_RECEITA_CATEGORIES, ...customCategories];
-        if (receitaFormData.categoria && receitaFormData.categoria.trim()) {
-            combined.push(receitaFormData.categoria.trim());
+		// Só atualiza se mudou para evitar loop
+		if (total !== pedidoFormData.valorTotal) {
+			setPedidoFormData(prev => ({ ...prev, valorTotal: total }));
         }
-
-        const seen = new Set();
-        const unique = [];
-        combined.forEach(cat => {
-            const normalized = typeof cat === 'string' ? cat.trim() : '';
-            if (!normalized) return;
-            const key = normalized.toLowerCase();
-            if (!seen.has(key)) {
-                seen.add(key);
-                unique.push(normalized);
-            }
-        });
-
-        return unique;
-    }, [data.categoriasReceitas, receitaFormData.categoria]);
-    
-    useEffect(() => {
-        setPedidoFormData((previous) => {
-            const subtotalItensCentavos = calculateItemsSubtotalCents(previous.itens || []);
-            const valorTotalCentavos = previous.totalDefinidoManualmente
-                ? resolvePurchaseOrderTotalCents(previous)
-                : subtotalItensCentavos;
-            const moneyFields = buildPurchaseOrderMoneyFields({
-                items: previous.itens || [],
-                totalCents: valorTotalCentavos,
-                manuallyDefined: previous.totalDefinidoManualmente
-            });
-
-            if (
-                previous.subtotalItensCentavos === moneyFields.subtotalItensCentavos
-                && previous.valorTotalCentavos === moneyFields.valorTotalCentavos
-                && previous.valorNaoDetalhadoCentavos === moneyFields.valorNaoDetalhadoCentavos
-            ) return previous;
-
-            const next = { ...previous, ...moneyFields };
-            if (
-                previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO
-                && previous.valorTotalCentavos !== moneyFields.valorTotalCentavos
-            ) {
-                const suggested = buildSuggestedPaymentSchedule({
-                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
-                    paymentType: previous.tipoPagamento,
-                    totalCents: moneyFields.valorTotalCentavos,
-                    installmentCount: previous.quantidadeParcelas,
-                    purchaseDate: previous.dataPedido,
-                    firstDueDate: previous.primeiroVencimento
-                });
-                next.cronogramaPagamento = suggested.map((entry, index) => ({
-                    ...entry,
-                    dueDate: previous.cronogramaPagamento?.[index]?.dueDate || entry.dueDate
-                }));
-            }
-            return next;
-        });
-    }, [pedidoFormData.itens]);
+    }, [pedidoFormData.itens, pedidoFormData.valorTotal]);
 
     const handlePerdaProdutoChange = async (e) => {
         const produtoId = e.target.value;
@@ -2654,34 +2198,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
 
     // Memoized Filters
     const filteredFornecedores = useMemo(() => (data.fornecedores || []).filter(f => (f.nome && f.nome.toLowerCase().includes(searchTerm.toLowerCase())) || (f.categoria && f.categoria.toLowerCase().includes(searchTerm.toLowerCase()))), [data.fornecedores, searchTerm]);
-    const pedidosComNomes = useMemo(() => (data.pedidosCompra || []).map(pedido => ({
-        ...pedido,
-        fornecedorNome: data.fornecedores.find(f => f.id === pedido.fornecedorId)?.nome || pedido.fornecedorNome || 'N/A'
-    })), [data.pedidosCompra, data.fornecedores]);
-    const pedidoFornecedorResults = useMemo(
-        () => searchSuppliers(data.fornecedores || [], fornecedorPedidoBusca),
-        [data.fornecedores, fornecedorPedidoBusca]
-    );
-    const pedidoFornecedorEquivalent = useMemo(
-        () => findEquivalentSupplier(data.fornecedores || [], fornecedorPedidoBusca),
-        [data.fornecedores, fornecedorPedidoBusca]
-    );
-    const pedidoPaymentSchedule = useMemo(
-        () => pedidoFormData.configuracaoPagamentoDefinida
-            ? resolvePurchaseOrderPaymentSchedule(pedidoFormData)
-            : [],
-        [pedidoFormData]
-    );
-    const pedidoBoletoScheduleTotal = useMemo(
-        () => pedidoPaymentSchedule.reduce((sum, entry) => sum + Number(entry.valueCents || 0), 0),
-        [pedidoPaymentSchedule]
-    );
-    const editingPedidoFinancialEntries = useMemo(() => {
-        if (!editingPedido?.id) return [];
-        return (data.contas_a_pagar || [])
-            .filter((account) => account.pedidoCompraId === editingPedido.id || account.id === `pedidoCompra_${editingPedido.id}`)
-            .sort((left, right) => Number(left.parcelaNumero || 1) - Number(right.parcelaNumero || 1));
-    }, [data.contas_a_pagar, editingPedido]);
+    const pedidosComNomes = useMemo(() => (data.pedidosCompra || []).map(pedido => ({ ...pedido, fornecedorNome: data.fornecedores.find(f => f.id === pedido.fornecedorId)?.nome || 'N/A' })), [data.pedidosCompra, data.fornecedores]);
     const estoqueComNomes = useMemo(() => (data.estoque || []).map(item => ({ ...item, fornecedorNome: data.fornecedores.find(f => f.id === item.fornecedorId)?.nome || 'N/A' })), [data.estoque, data.fornecedores]);
     const estoqueFornecedores = useMemo(() => {
         const fornecedores = new Set();
@@ -2770,76 +2287,6 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         || '-'
     );
 
-    const getCurrentUserName = () => (
-        currentUser?.nome
-        || currentUser?.displayName
-        || currentUser?.auth?.displayName
-        || currentUser?.auth?.email
-        || currentUser?.email
-        || 'Usuario'
-    );
-
-    const getCurrentUserId = () => currentUser?.auth?.uid || currentUser?.uid || '';
-
-    const selectFornecedorForPedido = (fornecedor, createdDuringOrder = false) => {
-        if (!fornecedor) return;
-        setPedidoFormData((previous) => ({
-            ...previous,
-            fornecedorId: fornecedor.id,
-            fornecedorNome: fornecedor.nome
-        }));
-        setFornecedorPedidoBusca(fornecedor.nome || '');
-        setFornecedorPedidoDropdownOpen(false);
-        setFornecedorCriadoNoPedido(createdDuringOrder);
-    };
-
-    const openQuickFornecedorModal = (name) => {
-        const cleanedName = cleanSupplierName(name);
-        if (!cleanedName) return;
-        setQuickFornecedorNome(cleanedName);
-        setFornecedorPedidoDropdownOpen(false);
-        setShowQuickFornecedorModal(true);
-    };
-
-    const handleQuickFornecedorSubmit = async (event) => {
-        event.preventDefault();
-        const cleanedName = cleanSupplierName(quickFornecedorNome);
-        if (!cleanedName) {
-            alert('Informe o nome do fornecedor.');
-            return;
-        }
-
-        const existing = findEquivalentSupplier(data.fornecedores || [], cleanedName);
-        if (existing) {
-            selectFornecedorForPedido(existing, false);
-            setShowQuickFornecedorModal(false);
-            alert('Este fornecedor já estava cadastrado e foi selecionado.');
-            return;
-        }
-
-        try {
-            setIsSavingQuickFornecedor(true);
-            const supplierPayload = {
-                nome: cleanedName,
-                nomeNormalizado: normalizeSupplierName(cleanedName),
-                categoria: DEFAULT_FORNECEDOR_CATEGORIES[0],
-                status: 'Ativo',
-                criadoDurantePedido: true,
-                createdBy: getCurrentUserId(),
-                createdByNome: getCurrentUserName(),
-                createdByEmail: currentUser?.auth?.email || currentUser?.email || ''
-            };
-            const supplierRef = await addItem('fornecedores', supplierPayload);
-            selectFornecedorForPedido({ id: supplierRef.id, ...supplierPayload }, true);
-            setShowQuickFornecedorModal(false);
-        } catch (error) {
-            console.error('Erro ao cadastrar fornecedor durante o pedido:', error);
-        } finally {
-            setIsSavingQuickFornecedor(false);
-        }
-    };
-
-
     // Handlers Fornecedores
     const handleNewFornecedor = () => { setEditingFornecedor(null); resetFornecedorForm(); setShowFornecedorModal(true); };
     const handleEditFornecedor = (fornecedor) => { setEditingFornecedor(fornecedor); setFornecedorFormData(fornecedor); setIsAddingFornecedorCategoria(false); setNewFornecedorCategoria(''); setIsSavingFornecedorCategoria(false); setPreviousFornecedorCategoria(''); setShowFornecedorModal(true); };
@@ -2900,433 +2347,12 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     };
 
     // Handlers Pedidos de Compra
-    const handleNewPedido = () => {
-        setEditingPedido(null);
-        resetPedidoForm();
-        setShowPedidoModal(true);
-    };
-    const handleEditPedido = (pedido) => {
-        const hydrated = hydratePurchaseOrder(pedido);
-        setEditingPedido(pedido);
-        setPedidoFormData({
-            ...hydrated,
-            dataPedido: typeof pedido.dataPedido === 'string' ? pedido.dataPedido.split('T')[0] : '',
-            dataPrevistaEntrega: typeof pedido.dataPrevistaEntrega === 'string' ? pedido.dataPrevistaEntrega.split('T')[0] : ''
-        });
-        setFornecedorPedidoBusca(pedido.fornecedorNome || '');
-        setFornecedorPedidoDropdownOpen(false);
-        setFornecedorCriadoNoPedido(false);
-        setShowPedidoModal(true);
-    };
-
-    const getPedidoFinancialEntries = (pedidoId) => (data.contas_a_pagar || [])
-        .filter((account) => account.pedidoCompraId === pedidoId || account.id === `pedidoCompra_${pedidoId}`);
-
-    const createPurchaseOrderFinancialEntries = async (pedido, pedidoId) => {
-        const existingEntries = getPedidoFinancialEntries(pedidoId);
-        const hasConfiguredPayment = pedido.configuracaoPagamentoDefinida === true
-            && Object.values(PURCHASE_PAYMENT_METHOD).includes(pedido.formaPagamento);
-
-        if (!hasConfiguredPayment) {
-            if (existingEntries.length > 0) return existingEntries.map((entry) => entry.id);
-            const legacyAccountId = `pedidoCompra_${pedidoId}`;
-            const valorCentavos = resolvePurchaseOrderTotalCents(pedido);
-            await addItem('contas_a_pagar', {
-                descricao: `Compra de ${pedido.fornecedorNome}`,
-                valor: valorCentavos / 100,
-                valorCentavos,
-                dataVencimento: new Date().toISOString().split('T')[0],
-                status: 'Pendente',
-                categoria: 'Fornecedores',
-                pedidoCompraId: pedidoId,
-                fornecedorId: pedido.fornecedorId || '',
-                fornecedorNome: pedido.fornecedorNome || '',
-                lojaId: effectiveStoreId,
-                origem: 'pedido_compra',
-                createdBy: getCurrentUserId(),
-                createdByNome: getCurrentUserName()
-            }, effectiveStoreId, legacyAccountId, { createOnly: true });
-            return [legacyAccountId];
-        }
-
-        const entries = buildPurchaseOrderFinancialEntries(pedido, pedidoId, {
-            storeId: effectiveStoreId,
-            userId: getCurrentUserId(),
-            userName: getCurrentUserName()
-        });
-        for (const entry of entries) {
-            const { id: accountId, ...accountPayload } = entry;
-            await addItem('contas_a_pagar', accountPayload, effectiveStoreId, accountId, { createOnly: true });
-        }
-        return entries.map((entry) => entry.id);
-    };
-
-    const processPurchaseOrderStock = async (pedido, pedidoId) => {
-        if (pedido.estoqueProcessadoAt) return false;
-        const detailedItems = (pedido.itens || []).filter((item) => (
-            (item.id || item.produtoId) && Number(item.quantidade) > 0
-        ));
-
-        for (let index = 0; index < detailedItems.length; index += 1) {
-            const item = detailedItems[index];
-            const itemId = item.id || item.produtoId;
-            const movementId = buildPurchaseOrderStockMovementId(pedidoId, itemId, index);
-            await updateStock(
-                itemId,
-                'entrada',
-                Number(item.quantidade),
-                `Recebimento do Pedido de Compra #${pedidoId}`,
-                currentUser,
-                effectiveStoreId,
-                {
-                    idempotencyKey: movementId,
-                    pedidoCompraId: pedidoId,
-                    origem: 'pedido_compra'
-                }
-            );
-        }
-        return true;
-    };
-
-    const handlePedidoSubmit = async (event) => {
-        event.preventDefault();
-        if (pedidoSavingRef.current) return;
-        if (!pedidoFormData.fornecedorId) {
-            alert('Selecione um fornecedor.');
-            return;
-        }
-
-        const items = pedidoFormData.itens || [];
-        const moneyFields = buildPurchaseOrderMoneyFields({
-            items,
-            totalCents: resolvePurchaseOrderTotalCents(pedidoFormData),
-            manuallyDefined: pedidoFormData.totalDefinidoManualmente
-        });
-        if (items.length === 0 && moneyFields.valorTotalCentavos <= 0) {
-            alert('Informe o valor total do pedido quando nenhum item for detalhado.');
-            return;
-        }
-        if (
-            moneyFields.valorTotalCentavos < moneyFields.subtotalItensCentavos
-            && !window.confirm('O valor total informado é menor que a soma dos itens detalhados. Deseja continuar?')
-        ) return;
-
-        const hasConfiguredPayment = Object.values(PURCHASE_PAYMENT_METHOD).includes(pedidoFormData.formaPagamento);
-        const isLegacyEditWithoutPayment = Boolean(editingPedido) && !hasConfiguredPayment
-            && editingPedido.configuracaoPagamentoDefinida !== true;
-        const paymentValidation = isLegacyEditWithoutPayment
-            ? { valid: true, errors: [], schedule: editingPedido.cronogramaPagamento || [] }
-            : validatePurchaseOrderPayment({ ...pedidoFormData, ...moneyFields });
-        if (!paymentValidation.valid) {
-            alert(paymentValidation.errors.join('\n'));
-            return;
-        }
-
-        if (editingPedido) {
-            const existingFinancialEntries = getPedidoFinancialEntries(editingPedido.id);
-            const paymentChanged = paymentConfigurationSignature({ ...editingPedido })
-                !== paymentConfigurationSignature({ ...pedidoFormData, ...moneyFields, cronogramaPagamento: paymentValidation.schedule });
-            if (existingFinancialEntries.length > 0 && paymentChanged) {
-                const hasPaidEntry = existingFinancialEntries.some((entry) => entry.status === 'Pago');
-                alert(hasPaidEntry
-                    ? 'Este pedido possui parcela paga. A configuração financeira não pode ser alterada por esta tela.'
-                    : 'Este pedido já possui despesas vinculadas. Para evitar exclusão ou recriação silenciosa, ajuste somente pelo fluxo financeiro apropriado.');
-                return;
-            }
-            if (editingPedido.status === 'Recebido' && pedidoFormData.mercadoriaEmMaos !== editingPedido.mercadoriaEmMaos) {
-                alert('O recebimento já foi processado e não pode ser revertido por esta tela.');
-                return;
-            }
-        }
-
-        const timestamp = new Date();
-        const shouldReceiveImmediately = pedidoFormData.mercadoriaEmMaos === true;
-        const auditEntry = {
-            acao: editingPedido ? 'pedido_atualizado' : 'pedido_criado',
-            data: timestamp,
-            usuarioUid: getCurrentUserId(),
-            usuarioNome: getCurrentUserName(),
-            fornecedorId: pedidoFormData.fornecedorId,
-            fornecedorNome: pedidoFormData.fornecedorNome,
-            fornecedorCriadoDurantePedido: fornecedorCriadoNoPedido
-                || editingPedido?.fornecedorCriadoDurantePedido === true,
-            subtotalItensCentavos: moneyFields.subtotalItensCentavos,
-            valorTotalCentavos: moneyFields.valorTotalCentavos,
-            valorTotalAnteriorCentavos: editingPedido ? resolvePurchaseOrderTotalCents(editingPedido) : null,
-            observacaoGeral: pedidoFormData.observacaoGeral || '',
-            formaPagamento: pedidoFormData.formaPagamento || '',
-            tipoPagamento: pedidoFormData.tipoPagamento || '',
-            quantidadeParcelas: paymentValidation.schedule.length,
-            cronogramaPagamento: paymentValidation.schedule,
-            mercadoriaEmMaos: shouldReceiveImmediately,
-            recebimentoAutomatico: shouldReceiveImmediately && editingPedido?.status !== 'Recebido'
-        };
-        const formWithoutId = { ...pedidoFormData };
-        delete formWithoutId.id;
-        const payload = {
-            ...formWithoutId,
-            ...moneyFields,
-            cronogramaPagamento: paymentValidation.schedule,
-            configuracaoPagamentoDefinida: hasConfiguredPayment,
-            observacaoGeral: (pedidoFormData.observacaoGeral || '').trim(),
-            fornecedorCriadoDurantePedido: fornecedorCriadoNoPedido
-                || editingPedido?.fornecedorCriadoDurantePedido === true,
-            historico: [...(editingPedido?.historico || []), auditEntry],
-            status: shouldReceiveImmediately || editingPedido?.status === 'Recebido' ? 'Recebido' : (pedidoFormData.status || 'Pendente'),
-            dataPrevistaEntrega: shouldReceiveImmediately ? '' : (pedidoFormData.dataPrevistaEntrega || ''),
-            ...(shouldReceiveImmediately && editingPedido?.status !== 'Recebido' ? {
-                receivedAt: timestamp,
-                receivedBy: getCurrentUserId(),
-                receivedByNome: getCurrentUserName()
-            } : {}),
-            updatedAt: timestamp,
-            updatedBy: getCurrentUserId(),
-            updatedByNome: getCurrentUserName()
-        };
-
-        try {
-            pedidoSavingRef.current = true;
-            setIsSavingPedido(true);
-            const pedidoId = editingPedido?.id || pedidoDocumentIdRef.current;
-            if (editingPedido) {
-                await updateItem('pedidosCompra', editingPedido.id, payload);
-            } else {
-                await addItem('pedidosCompra', {
-                    ...payload,
-                    createdBy: getCurrentUserId(),
-                    createdByNome: getCurrentUserName(),
-                    createdByEmail: currentUser?.auth?.email || currentUser?.email || ''
-                }, effectiveStoreId, pedidoId, { createOnly: true });
-            }
-
-            const financialEntryIds = isLegacyEditWithoutPayment
-                ? getPedidoFinancialEntries(pedidoId).map((entry) => entry.id)
-                : await createPurchaseOrderFinancialEntries(payload, pedidoId);
-            let stockProcessed = false;
-            if (shouldReceiveImmediately && editingPedido?.status !== 'Recebido') {
-                stockProcessed = await processPurchaseOrderStock(payload, pedidoId);
-            }
-            const completionTimestamp = new Date();
-            await updateItem('pedidosCompra', pedidoId, {
-                financialEntryIds,
-                ...(financialEntryIds[0] ? { contaPagarId: financialEntryIds[0] } : {}),
-                ...(financialEntryIds.length > 0 ? { financialEntriesCreatedAt: completionTimestamp } : {}),
-                ...(shouldReceiveImmediately ? {
-                    estoqueProcessadoAt: completionTimestamp,
-                    estoqueProcessadoPor: getCurrentUserId()
-                } : {}),
-                historico: [...payload.historico, {
-                    acao: 'integracoes_processadas',
-                    data: completionTimestamp,
-                    usuarioUid: getCurrentUserId(),
-                    usuarioNome: getCurrentUserName(),
-                    despesasCriadas: financialEntryIds.length,
-                    idsDespesas: financialEntryIds,
-                    estoqueProcessado: stockProcessed,
-                    mercadoriaRecebida: shouldReceiveImmediately
-                }],
-                updatedAt: completionTimestamp
-            });
-            setShowPedidoModal(false);
-        } finally {
-            pedidoSavingRef.current = false;
-            setIsSavingPedido(false);
-        }
-    };
-    const handleUpdatePedidoStatus = async (pedido, status) => {
-        if (pedido.status === status) {
-            alert(`O pedido já está com o status ${status}.`);
-            return;
-        }
-        if (receivingPedidoIdsRef.current.has(pedido.id)) return;
-        receivingPedidoIdsRef.current.add(pedido.id);
-
-        try {
-            const financialEntryIds = status === 'Recebido'
-                ? await createPurchaseOrderFinancialEntries(pedido, pedido.id)
-                : getPedidoFinancialEntries(pedido.id).map((entry) => entry.id);
-            const stockProcessed = status === 'Recebido'
-                ? await processPurchaseOrderStock(pedido, pedido.id)
-                : false;
-            const timestamp = new Date();
-
-            await updateItem('pedidosCompra', pedido.id, {
-                status,
-                ...(financialEntryIds[0] ? { contaPagarId: financialEntryIds[0] } : {}),
-                financialEntryIds,
-                ...(status === 'Recebido' ? {
-                    receivedAt: timestamp,
-                    receivedBy: getCurrentUserId(),
-                    receivedByNome: getCurrentUserName(),
-                    estoqueProcessadoAt: timestamp,
-                    estoqueProcessadoPor: getCurrentUserId(),
-                    financialEntriesCreatedAt: pedido.financialEntriesCreatedAt || timestamp
-                } : {}),
-                updatedAt: timestamp,
-                updatedBy: getCurrentUserId(),
-                updatedByNome: getCurrentUserName(),
-                historico: [...(pedido.historico || []), {
-                    acao: 'status_atualizado',
-                    statusAnterior: pedido.status || '',
-                    statusNovo: status,
-                    data: timestamp,
-                    usuarioUid: getCurrentUserId(),
-                    usuarioNome: getCurrentUserName(),
-                    subtotalItensCentavos: resolvePurchaseOrderSubtotalCents(pedido),
-                    valorTotalCentavos: resolvePurchaseOrderTotalCents(pedido),
-                    observacaoGeral: pedido.observacaoGeral || '',
-                    despesasVinculadas: financialEntryIds.length,
-                    estoqueProcessado: stockProcessed
-                }]
-            });
-            if (status === 'Recebido') alert('Pedido recebido, estoque processado e despesas vinculadas ao Financeiro.');
-        } finally {
-            receivingPedidoIdsRef.current.delete(pedido.id);
-        }
-    };
-    const handleFornecedorPedidoSearchChange = (event) => {
-        const value = event.target.value;
-        setFornecedorPedidoBusca(value);
-        setFornecedorPedidoDropdownOpen(true);
-        if (normalizeSupplierName(value) !== normalizeSupplierName(pedidoFormData.fornecedorNome)) {
-            setPedidoFormData((previous) => ({ ...previous, fornecedorId: '', fornecedorNome: '' }));
-            setFornecedorCriadoNoPedido(false);
-        }
-    };
-    const handlePedidoTotalChange = (event) => {
-        const valorTotalCentavos = moneyInputToCents(event.target.value);
-        setPedidoFormData((previous) => {
-            const moneyFields = buildPurchaseOrderMoneyFields({
-                items: previous.itens || [],
-                totalCents: valorTotalCentavos,
-                manuallyDefined: true
-            });
-            const next = { ...previous, ...moneyFields };
-            if (previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO) {
-                const suggested = buildSuggestedPaymentSchedule({
-                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
-                    paymentType: previous.tipoPagamento,
-                    totalCents: valorTotalCentavos,
-                    installmentCount: previous.quantidadeParcelas,
-                    purchaseDate: previous.dataPedido,
-                    firstDueDate: previous.primeiroVencimento
-                });
-                next.cronogramaPagamento = suggested.map((entry, index) => ({
-                    ...entry,
-                    dueDate: previous.cronogramaPagamento?.[index]?.dueDate || entry.dueDate
-                }));
-            }
-            return next;
-        });
-    };
-    const handlePedidoPaymentMethodChange = (formaPagamento) => {
-        setPedidoFormData((previous) => {
-            const next = {
-                ...previous,
-                formaPagamento,
-                tipoPagamento: PURCHASE_PAYMENT_TYPE.SINGLE,
-                quantidadeParcelas: 1,
-                configuracaoPagamentoDefinida: true
-            };
-            if (formaPagamento === PURCHASE_PAYMENT_METHOD.CASH) {
-                next.diaVencimentoCartao = '';
-                next.primeiroVencimento = '';
-                next.cronogramaPagamento = [];
-            } else if (formaPagamento === PURCHASE_PAYMENT_METHOD.CREDIT_CARD) {
-                next.cronogramaPagamento = [];
-            } else {
-                next.diaVencimentoCartao = '';
-                next.primeiroVencimento = '';
-                next.cronogramaPagamento = buildSuggestedPaymentSchedule({
-                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
-                    paymentType: PURCHASE_PAYMENT_TYPE.SINGLE,
-                    totalCents: resolvePurchaseOrderTotalCents(previous),
-                    installmentCount: 1,
-                    purchaseDate: previous.dataPedido,
-                    firstDueDate: ''
-                });
-            }
-            return next;
-        });
-    };
-    const handlePedidoPaymentTypeChange = (tipoPagamento) => {
-        setPedidoFormData((previous) => {
-            const quantidadeParcelas = tipoPagamento === PURCHASE_PAYMENT_TYPE.INSTALLMENTS ? 2 : 1;
-            const next = { ...previous, tipoPagamento, quantidadeParcelas };
-            if (previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO) {
-                next.cronogramaPagamento = buildSuggestedPaymentSchedule({
-                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
-                    paymentType: tipoPagamento,
-                    totalCents: resolvePurchaseOrderTotalCents(previous),
-                    installmentCount: quantidadeParcelas,
-                    purchaseDate: previous.dataPedido,
-                    firstDueDate: previous.primeiroVencimento
-                });
-            }
-            return next;
-        });
-    };
-    const handlePedidoFirstDueDateChange = (firstDueDate) => {
-        setPedidoFormData((previous) => {
-            const next = { ...previous, primeiroVencimento: firstDueDate };
-            if (previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO) {
-                next.cronogramaPagamento = buildSuggestedPaymentSchedule({
-                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
-                    paymentType: previous.tipoPagamento,
-                    totalCents: resolvePurchaseOrderTotalCents(previous),
-                    installmentCount: previous.quantidadeParcelas,
-                    purchaseDate: previous.dataPedido,
-                    firstDueDate
-                });
-            }
-            return next;
-        });
-    };
-    const handlePedidoInstallmentCountChange = (value) => {
-        const parsedCount = value === '' ? '' : Math.max(1, Math.trunc(Number(value) || 1));
-        setPedidoFormData((previous) => {
-            const next = { ...previous, quantidadeParcelas: parsedCount };
-            if (previous.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO && Number(parsedCount) >= 1) {
-                next.cronogramaPagamento = buildSuggestedPaymentSchedule({
-                    paymentMethod: PURCHASE_PAYMENT_METHOD.BOLETO,
-                    paymentType: previous.tipoPagamento,
-                    totalCents: resolvePurchaseOrderTotalCents(previous),
-                    installmentCount: parsedCount,
-                    purchaseDate: previous.dataPedido,
-                    firstDueDate: previous.primeiroVencimento
-                });
-            }
-            return next;
-        });
-    };
-    const handleBoletoScheduleChange = (index, field, value) => {
-        setPedidoFormData((previous) => ({
-            ...previous,
-            cronogramaPagamento: (previous.cronogramaPagamento || []).map((entry, entryIndex) => (
-                entryIndex === index
-                    ? { ...entry, [field]: field === 'valueCents' ? moneyInputToCents(value) : value }
-                    : entry
-            ))
-        }));
-    };
-    const handleAddItemToPedido = (item) => {
-        const custoUnitario = Number(item.custoUnitario || 0);
-        setPedidoFormData(prev => ({
-            ...prev,
-            itens: [...(prev.itens || []), {
-                ...item,
-                quantidade: 1,
-                custoUnitario,
-                custoUnitarioCentavos: Math.round(custoUnitario * 100)
-            }]
-        }));
-    };
-    const handleUpdateItemInPedido = (index, field, value) => {
-        const newItens = [...pedidoFormData.itens];
-        newItens[index] = { ...newItens[index], [field]: value };
-        if (field === 'custoUnitario') newItens[index].custoUnitarioCentavos = Math.round(Number(value || 0) * 100);
-        setPedidoFormData(prev => ({...prev, itens: newItens}));
-    };
+    const handleNewPedido = () => { setEditingPedido(null); resetPedidoForm(); setShowPedidoModal(true); };
+    const handleEditPedido = (pedido) => { setEditingPedido(pedido); setPedidoFormData({ ...pedido, dataPedido: pedido.dataPedido?.split('T')[0] || '', dataPrevistaEntrega: pedido.dataPrevistaEntrega?.split('T')[0] || '' }); setShowPedidoModal(true); };
+    const handlePedidoSubmit = async (e) => { e.preventDefault(); if (editingPedido) { await updateItem('pedidosCompra', editingPedido.id, pedidoFormData); } else { await addItem('pedidosCompra', pedidoFormData); } setShowPedidoModal(false); };
+    const handleUpdatePedidoStatus = async (pedido, status) => { await updateItem('pedidosCompra', pedido.id, { ...pedido, status }); if (status === 'Recebido') { const conta = { descricao: `Compra de ${pedido.fornecedorNome}`, valor: pedido.valorTotal, dataVencimento: new Date().toISOString().split('T')[0], status: 'Pendente', categoria: 'Fornecedores', pedidoCompraId: pedido.id }; await addItem('contas_a_pagar', conta); alert('Conta a pagar gerada no financeiro!'); } };
+    const handleAddItemToPedido = (item) => { setPedidoFormData(prev => ({...prev, itens: [...(prev.itens || []), {...item, quantidade: 1, custoUnitario: item.custoUnitario || 0}]}))};
+    const handleUpdateItemInPedido = (index, field, value) => { const newItens = [...pedidoFormData.itens]; newItens[index][field] = value; setPedidoFormData(prev => ({...prev, itens: newItens})) };
     const handleRemoveItemFromPedido = (index) => { const newItens = pedidoFormData.itens.filter((_, i) => i !== index); setPedidoFormData(prev => ({...prev, itens: newItens}));};
 
     // Handlers Estoque
@@ -3356,63 +2382,8 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
     const handleDeletePerda = (perda) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('perdasDescarte', perda.id) });
 
     const handleNewReceita = () => { setEditingReceita(null); resetReceitaForm(); setShowReceitaModal(true); };
-    const handleEditReceita = (receita) => { setEditingReceita(receita); setReceitaFormData({ ...receita }); setIsAddingReceitaCategoria(false); setNewReceitaCategoria(''); setIsSavingReceitaCategoria(false); setPreviousReceitaCategoria(''); setShowReceitaModal(true); };
+    const handleEditReceita = (receita) => { setEditingReceita(receita); setReceitaFormData({ ...receita }); setShowReceitaModal(true); };
     const handleDeleteReceita = (receita) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('receitas', receita.id) });
-
-    const handleReceitaCategoriaChange = (e) => {
-        const value = e.target.value;
-        if (value === '__add_new__') {
-            setIsAddingReceitaCategoria(true);
-            setNewReceitaCategoria('');
-            setPreviousReceitaCategoria(receitaFormData.categoria || '');
-            setReceitaFormData(prev => ({ ...prev, categoria: '' }));
-            return;
-        }
-        setIsAddingReceitaCategoria(false);
-        setNewReceitaCategoria('');
-        setPreviousReceitaCategoria('');
-        setReceitaFormData(prev => ({ ...prev, categoria: value }));
-    };
-
-    const handleCancelReceitaCategoria = () => {
-        setIsAddingReceitaCategoria(false);
-        setNewReceitaCategoria('');
-        setIsSavingReceitaCategoria(false);
-        setReceitaFormData(prev => ({ ...prev, categoria: previousReceitaCategoria || '' }));
-        setPreviousReceitaCategoria('');
-    };
-
-    const handleCreateReceitaCategoria = async () => {
-        const trimmed = newReceitaCategoria.trim();
-        if (!trimmed) {
-            alert('Informe o nome da nova categoria.');
-            return;
-        }
-
-        const existing = receitaCategories.find(cat => cat.toLowerCase() === trimmed.toLowerCase());
-        if (existing) {
-            alert('Esta categoria já existe.');
-            setReceitaFormData(prev => ({ ...prev, categoria: existing }));
-            setIsAddingReceitaCategoria(false);
-            setNewReceitaCategoria('');
-            return;
-        }
-
-        try {
-            setIsSavingReceitaCategoria(true);
-            await addItem('categoriasReceitas', { nome: trimmed });
-            setReceitaFormData(prev => ({ ...prev, categoria: trimmed }));
-            setIsAddingReceitaCategoria(false);
-            setNewReceitaCategoria('');
-            setPreviousReceitaCategoria('');
-        } catch (error) {
-            console.error('Erro ao criar categoria de receita:', error);
-            alert('Não foi possível salvar a nova categoria. Tente novamente.');
-        } finally {
-            setIsSavingReceitaCategoria(false);
-        }
-    };
-
     const handleReceitaSubmit = async (e) => {
         e.preventDefault();
         const requiredFields = ['nome', 'categoria', 'ingredientes', 'modoPreparo', 'tempoPreparo', 'rendimento', 'custoEstimado'];
@@ -3431,14 +2402,28 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         setShowReceitaModal(false);
     };
 
-    const handleNewRetiradaCaixa = (storeId = effectiveStoreId, dataOperacional = '') => {
+    const handleNewRetiradaCaixa = (storeId = effectiveStoreId, dataOperacional = '', postClosing = false) => {
         resetRetiradaCaixaForm();
         setRetiradaCaixaStoreId(storeId || '');
+        setRetiradaCaixaPostClosing(postClosing === true);
+        setPendingPostClosingRetirada(null);
         if (dataOperacional) {
             setRetiradaCaixaFormData((current) => ({ ...current, data: dataOperacional }));
         }
         retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${storeId || 'sem-loja'}`);
         setShowRetiradaCaixaModal(true);
+    };
+
+    const saveRetiradaCaixa = async (payload, postClosing = false) => {
+        await registrarRetiradaDespesaCaixa(payload);
+        alert(postClosing
+            ? 'Lançamento registrado com sucesso. A conferência do caixa foi recalculada.'
+            : 'Retirada para despesa registrada com sucesso.');
+        setShowRetiradaCaixaModal(false);
+        setPendingPostClosingRetirada(null);
+        setRetiradaCaixaPostClosing(false);
+        resetRetiradaCaixaForm();
+        retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${retiradaCaixaStoreId}`);
     };
 
     const handleRetiradaCaixaSubmit = async (e) => {
@@ -3456,20 +2441,49 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         retiradaCaixaSubmittingRef.current = true;
         setIsSavingRetiradaCaixa(true);
         try {
-            await registrarRetiradaDespesaCaixa({
+            const payload = {
                 lojaId: retiradaCaixaStoreId,
                 dataOperacional: dataRetirada,
                 valorCentavos,
                 motivo,
                 observacao: String(retiradaCaixaFormData.observacoes || '').trim(),
+                horaMovimentacao: String(retiradaCaixaFormData.hora || '').trim(),
                 idempotencyKey: retiradaCaixaIdempotencyRef.current,
+            };
+            const dailyResponse = await obterRegistroDiarioCaixa({
+                lojaId: retiradaCaixaStoreId,
+                dataOperacional: dataRetirada,
             });
-            alert('Retirada para despesa registrada com sucesso.');
-            setShowRetiradaCaixaModal(false);
-            resetRetiradaCaixaForm();
-            retiradaCaixaIdempotencyRef.current = createIdempotencyKey(`retirada-despesa:${retiradaCaixaStoreId}`);
+            const daily = dailyResponse?.registro || null;
+            const isPostClosing = daily?.temValorEncerramento === true
+                || Number.isSafeInteger(daily?.valorEncerramentoCentavos);
+            setRetiradaCaixaPostClosing(isPostClosing);
+            if (isPostClosing) {
+                if (!canAdjustAfterClosing) {
+                    alert('Seu usuário não possui permissão para realizar ajustes após o encerramento.');
+                    return;
+                }
+                setPendingPostClosingRetirada(payload);
+                return;
+            }
+            await saveRetiradaCaixa(payload, false);
         } catch (error) {
             console.error('Erro ao registrar retirada para despesa:', error);
+            alert(error?.message || 'Não foi possível registrar a retirada para despesa.');
+        } finally {
+            retiradaCaixaSubmittingRef.current = false;
+            setIsSavingRetiradaCaixa(false);
+        }
+    };
+
+    const confirmPostClosingRetirada = async () => {
+        if (!pendingPostClosingRetirada || retiradaCaixaSubmittingRef.current) return;
+        retiradaCaixaSubmittingRef.current = true;
+        setIsSavingRetiradaCaixa(true);
+        try {
+            await saveRetiradaCaixa(pendingPostClosingRetirada, true);
+        } catch (error) {
+            console.error('Erro ao registrar retirada para despesa após encerramento:', error);
             alert(error?.message || 'Não foi possível registrar a retirada para despesa.');
         } finally {
             retiradaCaixaSubmittingRef.current = false;
@@ -3482,13 +2496,13 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
             <div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Fornecedores/Estoque</h1><p className="text-gray-600 mt-1">Organize seus parceiros, compras e insumos</p></div>
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2"><div className="flex flex-wrap gap-2">
-                {['fornecedores', 'pedidos', 'estoque', 'caixa', 'receitas', 'perdas'].map(tab => (
+                {['fornecedores', 'pedidos', 'estoque', 'producao-vitrine', 'caixa', 'receitas', 'perdas'].map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
-                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'caixa' && 'Caixa'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
+                        {tab === 'fornecedores' && 'Fornecedores'}{tab === 'pedidos' && 'Pedidos de Compra'}{tab === 'estoque' && 'Estoque'}{tab === 'producao-vitrine' && 'Produção / Vitrine'}{tab === 'caixa' && 'Caixa'}{tab === 'receitas' && 'Receitas'}{tab === 'perdas' && 'Perdas/Descarte'}
                     </button>
                 ))}
             </div></div>
-            
+
             {activeTab === 'fornecedores' && (
                 <div>
                     <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
@@ -3501,10 +2515,10 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             {activeTab === 'pedidos' && (
                  <div>
                     <div className="flex justify-end mb-6"><Button onClick={handleNewPedido}><Plus className="w-4 h-4" /> Novo Pedido de Compra</Button></div>
-                    <Table columns={[{ header: 'Fornecedor', key: 'fornecedorNome' }, { header: 'Data do Pedido', render: (row) => getJSDate(row.dataPedido)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Previsão de Entrega', render: (row) => row.mercadoriaEmMaos ? 'Mercadoria em mãos' : (getJSDate(row.dataPrevistaEntrega)?.toLocaleDateString('pt-BR') || '-') }, { header: 'Valor Total', render: (row) => formatCentsAsCurrency(resolvePurchaseOrderTotalCents(row)) }, { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'Recebido' ? 'bg-green-100 text-green-800' : row.status === 'Pendente' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>{row.status}</span> }]} data={pedidosComNomes} actions={[{ icon: Eye, label: "Abrir/Editar", onClick: handleEditPedido }, { icon: Truck, label: "Receber", onClick: (row) => handleUpdatePedidoStatus(row, 'Recebido') }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidosCompra', row.id) }) }]} />
+                    <Table columns={[{ header: 'Fornecedor', key: 'fornecedorNome' }, { header: 'Data do Pedido', render: (row) => getJSDate(row.dataPedido)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Previsão de Entrega', render: (row) => getJSDate(row.dataPrevistaEntrega)?.toLocaleDateString('pt-BR') || '-' }, { header: 'Valor Total', render: (row) => `R$ ${(row.valorTotal || 0).toFixed(2)}`}, { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'Recebido' ? 'bg-green-100 text-green-800' : row.status === 'Pendente' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>{row.status}</span> }]} data={pedidosComNomes} actions={[{ icon: Edit, label: "Editar", onClick: handleEditPedido }, { icon: Truck, label: "Receber", onClick: (row) => handleUpdatePedidoStatus(row, 'Recebido') }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidosCompra', row.id) }) }]} />
                 </div>
             )}
-             {activeTab === 'estoque' && (
+            {activeTab === 'estoque' && (
                  <div>
                     <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
                         <div className="flex flex-col sm:flex-row gap-3 w-full md:max-w-2xl">
@@ -3570,9 +2584,18 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                 </div>
             )}
 
+            {activeTab === 'producao-vitrine' && (
+                <ProducaoVitrine
+                    currentUser={currentUser}
+                    availableStores={availableStores}
+                    storeInfoMap={storeInfoMap}
+                />
+            )}
+
             {activeTab === 'caixa' && (
                 <CaixaTab
                     currentUser={currentUser}
+                    isOwner={normalizeRole(currentUser?.role) === ROLE_OWNER}
                     effectiveStoreId={effectiveStoreId}
                     availableStores={availableStores}
                     storeInfoMap={storeInfoMap}
@@ -3659,242 +2682,21 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
             <Modal isOpen={showPedidoModal} onClose={() => setShowPedidoModal(false)} title={editingPedido ? 'Editar Pedido de Compra' : 'Novo Pedido de Compra'} size="xl">
                 <form onSubmit={handlePedidoSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1 relative">
-                            <label className="block text-sm font-medium text-gray-700">Fornecedor</label>
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                <input
-                                    type="text"
-                                    value={fornecedorPedidoBusca}
-                                    onChange={handleFornecedorPedidoSearchChange}
-                                    onFocus={() => setFornecedorPedidoDropdownOpen(true)}
-                                    onBlur={() => window.setTimeout(() => setFornecedorPedidoDropdownOpen(false), 150)}
-                                    placeholder="Digite o nome do fornecedor..."
-                                    autoComplete="off"
-                                    className={`w-full pl-10 pr-4 py-3 border rounded-xl transition-all focus:ring-2 focus:ring-pink-500 focus:border-transparent ${pedidoFormData.fornecedorId ? 'border-green-400 bg-green-50' : 'border-gray-300'}`}
-                                />
-                            </div>
-                            {pedidoFormData.fornecedorId && <p className="text-xs text-green-700">Fornecedor selecionado: {pedidoFormData.fornecedorNome}</p>}
-                            {fornecedorPedidoDropdownOpen && (
-                                <div className="absolute z-20 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl">
-                                    {pedidoFornecedorResults.map((fornecedor) => (
-                                        <button
-                                            key={fornecedor.id}
-                                            type="button"
-                                            onMouseDown={(event) => event.preventDefault()}
-                                            onClick={() => selectFornecedorForPedido(fornecedor, false)}
-                                            className="block w-full px-4 py-3 text-left text-sm hover:bg-pink-50"
-                                        >
-                                            <span className="font-medium text-gray-800">{fornecedor.nome}</span>
-                                            {fornecedor.categoria && <span className="block text-xs text-gray-500">{fornecedor.categoria}</span>}
-                                        </button>
-                                    ))}
-                                    {cleanSupplierName(fornecedorPedidoBusca) && !pedidoFornecedorEquivalent && (
-                                        <button
-                                            type="button"
-                                            onMouseDown={(event) => event.preventDefault()}
-                                            onClick={() => openQuickFornecedorModal(fornecedorPedidoBusca)}
-                                            className="block w-full border-t border-pink-100 px-4 py-3 text-left text-sm font-semibold text-pink-700 hover:bg-pink-50"
-                                        >
-                                            + Cadastrar “{cleanSupplierName(fornecedorPedidoBusca)}” como novo fornecedor
-                                        </button>
-                                    )}
-                                    {pedidoFornecedorResults.length === 0 && pedidoFornecedorEquivalent && (
-                                        <p className="px-4 py-3 text-sm text-gray-500">Fornecedor equivalente já cadastrado.</p>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                        <Select label="Fornecedor" value={pedidoFormData.fornecedorId || ''} onChange={e => setPedidoFormData({...pedidoFormData, fornecedorId: e.target.value, fornecedorNome: e.target.selectedOptions[0].text })} required><option value="">Selecione...</option>{data.fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</Select>
                         <Input label="Data do Pedido" type="date" value={pedidoFormData.dataPedido || ''} onChange={e => setPedidoFormData({...pedidoFormData, dataPedido: e.target.value})} required/>
-                        <div className="space-y-3">
-                            <Input
-                                label="Previsão de Entrega"
-                                type="date"
-                                value={pedidoFormData.dataPrevistaEntrega || ''}
-                                onChange={e => setPedidoFormData({...pedidoFormData, dataPrevistaEntrega: e.target.value})}
-                                disabled={pedidoFormData.mercadoriaEmMaos}
-                            />
-                            <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="mt-1 h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-                                    checked={pedidoFormData.mercadoriaEmMaos === true}
-                                    onChange={(event) => setPedidoFormData((previous) => ({
-                                        ...previous,
-                                        mercadoriaEmMaos: event.target.checked,
-                                        ...(event.target.checked ? { dataPrevistaEntrega: '' } : {})
-                                    }))}
-                                    disabled={editingPedido?.status === 'Recebido'}
-                                />
-                                <span>
-                                    <span className="block text-sm font-semibold text-gray-800">Estou com a mercadoria / Compra realizada no mercado</span>
-                                    <span className="block text-xs text-gray-500 mt-1">Marque quando a mercadoria já estiver sendo retirada/comprada no local e não houver uma entrega futura.</span>
-                                </span>
-                            </label>
-                        </div>
-                        <Input
-                            label="Valor total do pedido"
-                            type="text"
-                            inputMode="decimal"
-                            value={formatCentsAsCurrency(resolvePurchaseOrderTotalCents(pedidoFormData))}
-                            onChange={handlePedidoTotalChange}
-                            onFocus={(event) => event.target.select()}
-                            required={(pedidoFormData.itens || []).length === 0}
-                        />
+                        <Input label="Previsão de Entrega" type="date" value={pedidoFormData.dataPrevistaEntrega || ''} onChange={e => setPedidoFormData({...pedidoFormData, dataPrevistaEntrega: e.target.value})} />
                     </div>
-                    <section className="rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
-                        <div>
-                            <h3 className="font-semibold text-gray-900">Pagamento</h3>
-                            <p className="text-xs text-gray-500">O recebimento da mercadoria e a situação financeira são controlados separadamente.</p>
-                        </div>
-                        {!pedidoFormData.configuracaoPagamentoDefinida && editingPedido && (
-                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                                Pedido antigo sem configuração detalhada de pagamento. Selecione uma forma somente se desejar iniciar o novo fluxo financeiro.
-                            </div>
-                        )}
-                        <div className="space-y-2">
-                            <span className="block text-sm font-medium text-gray-700">Forma de pagamento</span>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                {[
-                                    [PURCHASE_PAYMENT_METHOD.CASH, 'À vista'],
-                                    [PURCHASE_PAYMENT_METHOD.CREDIT_CARD, 'Cartão de crédito'],
-                                    [PURCHASE_PAYMENT_METHOD.BOLETO, 'Boleto']
-                                ].map(([value, label]) => (
-                                    <button
-                                        key={value}
-                                        type="button"
-                                        onClick={() => handlePedidoPaymentMethodChange(value)}
-                                        className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${pedidoFormData.formaPagamento === value ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                                    >
-                                        {label}{pedidoFormData.formaPagamento === value ? ' ✓' : ''}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.CASH && (
-                            <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800">
-                                Será criada uma única despesa de {formatCentsAsCurrency(resolvePurchaseOrderTotalCents(pedidoFormData))}, registrada como paga na data da compra.
-                            </div>
-                        )}
-
-                        {[PURCHASE_PAYMENT_METHOD.CREDIT_CARD, PURCHASE_PAYMENT_METHOD.BOLETO].includes(pedidoFormData.formaPagamento) && (
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <span className="block text-sm font-medium text-gray-700">Tipo da compra</span>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {[
-                                            [PURCHASE_PAYMENT_TYPE.SINGLE, pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO ? 'À vista / 1 boleto' : 'À vista / 1x'],
-                                            [PURCHASE_PAYMENT_TYPE.INSTALLMENTS, 'Parcelado']
-                                        ].map(([value, label]) => (
-                                            <button
-                                                key={value}
-                                                type="button"
-                                                onClick={() => handlePedidoPaymentTypeChange(value)}
-                                                className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${pedidoFormData.tipoPagamento === value ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                                            >
-                                                {label}{pedidoFormData.tipoPagamento === value ? ' ✓' : ''}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.CREDIT_CARD && (
-                                        <Input
-                                            label="Dia do vencimento do cartão"
-                                            type="number"
-                                            min="1"
-                                            max="31"
-                                            value={pedidoFormData.diaVencimentoCartao || ''}
-                                            onChange={(event) => setPedidoFormData((previous) => ({ ...previous, diaVencimentoCartao: event.target.value }))}
-                                            required
-                                        />
-                                    )}
-                                    <Input
-                                        label={pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO && pedidoFormData.tipoPagamento === PURCHASE_PAYMENT_TYPE.SINGLE ? 'Data de vencimento do boleto' : 'Primeiro vencimento'}
-                                        type="date"
-                                        value={pedidoFormData.primeiroVencimento || ''}
-                                        onChange={(event) => handlePedidoFirstDueDateChange(event.target.value)}
-                                        required
-                                    />
-                                    {pedidoFormData.tipoPagamento === PURCHASE_PAYMENT_TYPE.INSTALLMENTS && (
-                                        <Input
-                                            label="Quantidade de parcelas"
-                                            type="number"
-                                            min="2"
-                                            step="1"
-                                            value={pedidoFormData.quantidadeParcelas || ''}
-                                            onChange={(event) => handlePedidoInstallmentCountChange(event.target.value)}
-                                            required
-                                        />
-                                    )}
-                                </div>
-
-                                {pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.CREDIT_CARD && pedidoFormData.primeiroVencimento && (
-                                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 space-y-2">
-                                        <p className="text-sm font-semibold text-blue-900">Prévia das parcelas do cartão</p>
-                                        {pedidoPaymentSchedule.map((entry) => (
-                                            <div key={entry.installmentNumber} className="flex flex-wrap justify-between gap-2 text-sm text-blue-800">
-                                                <span>{entry.installmentNumber}/{entry.installmentCount}</span>
-                                                <strong>{formatCentsAsCurrency(entry.valueCents)}</strong>
-                                                <span>{entry.dueDate ? new Date(`${entry.dueDate}T12:00:00`).toLocaleDateString('pt-BR') : '-'}</span>
-                                            </div>
-                                        ))}
-                                        <p className="text-xs text-blue-700">Revise o primeiro vencimento: ele define a primeira fatura. Datas inexistentes usam o último dia válido do mês.</p>
-                                    </div>
-                                )}
-
-                                {pedidoFormData.formaPagamento === PURCHASE_PAYMENT_METHOD.BOLETO && (
-                                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-3">
-                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <p className="text-sm font-semibold text-amber-900">Parcelas do boleto</p>
-                                            <span className={`text-xs font-medium ${pedidoBoletoScheduleTotal === resolvePurchaseOrderTotalCents(pedidoFormData) ? 'text-green-700' : 'text-red-700'}`}>
-                                                Soma: {formatCentsAsCurrency(pedidoBoletoScheduleTotal)}
-                                            </span>
-                                        </div>
-                                        {(pedidoFormData.cronogramaPagamento || []).map((entry, index) => (
-                                            <div key={index} className="grid grid-cols-1 sm:grid-cols-[70px_1fr_1fr] gap-3 items-end rounded-lg border border-amber-200 bg-white p-3">
-                                                <strong className="pb-3 text-sm text-gray-700">{index + 1}/{pedidoFormData.cronogramaPagamento.length}</strong>
-                                                <Input
-                                                    label="Valor"
-                                                    type="text"
-                                                    inputMode="decimal"
-                                                    value={formatCentsAsCurrency(entry.valueCents)}
-                                                    onChange={(event) => handleBoletoScheduleChange(index, 'valueCents', event.target.value)}
-                                                    onFocus={(event) => event.target.select()}
-                                                    required
-                                                />
-                                                <Input
-                                                    label="Vencimento"
-                                                    type="date"
-                                                    value={entry.dueDate || ''}
-                                                    onChange={(event) => handleBoletoScheduleChange(index, 'dueDate', event.target.value)}
-                                                    required
-                                                />
-                                            </div>
-                                        ))}
-                                        {pedidoBoletoScheduleTotal !== resolvePurchaseOrderTotalCents(pedidoFormData) && (
-                                            <p className="text-sm font-medium text-red-700">
-                                                Diferença para o total: {formatCentsAsCurrency(resolvePurchaseOrderTotalCents(pedidoFormData) - pedidoBoletoScheduleTotal)}. Corrija antes de salvar.
-                                            </p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </section>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-2">
                             <h3 className="font-semibold">Adicionar Itens do Estoque</h3>
                             <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1">
-                                {data.estoque.map(item => (<div key={item.id} className="flex justify-between items-center p-2 rounded hover:bg-gray-50"><span>{item.nome}</span><Button type="button" size="sm" variant="secondary" onClick={() => handleAddItemToPedido(item)}>+</Button></div>))}
+                                {data.estoque.map(item => (<div key={item.id} className="flex justify-between items-center p-2 rounded hover:bg-gray-50"><span>{item.nome}</span><Button size="sm" variant="secondary" onClick={() => handleAddItemToPedido(item)}>+</Button></div>))}
                             </div>
                         </div>
                         <div className="space-y-2">
                             <h3 className="font-semibold">Itens no Pedido</h3>
                             <div className="max-h-40 overflow-y-auto border rounded-lg p-2 space-y-1">
-                                {(pedidoFormData.itens || []).length === 0 ? <p className="text-sm text-gray-500 text-center p-4">Nenhum item</p> : 
+                                {(pedidoFormData.itens || []).length === 0 ? <p className="text-sm text-gray-500 text-center p-4">Nenhum item</p> :
                                 (pedidoFormData.itens || []).map((item, index) => (
                                     <div key={index} className="grid grid-cols-4 gap-2 items-center p-1">
                                         <span className="col-span-2 text-sm">{item.nome}</span>
@@ -3906,91 +2708,10 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                                     </div>
                                 ))}
                             </div>
-                            <div className="mt-3 rounded-xl bg-gray-50 p-3 space-y-1 text-sm">
-                                <div className="flex justify-between"><span>Itens detalhados:</span><strong>{formatCentsAsCurrency(resolvePurchaseOrderSubtotalCents(pedidoFormData))}</strong></div>
-                                {pedidoFormData.valorNaoDetalhadoCentavos !== 0 && (
-                                    <div className={`flex justify-between ${pedidoFormData.valorNaoDetalhadoCentavos < 0 ? 'text-amber-700' : 'text-pink-700'}`}>
-                                        <span>{pedidoFormData.valorNaoDetalhadoCentavos < 0 ? 'Ajuste/desconto:' : 'Valor não detalhado em itens:'}</span>
-                                        <strong>{formatCentsAsCurrency(pedidoFormData.valorNaoDetalhadoCentavos)}</strong>
-                                    </div>
-                                )}
-                                <div className="flex justify-between border-t border-gray-200 pt-1 text-base"><span>Total do pedido:</span><strong>{formatCentsAsCurrency(resolvePurchaseOrderTotalCents(pedidoFormData))}</strong></div>
-                                {pedidoFormData.totalDefinidoManualmente && <p className="text-xs text-gray-500">Total definido manualmente; alterações nos itens não o sobrescrevem.</p>}
-                            </div>
+                            <div className="text-right font-bold text-lg mt-2">Total: R$ {(pedidoFormData.valorTotal || 0).toFixed(2)}</div>
                         </div>
                     </div>
-                    <Textarea
-                        label="Observação geral do pedido"
-                        rows="3"
-                        placeholder="Ex.: Compra geral de embalagens e ingredientes. Alguns itens não foram detalhados individualmente no pedido."
-                        value={pedidoFormData.observacaoGeral || ''}
-                        onChange={(event) => setPedidoFormData({ ...pedidoFormData, observacaoGeral: event.target.value })}
-                    />
-                    {editingPedido && (
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm space-y-2">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <p><span className="text-gray-500">Responsável:</span> {editingPedido.createdByNome || editingPedido.createdByEmail || '-'}</p>
-                                <p><span className="text-gray-500">Criado em:</span> {getJSDate(editingPedido.createdAt)?.toLocaleString('pt-BR') || '-'}</p>
-                                <p><span className="text-gray-500">Mercadoria:</span> {editingPedido.status === 'Recebido' ? 'Recebida' : 'Entrega futura'}</p>
-                                <p><span className="text-gray-500">Pagamento:</span> {{
-                                    [PURCHASE_PAYMENT_METHOD.CASH]: 'À vista',
-                                    [PURCHASE_PAYMENT_METHOD.CREDIT_CARD]: 'Cartão de crédito',
-                                    [PURCHASE_PAYMENT_METHOD.BOLETO]: 'Boleto'
-                                }[editingPedido.formaPagamento] || 'Pedido antigo — não informado'}</p>
-                            </div>
-                            {(editingPedidoFinancialEntries.length > 0 || pedidoPaymentSchedule.length > 0) && (
-                                <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
-                                    <p className="font-medium text-gray-700">Cronograma financeiro</p>
-                                    {editingPedidoFinancialEntries.length > 0
-                                        ? editingPedidoFinancialEntries.map((entry, index) => (
-                                            <div key={entry.id || index} className="grid grid-cols-[auto_1fr_auto] gap-3 text-xs">
-                                                <span>{entry.parcelaNumero || index + 1}/{entry.parcelasTotal || editingPedidoFinancialEntries.length}</span>
-                                                <span>{formatCentsAsCurrency(Number.isInteger(entry.valorCentavos) ? entry.valorCentavos : Math.round(Number(entry.valor || 0) * 100))} · {getJSDate(entry.dataVencimento)?.toLocaleDateString('pt-BR') || '-'}</span>
-                                                <strong className={entry.status === 'Pago' ? 'text-green-700' : 'text-amber-700'}>{entry.status || 'Pendente'}</strong>
-                                            </div>
-                                        ))
-                                        : pedidoPaymentSchedule.map((entry) => (
-                                            <div key={entry.installmentNumber} className="grid grid-cols-[auto_1fr_auto] gap-3 text-xs">
-                                                <span>{entry.installmentNumber}/{entry.installmentCount}</span>
-                                                <span>{formatCentsAsCurrency(entry.valueCents)} · {entry.dueDate ? new Date(`${entry.dueDate}T12:00:00`).toLocaleDateString('pt-BR') : '-'}</span>
-                                                <strong className="text-gray-500">Ainda não vinculado</strong>
-                                            </div>
-                                        ))}
-                                </div>
-                            )}
-                            <details>
-                                <summary className="cursor-pointer font-medium text-gray-700">Histórico do pedido ({(editingPedido.historico || []).length})</summary>
-                                <div className="mt-2 space-y-2">
-                                    {(editingPedido.historico || []).length === 0 && <p className="text-gray-500">Pedido anterior à auditoria detalhada.</p>}
-                                    {[...(editingPedido.historico || [])].reverse().map((entry, index) => (
-                                        <div key={`${entry.acao || 'evento'}-${index}`} className="rounded-lg border border-gray-200 bg-white p-2">
-                                            <p className="font-medium">{entry.acao || 'Alteração'}</p>
-                                            <p className="text-xs text-gray-500">{entry.usuarioNome || '-'} · {getJSDate(entry.data)?.toLocaleString('pt-BR') || '-'}</p>
-                                            {Number.isInteger(entry.valorTotalCentavos) && <p className="text-xs">Total: {formatCentsAsCurrency(entry.valorTotalCentavos)}</p>}
-                                            {entry.observacaoGeral && <p className="text-xs">Observação: {entry.observacaoGeral}</p>}
-                                        </div>
-                                    ))}
-                                </div>
-                            </details>
-                        </div>
-                    )}
-                    <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowPedidoModal(false)} disabled={isSavingPedido}>Cancelar</Button><Button type="submit" disabled={isSavingPedido}><Save className="w-4 h-4"/> {isSavingPedido ? 'Salvando...' : 'Salvar Pedido'}</Button></div>
-                </form>
-            </Modal>
-            <Modal isOpen={showQuickFornecedorModal} onClose={() => !isSavingQuickFornecedor && setShowQuickFornecedorModal(false)} title="Novo fornecedor" size="sm">
-                <form onSubmit={handleQuickFornecedorSubmit} className="space-y-4">
-                    <Input
-                        label="Nome"
-                        value={quickFornecedorNome}
-                        onChange={(event) => setQuickFornecedorNome(event.target.value)}
-                        autoFocus
-                        required
-                    />
-                    <p className="text-sm text-gray-500">O fornecedor será salvo no cadastro oficial desta loja e poderá ser complementado depois.</p>
-                    <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
-                        <Button variant="secondary" type="button" onClick={() => setShowQuickFornecedorModal(false)} disabled={isSavingQuickFornecedor}>Cancelar</Button>
-                        <Button type="submit" disabled={isSavingQuickFornecedor}><Save className="w-4 h-4"/> {isSavingQuickFornecedor ? 'Salvando...' : 'Salvar fornecedor'}</Button>
-                    </div>
+                    <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowPedidoModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar Pedido</Button></div>
                 </form>
             </Modal>
             <Modal isOpen={showEstoqueModal} onClose={() => setShowEstoqueModal(false)} title={editingEstoque ? 'Editar Item de Estoque' : 'Novo Item de Estoque'} size="lg">
@@ -4011,7 +2732,12 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => setShowEstoqueModal(false)}>Cancelar</Button><Button type="submit"><Save className="w-4 h-4"/> Salvar Item</Button></div>
                 </form>
             </Modal>
-            <Modal isOpen={showRetiradaCaixaModal} onClose={() => !isSavingRetiradaCaixa && setShowRetiradaCaixaModal(false)} title="Registrar retirada para despesa" size="md">
+            <Modal isOpen={showRetiradaCaixaModal} onClose={() => {
+                if (isSavingRetiradaCaixa) return;
+                setShowRetiradaCaixaModal(false);
+                setPendingPostClosingRetirada(null);
+                setRetiradaCaixaPostClosing(false);
+            }} title="Registrar retirada para despesa" size="md">
                 <form onSubmit={handleRetiradaCaixaSubmit} className="space-y-4">
                     <Input
                         label="Motivo da retirada"
@@ -4033,10 +2759,19 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                             label="Data da retirada"
                             type="date"
                             value={retiradaCaixaFormData.data || ''}
-                            onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, data: e.target.value })}
+                            onChange={e => {
+                                setRetiradaCaixaFormData({ ...retiradaCaixaFormData, data: e.target.value });
+                                setRetiradaCaixaPostClosing(false);
+                            }}
                             required
                         />
                     </div>
+                    <Input
+                        label="Horário da movimentação (opcional)"
+                        type="time"
+                        value={retiradaCaixaFormData.hora || ''}
+                        onChange={e => setRetiradaCaixaFormData({ ...retiradaCaixaFormData, hora: e.target.value })}
+                    />
                     <Textarea
                         label="Observação"
                         rows="3"
@@ -4047,12 +2782,23 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                     <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-sm text-rose-800">
                         Esta retirada para despesa será registrada automaticamente como paga no Financeiro.
                     </div>
+                    {retiradaCaixaPostClosing && normalizeRole(currentUser?.role) === ROLE_OWNER && (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                            Este caixa já possui encerramento. O lançamento será registrado como ajuste pós-encerramento e a conferência será recalculada. O encerramento original será preservado.
+                        </div>
+                    )}
                     <div className="flex justify-end gap-3 pt-2">
                         <Button variant="secondary" type="button" disabled={isSavingRetiradaCaixa} onClick={() => setShowRetiradaCaixaModal(false)}>Cancelar</Button>
                         <Button type="submit" disabled={isSavingRetiradaCaixa}><Save className="w-4 h-4"/> {isSavingRetiradaCaixa ? 'Registrando...' : 'Registrar retirada para despesa'}</Button>
                     </div>
                 </form>
             </Modal>
+            <PostClosingConfirmation
+                isOpen={Boolean(pendingPostClosingRetirada)}
+                isSaving={isSavingRetiradaCaixa}
+                onCancel={() => !isSavingRetiradaCaixa && setPendingPostClosingRetirada(null)}
+                onConfirm={confirmPostClosingRetirada}
+            />
             <ReceitasModal
                 isOpen={showReceitaModal}
                 onClose={() => setShowReceitaModal(false)}
@@ -4066,20 +2812,6 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
                 Textarea={Textarea}
                 Button={Button}
                 Save={Save}
-                categories={receitaCategories}
-                isAddingCategory={isAddingReceitaCategoria}
-                newCategory={newReceitaCategoria}
-                setNewCategory={setNewReceitaCategoria}
-                isSavingCategory={isSavingReceitaCategoria}
-                onCategoryChange={handleReceitaCategoriaChange}
-                onStartAddCategory={() => {
-                    setIsAddingReceitaCategoria(true);
-                    setNewReceitaCategoria('');
-                    setPreviousReceitaCategoria(receitaFormData.categoria || '');
-                    setReceitaFormData(prev => ({ ...prev, categoria: '' }));
-                }}
-                onCancelAddCategory={handleCancelReceitaCategoria}
-                onCreateCategory={handleCreateReceitaCategoria}
             />
 
             <Modal
@@ -4154,7 +2886,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 
     const monthlyChartRef = useRef(null);
     const categoryChartRef = useRef(null);
-    
+
 	useEffect(() => {
 		if (activeTab !== 'dashboard' || !monthlyChartRef.current || !categoryChartRef.current || typeof window.Chart === 'undefined') {
 			return;
@@ -4172,11 +2904,11 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 		const monthlyData = {
 			labels: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
 			datasets: [
-				{ label: 'Entradas', data: Array(12).fill(0), backgroundColor: 'rgba(34, 197, 94, 0.6)' },
+				{ label: 'Receitas', data: Array(12).fill(0), backgroundColor: 'rgba(34, 197, 94, 0.6)' },
 				{ label: 'Despesas', data: Array(12).fill(0), backgroundColor: 'rgba(239, 68, 68, 0.6)' }
 			]
 		};
-		
+
 		const allReceitas = [
 			...(data.pedidos || []).filter(p => p.status === 'Finalizado'),
 			...(data.contas_a_receber || []).filter(r => r.status === 'Recebido')
@@ -4193,16 +2925,16 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 				if (date) monthlyData.datasets[1].data[date.getMonth()] += item.valor;
 			}
 		});
-		
-		const monthlyChart = new window.Chart(monthlyCtx, { 
-			type: 'bar', 
-			data: monthlyData, 
-			options: { 
-				responsive: true, 
-				plugins: { 
-					title: { display: true, text: 'Fluxo de Caixa Mensal' } 
-				} 
-			} 
+
+		const monthlyChart = new window.Chart(monthlyCtx, {
+			type: 'bar',
+			data: monthlyData,
+			options: {
+				responsive: true,
+				plugins: {
+					title: { display: true, text: 'Fluxo de Caixa Mensal' }
+				}
+			}
 		});
 
 		const categoryCtx = categoryChartRef.current.getContext('2d');
@@ -4212,22 +2944,22 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 				acc[item.categoria] = (acc[item.categoria] || 0) + item.valor;
 				return acc;
 			}, {});
-			
-		const pieChart = new window.Chart(categoryCtx, { 
-			type: 'pie', 
-			data: { 
-				labels: Object.keys(categoryData), 
-				datasets: [{ 
-					data: Object.values(categoryData), 
-					backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'] 
-				}] 
-			}, 
-			options: { 
-				responsive: true, 
-				plugins: { 
-					title: { display: true, text: 'Despesas por Categoria' } 
-				} 
-			} 
+
+		const pieChart = new window.Chart(categoryCtx, {
+			type: 'pie',
+			data: {
+				labels: Object.keys(categoryData),
+				datasets: [{
+					data: Object.values(categoryData),
+					backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']
+				}]
+			},
+			options: {
+				responsive: true,
+				plugins: {
+					title: { display: true, text: 'Despesas por Categoria' }
+				}
+			}
 		});
 
         chartsRef.current = { monthlyChart, pieChart };
@@ -4245,7 +2977,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
         const totalReceitas = receitas.reduce((sum, item) => sum + (item.valor || 0), 0);
         const totalDespesas = despesas.reduce((sum, item) => sum + (item.valor || 0), 0);
         const lucroLiquido = totalReceitas - totalDespesas;
-        
+
         const aReceber = (data.contas_a_receber || []).filter(r => r.status === 'Pendente').reduce((sum, item) => sum + (item.valor || 0), 0);
         const aPagar = (data.contas_a_pagar || []).filter(p => p.status === 'Pendente').reduce((sum, item) => sum + (item.valor || 0), 0);
 
@@ -4253,7 +2985,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
     }, [data.contas_a_receber, data.contas_a_pagar]);
 
     const handleNew = (type) => {
-        const baseData = type === 'pagar' ? 
+        const baseData = type === 'pagar' ?
             { descricao: '', valor: '', dataVencimento: '', status: 'Pendente', categoria: 'Fornecedores' } :
             { descricao: '', valor: '', dataRecebimento: '', status: 'Pendente', metodo: 'Pix' };
 
@@ -4277,7 +3009,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
         e.preventDefault();
         const collection = modalConfig.type === 'pagar' ? 'contas_a_pagar' : 'contas_a_receber';
         const dataToSave = { ...formData, valor: parseFloat(formData.valor || 0) };
-        
+
         if (modalConfig.item) {
             await updateItem(collection, modalConfig.item.id, dataToSave);
         } else {
@@ -4294,7 +3026,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
     const renderDashboard = () => (
         <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-2xl shadow-lg"><div className="flex items-center gap-4"><div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center shadow-lg"><ArrowUpCircle className="w-6 h-6 text-white" /></div><div><p className="text-gray-500 text-sm font-medium">Entradas Recebidas</p><h2 className="text-2xl font-bold text-gray-800">R$ {financialSummary.totalReceitas.toFixed(2)}</h2></div></div></div>
+                <div className="bg-white p-6 rounded-2xl shadow-lg"><div className="flex items-center gap-4"><div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center shadow-lg"><ArrowUpCircle className="w-6 h-6 text-white" /></div><div><p className="text-gray-500 text-sm font-medium">Receita Total (Pago)</p><h2 className="text-2xl font-bold text-gray-800">R$ {financialSummary.totalReceitas.toFixed(2)}</h2></div></div></div>
                 <div className="bg-white p-6 rounded-2xl shadow-lg"><div className="flex items-center gap-4"><div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-2xl flex items-center justify-center shadow-lg"><ArrowDownCircle className="w-6 h-6 text-white" /></div><div><p className="text-gray-500 text-sm font-medium">Despesa Total (Pago)</p><h2 className="text-2xl font-bold text-gray-800">R$ {financialSummary.totalDespesas.toFixed(2)}</h2></div></div></div>
                 <div className="bg-white p-6 rounded-2xl shadow-lg"><div className="flex items-center gap-4"><div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg"><DollarSign className="w-6 h-6 text-white" /></div><div><p className="text-gray-500 text-sm font-medium">Lucro Líquido</p><h2 className="text-2xl font-bold text-gray-800">R$ {financialSummary.lucroLiquido.toFixed(2)}</h2></div></div></div>
             </div>
@@ -4308,7 +3040,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
             </div>
         </div>
     );
-    
+
     const getStatusClass = (status) => {
         switch (status) {
             case 'Pendente': return 'bg-yellow-100 text-yellow-800';
@@ -4321,7 +3053,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 
     const renderContas = (type) => {
         const collection = type === 'pagar' ? 'contas_a_pagar' : 'contas_a_receber';
-        let title = type === 'pagar' ? 'Despesas' : 'Entradas';
+        let title = type === 'pagar' ? 'Despesas' : 'Contas a Receber';
         let items = data[collection] || [];
 
         if (type === 'pagar' && despesaFilter !== 'Todas') {
@@ -4336,7 +3068,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
             { header: 'Método', key: 'metodo', visible: type === 'receber' },
             { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusClass(row.status)}`}>{row.status}</span> }
         ].filter(c => c.visible !== false);
-        
+
         const actions = [
             { icon: Edit, label: "Editar", onClick: (row) => handleEdit(type, row) },
             { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem(collection, row.id) }) }
@@ -4352,7 +3084,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
             <div>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-gray-700">{title}</h2>
-                    <Button onClick={() => handleNew(type)}><Plus className="w-4 h-4"/> {type === 'pagar' ? 'Nova Despesa' : 'Nova Entrada'}</Button>
+                    <Button onClick={() => handleNew(type)}><Plus className="w-4 h-4"/> Novo Lançamento</Button>
                 </div>
                 {type === 'pagar' && (
                     <div className="mb-4 flex space-x-2 border-b">
@@ -4371,7 +3103,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
             </div>
         );
     };
-    
+
     const renderFluxoCaixa = () => {
         const filteredPedidos = (data.pedidos || [])
             .filter(p => p.status === 'Finalizado')
@@ -4402,7 +3134,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
                 if (end && itemDate > end) return false;
                 return true;
             });
-        
+
         const saidasFiltradas = (data.contas_a_pagar || [])
             .filter(i => i.status === 'Pago')
             .filter(item => {
@@ -4417,25 +3149,25 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
                 if (end && itemDate > end) return false;
                 return true;
             });
-            
+
         // Breakdown by sales channel from Pedidos
         const totalVendasPresencial = filteredPedidos.filter(p => p.origem === 'Manual' && p.categoria !== 'Festa').reduce((sum, p) => sum + p.total, 0);
         const totalVendasOnline = filteredPedidos.filter(p => ['Cardapio Online', 'Plataforma'].includes(p.origem)).reduce((sum, p) => sum + p.total, 0);
         const totalVendasFesta = filteredPedidos.filter(p => p.categoria === 'Festa').reduce((sum, p) => sum + p.total, 0);
-            
+
         // Breakdown by payment method from Pedidos
         const totaisPorPagamento = filteredPedidos.reduce((acc, pedido) => {
             const metodo = pedido.formaPagamento || 'Não informado';
             acc[metodo] = (acc[metodo] || 0) + pedido.total;
             return acc;
         }, {});
-        
+
         const totalOutrasEntradas = outrasEntradasFiltradas.reduce((sum, t) => sum + t.valor, 0);
         const totalSaidas = saidasFiltradas.reduce((sum, t) => sum + t.valor, 0);
-        
+
         const totalEntradas = totalVendasPresencial + totalVendasOnline + totalVendasFesta + totalOutrasEntradas;
         const saldo = totalEntradas - totalSaidas;
-        
+
         return (
             <div>
                  <div className="p-4 bg-white rounded-2xl shadow-lg border border-gray-100 space-y-4 mb-6">
@@ -4444,7 +3176,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
                         <Input label="Data Final" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
                     </div>
                  </div>
-                 
+
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                      <div className="bg-green-100 p-4 rounded-xl"><p className="text-sm text-green-800">Total de Entradas</p><p className="text-xl font-bold text-green-900">R$ {totalEntradas.toFixed(2)}</p></div>
                      <div className="bg-red-100 p-4 rounded-xl"><p className="text-sm text-red-800">Total de Saídas</p><p className="text-xl font-bold text-red-900">R$ {totalSaidas.toFixed(2)}</p></div>
@@ -4481,25 +3213,25 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
                 <p className="text-gray-600 mt-1">Gerencie as finanças da sua doceria</p>
             </div>
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2">
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                     {['dashboard', 'pagar', 'receber', 'fluxo'].map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                             {tab === 'dashboard' && 'Dashboard'}
                             {tab === 'pagar' && 'Despesas'}
-                            {tab === 'receber' && 'Entradas'}
+                            {tab === 'receber' && 'Contas a Receber'}
                             {tab === 'fluxo' && 'Fluxo de Caixa'}
                         </button>
                     ))}
                 </div>
             </div>
-            
+
             <div className="mt-6">
                 {activeTab === 'dashboard' && renderDashboard()}
                 {activeTab === 'pagar' && renderContas('pagar')}
                 {activeTab === 'receber' && renderContas('receber')}
                 {activeTab === 'fluxo' && renderFluxoCaixa()}
             </div>
-            
+
             <Modal isOpen={modalConfig.isOpen} onClose={() => setModalConfig({isOpen: false, type: null, item: null})} title={modalConfig.item ? 'Editar Lançamento' : 'Novo Lançamento'}>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <Input label="Descrição" value={formData.descricao || ''} onChange={(e) => setFormData({...formData, descricao: e.target.value})} required/>
@@ -4539,11 +3271,11 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 // --- FIM DOS NOVOS COMPONENTES ---
 
 // Componente Relatorios adicionado no mesmo arquivo App.js para correção do erro
-const Relatorios = ({ data }) => {
+const Relatorios = ({ data, user, availableStores, storeInfoMap }) => {
   const getInitialDateRange = () => {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    
+
     const formatDate = (date) => {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -4566,6 +3298,40 @@ const Relatorios = ({ data }) => {
   const [perdasColumns, setPerdasColumns] = useState([]);
   const [perdasData, setPerdasData] = useState([]);
 
+  if (reportType === 'remessasEntreLojas') {
+    return (
+      <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Relatórios</h1>
+          <p className="text-gray-600 mt-1">Analise o desempenho da sua doceria</p>
+        </div>
+        <div className="max-w-xl rounded-2xl border border-gray-100 bg-white p-4 shadow-lg">
+          <Select
+            id="report-select"
+            label="Tipo de Relatório"
+            value={reportType}
+            onChange={(event) => setReportType(event.target.value)}
+          >
+            <option value="vendasPorPeriodo">Vendas por Período</option>
+            <option value="produtosMaisVendidos">Produtos Mais Vendidos</option>
+            <option value="clientesMaisCompram">Clientes que Mais Compram</option>
+            <option value="usoCupons">Uso de Cupons</option>
+            <option value="estoqueBaixo">Estoque Baixo (Produtos Finais)</option>
+            <option value="comprasInsumos">Compras de Insumos</option>
+            <option value="receitaPorPagamento">Receita por Forma de Pagamento</option>
+            <option value="custoProducao">Custo de Produção</option>
+            <option value="remessasEntreLojas">Remessas entre Lojas</option>
+          </Select>
+        </div>
+        <EntreLojasReport
+          currentUser={user}
+          availableStores={availableStores}
+          storeInfoMap={storeInfoMap}
+        />
+      </div>
+    );
+  }
+
   const formatCurrency = (value) =>
     (Number(value) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -4582,7 +3348,7 @@ const Relatorios = ({ data }) => {
     let totals = null;
     let perdasColumnsLocal = [];
     let perdasDataLocal = [];
-    
+
     const filterByDate = (items, dateField) => {
         let filtered = items;
         if (startDate) filtered = filtered.filter(p => {
@@ -4938,8 +3704,9 @@ const Relatorios = ({ data }) => {
                     <option value="usoCupons">Uso de Cupons</option>
                     <option value="estoqueBaixo">Estoque Baixo (Produtos Finais)</option>
                     <option value="comprasInsumos">Compras de Insumos</option>
-                    <option value="receitaPorPagamento">Entradas por Forma de Pagamento</option>
+                    <option value="receitaPorPagamento">Receita por Forma de Pagamento</option>
                     <option value="custoProducao">Custo de Produção</option>
+                    <option value="remessasEntreLojas">Remessas entre Lojas</option>
                 </Select>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -4949,7 +3716,7 @@ const Relatorios = ({ data }) => {
                 <Button onClick={exportExcel} variant="secondary" className="w-full sm:w-auto" disabled={reportData.length === 0}>Exportar Excel</Button>
             </div>
         </div>
-        
+
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
             <Table columns={reportColumns} data={reportData} />
             {reportTotals && (
@@ -5024,7 +3791,7 @@ const Relatorios = ({ data }) => {
 
 
 // Componente principal
-function StaffApplication({staffUid=null}) {
+function StaffApplication({ staffUid = null }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
 
@@ -5043,31 +3810,12 @@ function StaffApplication({staffUid=null}) {
   const [pedidosConnectivityStatus, setPedidosConnectivityStatus] = useState('online');
   const [pendingOrders, setPendingOrders] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
-  const pendingOrderOpenRequestRef = useRef(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const userMenuButtonRef = useRef(null);
-  const userMenuRef = useRef(null);
-
-  const isiOS = useMemo(() => {
-    const platform = Capacitor.getPlatform();
-    if (platform === 'ios') return true;
-
-    if (platform === 'web' && typeof navigator !== 'undefined') {
-      const ua = navigator.userAgent || '';
-      return /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
-    }
-
-    return false;
-  }, []);
-
-  const [soundUnlocked, setSoundUnlocked] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('iosSoundUnlocked') === 'true';
-  });
 
   const [isAlarmSnoozed, setIsAlarmSnoozed] = useState(false);
   const [snoozeEndTime, setSnoozeEndTime] = useState(null);
-  const [audioAllowed, setAudioAllowed] = useState(audioManager.unlocked);
+  const [pausedPendingOrderIds, setPausedPendingOrderIds] = useState(null);
+  const [, setAudioAllowed] = useState(audioManager.unlocked);
   // --- Estado audioUnlocked agora é derivado do AudioManager ---
   // const [audioUnlocked, setAudioUnlocked] = useState(...);
 
@@ -5075,68 +3823,31 @@ function StaffApplication({staffUid=null}) {
   const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, onConfirm: () => {} });
   // ... (outros estados: showLogin, email, password, etc.) ...
     const [lightboxImage, setLightboxImage] = useState(null);
-  
+
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   // ... (outros estados: passwordResetEmail, passwordResetMessage) ...
-  
+
   const [availableStores, setAvailableStores] = useState([]);
   const [storeInfoMap, setStoreInfoMap] = useState({});
   const [selectedStoreId, setSelectedStoreId] = usePersistentState('selectedStoreId', null);
   const [showStoreManager, setShowStoreManager] = useState(false);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
 
-  useEffect(() => {
-    if (!isiOS || soundUnlocked) return undefined;
-
-    const unlockWithGesture = async () => {
-      try {
-        await audioManager.userUnlock({ userGesture: true });
-        setAudioAllowed(audioManager.unlocked);
-
-        const htmlAudio = new Audio(ALARM_SOUND_URL);
-        const playPromise = htmlAudio.play();
-        if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch(() => {});
-        }
-        htmlAudio.pause();
-        htmlAudio.currentTime = 0;
-      } catch (error) {
-        console.warn('[App.js] Não foi possível iniciar o áudio no gesto de desbloqueio:', error);
-      }
-
-      localStorage.setItem('iosSoundUnlocked', 'true');
-      setSoundUnlocked(true);
-      setAudioAllowed(audioManager.unlocked);
-      window.removeEventListener('touchstart', unlockWithGesture);
-      window.removeEventListener('click', unlockWithGesture);
-    };
-
-    window.addEventListener('touchstart', unlockWithGesture, { passive: true });
-    window.addEventListener('click', unlockWithGesture, { passive: true });
-
-    return () => {
-      window.removeEventListener('touchstart', unlockWithGesture);
-      window.removeEventListener('click', unlockWithGesture);
-    };
-  }, [isiOS, soundUnlocked]);
-
-
   // --- REVISADO: Refs de Áudio ---
   const stopAlarmRef = useRef(null); // Guarda a função de parar o som
   const stopAlarmFnRef = useRef(null);
+  const isAlarmPlayingRef = useRef(false);
   const snoozeTimerRef = useRef(null);
   const isSnoozedRef = useRef(false);
-  const isAlarmPlayingRef = useRef(false);
   const initialDataLoaded = useRef(false);
-  const loadedWorkspaceUserIdRef = useRef(null);
-  const loadedDataScopeRef = useRef(null);
   const storeCollectionsDataRef = useRef({});
   const clientesDataRef = useRef([]);
+  const customerMetricsEnsuredStoresRef = useRef(new Set());
   const pushTokenRef = useRef(null);
   const configMigrationStatusRef = useRef(new Set());
   // --- REMOVIDO: audioRef e alarmIntervalRef ---
 
-  
+
   const [data, setData] = useState(getInitialDataState());
   const [loading, setLoading] = useState(true);
   const userId = user?.auth?.uid || null;
@@ -5149,70 +3860,6 @@ function StaffApplication({staffUid=null}) {
     return user.lojaId || null;
   }, [user, isGeneralViewSelected, selectedStoreId, availableStores]);
   const [resolvedAlarmPauseMinutes, setResolvedAlarmPauseMinutes] = useState(DEFAULT_ALARM_PAUSE_MINUTES);
-
-  useEffect(() => {
-    const markFormAsDirty = (event) => {
-      const form = event.target?.closest?.('form');
-      if (form) {
-        form.dataset.unsavedChanges = 'true';
-      }
-    };
-    const handleBeforeUnload = (event) => {
-      if (!hasUnsavedFormChanges()) return;
-      event.preventDefault();
-      event.returnValue = '';
-    };
-
-    document.addEventListener('input', markFormAsDirty, true);
-    document.addEventListener('change', markFormAsDirty, true);
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      document.removeEventListener('input', markFormAsDirty, true);
-      document.removeEventListener('change', markFormAsDirty, true);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, []);
-
-  const confirmDiscardUnsavedChanges = useCallback(() => (
-    !hasUnsavedFormChanges()
-    || window.confirm('Existem dados não salvos. Deseja sair e descartar as alterações?')
-  ), []);
-
-  const requestPageChange = useCallback((pageId) => {
-    if (!confirmDiscardUnsavedChanges()) return false;
-    setCurrentPage(pageId);
-    return true;
-  }, [confirmDiscardUnsavedChanges, setCurrentPage]);
-
-  useEffect(() => {
-    if (!showUserMenu) return undefined;
-
-    const closeOnOutsidePointer = (event) => {
-      if (
-        showUserMenu
-        && !userMenuButtonRef.current?.contains(event.target)
-        && !userMenuRef.current?.contains(event.target)
-      ) {
-        setShowUserMenu(false);
-      }
-    };
-    const closeOnEscape = (event) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-
-      if (showUserMenu) {
-        setShowUserMenu(false);
-        userMenuButtonRef.current?.focus();
-      }
-    };
-
-    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [showUserMenu]);
 
   useEffect(() => {
     setFirestoreTelemetryContext({
@@ -5267,12 +3914,7 @@ function StaffApplication({staffUid=null}) {
     };
   }, [isGeneralViewSelected, selectedStoreIdForAlarm]);
 
-  const hasPendingOrdersForSelectedStore = useMemo(() => {
-    if (!selectedStoreIdForAlarm) return false;
-    return (data.pedidos || []).some((order) => order.status === 'Pendente' && order.lojaId === selectedStoreIdForAlarm);
-  }, [data.pedidos, selectedStoreIdForAlarm]);
 
-  
    const resolveStoreIdsForView = useCallback(() => {
     if (!user) return [];
 
@@ -5302,13 +3944,11 @@ function StaffApplication({staffUid=null}) {
       return base;
     }
 
-    const collectionsToSync = getCollectionsToSyncForUser(user);
-
     storeIds.forEach((storeId) => {
       const storeData = storeCollectionsDataRef.current[storeId];
       if (!storeData) return;
 
-      collectionsToSync.forEach((collectionName) => {
+      COLLECTIONS_TO_SYNC.forEach((collectionName) => {
         const items = storeData[collectionName] || [];
         if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
           base[collectionName] = [
@@ -5410,7 +4050,7 @@ function StaffApplication({staffUid=null}) {
     if (response.status === 204) return null;
     return response.json();
   }, [resolveActiveStoreForWrite]);
-  
+
   const selectStoreById = useCallback((value) => {
         if (value === STORE_ALL_KEY) {
           setSelectedStoreId(STORE_ALL_KEY);
@@ -5422,9 +4062,8 @@ function StaffApplication({staffUid=null}) {
   }, [setSelectedStoreId]);
 
   const handleStoreChange = useCallback((event) => {
-        if (!confirmDiscardUnsavedChanges()) return;
         selectStoreById(event.target.value);
-  }, [confirmDiscardUnsavedChanges, selectStoreById]);
+  }, [selectStoreById]);
 
   const handleCreateStore = useCallback(async ({ storeId, nome }) => {
         const trimmedId = typeof storeId === 'string' ? storeId.trim() : '';
@@ -5485,36 +4124,28 @@ function StaffApplication({staffUid=null}) {
   }, [selectStoreById, setUser]);
 
   // --- SUBSTITUÍDO: Nova função stopAlarm ---
-        const stopAlarm = useCallback(() => {
-                console.log("[App.js] Parando alarme...");
-                if (stopAlarmRef.current) {
-		  stopAlarmRef.current(); // Chama a função de parada
-		  stopAlarmRef.current = null; // Limpa a referência
-		}
-		if (stopAlarmFnRef.current) {
-		  stopAlarmFnRef.current(); // Também chama a função do estado se existir
-		  stopAlarmFnRef.current = null;
-		}
-		setStopAlarmFn(null); // Limpa o estado
-		setIsAlarmPlaying(false); // Atualiza o estado da UI
-	}, []);
+  const stopAlarm = useCallback(() => {
+    console.log('[App.js] Parando alarme...');
+    audioManager.stopAlarmSound();
+    stopAlarmRef.current = null;
+    stopAlarmFnRef.current = null;
+    isAlarmPlayingRef.current = false;
+    setStopAlarmFn(null);
+    setIsAlarmPlaying(false);
+  }, []);
 
   // --- REMOVIDO: Antiga função unlockAudio ---
 
   // --- SUBSTITUÍDO: Nova função playAlarm ---
   const playAlarm = useCallback(async () => {
-                if (isiOS && !soundUnlocked) {
-                        console.warn("[App.js] Áudio bloqueado no iOS aguardando interação do usuário.");
-                        return;
-                }
                 // Só toca se não estiver em modo soneca
                 if (isSnoozedRef.current) {
                         console.log("[App.js] Alarme em soneca, não tocando.");
                         return;
                 }
-		
+
 		// Se já está tocando, não faz nada
-		if (isAlarmPlaying) {
+		if (isAlarmPlayingRef.current) {
 			console.log("[App.js] Alarme já está tocando, ignorando nova chamada.");
 			return;
 		}
@@ -5541,70 +4172,72 @@ function StaffApplication({staffUid=null}) {
 
 		if (started) {
 			const stopFn = () => audioManager.stopAlarmSound();
+			isAlarmPlayingRef.current = true;
 			setIsAlarmPlaying(true);
 			setStopAlarmFn(() => stopFn);
 			stopAlarmRef.current = stopFn;
 			console.log("[App.js] Alarme iniciado.");
 		} else {
+			isAlarmPlayingRef.current = false;
 			console.log("[App.js] Alarme pendente aguardando desbloqueio do áudio.");
 			setIsAlarmPlaying(false);
 			setShowActivateSoundButton(true);
 		}
-        }, [isiOS, isAlarmPlaying, soundUnlocked]); // Adicione isAlarmPlaying como dependência
-	
-	  // --- PRÉ-CARREGAMENTO DO ÁUDIO NATIVO (Capacitor Android/iOS) ---
-          useEffect(() => {
-                const loadAudio = async () => {
-                  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
-                        try {
-                          await NativeAudio.preload({
-                                        assetId: 'pedido',
-                                        assetPath: 'mixkit_vintage_warning_alarm_990.mp3',
-                                        audioChannelNum: 1,
-                                        isUrl: false,
-                          });
-                          console.log('🔊 Áudio pré-carregado com sucesso!');
-                        } catch (err) {
-                          console.error('Erro ao carregar áudio:', err);
-                        }
-                  }
-                };
+  }, []);
 
-                loadAudio();
-          }, []);
+  useEffect(() => audioManager.subscribeToAlarmState(({ status }) => {
+    if (status === 'playing') {
+      const stopFn = () => audioManager.stopAlarmSound();
+      isAlarmPlayingRef.current = true;
+      stopAlarmRef.current = stopFn;
+      stopAlarmFnRef.current = stopFn;
+      setStopAlarmFn(() => stopFn);
+      setIsAlarmPlaying(true);
+      return;
+    }
+
+    if (status === 'stopped') {
+      isAlarmPlayingRef.current = false;
+      stopAlarmRef.current = null;
+      stopAlarmFnRef.current = null;
+      setStopAlarmFn(null);
+      setIsAlarmPlaying(false);
+      return;
+    }
+
+    if (status === 'pending') {
+      setShowActivateSoundButton(true);
+    }
+  }), []);
 
   // --- SUBSTITUÍDO: Novo useEffect de inicialização do AudioManager ---
   useEffect(() => {
     const tryAutoUnlock = async () => {
       // tenta inicializar automaticamente se já foi aceito antes
       try {
-        if (localStorage.getItem("audioUnlocked") === "true") {
-          await audioManager.init();
-        } else {
-          // tenta init para recuperar estado, mas pode ficar suspenso
-          await audioManager.init().catch(()=>{});
-        }
+        await audioManager.init();
 
         await audioManager.userUnlock({ userGesture: false });
       } catch (e) {
         console.error("Erro ao inicializar audioManager:", e);
       }
       setAudioAllowed(audioManager.unlocked);
-  
+
       // --- CORREÇÃO: Lógica do botão movida para um state para ser renderizado pelo React ---
       // O botão será renderizado condicionalmente no JSX principal
     };
-  
+
     // Só tenta desbloquear/mostrar botão se o usuário estiver logado
     if(user) {
         tryAutoUnlock();
     }
-  
+
   }, [user]); // Depende do 'user' para saber se deve mostrar o botão
 
   // --- NOVO: Estado para controlar a exibição do botão de ativar som ---
   const [showActivateSoundButton, setShowActivateSoundButton] = useState(false);
-  
+  const [pushPermissionStatus, setPushPermissionStatus] = useState('unknown');
+
     useEffect(() => {
     if (!user) {
       return;
@@ -5640,9 +4273,12 @@ function StaffApplication({staffUid=null}) {
   useEffect(() => {
       // Define um pequeno delay para dar tempo ao audioManager.init() tentar o resume automático
       const timer = setTimeout(() => {
-          if (user && !audioManager.unlocked) {
+          if (user && (
+            !audioManager.unlocked
+            || pushPermissionStatus === PUSH_PERMISSION_STATUS.PROMPT
+          )) {
               setShowActivateSoundButton(true);
-              console.log("[App.js] Áudio não desbloqueado, mostrando botão.");
+              console.log('[App.js] Alertas aguardando ativação do usuário.');
           } else {
               setShowActivateSoundButton(false);
           }
@@ -5650,54 +4286,181 @@ function StaffApplication({staffUid=null}) {
 
       return () => clearTimeout(timer);
 
-  }, [user]);
+  }, [pushPermissionStatus, user]);
 
 
-  // EFFECT para sincronizar ref com estado isAlarmSnoozed
+  const loadAlarmPauseForCurrentContext = useCallback(() => {
+    const pause = readAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
+    const pausedUntil = pause?.pausedUntil || null;
+    const isPaused = Boolean(pause);
+
+    isSnoozedRef.current = isPaused;
+    setIsAlarmSnoozed(isPaused);
+    setSnoozeEndTime(pausedUntil);
+    setPausedPendingOrderIds(pause?.pendingOrderIds || null);
+
+    if (userId && selectedStoreIdForAlarm) {
+      syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil });
+    } else {
+      clearNativeAlarmContext();
+    }
+
+    if (isPaused) {
+      stopAlarm();
+      setStopAlarmFn(null);
+    }
+  }, [selectedStoreIdForAlarm, stopAlarm, userId]);
+
+  // Carrega a pausa antes da pintura da tela para nunca reaproveitar o estado
+  // visual/sonoro da combinação anterior durante uma troca de loja ou usuário.
+  useLayoutEffect(() => {
+    loadAlarmPauseForCurrentContext();
+  }, [loadAlarmPauseForCurrentContext]);
+
+  useEffect(() => {
+    const pauseKey = getAlarmPauseStorageKey(userId, selectedStoreIdForAlarm);
+    if (!pauseKey) return undefined;
+
+    const handleAlarmPauseStorageChange = (event) => {
+      if (event.key === pauseKey) loadAlarmPauseForCurrentContext();
+    };
+
+    window.addEventListener('storage', handleAlarmPauseStorageChange);
+    return () => window.removeEventListener('storage', handleAlarmPauseStorageChange);
+  }, [loadAlarmPauseForCurrentContext, selectedStoreIdForAlarm, userId]);
+
+  useEffect(() => {
+    if (!userId || !selectedStoreIdForAlarm) return undefined;
+
+    const pauseRef = doc(db, 'users', userId, 'alarmPauses', selectedStoreIdForAlarm);
+    return onSnapshot(pauseRef, (snapshot) => {
+      if (!snapshot.exists()) {
+        clearAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
+        syncNativeAlarmPause({
+          uid: userId,
+          storeId: selectedStoreIdForAlarm,
+          pausedUntil: null,
+        });
+        isSnoozedRef.current = false;
+        setIsAlarmSnoozed(false);
+        setSnoozeEndTime(null);
+        setPausedPendingOrderIds(null);
+        return;
+      }
+      const remotePausedUntil = Number(snapshot.data()?.pausedUntil || 0);
+      if (!Number.isFinite(remotePausedUntil) || remotePausedUntil <= Date.now()) {
+        clearAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
+        syncNativeAlarmPause({
+          uid: userId,
+          storeId: selectedStoreIdForAlarm,
+          pausedUntil: null,
+        });
+        isSnoozedRef.current = false;
+        setIsAlarmSnoozed(false);
+        setSnoozeEndTime(null);
+        setPausedPendingOrderIds(null);
+        return;
+      }
+
+      const localPause = readAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
+      const remotePendingOrderIds = Array.isArray(snapshot.data()?.pendingOrderIds)
+        ? snapshot.data().pendingOrderIds
+        : null;
+      const pendingOrderIdsAtPause = remotePendingOrderIds || (
+        localPause?.pausedUntil === remotePausedUntil ? localPause.pendingOrderIds : null
+      );
+
+      saveAlarmPauseUntil({
+        uid: userId,
+        storeId: selectedStoreIdForAlarm,
+        pausedUntil: remotePausedUntil,
+        pendingOrderIds: pendingOrderIdsAtPause,
+      });
+      syncNativeAlarmPause({
+        uid: userId,
+        storeId: selectedStoreIdForAlarm,
+        pausedUntil: remotePausedUntil,
+      });
+      isSnoozedRef.current = true;
+      setIsAlarmSnoozed(true);
+      setSnoozeEndTime(remotePausedUntil);
+      setPausedPendingOrderIds(pendingOrderIdsAtPause);
+      stopAlarm();
+    }, (error) => {
+      console.warn('[App.js] Não foi possível sincronizar a pausa do alarme:', error);
+    });
+  }, [selectedStoreIdForAlarm, stopAlarm, userId]);
+
   useEffect(() => {
     isSnoozedRef.current = isAlarmSnoozed;
   }, [isAlarmSnoozed]);
 
-  useEffect(() => {
-    isAlarmPlayingRef.current = isAlarmPlaying;
-  }, [isAlarmPlaying]);
+  const clearAlarmPauseForCurrentContext = useCallback(() => {
+    if (!userId || !selectedStoreIdForAlarm) return;
+
+    clearAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm });
+    syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil: null });
+    deleteDoc(doc(db, 'users', userId, 'alarmPauses', selectedStoreIdForAlarm)).catch((error) => {
+      console.warn('[App.js] Não foi possível remover a pausa compartilhada do alarme:', error);
+    });
+    isSnoozedRef.current = false;
+    setIsAlarmSnoozed(false);
+    setSnoozeEndTime(null);
+    setPausedPendingOrderIds(null);
+  }, [selectedStoreIdForAlarm, userId]);
 
   // --- Refs para estabilizar callbacks ---
   const playAlarmRef = useRef(playAlarm);
   useEffect(() => {
       playAlarmRef.current = playAlarm;
   }, [playAlarm]);
-  
+
     useEffect(() => {
     stopAlarmFnRef.current = stopAlarmFn;
   }, [stopAlarmFn]);
-  
-   const handleIncomingPushNotification = useCallback((payload) => {
+
+  const handleIncomingPushNotification = useCallback(async (payload) => {
     console.log('[App.js] Notificação push recebida:', payload);
 
     if (isGeneralViewSelected || !selectedStoreIdForAlarm) {
-      stopAlarm();
       return;
     }
 
-    const hasPendingForStore = (dataRef.current.pedidos || []).some(
-      (order) => order.status === 'Pendente' && order.lojaId === selectedStoreIdForAlarm
-    );
-    if (!hasPendingForStore) {
+    const notificationData = payload?.data || {};
+    const notificationType = String(notificationData.type || '').trim();
+    const notificationOrderId = String(notificationData.orderId || '').trim();
+    const notificationStoreId = String(notificationData.storeId || '').trim();
+    if (notificationType !== 'new_order' || !notificationOrderId || !notificationStoreId) {
+      return;
+    }
+    if (notificationStoreId !== selectedStoreIdForAlarm) {
+      return;
+    }
+
+    if (readAlarmPauseUntil({ uid: userId, storeId: notificationStoreId })) {
+      console.log('[App.js] Novo pedido recebido durante a pausa. Reativando o alarme.');
+      clearAlarmPauseForCurrentContext();
+    }
+
+    if (!await claimOrderAlertForRuntime({
+      uid: userId,
+      storeId: notificationStoreId,
+      orderId: notificationOrderId,
+    })) {
       return;
     }
 
     setHasNewPendingOrders(true);
 
-    if (isSnoozedRef.current) {
-      console.log('[App.js] Push recebido durante soneca. Alarme permanecerá silenciado até o fim da soneca.');
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      console.log('[App.js] Página em segundo plano; o alerta ficará a cargo da notificação do sistema.');
       return;
     }
 
     if (typeof playAlarmRef.current === 'function') {
       playAlarmRef.current();
     }
-  }, [isGeneralViewSelected, selectedStoreIdForAlarm, stopAlarm]);
+  }, [clearAlarmPauseForCurrentContext, isGeneralViewSelected, selectedStoreIdForAlarm, userId]);
 
   useEffect(() => {
     if (!userId) {
@@ -5711,16 +4474,25 @@ function StaffApplication({staffUid=null}) {
 
     const setupPushNotifications = async () => {
       try {
-        const token = await registerDeviceForPush(userId);
+        const permissionStatus = await getPushPermissionStatus();
+        if (!cancelled) setPushPermissionStatus(permissionStatus);
+
+        const token = await registerDeviceForPush(userId, { requestPermission: false });
         if (token) {
           pushTokenRef.current = token;
-          console.log('[App.js] Token de push registrado para o usuário:', userId, token);
+          console.log('[App.js] Dispositivo habilitado para receber alertas push.');
+        } else if (permissionStatus === PUSH_PERMISSION_STATUS.PROMPT && !cancelled) {
+          setShowActivateSoundButton(true);
         }
       } catch (error) {
         console.error('[App.js] Erro ao configurar notificações push:', error);
       }
 
       if (cancelled) {
+        return;
+      }
+
+      if (isNativeAndroidPushRuntime()) {
         return;
       }
 
@@ -5742,11 +4514,6 @@ function StaffApplication({staffUid=null}) {
         if (message.type === 'NEW_ORDER_PUSH') {
           handleIncomingPushNotification(message.payload);
         }
-		
-        if (message.type === 'PLAY_ORDER_SOUND' && typeof playAlarmRef.current === 'function') {
-          playAlarmRef.current();
-        }		
-		
       });
     };
 
@@ -5763,52 +4530,119 @@ function StaffApplication({staffUid=null}) {
     };
   }, [userId, handleIncomingPushNotification]);
 
+  const activateOrderAlerts = useCallback(async () => {
+    const hadPendingAlarm = audioManager.pendingPlay;
+    const audioUnlockPromise = audioManager.userUnlock({ userGesture: true });
+    const pushRegistrationPromise = userId
+      ? registerDeviceForPush(userId, { requestPermission: true })
+      : Promise.resolve(null);
+
+    const [audioResult, pushResult] = await Promise.allSettled([
+      audioUnlockPromise,
+      pushRegistrationPromise,
+    ]);
+    if (audioResult.status === 'rejected') {
+      console.error('[App.js] Não foi possível ativar o áudio:', audioResult.reason);
+    }
+    if (pushResult.status === 'fulfilled' && pushResult.value) {
+      pushTokenRef.current = pushResult.value;
+    } else if (pushResult.status === 'rejected') {
+      console.error('[App.js] Não foi possível ativar as notificações:', pushResult.reason);
+    }
+
+    if (hadPendingAlarm && audioManager.unlocked && typeof playAlarmRef.current === 'function') {
+      await playAlarmRef.current();
+    }
+
+    const permissionStatus = await getPushPermissionStatus();
+    setPushPermissionStatus(permissionStatus);
+    setAudioAllowed(audioManager.unlocked);
+    setShowActivateSoundButton(
+      !audioManager.unlocked || permissionStatus === PUSH_PERMISSION_STATUS.PROMPT
+    );
+  }, [userId]);
+
   const dataRef = useRef(data);
   useEffect(() => {
       dataRef.current = data;
   }, [data]);
-  
-  // FUNÇÃO PARA PARAR E ATIVAR SONEÇA - Refatorada
+
+  const reactivateAlarmForCurrentContext = useCallback(() => {
+    if (!userId || !selectedStoreIdForAlarm) return;
+
+    console.log('[App.js] Reativando alarme para usuário e loja atuais.');
+    clearAlarmPauseForCurrentContext();
+
+    const hasPending = !isGeneralViewSelected && getPendingOrderIdsForStore(
+      dataRef.current.pedidos,
+      selectedStoreIdForAlarm
+    ).length > 0;
+    setHasNewPendingOrders(Boolean(hasPending));
+
+    if (hasPending) {
+      playAlarmRef.current();
+    } else {
+      stopAlarm();
+    }
+  }, [clearAlarmPauseForCurrentContext, isGeneralViewSelected, selectedStoreIdForAlarm, stopAlarm, userId]);
+
   const handleStopAndSnoozeAlarm = useCallback(() => {
-    console.log('[App.js] Ativando soneca...');
-    stopAlarm(); // Para o alarme atual
-	setStopAlarmFn(null); // Limpa o estado da função de parada
-    setIsAlarmSnoozed(true); // Ativa o estado de soneca
-    
-    const endTime = new Date().getTime() + (resolvedAlarmPauseMinutes * 60 * 1000);
-    setSnoozeEndTime(endTime); // Define o tempo final da soneca
-    
-    // Limpa timer anterior se existir
-    if (snoozeTimerRef.current) clearInterval(snoozeTimerRef.current);
-    
-    // Inicia timer para reativar alarme
-    snoozeTimerRef.current = setInterval(() => {
-      const now = new Date().getTime();
-      const remaining = endTime - now;
-      
-      if (remaining <= 0) {
-        // Fim da soneca
-        clearInterval(snoozeTimerRef.current);
+    if (!userId || !selectedStoreIdForAlarm || isGeneralViewSelected) return;
+
+    const pausedUntil = Date.now() + (resolvedAlarmPauseMinutes * 60 * 1000);
+    const pendingOrderIdsAtPause = getPendingOrderIdsForStore(
+      dataRef.current.pedidos,
+      selectedStoreIdForAlarm
+    );
+    console.log('[App.js] Pausando alarme para usuário e loja atuais até:', pausedUntil);
+    stopAlarm();
+    setStopAlarmFn(null);
+    saveAlarmPauseUntil({
+      uid: userId,
+      storeId: selectedStoreIdForAlarm,
+      pausedUntil,
+      pendingOrderIds: pendingOrderIdsAtPause,
+    });
+    syncNativeAlarmPause({ uid: userId, storeId: selectedStoreIdForAlarm, pausedUntil });
+    setDoc(doc(db, 'users', userId, 'alarmPauses', selectedStoreIdForAlarm), {
+      uid: userId,
+      storeId: selectedStoreIdForAlarm,
+      pausedUntil,
+      updatedAt: serverTimestamp(),
+    }).catch((error) => {
+      console.warn('[App.js] Não foi possível salvar a pausa compartilhada do alarme:', error);
+    });
+    isSnoozedRef.current = true;
+    setIsAlarmSnoozed(true);
+    setSnoozeEndTime(pausedUntil);
+    setPausedPendingOrderIds(pendingOrderIdsAtPause);
+  }, [isGeneralViewSelected, resolvedAlarmPauseMinutes, selectedStoreIdForAlarm, stopAlarm, userId]);
+
+  useEffect(() => {
+    if (snoozeTimerRef.current) {
+      clearTimeout(snoozeTimerRef.current);
+      snoozeTimerRef.current = null;
+    }
+    if (!isAlarmSnoozed || !snoozeEndTime) return undefined;
+
+    const remaining = snoozeEndTime - Date.now();
+    if (remaining <= 0) {
+      reactivateAlarmForCurrentContext();
+      return undefined;
+    }
+
+    snoozeTimerRef.current = setTimeout(
+      reactivateAlarmForCurrentContext,
+      Math.min(remaining, 2_147_483_647)
+    );
+
+    return () => {
+      if (snoozeTimerRef.current) {
+        clearTimeout(snoozeTimerRef.current);
         snoozeTimerRef.current = null;
-        setIsAlarmSnoozed(false); // Desativa o estado de soneca
-        setSnoozeEndTime(null);
-        console.log('[App.js] Soneca terminada');
-        
-        // Verifica se ainda existem pedidos pendentes para tocar o alarme novamente
-        const hasPending = !isGeneralViewSelected && selectedStoreIdForAlarm && dataRef.current.pedidos && dataRef.current.pedidos.some(
-          (p) => p.status === 'Pendente' && p.lojaId === selectedStoreIdForAlarm
-        );
-        if (hasPending) {
-          console.log('[App.js] Pedidos pendentes encontrados após soneca, reativando alarme.');
-          setHasNewPendingOrders(true); // Garante que o banner apareça (se necessário)
-          playAlarmRef.current(); // Tenta tocar o alarme usando a ref
-        } else {
-           setHasNewPendingOrders(false); // Esconde o banner se não há mais pendentes
-        }
-      } 
-      // O display do timer é gerenciado localmente pelo Dashboard
-    }, 1000); // Atualiza a cada segundo
-  }, [stopAlarm, isGeneralViewSelected, selectedStoreIdForAlarm, resolvedAlarmPauseMinutes]); // Removidas dependências instáveis (data, playAlarm, unlockAudio)
+      }
+    };
+  }, [isAlarmSnoozed, reactivateAlarmForCurrentContext, snoozeEndTime]);
 
   // EFFECT PARA SINCRONIZAR DADOS DO FIREBASE
         useEffect(() => {
@@ -5821,36 +4655,21 @@ function StaffApplication({staffUid=null}) {
                 storeCollectionsDataRef.current = {};
                 setLoading(false);
                 initialDataLoaded.current = false;
-                if (!user) {
-                  loadedWorkspaceUserIdRef.current = null;
-                  loadedDataScopeRef.current = null;
-                }
                 return;
           }
 
           const collectionsToSync = getCollectionsToSyncForUser(user);
-          const listenerScopeKey = `${userId || ''}:${Array.from(new Set(storeIds)).sort().join('|')}:${collectionsToSync.join('|')}`;
-          const isRefreshingLoadedScope = loadedDataScopeRef.current === listenerScopeKey;
+          const canSyncClientes = user.role !== ROLE_ACCOUNTANT
+            || sanitizePermissions(user.customPermissions || user.permissions, user.role).clientes;
           let isMounted = true;
-          let pendingInitial = (storeIds.length * collectionsToSync.length) + 1;
+          let pendingInitial = (storeIds.length * collectionsToSync.length) + (canSyncClientes ? 1 : 0);
           const unsubscribes = [];
-
-          debugCacheSync('Iniciando listeners por loja', { storeIds, uid: userId });
-          if (!isRefreshingLoadedScope) {
-                setData(getInitialDataState());
-                setPendingOrders([]);
-                clientesDataRef.current = [];
-                storeCollectionsDataRef.current = {};
-          }
-          initialDataLoaded.current = false;
 
           const markInitialLoaded = () => {
                 if (pendingInitial > 0) {
                       pendingInitial -= 1;
                       if (pendingInitial === 0) {
                             initialDataLoaded.current = true;
-                            loadedWorkspaceUserIdRef.current = userId;
-                            loadedDataScopeRef.current = listenerScopeKey;
                             setLoading(false);
                       }
                 }
@@ -5860,7 +4679,8 @@ function StaffApplication({staffUid=null}) {
                 setLoading(false);
                 initialDataLoaded.current = true;
           } else {
-                setLoading(!isRefreshingLoadedScope);
+                setLoading(true);
+                initialDataLoaded.current = false;
           }
 
           const setupClientesListener = () => {
@@ -5904,7 +4724,7 @@ function StaffApplication({staffUid=null}) {
                       {
                             __listenerOptions: true,
                             operation: 'sync-clientes',
-                            route: 'app-sync',
+                            route: currentPage,
                             uid: userId
                       }
                 );
@@ -5912,7 +4732,11 @@ function StaffApplication({staffUid=null}) {
                 unsubscribes.push(() => unsubscribe());
           };
 
-          setupClientesListener();
+          if (canSyncClientes) {
+                setupClientesListener();
+          } else {
+                clientesDataRef.current = [];
+          }
 
           storeIds.forEach((storeId) => {
                 collectionsToSync.forEach((collectionName) => {
@@ -5947,43 +4771,56 @@ function StaffApplication({staffUid=null}) {
                                     setPendingOrders(activeOrders);
 
                                     if (initialDataLoaded.current) {
-                                          const newPendingOrdersDetected = changes.some(
+                                          const addedPendingOrderChanges = changes.filter(
                                                 (change) => change.type === 'added'
                                                       && change.doc.data().status === 'Pendente'
-                                                      && !change.doc.metadata?.hasPendingWrites
                                           );
+                                          const newPendingOrderChanges = addedPendingOrderChanges.filter(
+                                                (change) => !change.doc.metadata?.hasPendingWrites
+                                          );
+                                          const shouldAlertCurrentStore =
+                                            !isGeneralViewSelected && selectedStoreIdForAlarm === storeId;
 
-                                          if (newPendingOrdersDetected && !isGeneralViewSelected && selectedStoreIdForAlarm && !isAlarmPlayingRef.current && !isSnoozedRef.current) {
+                                          if (
+                                            shouldAlertCurrentStore
+                                            && addedPendingOrderChanges.length > 0
+                                            && isSnoozedRef.current
+                                          ) {
+                                            console.log('[App.js] Novo pedido pendente entrou durante a pausa. Reativando o alarme.');
+                                            clearAlarmPauseForCurrentContext();
+                                          }
+
+                                          const candidateOrderIds = shouldAlertCurrentStore
+                                            ? newPendingOrderChanges.map((change) => change.doc.id)
+                                            : [];
+
+                                          void (async () => {
+                                            const claimedOrderIds = [];
+                                            for (const orderId of candidateOrderIds) {
+                                              if (await claimOrderAlertForRuntime({
+                                                uid: userId,
+                                                storeId,
+                                                orderId,
+                                              })) {
+                                                claimedOrderIds.push(orderId);
+                                              }
+                                            }
+
+                                            if (!isMounted || claimedOrderIds.length === 0) return;
                                                 console.log('[App.js] Novo pedido pendente detectado pelo listener!');
                                                 setHasNewPendingOrders(true);
 
-                                                console.log('[App.js] Tentando tocar alarme...');
-                                                (async () => {
-                                                  try {
-                                                        if (!audioManager.unlocked) {
-                                                          console.warn("[App.js] Áudio bloqueado — aguardando interação do usuário.");
-                                                          try {
-                                                                await audioManager.userUnlock();
-                                                          } catch (e) {
-                                                                console.warn("[App.js] Não foi possível desbloquear o áudio automaticamente:", e);
-                                                          }
-                                                        }
-
-                                                        if (audioManager.unlocked) {
-                                                          playAlarmRef.current();
-                                                        } else {
-                                                          console.log("[App.js] Áudio ainda bloqueado, não tocando alarme.");
-                                                        }
-
-                                                  } catch (error) {
-                                                        console.error("[App.js] Erro ao tentar tocar alarme:", error);
-                                                  }
-                                                })();
-                                          } else if (newPendingOrdersDetected && isSnoozedRef.current) {
-                                                console.log('[App.js] Alarme em modo soneca, não tocando agora.');
-                                          } else if (newPendingOrdersDetected && isAlarmPlayingRef.current) {
-                                                console.log('[App.js] Alarme já está tocando, não iniciando novo.');
-                                          }
+                                                if (
+                                                  typeof document !== 'undefined'
+                                                  && document.visibilityState !== 'visible'
+                                                ) {
+                                                  console.log('[App.js] Pedido recebido em segundo plano; usando a notificação do sistema.');
+                                                } else if (isAlarmPlayingRef.current) {
+                                                  console.log('[App.js] Alarme já está tocando, não iniciando novo player.');
+                                                } else {
+                                                  playAlarmRef.current();
+                                                }
+                                          })();
                                     }
                               }
 
@@ -6052,7 +4889,7 @@ function StaffApplication({staffUid=null}) {
                                                 {
                                                       __listenerOptions: true,
                                                       operation: `sync-${collectionName}-legacy`,
-                                                      route: 'app-sync',
+                                                      route: currentPage,
                                                       uid: userId
                                                 }
                                           );
@@ -6066,7 +4903,7 @@ function StaffApplication({staffUid=null}) {
                               {
                                     __listenerOptions: true,
                                     operation: `sync-${collectionName}`,
-                                    route: 'app-sync',
+                                    route: currentPage,
                                     uid: userId
                               }
                         );
@@ -6081,37 +4918,58 @@ function StaffApplication({staffUid=null}) {
           return () => {
                 isMounted = false;
                 unsubscribes.forEach(unsubscribe => unsubscribe());
-                debugCacheSync('Listeners por loja encerrados', { storeIds, uid: userId });
                 initialDataLoaded.current = false;
           };
-        }, [user, resolveStoreIdsForView, recomputeDataForView, selectedStoreId, availableStores, migrateLegacyConfigCollection, isGeneralViewSelected, selectedStoreIdForAlarm, userId]);
-    // EFFECT PARA PARAR ALARME QUANDO NÃO HÁ MAIS PEDIDOS PENDENTES
+        }, [user, resolveStoreIdsForView, recomputeDataForView, selectedStoreId, availableStores, migrateLegacyConfigCollection, isGeneralViewSelected, selectedStoreIdForAlarm, currentPage, userId, clearAlarmPauseForCurrentContext]);
+    // A condição do alarme acompanha o estado atual dos pedidos, inclusive após reload.
     useEffect(() => {
-        if (isGeneralViewSelected) {
-          setHasNewPendingOrders(false);
+        const alarmCondition = resolveOrderAlarmCondition({
+          orders: data.pedidos,
+          storeId: isGeneralViewSelected ? null : selectedStoreIdForAlarm,
+          isPaused: isAlarmSnoozed,
+          pausedPendingOrderIds,
+        });
+
+        if (isIOSWebBrowser()) {
+          console.info('[ORDER-ALARM][iOS] alarm state', {
+            pendingCount: alarmCondition.pendingOrderIds.length,
+            uid: userId || null,
+            storeId: selectedStoreIdForAlarm || null,
+            pauseState: isAlarmSnoozed ? 'paused' : 'active',
+            shouldAlarm: alarmCondition.shouldPlay,
+          });
+        }
+
+        setHasNewPendingOrders(alarmCondition.hasPendingOrders);
+
+        if (!alarmCondition.hasPendingOrders) {
+          console.log('[App.js] Nenhum pedido Pendente na loja atual. Parando alarme.');
           stopAlarm();
           return;
         }
 
-        const hasAnyPending = data.pedidos && data.pedidos.some(p => p.status === 'Pendente');
-
-        if (!hasAnyPending && !isAlarmSnoozed) {
-          console.log('[App.js] Nenhum pedido pendente e não está em soneca. Parando alarme e escondendo banner.');
-          setHasNewPendingOrders(false);
+        if (isAlarmSnoozed && !alarmCondition.hasNewPendingOrderDuringPause) {
           stopAlarm();
+          return;
         }
-    }, [data.pedidos, isAlarmSnoozed, stopAlarm, isGeneralViewSelected]);
 
-    // Garante que o alarme continue tocando enquanto houver pedidos pendentes
-    useEffect(() => {
-        const shouldPlayAlarm = !isGeneralViewSelected && !!selectedStoreIdForAlarm && hasPendingOrdersForSelectedStore && !isAlarmSnoozed;
-
-        if (audioAllowed && shouldPlayAlarm && !isAlarmPlaying) {
-          console.log('[App.js] Pedidos pendentes encontrados enquanto o alarme estava parado. Reativando alarme.');
-          setHasNewPendingOrders(true);
-          playAlarmRef.current();
+        if (alarmCondition.hasNewPendingOrderDuringPause) {
+          console.log('[App.js] Nova ID Pendente detectada durante a pausa. Reativando o alarme.');
+          reactivateAlarmForCurrentContext();
+          return;
         }
-    }, [audioAllowed, isGeneralViewSelected, selectedStoreIdForAlarm, hasPendingOrdersForSelectedStore, isAlarmSnoozed, isAlarmPlaying]);
+
+        playAlarmRef.current();
+    }, [
+      data.pedidos,
+      isAlarmSnoozed,
+      isGeneralViewSelected,
+      pausedPendingOrderIds,
+      reactivateAlarmForCurrentContext,
+      selectedStoreIdForAlarm,
+      stopAlarm,
+      userId,
+    ]);
 
   // --- REMOVIDO: Antigo useEffect de desbloqueio ---
   // useEffect(() => { if (audioUnlocked && ...) ... });
@@ -6124,8 +4982,7 @@ function StaffApplication({staffUid=null}) {
 
 
   const ensureAuthenticatedUserForWrite = useCallback(async () => {
-    const restoredAuthUser = await waitForFirebaseAuthReady();
-    const currentAuthUser = auth.currentUser || restoredAuthUser;
+    const currentAuthUser = auth.currentUser;
     const fallbackAuthUser = user?.auth || null;
     const resolvedAuthUser = currentAuthUser || fallbackAuthUser;
 
@@ -6142,22 +4999,10 @@ function StaffApplication({staffUid=null}) {
     }
 
     try {
-      await withTimeout(
-        getIdToken(resolvedAuthUser, true),
-        AUTH_TOKEN_REFRESH_TIMEOUT_MS,
-        'Tempo limite ao renovar a sessão Firebase antes da gravação.'
-      );
-    } catch (tokenRefreshError) {
-      console.warn('[Sales][Auth] Renovação silenciosa do token falhou; mantendo tentativa de gravação com a sessão atual.', tokenRefreshError?.code || tokenRefreshError);
-      try {
-        await withTimeout(
-          getIdToken(resolvedAuthUser),
-          AUTH_TOKEN_REFRESH_TIMEOUT_MS,
-          'Tempo limite ao ler a sessão Firebase em cache antes da gravação.'
-        );
-      } catch (cachedTokenError) {
-        console.warn('[Sales][Auth] Token em cache indisponível antes da gravação; o Firestore tentará resolver a sessão.', cachedTokenError?.code || cachedTokenError);
-      }
+      await getIdToken(resolvedAuthUser);
+    } catch (tokenError) {
+      console.error('[Sales][Auth] Falha ao validar autenticação antes da gravação:', tokenError);
+      throw new Error('Não foi possível validar sua sessão. Faça login novamente para concluir a venda.');
     }
 
     return resolvedAuthUser;
@@ -6175,16 +5020,6 @@ function StaffApplication({staffUid=null}) {
       return 'Sua sessão expirou. Faça login novamente para continuar.';
     }
 
-    if (
-      rawCode.includes('unavailable')
-      || rawCode.includes('deadline-exceeded')
-      || rawMessage.includes('offline')
-      || rawMessage.includes('network')
-      || rawMessage.includes('failed to fetch')
-    ) {
-      return 'A conexão com o sistema oscilou ao salvar. Aguarde alguns segundos e tente salvar novamente.';
-    }
-
     if (rawCode.includes('failed-precondition') || rawMessage.includes('failed-precondition')) {
       return 'Não foi possível concluir esta operação agora. Atualize a página e tente novamente.';
     }
@@ -6192,8 +5027,15 @@ function StaffApplication({staffUid=null}) {
     return error?.message || 'Não foi possível concluir a operação agora. Tente novamente.';
   }, []);
 
-  const addItem = async (section, item, targetStoreId = null, documentId = null, options = {}) => {
+  const assertWritableRole = () => {
+    if (user?.role === ROLE_ACCOUNTANT) {
+      throw new Error('O perfil Contador possui acesso somente leitura.');
+    }
+  };
+
+  const addItem = async (section, item, targetStoreId = null) => {
     try {
+        assertWritableRole();
         const storeId = targetStoreId || resolveActiveStoreForWrite();
 
         if (section === 'clientes') {
@@ -6218,25 +5060,9 @@ function StaffApplication({staffUid=null}) {
             createdAt: new Date()
          };
 
-        const docRef = documentId
-            ? doc(getStoreCollectionRef(storeId, section), documentId)
-            : null;
-        let createdDocument = true;
-        const persistedRef = await runWithRetry(
+        const docRef = await runWithRetry(
             `addItem:${section}`,
-            () => documentId && options.createOnly
-                ? runTransaction(db, async (transaction) => {
-                    const snapshot = await transaction.get(docRef);
-                    if (snapshot.exists()) {
-                        createdDocument = false;
-                        return docRef;
-                    }
-                    transaction.set(docRef, payload);
-                    return docRef;
-                })
-                : documentId
-                    ? setDoc(docRef, payload, { merge: true }).then(() => docRef)
-                    : addDoc(getStoreCollectionRef(storeId, section), payload),
+            () => addDoc(getStoreCollectionRef(storeId, section), payload),
             { route: currentPage, uid: currentAuthUser?.uid || userId, collection: section }
         );
         await waitForPendingWrites(db);
@@ -6244,16 +5070,16 @@ function StaffApplication({staffUid=null}) {
         if (isSalesOrder) {
             console.log('[Sales][Create] Venda persistida com sucesso no Firestore.', {
                 storeId,
-                docId: persistedRef.id
+                docId: docRef.id
             });
         }
 
-        if (user && section !== 'logs' && createdDocument) {
+        if (user && section !== 'logs') {
             await runWithRetry(
                 'addItem:logs',
                 () => addDoc(getStoreCollectionRef(storeId, 'logs'), {
                 action: `Novo item adicionado em ${section}`,
-                details: `ID: ${persistedRef.id}`,
+                details: `ID: ${docRef.id}`,
                 userEmail: user?.auth?.email || 'N/A',
                 timestamp: new Date()
                 }),
@@ -6261,7 +5087,7 @@ function StaffApplication({staffUid=null}) {
             );
         }
 
-        return persistedRef;
+        return docRef;
     } catch (e) {
         if (section === 'pedidos') {
             console.error('[Sales][Create] Erro real ao persistir venda:', e);
@@ -6274,6 +5100,7 @@ function StaffApplication({staffUid=null}) {
 
   const updateItem = async (section, id, updatedItem, targetStoreId = null) => {
     try {
+        assertWritableRole();
         const storeId = targetStoreId || resolveActiveStoreForWrite();
 
         if (section === 'clientes') {
@@ -6322,6 +5149,7 @@ function StaffApplication({staffUid=null}) {
 
   const deleteItem = async (section, id, targetStoreId = null) => {
     try {
+        assertWritableRole();
         const storeId = targetStoreId || resolveActiveStoreForWrite();
         await runWithRetry(
             `deleteItem:${section}`,
@@ -6359,12 +5187,13 @@ function StaffApplication({staffUid=null}) {
       window.removeEventListener('online', handleOnline);
     };
   }, []);
-  
+
   useEffect(() => {
     const scripts = [
         { id: 'jspdf', src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js' },
         { id: 'jspdf-autotable', src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js' },
-        { id: 'xlsx', src: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js' }
+        { id: 'xlsx', src: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js' },
+        { id: 'chartjs', src: 'https://cdn.jsdelivr.net/npm/chart.js' }
     ];
 
     scripts.forEach(scriptInfo => {
@@ -6388,7 +5217,7 @@ function StaffApplication({staffUid=null}) {
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  
+
 	useEffect(() => {
     let isMounted = true;
     let unsubscribe = () => {};
@@ -6547,69 +5376,57 @@ function StaffApplication({staffUid=null}) {
   }, [stopAlarm, setCurrentPage, staffUid]);
 
     useEffect(() => {
-        const uid = user?.auth?.uid;
-        if (!uid) return undefined;
+      const uid = user?.auth?.uid;
+      if (!uid) return undefined;
 
-        return onSnapshot(doc(db, 'users', uid), (snapshot) => {
-            if (!snapshot.exists() || isUserAccountActive(snapshot.data() || {})) return;
-            setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
-            setShowLogin(true);
-            setCurrentPage('pagina-inicial');
-            signOut(auth).catch((error) => {
-                console.error('Erro ao encerrar sessão de usuário inativo:', error);
-            });
-        }, (error) => {
-            console.error('Erro ao acompanhar status da conta:', error);
-            if (error?.code === 'permission-denied') {
-                setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
-                setShowLogin(true);
-                setCurrentPage('pagina-inicial');
-                signOut(auth).catch((signOutError) => {
-                    console.error('Erro ao encerrar sessão sem permissão:', signOutError);
-                });
-            }
+      return onSnapshot(doc(db, 'users', uid), (snapshot) => {
+        if (!snapshot.exists() || isUserAccountActive(snapshot.data() || {})) return;
+        setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+        setShowLogin(true);
+        setCurrentPage('pagina-inicial');
+        signOut(auth).catch((error) => {
+          console.error('Erro ao encerrar sessão de usuário inativo:', error);
         });
+      }, (error) => {
+        console.error('Erro ao acompanhar status da conta:', error);
+        if (error?.code === 'permission-denied') {
+          setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
+          setShowLogin(true);
+          setCurrentPage('pagina-inicial');
+          signOut(auth).catch((signOutError) => {
+            console.error('Erro ao encerrar sessão sem permissão:', signOutError);
+          });
+        }
+      });
     }, [user?.auth?.uid, setCurrentPage]);
 
     useEffect(() => {
-        if (!user?.auth?.uid) return undefined;
-
-        const refreshCurrentSession = () => {
-            refreshFirebaseTokenSilently('ActivityRefresh', { force: true });
-        };
-
-        const handleVisibilityChange = () => {
-            if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-                refreshCurrentSession();
+      const uid = user?.auth?.uid;
+      if (!uid) return undefined;
+      const applyTransferProfile = (profile = {}, includeSchedule = true) => setUser((previous) => (
+        previous?.auth?.uid !== uid ? previous : {
+          ...previous,
+          ...(includeSchedule ? {
+            jornadaTrabalho: sanitizeEmployeeWorkSchedule(profile.jornadaTrabalho || profile.escalaTrabalho || profile.workSchedule),
+            dataInicioBancoHoras: profile.dataInicioBancoHoras || ''
+          } : {}),
+          permissions: {
+            ...previous.permissions,
+            'entre-lojas': profile.permissions?.['entre-lojas'] !== false
+          },
+          permissionDetails: {
+            ...previous.permissionDetails,
+            'entre-lojas': {
+              ...profile.permissionDetails?.['entre-lojas'],
+              statuses: getExplicitTransferStatuses(profile.permissionDetails, ENTRE_LOJAS_TRANSFER_STATUS_VALUES)
             }
-        };
-
-        refreshFirebaseTokenSilently('SessionHeartbeat');
-
-        const intervalId = setInterval(() => {
-            refreshFirebaseTokenSilently('SessionHeartbeat');
-        }, AUTH_SILENT_REFRESH_INTERVAL_MS);
-
-        if (typeof window !== 'undefined') {
-            window.addEventListener('focus', refreshCurrentSession);
-            window.addEventListener('online', refreshCurrentSession);
+          }
         }
-        if (typeof document !== 'undefined') {
-            document.addEventListener('visibilitychange', handleVisibilityChange);
-        }
-
-        return () => {
-            clearInterval(intervalId);
-            if (typeof window !== 'undefined') {
-                window.removeEventListener('focus', refreshCurrentSession);
-                window.removeEventListener('online', refreshCurrentSession);
-            }
-            if (typeof document !== 'undefined') {
-                document.removeEventListener('visibilitychange', handleVisibilityChange);
-            }
-        };
+      ));
+      return onSnapshot(doc(db, 'users', uid), (snapshot) => {
+        applyTransferProfile(snapshot.exists() ? snapshot.data() : {});
+      }, () => applyTransferProfile({permissions: {'entre-lojas': false}}, false));
     }, [user?.auth?.uid]);
-
     useEffect(() => {
         let isMounted = true;
 
@@ -6722,15 +5539,14 @@ function StaffApplication({staffUid=null}) {
 
     const handleLogin = async () => {
         setLoginError('');
-        const normalizedEmail = email.trim();
-        if (!normalizedEmail || !password) {
-            setLoginError('Use o botão “Entrar com Google” ou preencha email e senha.');
-            return;
-        }
-
         try {
-            await setPreferredAuthPersistence('Email');
-            await signInWithEmailAndPassword(auth, normalizedEmail, password);
+            try {
+                await setPersistence(auth, browserLocalPersistence);
+            } catch (persistError) {
+                console.warn('[Auth][Email] local persistence failed, falling back to session:', persistError?.code || persistError);
+                await setPersistence(auth, browserSessionPersistence);
+            }
+            await signInWithEmailAndPassword(auth, email, password);
             setShowLogin(false);
             setEmail('');
             setPassword('');
@@ -6750,48 +5566,49 @@ function StaffApplication({staffUid=null}) {
 
     const handleGoogleSignIn = async () => {
         setLoginError('');
-        const provider = createGoogleProvider();
-        const strategy = getGoogleSignInStrategy();
+        const provider = new GoogleAuthProvider();
+        const isSafari = isSafariBrowser();
 
-        console.log('[Auth][Google] Browser context:', strategy);
+        console.log('[Auth][Google] Browser detect:', isSafari ? 'Safari' : 'Non-Safari');
 
         try {
-            await setPreferredAuthPersistence('Google');
+            try {
+                await setPersistence(auth, browserLocalPersistence);
+            } catch (persistError) {
+                console.warn('[Auth][Google] local persistence failed, falling back to session:', persistError?.code || persistError);
+                await setPersistence(auth, browserSessionPersistence);
+            }
 
-            if (strategy.method === GOOGLE_AUTH_FLOW_REDIRECT) {
+            if (isSafari) {
                 console.log('[Auth][Google] Method: redirect');
-                setGoogleAuthFlow(GOOGLE_AUTH_FLOW_REDIRECT);
+                sessionStorage.setItem(GOOGLE_AUTH_FLOW_KEY, GOOGLE_AUTH_FLOW_REDIRECT);
                 await signInWithRedirect(auth, provider);
                 return;
             }
 
             console.log('[Auth][Google] Method: popup');
-            setGoogleAuthFlow(GOOGLE_AUTH_FLOW_POPUP);
+            sessionStorage.setItem(GOOGLE_AUTH_FLOW_KEY, GOOGLE_AUTH_FLOW_POPUP);
             await signInWithPopup(auth, provider);
-            clearGoogleAuthFlow();
+            sessionStorage.removeItem(GOOGLE_AUTH_FLOW_KEY);
             setShowLogin(false);
             setCurrentPage('dashboard');
         } catch (error) {
-            const fallbackToRedirect = strategy.method !== GOOGLE_AUTH_FLOW_REDIRECT
-                && (strategy.sameAuthDomain || !strategy.mobile)
-                && (error?.code === 'auth/popup-blocked' || error?.code === 'auth/cancelled-popup-request');
+            const fallbackToRedirect = error?.code === 'auth/popup-blocked' || error?.code === 'auth/cancelled-popup-request';
 
             if (fallbackToRedirect) {
                 try {
                     console.log('[Auth][Google] Method fallback: redirect');
-                    setGoogleAuthFlow(GOOGLE_AUTH_FLOW_REDIRECT);
+                    sessionStorage.setItem(GOOGLE_AUTH_FLOW_KEY, GOOGLE_AUTH_FLOW_REDIRECT);
                     await signInWithRedirect(auth, provider);
                     return;
                 } catch (redirectError) {
                     console.error('Erro no fallback de redirect do Google:', redirectError?.code || redirectError);
-                    clearGoogleAuthFlow();
-                    setLoginError(getGoogleAuthErrorMessage(redirectError, strategy));
-                    return;
                 }
             }
             console.error("Erro no login com Google:", error?.code || error);
-            clearGoogleAuthFlow();
-            setLoginError(getGoogleAuthErrorMessage(error, strategy));
+            setLoginError(error?.code === 'auth/user-disabled'
+              ? 'Sua conta está inativa. Entre em contato com o responsável pela empresa.'
+              : 'Ocorreu um erro ao entrar com Google.');
         }
     };
 
@@ -6799,7 +5616,6 @@ function StaffApplication({staffUid=null}) {
         let active = true;
 
         const validateGoogleRedirectResult = async () => {
-            const pendingGoogleFlow = getGoogleAuthFlow();
             try {
                 const result = await getRedirectResult(auth);
                 const googleUser = result?.user;
@@ -6811,12 +5627,9 @@ function StaffApplication({staffUid=null}) {
                 }
 
                 if (!googleUser?.email) {
-                    if (pendingGoogleFlow === GOOGLE_AUTH_FLOW_REDIRECT && auth.currentUser) {
-                        clearGoogleAuthFlow();
-                    }
                     return;
                 }
-                clearGoogleAuthFlow();
+                sessionStorage.removeItem(GOOGLE_AUTH_FLOW_KEY);
 
                 if (active) {
                     setShowLogin(false);
@@ -6824,9 +5637,8 @@ function StaffApplication({staffUid=null}) {
                 }
             } catch (error) {
                 console.error("Erro ao processar retorno do login com Google:", error?.code || error);
-                clearGoogleAuthFlow();
                 if (active) {
-                    setLoginError(getGoogleAuthErrorMessage(error, getGoogleSignInStrategy()));
+                    setLoginError('Ocorreu um erro ao entrar com Google.');
                 }
             }
         };
@@ -6837,7 +5649,7 @@ function StaffApplication({staffUid=null}) {
             active = false;
         };
     }, []);
-    
+
     const handlePasswordReset = async () => {
         if (!passwordResetEmail) {
             setPasswordResetMessage({ text: 'Por favor, insira seu email.', type: 'error' });
@@ -6858,10 +5670,24 @@ function StaffApplication({staffUid=null}) {
     };
 
 
-  const handleLogout = async () => { 
-      if (!confirmDiscardUnsavedChanges()) return;
+  const handleLogout = async () => {
       stopAlarm(); // Garante que o alarme pare
-      await signOut(auth); 
+      await clearNativeAlarmContext();
+
+      const registeredPushToken = pushTokenRef.current || (
+        typeof window !== 'undefined' ? window.__anaAndroidPushTokenSync : null
+      );
+      if (registeredPushToken) {
+        try {
+          await deleteDoc(doc(db, 'notificationTokens', registeredPushToken));
+          pushTokenRef.current = null;
+          if (typeof window !== 'undefined') window.__anaAndroidPushTokenSync = null;
+        } catch (error) {
+          console.error('[Push] Não foi possível remover o token no logout:', error);
+        }
+      }
+
+      await signOut(auth);
       // O useEffect do onAuthStateChanged agora cuida de resetar a página
   };
 
@@ -6873,11 +5699,13 @@ function StaffApplication({staffUid=null}) {
     { id: 'produtos', permission: 'produtos', label: 'Produtos', icon: Package, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'entre-lojas', permission: 'entre-lojas', label: 'Entre Lojas', icon: ArrowLeftRight, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
     { id: 'agenda', permission: 'agenda', label: 'Agenda', icon: Calendar, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
-    { id: 'fornecedores', permission: 'fornecedores', label: 'Fornecedores/Estoque', icon: Truck, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'fornecedores', permission: 'fornecedores', label: 'Fornecedores/Estoque', icon: Truck, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT] },
     { id: 'relatorios', permission: 'relatorios', label: 'Relatórios', icon: BarChart3, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'meu-espaco', permission: 'meu-espaco', label: 'Meu Espaço', icon: Clock, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_CLIENT] },
     { id: 'financeiro', permission: 'financeiro', label: 'Financeiro', icon: DollarSign, roles: [ROLE_OWNER, ROLE_MANAGER] },
-    { id: 'nota-fiscal', permission: 'nota-fiscal', label: 'Nota Fiscal', icon: FileText, roles: [ROLE_OWNER, ROLE_MANAGER, ROLE_ACCOUNTANT] },
+    { id: 'nota-fiscal', permission: 'nota-fiscal', label: 'Nota Fiscal', icon: FileText, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'ifood', permission: 'ifood', label: 'iFood Hub', icon: Store, roles: [ROLE_OWNER, ROLE_MANAGER] },
+    { id: 'food99', permission: 'food99', label: '99Food Hub', icon: Store, roles: [ROLE_OWNER, ROLE_MANAGER] },
     { id: 'configuracoes', permission: 'configuracoes', label: 'Configurações', icon: Settings, roles: [ROLE_OWNER, ROLE_MANAGER] },
   ];
   const currentUserRole = user ? user.role : null;
@@ -6890,7 +5718,9 @@ function StaffApplication({staffUid=null}) {
     }
 
     const permissionKeyFor = (item) => item.permission || item.id;
-    const customPermissions = user.customPermissions;
+    const customPermissions = user.customPermissions && typeof user.customPermissions === 'object'
+      ? sanitizePermissions(user.customPermissions, currentUserRole)
+      : null;
     const normalizedPermissions = sanitizePermissions(user.permissions, currentUserRole);
 
     return allMenuItems.filter(item => {
@@ -6907,27 +5737,27 @@ function StaffApplication({staffUid=null}) {
       return Boolean(normalizedPermissions[permissionKey]);
     });
   }, [allMenuItems, currentUserRole, user]);
-  
-  const ImageSlider = ({ images, onImageClick }) => { 
-    const [currentIndex, setCurrentIndex] = useState(0); 
-    const nextSlide = useCallback(() => { 
-        setCurrentIndex((prevIndex) => (prevIndex + 1) % images.length); 
-    }, [images.length]); 
-    useEffect(() => { 
-        const timer = setInterval(nextSlide, 5000); 
-        return () => clearInterval(timer); 
-    }, [nextSlide]); 
-    return ( 
-        <div className="h-64 md:h-96 w-full m-auto relative group rounded-2xl overflow-hidden shadow-lg bg-pink-50/30"> 
-            <div 
-                style={{ backgroundImage: `url(${images[currentIndex]})` }} 
-                className="w-full h-full bg-center bg-contain bg-no-repeat duration-500 cursor-pointer" 
+
+  const ImageSlider = ({ images, onImageClick }) => {
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const nextSlide = useCallback(() => {
+        setCurrentIndex((prevIndex) => (prevIndex + 1) % images.length);
+    }, [images.length]);
+    useEffect(() => {
+        const timer = setInterval(nextSlide, 5000);
+        return () => clearInterval(timer);
+    }, [nextSlide]);
+    return (
+        <div className="h-64 md:h-96 w-full m-auto relative group rounded-2xl overflow-hidden shadow-lg bg-pink-50/30">
+            <div
+                style={{ backgroundImage: `url(${images[currentIndex]})` }}
+                className="w-full h-full bg-center bg-contain bg-no-repeat duration-500 cursor-pointer"
                 onClick={() => onImageClick(images[currentIndex])}
-            ></div> 
-        </div> 
-    ); 
+            ></div>
+        </div>
+    );
   };
-  
+
   // Componentes de Páginas
   const PaginaInicial = () => {
     const slideImages = [ '/slide/slide1.png', '/slide/slide2.png', '/slide/slide3.png' ];
@@ -6937,28 +5767,6 @@ function StaffApplication({staffUid=null}) {
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Página Inicial</h1>
             <p className="text-gray-600 mt-1">Seja bem-vindo à Ana Guimarães Doceria!</p>
-            {!user && (
-              <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent('customer-account:open'))}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 py-2 text-white font-semibold hover:bg-pink-700"
-                >
-                  <UserIcon className="w-4 h-4" /> Área do Cliente
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLogin(true);
-                    setShowPasswordReset(false);
-                    setLoginError('');
-                  }}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 font-semibold hover:bg-gray-50"
-                >
-                  <Key className="w-4 h-4" /> Acesso da Equipe
-                </button>
-              </div>
-            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
                 <a
@@ -7075,6 +5883,19 @@ function StaffApplication({staffUid=null}) {
     });
     const [manualPointError, setManualPointError] = useState('');
     const [savingManualPoint, setSavingManualPoint] = useState(false);
+    const [vacationPeriods, setVacationPeriods] = useState([]);
+    const [vacationLoading, setVacationLoading] = useState(false);
+    const [vacationModalOpen, setVacationModalOpen] = useState(false);
+    const [editingVacationPeriod, setEditingVacationPeriod] = useState(null);
+    const [vacationForm, setVacationForm] = useState({
+      funcionarioId: '',
+      dataInicio: initialDay,
+      dataFim: initialDay,
+      observacao: '',
+      gestorNome: ''
+    });
+    const [vacationError, setVacationError] = useState('');
+    const [savingVacation, setSavingVacation] = useState(false);
     const [todayRecordData, setTodayRecordData] = useState(null);
     const [supplementalPeriodModalOpen, setSupplementalPeriodModalOpen] = useState(false);
     const [editingSupplementalPeriod, setEditingSupplementalPeriod] = useState(null);
@@ -7087,10 +5908,19 @@ function StaffApplication({staffUid=null}) {
     });
     const [supplementalPeriodError, setSupplementalPeriodError] = useState('');
     const [savingSupplementalPeriod, setSavingSupplementalPeriod] = useState(false);
+    const isPointEmployeeActive = useCallback((employee = {}) => {
+      const status = String(employee.status || '').trim().toLowerCase();
+      return employee.ativo !== false && employee.authDisabled !== true && status !== 'inativo';
+    }, []);
     const activeEmployees = useMemo(
-      () => employees.filter((employee) => isUserAccountActive(employee)),
-      [employees]
+      () => employees.filter((employee) => isPointEmployeeActive(employee)),
+      [employees, isPointEmployeeActive]
     );
+    const vacationAssignmentEmployees = useMemo(() => employees.filter((employee) => (
+      isPointEmployeeActive(employee) || (
+        editingVacationPeriod && employee.id === editingVacationPeriod.funcionarioId
+      )
+    )), [editingVacationPeriod, employees, isPointEmployeeActive]);
 
     const hasPointManagementPermission = user?.permissions?.['meu-espaco'] !== false
       && user?.permissionDetails?.['meu-espaco']?.managePoint !== false;
@@ -7239,6 +6069,35 @@ function StaffApplication({staffUid=null}) {
     }, [currentStoreIdForDisplay, recordsQueryMonth]);
 
     useEffect(() => {
+      if (!isManager || !currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) {
+        setVacationPeriods([]);
+        setVacationLoading(false);
+        return;
+      }
+
+      setVacationLoading(true);
+      const feriasRef = collection(db, 'lojas', currentStoreIdForDisplay, 'ferias');
+      const unsubscribe = onSnapshot(feriasRef, (snapshot) => {
+        const data = snapshot.docs
+          .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+          .sort((a, b) => String(b.dataInicio || '').localeCompare(String(a.dataInicio || '')));
+        setVacationPeriods(data);
+        setVacationLoading(false);
+      }, (error) => {
+        console.error('Erro ao carregar períodos de férias', error);
+        setVacationPeriods([]);
+        setVacationLoading(false);
+      }, {
+        __listenerOptions: true,
+        operation: 'meu-espaco-ferias',
+        route: 'meu-espaco',
+        uid: userId
+      });
+
+      return () => unsubscribe();
+    }, [isManager, currentStoreIdForDisplay, userId]);
+
+    useEffect(() => {
       if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY || !userId) {
         setTodayRecordData(null);
         return;
@@ -7320,11 +6179,16 @@ function StaffApplication({staffUid=null}) {
       employee.nome || employee.displayName || employee.name || employee.email || employee.id || 'Colaboradora'
     );
 
+    const getEmployeeOptionLabel = (employee = {}) => (
+      `${getEmployeeDisplayName(employee)}${isPointEmployeeActive(employee) ? '' : ' — Inativo'}`
+    );
+
     const getEmployeeWorkSchedule = (employee = {}) => sanitizeEmployeeWorkSchedule(
       employee.jornadaTrabalho || employee.escalaTrabalho || employee.workSchedule || null
     );
 
-    const getEmployeeById = (employeeId) => employees.find((item) => item.id === employeeId) || {};
+    const getEmployeeById = (employeeId) => employees.find((item) => item.id === employeeId)
+      || (employeeId === userId ? user : {}) || {};
 
     const getScheduleForEmployeeId = (employeeId) => getEmployeeWorkSchedule(getEmployeeById(employeeId));
 
@@ -7354,12 +6218,11 @@ function StaffApplication({staffUid=null}) {
       return getPointBankStartDateForEmployeeId(record.funcionarioId);
     };
 
-    const getRecordWorkSchedule = (record = {}) => {
-      if (record.jornadaTrabalho || record.escalaTrabalho || record.workSchedule) {
-        return sanitizeEmployeeWorkSchedule(record.jornadaTrabalho || record.escalaTrabalho || record.workSchedule);
-      }
-      return getScheduleForEmployeeId(record.funcionarioId);
-    };
+    const getRecordWorkSchedule = (record = {}) => resolvePointRecordWorkSchedule(
+      getScheduleForEmployeeId(record.funcionarioId),
+      record.jornadaTrabalho || record.escalaTrabalho || record.workSchedule,
+      getRecordDayKey(record)
+    );
 
     const isVacationRecord = (record = {}) => (
       record.tipoLancamento === 'ferias'
@@ -7368,6 +6231,12 @@ function StaffApplication({staffUid=null}) {
       || record.lancamentoFerias === true
       || (!record.tipoLancamento && String(record.justificativa || '').trim().toLowerCase() === 'férias')
       || (!record.tipoLancamento && String(record.justificativa || '').trim().toLowerCase() === 'ferias')
+    );
+
+    const isVacationRecordForPeriod = (record = {}, periodId = '') => (
+      isVacationRecord(record)
+      && periodId
+      && (record.feriasId === periodId || record.periodoFeriasId === periodId)
     );
 
     const isExplicitAbsenceRecord = (record = {}) => (
@@ -7482,6 +6351,7 @@ function StaffApplication({staffUid=null}) {
       const date = getDayInfo(registro);
       const dayOfWeek = date ? date.getDay() : null;
       const scheduleDay = getPointScheduleDayInfo(scheduleInput || registro.jornadaTrabalho, date);
+      if (isHourlyWorkSchedule(scheduleDay.schedule)) return { expectedMinutes: 0, hasDate: Boolean(date), isWorkday: false, isWeeklyDayOff: false };
       const fallbackExpectedMinutes = parseExpectedPointMinutes(
         registro.jornadaEsperadaMinutos,
         registro.jornadaDiariaMinutos,
@@ -7545,6 +6415,7 @@ function StaffApplication({staffUid=null}) {
         };
       }
 
+      if (isHourlyWorkSchedule(getPointScheduleDayInfo(scheduleInput || registro.jornadaTrabalho, getDayInfo(registro)).schedule)) return getHourlyPointSummary(workedMinutes);
       const diff = workedMinutes - expectedMinutes;
       return {
         workedLabel: formatMinutesToLabel(workedMinutes),
@@ -7573,6 +6444,14 @@ function StaffApplication({staffUid=null}) {
     };
 
     const buildPointStatus = (registro = {}) => {
+      if (isVacationRecord(registro)) {
+        return {
+          inconsistente: false,
+          necessitaAjuste: false,
+          statusPonto: 'Férias',
+          inconsistencias: [],
+        };
+      }
       if (isExcusedAbsenceRecord(registro)) {
         return {
           inconsistente: false,
@@ -7637,6 +6516,164 @@ function StaffApplication({staffUid=null}) {
       if (record?.dia) return record.dia;
       const date = getDayInfo(record);
       return date ? toDateInputValue(date) : '';
+    };
+
+    const parseDayKeyToDate = (dayKey) => {
+      const [year, month, day] = String(dayKey || '').split('-').map(Number);
+      if (!year || !month || !day) return null;
+      return new Date(year, month - 1, day);
+    };
+
+    const formatDayKeyLabel = (dayKey) => {
+      const date = parseDayKeyToDate(dayKey);
+      return date ? date.toLocaleDateString('pt-BR') : '-';
+    };
+
+    const getInclusiveDayKeys = (startDayKey, endDayKey) => {
+      const startDate = parseDayKeyToDate(startDayKey);
+      const endDate = parseDayKeyToDate(endDayKey);
+      if (!startDate || !endDate || startDayKey > endDayKey) return [];
+      const days = [];
+      const cursor = new Date(startDate);
+      while (cursor <= endDate) {
+        days.push(toDateInputValue(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return days;
+    };
+
+    const getCompetenceKeysBetween = (startDayKey, endDayKey) => {
+      const startDate = parseDayKeyToDate(startDayKey);
+      const endDate = parseDayKeyToDate(endDayKey);
+      if (!startDate || !endDate || startDayKey > endDayKey) return [];
+      const keys = [];
+      const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const endCursor = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+      while (cursor <= endCursor) {
+        keys.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+      return keys;
+    };
+
+    const vacationRangesOverlap = (startA, endA, startB, endB) => Boolean(
+      startA && endA && startB && endB && startA <= endB && endA >= startB
+    );
+
+    const isActiveVacationPeriod = (period = {}) => String(period.status || 'ativo').toLowerCase() !== 'cancelado';
+
+    const pointVacationBackupFields = [
+      'horaEntrada',
+      'horaSaida',
+      'horaAlmocoSaida',
+      'horaAlmocoRetorno',
+      'localizacaoEntrada',
+      'localizacaoEntradaEndereco',
+      'localizacaoSaida',
+      'localizacaoSaidaEndereco',
+      'irregularidade',
+      'qtde',
+      'bancoHoras',
+      'bancoHorasMinutes',
+      'horaExtra',
+      'horaExtraMinutes',
+      'almocoNaoRegistradoBancoHoras',
+      'faltaSemAbonoBancoHoras',
+      'justificativa',
+      'justificativaGestor',
+      'tipoLancamento',
+      'faltaAbonada',
+      'abonoFalta',
+      'folgaCompensada',
+      'liberacaoChefia',
+      'lancamentoManualGestor',
+      'manualPeloGestor',
+      'semLocalizacaoManual',
+      'localizacaoObservacao',
+      'gestorId',
+      'gestorNome',
+      'statusPonto',
+      'inconsistente',
+      'necessitaAjuste',
+      'inconsistencias',
+      'dataInicioBancoHoras',
+      'jornadaTrabalho',
+      'historicoRegistros',
+      'data',
+      'createdAt',
+      'updatedAt',
+      'atualizadoEm',
+      'dataAjuste',
+      'dataLancamentoManual',
+      'dataAbonoFalta',
+      'dataFolgaCompensada',
+      'dataLiberacaoChefia'
+    ];
+
+    const pointVacationOnlyFields = [
+      'ferias',
+      'lancamentoFerias',
+      'feriasId',
+      'periodoFeriasId',
+      'dataInicioFerias',
+      'dataFimFerias',
+      'observacaoFerias',
+      'statusFerias',
+      'registroAnteriorFerias',
+      'feriasSobrescreveuRegistro',
+      'feriasSobrescreveuPontoRegistrado',
+      'dataLancamentoFerias',
+      'dataAlteracaoFerias',
+      'dataCancelamentoFerias',
+      'feriasCanceladaPor',
+      'feriasCanceladaPorNome'
+    ];
+
+    const buildPointBackupForVacation = (record = {}) => pointVacationBackupFields.reduce((acc, field) => {
+      if (Object.prototype.hasOwnProperty.call(record, field) && record[field] !== undefined) {
+        acc[field] = record[field];
+      }
+      return acc;
+    }, {});
+
+    const buildRestorePatchFromVacationRecord = (record = {}, auditEntry = {}) => {
+      const backup = record.registroAnteriorFerias && typeof record.registroAnteriorFerias === 'object'
+        ? record.registroAnteriorFerias
+        : {};
+      const patch = {};
+      pointVacationBackupFields.forEach((field) => {
+        patch[field] = Object.prototype.hasOwnProperty.call(backup, field) ? backup[field] : deleteField();
+      });
+      pointVacationOnlyFields.forEach((field) => {
+        patch[field] = deleteField();
+      });
+      patch.historicoAlteracoes = arrayUnion(auditEntry);
+      patch.atualizadoEm = serverTimestamp();
+      patch.updatedAt = serverTimestamp();
+      return patch;
+    };
+
+    const fetchPointRecordsForEmployeeBetween = async (storeId, employeeId, startDayKey, endDayKey) => {
+      if (!storeId || !employeeId || !startDayKey || !endDayKey) return [];
+      const pontosRef = collection(db, 'lojas', storeId, 'pontos');
+      const results = [];
+      const competences = getCompetenceKeysBetween(startDayKey, endDayKey);
+      for (const competence of competences) {
+        const pontosQuery = query(
+          pontosRef,
+          where('funcionarioId', '==', employeeId),
+          where('competencia', '==', competence)
+        );
+        const snapshot = await getDocs(pontosQuery);
+        snapshot.docs.forEach((docSnap) => {
+          const record = { id: docSnap.id, ...docSnap.data() };
+          const dayKey = getRecordDayKey(record);
+          if (dayKey >= startDayKey && dayKey <= endDayKey) {
+            results.push(record);
+          }
+        });
+      }
+      return results;
     };
 
     const handleTodayFilter = () => {
@@ -7721,6 +6758,7 @@ function StaffApplication({staffUid=null}) {
     );
 
     const calculatePointBalanceDistribution = (record = {}, summaryInput = null, options = {}) => {
+      if (isHourlyWorkSchedule(getPointScheduleDayInfo(options.schedule || getRecordWorkSchedule(record), getDayInfo(record)).schedule)) return getHourlyPointBalance();
       const summary = summaryInput || calculateWorkSummary(record, options.schedule || getRecordWorkSchedule(record));
       const irregularityMinutes = summary?.calculable && Number.isFinite(summary?.irregularityMinutes)
         ? summary.irregularityMinutes
@@ -7728,7 +6766,7 @@ function StaffApplication({staffUid=null}) {
       let bancoHorasMinutes = 0;
       let horaExtraMinutes = 0;
 
-      if (isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) {
+      if (isVacationRecord(record) || isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) {
         return {
           bancoHorasMinutes: 0,
           horaExtraMinutes: 0,
@@ -7870,7 +6908,7 @@ function StaffApplication({staffUid=null}) {
     };
 
     const getPointAbsenceDebitMinutes = ({ record = {}, date, dayKey, nationalHolidays, schedule }) => {
-      if (isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) return 0;
+      if (isVacationRecord(record) || isExcusedAbsenceRecord(record) || isManualNonWorkingDayRecord(record)) return 0;
       if (hasAnyPointTime(record)) return 0;
       if (nationalHolidays?.has(dayKey)) return 0;
       const scheduleDay = getPointScheduleDayInfo(schedule || record.jornadaTrabalho, date);
@@ -8098,12 +7136,12 @@ function StaffApplication({staffUid=null}) {
         const employee = getPointSheetEmployee(employeeId, employeeMonthlyRecords);
         const employeeSchedule = getScheduleForEmployeeId(employeeId);
         const bankStartDate = getPointBankStartDateForEmployeeId(employeeId);
+        const monthSchedule = resolvePointWorkSchedule(employeeSchedule, recordsQueryMonth + '-' + String(new Date(year, month, 0).getDate()).padStart(2, '0'));
+        const hourlyMonth = isHourlyWorkSchedule(monthSchedule);
+        const monthlyCalculations = [];
+        let hasFixedDays = false;
         const daysInMonth = new Date(year, month, 0).getDate();
         const rows = [];
-        let creditMinutes = 0;
-        let debitMinutes = 0;
-        let bankMovementMinutes = 0;
-        let overtimePayMinutes = 0;
         const nationalHolidays = getBrazilNationalHolidays(year);
 
         for (let day = 1; day <= daysInMonth; day += 1) {
@@ -8120,14 +7158,9 @@ function StaffApplication({staffUid=null}) {
             schedule: recordSchedule,
             bankCalculationEnabled
           });
+          monthlyCalculations.push(dayCalculation);
+          if (!isHourlyWorkSchedule(getPointScheduleDayInfo(recordSchedule, date).schedule)) hasFixedDays = true;
           const { summary, balance: balanceDistribution, baseJustification } = dayCalculation;
-          const irregularityMinutes = summary.calculable && Number.isFinite(summary.irregularityMinutes)
-            ? summary.irregularityMinutes
-            : 0;
-          if (irregularityMinutes > 0) creditMinutes += irregularityMinutes;
-          if (irregularityMinutes < 0) debitMinutes += Math.abs(irregularityMinutes);
-          bankMovementMinutes += balanceDistribution.bancoHorasMinutes;
-          overtimePayMinutes += balanceDistribution.horaExtraMinutes;
           const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
           const presentationRows = buildPointPresentationRows(dayRecord, { baseJustification });
           presentationRows.forEach((presentationRow) => {
@@ -8152,9 +7185,11 @@ function StaffApplication({staffUid=null}) {
           });
         }
 
-        const balanceMinutes = creditMinutes - debitMinutes;
-        const previousBankMinutes = await getPreviousBankHoursBalance(employeeId, recordsQueryMonth, employeeSchedule, bankStartDate);
-        const finalBankMinutes = previousBankMinutes + bankMovementMinutes;
+        // Historical bank reconstruction is only applicable to a fixed-scale
+        // monthly summary, even when an hourly month contains earlier fixed days.
+        const previousBalance = hourlyMonth ? 0 : await getPreviousBankHoursBalance(employeeId, recordsQueryMonth, employeeSchedule, bankStartDate);
+        const monthSummary = summarizePointMonth({schedule: monthSchedule, calculations: monthlyCalculations, previousBankMinutes: previousBalance});
+        const { creditMinutes, debitMinutes, balanceMinutes, previousBankMinutes, finalBankMinutes, overtimePayMinutes } = monthSummary;
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -8290,7 +7325,11 @@ function StaffApplication({staffUid=null}) {
         setFont(7, 'bold');
         doc.text('Resumo do mês', margin, y);
         y += 3.5;
-        const summaryBoxes = [
+        const summaryBoxes = hourlyMonth ? [
+          ['Horas trabalhadas no mês', formatPointWorkedMonth(monthSummary.workedMinutes)],
+          ['Banco de horas', '—'],
+          ['Horas extras', '—']
+        ] : [
           ['Créditos Mês', formatMinutesForPointSheet(creditMinutes)],
           ['Débitos Mês', formatMinutesForPointSheet(debitMinutes)],
           ['Saldo do Mês', formatMinutesForPointSheet(balanceMinutes, { signed: balanceMinutes !== 0 })],
@@ -8310,11 +7349,15 @@ function StaffApplication({staffUid=null}) {
         y += 15;
 
         const bankStartLabel = formatPointBankStartDateLabel(bankStartDate);
-        if (bankStartLabel) {
+        if (bankStartLabel && !hourlyMonth) {
           setFont(5.8);
           doc.text(`Banco de horas calculado a partir de ${bankStartLabel}.`, margin, y - 2.5);
         }
 
+        if (hourlyMonth && hasFixedDays) {
+          setFont(5.8);
+          doc.text('Mês de transição: dias anteriores preservam sua escala; banco e extras não se aplicam ao resumo Horista.', margin, y - 2.5);
+        }
         setFont(7);
         doc.text('CONFIRMO A FREQUÊNCIA ACIMA', margin, y);
         y += 15;
@@ -8378,7 +7421,7 @@ function StaffApplication({staffUid=null}) {
         if (!employeeId) return baseRecords;
         const [year, month] = recordsQueryMonth.split('-').map(Number);
         if (!year || !month) return baseRecords;
-        const employee = employees.find((item) => item.id === employeeId) || {};
+        const employee = getEmployeeById(employeeId);
         const employeeSchedule = getEmployeeWorkSchedule(employee);
         const nationalHolidays = getBrazilNationalHolidays(year);
         const existingDays = new Set(baseRecords.map((item) => getRecordDayKey(item)).filter(Boolean));
@@ -8422,6 +7465,24 @@ function StaffApplication({staffUid=null}) {
       }
       return appendVirtualAbsences(dateFiltered.filter(item => item.funcionarioId === userId), userId);
     }, [records, activeDayFilter, isManager, selectedEmployee, userId, recordsQueryMonth, employees, user?.auth?.displayName, user?.auth?.email, currentStoreIdForDisplay]);
+
+    const filteredVacationPeriods = useMemo(() => {
+      if (!isManager) return [];
+      const sorted = [...vacationPeriods].sort((a, b) => String(b.dataInicio || '').localeCompare(String(a.dataInicio || '')));
+      if (selectedEmployee && selectedEmployee !== 'all') {
+        return sorted.filter((period) => period.funcionarioId === selectedEmployee);
+      }
+      return sorted;
+    }, [isManager, selectedEmployee, vacationPeriods]);
+
+    const summaryEmployeeId = isManager ? (selectedEmployee !== 'all' ? selectedEmployee : '') : userId;
+    const summarySchedule = resolvePointWorkSchedule(getScheduleForEmployeeId(summaryEmployeeId), recordsQueryMonth + '-31');
+    const showHourlyMonthTotal = Boolean(summaryEmployeeId && isHourlyWorkSchedule(summarySchedule));
+    const hourlyMonthWorkedMinutes = showHourlyMonthTotal ? summarizePointMonth({
+      schedule: summarySchedule,
+      calculations: groupPointRecordsByDay(records.filter((record) => record.funcionarioId === summaryEmployeeId), { storeId: currentStoreIdForDisplay })
+        .map((record) => calculatePointDay(record))
+    }).workedMinutes : 0;
 
     const todayRecord = todayRecordData;
     const todayPointStatus = todayRecord
@@ -8569,11 +7630,13 @@ function StaffApplication({staffUid=null}) {
     const openManualPointModal = (defaults = {}) => {
       if (!isManager) return;
       const baseDay = defaults.dia || activeDayFilter || selectedDay || todayKey;
-      const requestedEmployeeId = defaults.funcionarioId || (selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : '');
+      const requestedEmployeeId = defaults.funcionarioId || (
+        selectedEmployee && selectedEmployee !== 'all' ? selectedEmployee : ''
+      );
       const requestedEmployee = employees.find((item) => item.id === requestedEmployeeId);
       setManualPointForm({
         tipoLancamento: defaults.tipoLancamento || 'manual',
-        funcionarioId: requestedEmployee && isUserAccountActive(requestedEmployee)
+        funcionarioId: requestedEmployee && isPointEmployeeActive(requestedEmployee)
           ? requestedEmployeeId
           : '',
         dia: baseDay,
@@ -8608,7 +7671,7 @@ function StaffApplication({staffUid=null}) {
         manualPointForm.horaSaida
       ].some(Boolean);
 
-      if (employee && !isUserAccountActive(employee)) {
+      if (employee && !isPointEmployeeActive(employee)) {
         setManualPointError('Usuários inativos não podem receber novos lançamentos.');
         return;
       }
@@ -8788,6 +7851,451 @@ function StaffApplication({staffUid=null}) {
         setManualPointError(error.message || 'Não foi possível lançar o ponto manual.');
       } finally {
         setSavingManualPoint(false);
+      }
+    };
+
+    const buildVacationPeriodAuditEntry = ({ action, employee, previousValue = null, nextValue = null, observation = '', conflictRecords = [] }) => ({
+      data: new Date().toISOString(),
+      tipo: action,
+      tipoLancamento: 'Férias',
+      gestorId: userId,
+      gestor: userName,
+      funcionarioId: employee?.id || nextValue?.funcionarioId || previousValue?.funcionarioId || '',
+      funcionarioNome: employee ? getEmployeeDisplayName(employee) : (nextValue?.funcionarioNome || previousValue?.funcionarioNome || ''),
+      valorAnterior: previousValue,
+      valorNovo: nextValue,
+      observacao: observation || '',
+      conflitosComPonto: conflictRecords.map((record) => ({
+        dia: getRecordDayKey(record),
+        registroId: record.id,
+        possuiHorarios: hasAnyPointTime(record),
+        justificativa: record.justificativa || '',
+        statusPonto: record.statusPonto || ''
+      }))
+    });
+
+    const buildVacationPointAuditEntry = ({ action, periodId, employee, dayKey, previousRecord = null, observation = '' }) => ({
+      data: new Date().toISOString(),
+      tipo: action,
+      tipoLancamento: 'Férias',
+      origem: 'lançamento de férias pelo gestor',
+      feriasId: periodId,
+      gestorId: userId,
+      gestor: userName,
+      funcionarioId: employee?.id || '',
+      funcionarioNome: employee ? getEmployeeDisplayName(employee) : '',
+      dia: dayKey,
+      observacao: observation || '',
+      valorAnterior: previousRecord ? buildPointBackupForVacation(previousRecord) : null,
+      valorNovo: {
+        justificativa: 'Férias',
+        irregularidade: '-',
+        qtde: '-',
+        bancoHoras: '-',
+        horaExtra: '-'
+      }
+    });
+
+    const buildVacationPointPayload = ({ storeId, employee, dayKey, periodId, dataInicio, dataFim, observacao, existingRecord = null, action }) => {
+      const employeeSchedule = getEmployeeWorkSchedule(employee);
+      const employeeBankStartDate = getEmployeePointBankStartDate(employee);
+      const preservingSameVacation = existingRecord && isVacationRecordForPeriod(existingRecord, periodId);
+      const hadExistingRecord = Boolean(existingRecord && !existingRecord.virtualAbsence);
+      const previousBackup = preservingSameVacation
+        ? (existingRecord.registroAnteriorFerias || null)
+        : (hadExistingRecord ? buildPointBackupForVacation(existingRecord) : null);
+      const dayDate = parseDayKeyToDate(dayKey) || new Date(`${dayKey}T00:00:00`);
+      const pointAudit = buildVacationPointAuditEntry({
+        action,
+        periodId,
+        employee,
+        dayKey,
+        previousRecord: preservingSameVacation ? null : existingRecord,
+        observation: observacao
+      });
+
+      return {
+        horaEntrada: '',
+        horaAlmocoSaida: '',
+        horaAlmocoRetorno: '',
+        horaSaida: '',
+        dia: dayKey,
+        data: Timestamp.fromDate(dayDate),
+        competencia: dayKey.slice(0, 7),
+        empresaId: storeId,
+        funcionarioId: employee.id,
+        funcionarioNome: getEmployeeDisplayName(employee),
+        funcionarioEmail: employee.email || '',
+        tipoLancamento: 'ferias',
+        ferias: true,
+        lancamentoFerias: true,
+        feriasId: periodId,
+        periodoFeriasId: periodId,
+        dataInicioFerias: dataInicio,
+        dataFimFerias: dataFim,
+        observacaoFerias: observacao || '',
+        statusFerias: 'ativo',
+        justificativa: 'Férias',
+        justificativaGestor: observacao || 'Férias lançadas pelo gestor',
+        faltaAbonada: false,
+        abonoFalta: false,
+        folgaCompensada: false,
+        liberacaoChefia: false,
+        jornadaTrabalho: employeeSchedule,
+        dataInicioBancoHoras: employeeBankStartDate || '',
+        irregularidade: '',
+        qtde: '',
+        bancoHoras: '-',
+        bancoHorasMinutes: 0,
+        horaExtra: '-',
+        horaExtraMinutes: 0,
+        almocoNaoRegistradoBancoHoras: 0,
+        faltaSemAbonoBancoHoras: 0,
+        inconsistente: false,
+        necessitaAjuste: false,
+        statusPonto: 'Férias',
+        inconsistencias: [],
+        lancamentoManualGestor: true,
+        manualPeloGestor: true,
+        semLocalizacaoManual: true,
+        localizacaoObservacao: 'Sem localização — férias lançadas pelo gestor',
+        gestorId: userId,
+        gestorNome: userName,
+        registroAnteriorFerias: previousBackup,
+        feriasSobrescreveuRegistro: Boolean(previousBackup),
+        feriasSobrescreveuPontoRegistrado: Boolean(previousBackup && existingRecord && hasAnyPointTime(existingRecord)),
+        createdAt: existingRecord?.createdAt || serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        atualizadoEm: serverTimestamp(),
+        dataLancamentoFerias: existingRecord?.dataLancamentoFerias || serverTimestamp(),
+        dataAlteracaoFerias: action === 'ferias_alteradas' ? serverTimestamp() : null,
+        historicoAlteracoes: arrayUnion(pointAudit)
+      };
+    };
+
+    const restoreVacationPointRecordInBatch = ({ batch, storeId, record, auditEntry }) => {
+      if (!record?.id) return;
+      const recordRef = doc(db, 'lojas', storeId, 'pontos', record.id);
+      if (record.feriasSobrescreveuRegistro && record.registroAnteriorFerias) {
+        batch.set(recordRef, buildRestorePatchFromVacationRecord(record, auditEntry), { merge: true });
+      } else {
+        batch.delete(recordRef);
+      }
+    };
+
+    const openVacationPeriodModal = (period = null) => {
+      if (!isManager) return;
+      if (period) {
+        setEditingVacationPeriod(period);
+        setVacationForm({
+          funcionarioId: period.funcionarioId || '',
+          dataInicio: normalizePointBankStartDate(period.dataInicio),
+          dataFim: normalizePointBankStartDate(period.dataFim),
+          observacao: period.observacao || '',
+          gestorNome: period.gestorNome || userName
+        });
+      } else {
+        const baseDay = activeDayFilter || selectedDay || todayKey;
+        const selectedProfile = employees.find((item) => item.id === selectedEmployee);
+        setEditingVacationPeriod(null);
+        setVacationForm({
+          funcionarioId: selectedProfile && isPointEmployeeActive(selectedProfile)
+            ? selectedEmployee
+            : '',
+          dataInicio: baseDay,
+          dataFim: baseDay,
+          observacao: '',
+          gestorNome: userName
+        });
+      }
+      setVacationError('');
+      setVacationModalOpen(true);
+    };
+
+    const closeVacationPeriodModal = () => {
+      setVacationModalOpen(false);
+      setEditingVacationPeriod(null);
+      setVacationError('');
+    };
+
+    const handleSaveVacationPeriod = async () => {
+      if (!isManager) return;
+      const employee = employees.find((item) => item.id === vacationForm.funcionarioId);
+      const dataInicio = normalizePointBankStartDate(vacationForm.dataInicio);
+      const dataFim = normalizePointBankStartDate(vacationForm.dataFim);
+      const observacao = String(vacationForm.observacao || '').trim();
+
+      if (!employee) {
+        setVacationError('Selecione a colaboradora.');
+        return;
+      }
+      if (!editingVacationPeriod && !isPointEmployeeActive(employee)) {
+        setVacationError('Usuários inativos não podem receber novos lançamentos.');
+        return;
+      }
+      if (!dataInicio || !dataFim) {
+        setVacationError('Informe a data inicial e a data final das férias.');
+        return;
+      }
+      if (dataInicio > dataFim) {
+        setVacationError('A data final das férias deve ser igual ou posterior à data inicial.');
+        return;
+      }
+
+      const overlappingVacation = vacationPeriods.find((period) => (
+        period.id !== editingVacationPeriod?.id
+        && period.funcionarioId === employee.id
+        && isActiveVacationPeriod(period)
+        && vacationRangesOverlap(
+          dataInicio,
+          dataFim,
+          normalizePointBankStartDate(period.dataInicio),
+          normalizePointBankStartDate(period.dataFim)
+        )
+      ));
+      if (overlappingVacation) {
+        setVacationError(`Já existe um período de férias ativo para esta colaboradora entre ${formatDayKeyLabel(overlappingVacation.dataInicio)} e ${formatDayKeyLabel(overlappingVacation.dataFim)}.`);
+        return;
+      }
+
+      try {
+        setSavingVacation(true);
+        setVacationError('');
+        const storeId = resolveActiveStoreForWrite();
+        const feriasRef = collection(db, 'lojas', storeId, 'ferias');
+        const vacationRef = editingVacationPeriod
+          ? doc(db, 'lojas', storeId, 'ferias', editingVacationPeriod.id)
+          : doc(feriasRef);
+        const periodId = vacationRef.id;
+        const newDayKeys = getInclusiveDayKeys(dataInicio, dataFim);
+        const oldStart = editingVacationPeriod ? normalizePointBankStartDate(editingVacationPeriod.dataInicio) : dataInicio;
+        const oldEnd = editingVacationPeriod ? normalizePointBankStartDate(editingVacationPeriod.dataFim) : dataFim;
+        const fetchStart = [dataInicio, oldStart].filter(Boolean).sort()[0];
+        const fetchEnd = [dataFim, oldEnd].filter(Boolean).sort().pop();
+        const existingPointRecords = await fetchPointRecordsForEmployeeBetween(storeId, employee.id, fetchStart, fetchEnd);
+        const recordsByDay = new Map();
+        existingPointRecords.forEach((record) => {
+          const dayKey = getRecordDayKey(record);
+          if (dayKey && !recordsByDay.has(dayKey)) recordsByDay.set(dayKey, record);
+        });
+
+        const conflictingRecords = newDayKeys
+          .map((dayKey) => recordsByDay.get(dayKey))
+          .filter((record) => record && !isVacationRecordForPeriod(record, periodId));
+        if (conflictingRecords.length) {
+          const conflictLabels = conflictingRecords
+            .map((record) => formatDayKeyLabel(getRecordDayKey(record)))
+            .slice(0, 8)
+            .join(', ');
+          const pointCount = conflictingRecords.filter((record) => hasAnyPointTime(record)).length;
+          const confirmed = typeof window === 'undefined' ? true : window.confirm(
+            `Existem ${conflictingRecords.length} registro(s) de ponto no período de férias (${conflictLabels}${conflictingRecords.length > 8 ? '...' : ''}). ${pointCount ? `${pointCount} registro(s) possuem horários lançados. ` : ''}Ao confirmar, os dias serão marcados como "Férias" e os valores anteriores ficarão salvos na auditoria para restauração. Deseja continuar?`
+          );
+          if (!confirmed) {
+            setVacationError('Lançamento de férias cancelado para preservar os registros existentes.');
+            return;
+          }
+        }
+
+        const action = editingVacationPeriod ? 'ferias_alteradas' : 'ferias_lancadas';
+        const oldDayKeys = editingVacationPeriod ? getInclusiveDayKeys(oldStart, oldEnd) : [];
+        const newDaySet = new Set(newDayKeys);
+        const daysToRestore = oldDayKeys.filter((dayKey) => !newDaySet.has(dayKey));
+        const previousValue = editingVacationPeriod ? {
+          funcionarioId: editingVacationPeriod.funcionarioId || '',
+          funcionarioNome: editingVacationPeriod.funcionarioNome || '',
+          dataInicio: oldStart,
+          dataFim: oldEnd,
+          observacao: editingVacationPeriod.observacao || '',
+          status: editingVacationPeriod.status || 'ativo'
+        } : null;
+        const nextValue = {
+          funcionarioId: employee.id,
+          funcionarioNome: getEmployeeDisplayName(employee),
+          funcionarioEmail: employee.email || '',
+          dataInicio,
+          dataFim,
+          observacao,
+          status: 'ativo',
+          tipoLancamento: 'Férias'
+        };
+        const periodAudit = buildVacationPeriodAuditEntry({
+          action,
+          employee,
+          previousValue,
+          nextValue,
+          observation: observacao,
+          conflictRecords: conflictingRecords
+        });
+
+        const batch = writeBatch(db);
+        const periodPayload = {
+          ...nextValue,
+          gestorId: editingVacationPeriod?.gestorId || userId,
+          gestorNome: editingVacationPeriod?.gestorNome || vacationForm.gestorNome || userName,
+          gestorAlteracaoId: editingVacationPeriod ? userId : '',
+          gestorAlteracaoNome: editingVacationPeriod ? userName : '',
+          atualizadoEm: serverTimestamp(),
+          historicoAlteracoes: arrayUnion(periodAudit)
+        };
+        if (!editingVacationPeriod) {
+          periodPayload.criadoEm = serverTimestamp();
+          periodPayload.dataLancamento = serverTimestamp();
+          periodPayload.lancadoPorId = userId;
+          periodPayload.lancadoPorNome = userName;
+        } else {
+          periodPayload.dataAlteracao = serverTimestamp();
+        }
+        batch.set(vacationRef, periodPayload, { merge: true });
+
+        const auditRef = doc(collection(db, 'lojas', storeId, 'feriasAuditoria'));
+        batch.set(auditRef, {
+          ...periodAudit,
+          feriasId: periodId,
+          lojaId: storeId,
+          criadoEm: serverTimestamp()
+        });
+
+        daysToRestore.forEach((dayKey) => {
+          const record = recordsByDay.get(dayKey);
+          if (!isVacationRecordForPeriod(record, periodId)) return;
+          const restoreAudit = {
+            data: new Date().toISOString(),
+            tipo: 'ferias_removidas_do_dia',
+            tipoLancamento: 'Férias',
+            feriasId: periodId,
+            gestorId: userId,
+            gestor: userName,
+            funcionarioId: employee.id,
+            funcionarioNome: getEmployeeDisplayName(employee),
+            dia: dayKey,
+            observacao
+          };
+          restoreVacationPointRecordInBatch({ batch, storeId, record, auditEntry: restoreAudit });
+        });
+
+        newDayKeys.forEach((dayKey) => {
+          const existingRecord = recordsByDay.get(dayKey);
+          const pointRef = existingRecord?.id
+            ? doc(db, 'lojas', storeId, 'pontos', existingRecord.id)
+            : doc(db, 'lojas', storeId, 'pontos', `${employee.id}_${dayKey}`);
+          batch.set(pointRef, buildVacationPointPayload({
+            storeId,
+            employee,
+            dayKey,
+            periodId,
+            dataInicio,
+            dataFim,
+            observacao,
+            existingRecord,
+            action
+          }), { merge: true });
+        });
+
+        await batch.commit();
+        setSelectedEmployee(employee.id);
+        setSelectedMonth(dataInicio.slice(0, 7));
+        setRecordFilterMode('month');
+        setRegisterMessage({
+          type: 'success',
+          text: editingVacationPeriod
+            ? 'Período de férias atualizado com auditoria.'
+            : 'Férias lançadas e folha de ponto preenchida com auditoria.'
+        });
+        closeVacationPeriodModal();
+      } catch (error) {
+        console.error('Erro ao salvar férias', error);
+        setVacationError(error.message || 'Não foi possível salvar o período de férias.');
+      } finally {
+        setSavingVacation(false);
+      }
+    };
+
+    const handleCancelVacationPeriod = async (period) => {
+      if (!isManager || !period || !isActiveVacationPeriod(period)) return;
+      const confirmed = typeof window === 'undefined' ? true : window.confirm(`Cancelar as férias de ${period.funcionarioNome || 'colaboradora'} entre ${formatDayKeyLabel(period.dataInicio)} e ${formatDayKeyLabel(period.dataFim)}?`);
+      if (!confirmed) return;
+      const cancelObservation = typeof window === 'undefined'
+        ? ''
+        : (window.prompt('Observação do cancelamento (opcional):', '') ?? null);
+      if (cancelObservation === null) return;
+
+      try {
+        setSavingVacation(true);
+        const storeId = resolveActiveStoreForWrite();
+        const dataInicio = normalizePointBankStartDate(period.dataInicio);
+        const dataFim = normalizePointBankStartDate(period.dataFim);
+        const employee = employees.find((item) => item.id === period.funcionarioId) || {
+          id: period.funcionarioId,
+          nome: period.funcionarioNome,
+          email: period.funcionarioEmail
+        };
+        const existingPointRecords = await fetchPointRecordsForEmployeeBetween(storeId, period.funcionarioId, dataInicio, dataFim);
+        const batch = writeBatch(db);
+        const periodRef = doc(db, 'lojas', storeId, 'ferias', period.id);
+        const previousValue = {
+          funcionarioId: period.funcionarioId || '',
+          funcionarioNome: period.funcionarioNome || '',
+          dataInicio,
+          dataFim,
+          observacao: period.observacao || '',
+          status: period.status || 'ativo'
+        };
+        const nextValue = {
+          ...previousValue,
+          status: 'cancelado',
+          observacaoCancelamento: cancelObservation || ''
+        };
+        const periodAudit = buildVacationPeriodAuditEntry({
+          action: 'ferias_canceladas',
+          employee,
+          previousValue,
+          nextValue,
+          observation: cancelObservation || ''
+        });
+
+        existingPointRecords.forEach((record) => {
+          if (!isVacationRecordForPeriod(record, period.id)) return;
+          const restoreAudit = {
+            data: new Date().toISOString(),
+            tipo: 'ferias_canceladas',
+            tipoLancamento: 'Férias',
+            feriasId: period.id,
+            gestorId: userId,
+            gestor: userName,
+            funcionarioId: period.funcionarioId,
+            funcionarioNome: period.funcionarioNome || getEmployeeDisplayName(employee),
+            dia: getRecordDayKey(record),
+            observacao: cancelObservation || ''
+          };
+          restoreVacationPointRecordInBatch({ batch, storeId, record, auditEntry: restoreAudit });
+        });
+
+        batch.set(periodRef, {
+          status: 'cancelado',
+          canceladoEm: serverTimestamp(),
+          canceladoPorId: userId,
+          canceladoPorNome: userName,
+          observacaoCancelamento: cancelObservation || '',
+          atualizadoEm: serverTimestamp(),
+          historicoAlteracoes: arrayUnion(periodAudit)
+        }, { merge: true });
+
+        const auditRef = doc(collection(db, 'lojas', storeId, 'feriasAuditoria'));
+        batch.set(auditRef, {
+          ...periodAudit,
+          feriasId: period.id,
+          lojaId: storeId,
+          criadoEm: serverTimestamp()
+        });
+
+        await batch.commit();
+        setRegisterMessage({ type: 'success', text: 'Período de férias cancelado com auditoria.' });
+      } catch (error) {
+        console.error('Erro ao cancelar férias', error);
+        setRegisterMessage({ type: 'error', text: error.message || 'Não foi possível cancelar o período de férias.' });
+      } finally {
+        setSavingVacation(false);
       }
     };
 
@@ -9223,10 +8731,26 @@ function StaffApplication({staffUid=null}) {
           dataInicioBancoHoras: recordBankStartDate || '',
           jornadaTrabalho: recordSchedule
         };
+        const correctedPunchEvents = clearsTimes ? [] : applyPointJourneyTimeCorrection(
+          editingRecord,
+          editedRecord,
+          {
+            corrigidoEm: nowDate.toISOString(),
+            gestorId: userId,
+            gestorNome: userName,
+            motivoCorrecao: editForm.motivoCorrecao
+          }
+        );
+        const editedCurrentRecord = {
+          ...editedRecord,
+          batidas: correctedPunchEvents,
+          periodosTrabalho: buildPointWorkPeriodsFromEvents(correctedPunchEvents),
+          batidasSincronizadasComAjuste: true
+        };
         const previousCalculation = calculatePointDay(editingRecord, { schedule: recordSchedule, bankCalculationEnabled });
-        const nextCalculation = calculatePointDay(editedRecord, { schedule: recordSchedule, bankCalculationEnabled });
+        const nextCalculation = calculatePointDay(editedCurrentRecord, { schedule: recordSchedule, bankCalculationEnabled });
         const previousValues = getRecordAuditSnapshot(editingRecord, previousCalculation);
-        const nextValues = getRecordAuditSnapshot(editedRecord, nextCalculation);
+        const nextValues = getRecordAuditSnapshot(editedCurrentRecord, nextCalculation);
         const auditEntry = buildPointAuditEntry({
           now: nowDate,
           employeeId: editingRecord.funcionarioId,
@@ -9271,6 +8795,9 @@ function StaffApplication({staffUid=null}) {
           horaAlmocoSaida: editedRecord.horaAlmocoSaida,
           horaAlmocoRetorno: editedRecord.horaAlmocoRetorno,
           horaSaida: editedRecord.horaSaida,
+          batidas: editedCurrentRecord.batidas,
+          periodosTrabalho: editedCurrentRecord.periodosTrabalho,
+          batidasSincronizadasComAjuste: true,
           justificativa: displayJustification,
           justificativaGestor: rawJustification,
           observacoesGestor: editForm.observacoes.trim(),
@@ -9311,6 +8838,11 @@ function StaffApplication({staffUid=null}) {
           duplicadoArquivado: false,
           historicoAlteracoes: arrayUnion(auditEntry)
         };
+        if (editForm.tipoLancamento !== 'ferias') {
+          pointVacationOnlyFields.forEach((field) => {
+            updatePayload[field] = deleteField();
+          });
+        }
         batch.set(recordRef, updatePayload, { merge: true });
 
         sameDaySnap.docs.forEach((duplicateDoc) => {
@@ -9339,6 +8871,24 @@ function StaffApplication({staffUid=null}) {
           criadoEm: serverTimestamp()
         });
         await batch.commit();
+        await waitForPendingWrites(db);
+        const verifiedSnapshot = await getDocFromServer(recordRef);
+        if (!verifiedSnapshot.exists()) {
+          throw new Error('O registro não foi encontrado após a gravação. Tente salvar novamente.');
+        }
+        const verifiedRecord = { id: verifiedSnapshot.id, ...verifiedSnapshot.data() };
+        if (!pointCurrentTimesMatch(verifiedRecord, editedCurrentRecord)) {
+          throw new Error('O servidor não confirmou todos os horários corrigidos. O ajuste não foi marcado como concluído.');
+        }
+        setRecords((currentRecords) => currentRecords.map((record) => {
+          if (record.id === verifiedRecord.id) return verifiedRecord;
+          const isArchivedDuplicate = record.funcionarioId === editingRecord.funcionarioId
+            && getRecordDayKey(record) === recordDayKey
+            && sameDaySnap.docs.some((duplicateDoc) => duplicateDoc.id === record.id);
+          return isArchivedDuplicate
+            ? { ...record, ativo: false, duplicadoArquivado: true, substituidoPor: verifiedRecord.id }
+            : record;
+        }));
         setRegisterMessage({ type: 'success', text: 'Registro atualizado, recalculado e salvo com auditoria.' });
         setEditingRecord(null);
       } catch (error) {
@@ -9491,6 +9041,13 @@ function StaffApplication({staffUid=null}) {
         </div>
 
         <div className="bg-white rounded-2xl shadow p-6 space-y-4">
+          {showHourlyMonthTotal && (
+            <div className="rounded-xl bg-sky-50 border border-sky-100 p-4">
+              <p className="text-sm text-sky-800">Horas trabalhadas no mês</p>
+              <p className="text-2xl font-semibold text-sky-900">{formatPointWorkedMonth(hourlyMonthWorkedMinutes)}</p>
+              <p className="text-xs text-sky-700">{competenciaLabel} · Somente períodos registrados; períodos abertos permanecem pendentes.</p>
+            </div>
+          )}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div>
@@ -9501,7 +9058,7 @@ function StaffApplication({staffUid=null}) {
                 Registros ({filteredRecords.length})
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-3 w-full md:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-8 gap-3 w-full md:w-auto">
               <div className="flex items-end">
                 <button
                   type="button"
@@ -9537,7 +9094,7 @@ function StaffApplication({staffUid=null}) {
                     <>
                       <option value="all">Todos</option>
                       {employees.map((employee) => (
-                        <option key={employee.id} value={employee.id}>{employee.nome || employee.email || employee.id}</option>
+                        <option key={employee.id} value={employee.id}>{getEmployeeOptionLabel(employee)}</option>
                       ))}
                     </>
                   )}
@@ -9576,6 +9133,18 @@ function StaffApplication({staffUid=null}) {
                   >
                     <Plus className="h-4 w-4" />
                     Adicionar período
+                  </button>
+                </div>
+              )}
+              {isManager && (
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() => openVacationPeriodModal()}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 shadow-sm transition-all hover:border-emerald-300 hover:bg-emerald-100"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    Registrar férias
                   </button>
                 </div>
               )}
@@ -9738,25 +9307,9 @@ function StaffApplication({staffUid=null}) {
                         )}
                         {isManager && (
                           <td className="py-3 px-4">
-                            {presentationRow.isGroupEnd ? (
-                              registro.virtualAbsence ? (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => openManualPointModal({
-                                    funcionarioId: registro.funcionarioId,
-                                    dia: registro.dia,
-                                    tipoLancamento: 'abono_falta'
-                                  })}
-                                >
-                                  Abonar
-                                </Button>
-                              ) : (
-                                <Button size="sm" variant="secondary" onClick={() => openEditModal(registro)}>Editar</Button>
-                              )
-                            ) : (
-                              <span className="text-gray-300">-</span>
-                            )}
+                            {presentationRow.isGroupEnd
+                              ? <Button size="sm" variant="secondary" onClick={() => openEditModal(registro)}>Editar</Button>
+                              : <span className="text-gray-300">-</span>}
                           </td>
                         )}
                       </tr>
@@ -9769,11 +9322,141 @@ function StaffApplication({staffUid=null}) {
           )}
         </div>
 
+        {isManager && (
+          <div className="bg-white rounded-2xl shadow p-6 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">Períodos de férias</h2>
+                <p className="text-gray-500 text-sm">Visualize, edite ou cancele lançamentos de férias com auditoria.</p>
+              </div>
+              <Button variant="secondary" onClick={() => openVacationPeriodModal()}>
+                <Calendar className="h-4 w-4" />
+                Registrar férias
+              </Button>
+            </div>
+            {vacationLoading ? (
+              <div className="py-8 text-center text-gray-500">Carregando períodos de férias...</div>
+            ) : filteredVacationPeriods.length === 0 ? (
+              <div className="py-8 text-center text-gray-500">Nenhum período de férias cadastrado para o filtro atual.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500">
+                      <th className="py-3 px-4">Funcionária</th>
+                      <th className="py-3 px-4">Data inicial</th>
+                      <th className="py-3 px-4">Data final</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Observação</th>
+                      <th className="py-3 px-4">Gestor responsável</th>
+                      <th className="py-3 px-4">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {filteredVacationPeriods.map((period) => {
+                      const activePeriod = isActiveVacationPeriod(period);
+                      return (
+                        <tr key={period.id} className="hover:bg-gray-50">
+                          <td className="py-3 px-4 font-semibold text-gray-800">{period.funcionarioNome || '-'}</td>
+                          <td className="py-3 px-4">{formatDayKeyLabel(period.dataInicio)}</td>
+                          <td className="py-3 px-4">{formatDayKeyLabel(period.dataFim)}</td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                              activePeriod ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {activePeriod ? 'Ativo' : 'Cancelado'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 max-w-xs">{period.observacao || period.observacaoCancelamento || '-'}</td>
+                          <td className="py-3 px-4">{period.gestorNome || period.lancadoPorNome || '-'}</td>
+                          <td className="py-3 px-4">
+                            {activePeriod ? (
+                              <div className="flex flex-wrap gap-2">
+                                <Button size="sm" variant="secondary" onClick={() => openVacationPeriodModal(period)}>Editar</Button>
+                                <Button size="sm" variant="danger" onClick={() => handleCancelVacationPeriod(period)} disabled={savingVacation}>
+                                  <Trash2 className="h-4 w-4" />
+                                  Cancelar
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Modal isOpen={vacationModalOpen} onClose={closeVacationPeriodModal} title={editingVacationPeriod ? 'Editar férias' : 'Registrar férias'} size="lg">
+          <div className="space-y-4">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              Os dias dentro do período serão exibidos como “Férias” na folha de ponto e não gerarão falta, banco de horas, irregularidade ou hora extra.
+            </div>
+            {vacationError && (
+              <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+                {vacationError}
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select
+                label="Colaboradora"
+                value={vacationForm.funcionarioId}
+                onChange={(e) => setVacationForm({ ...vacationForm, funcionarioId: e.target.value })}
+                disabled={employeesLoading || Boolean(editingVacationPeriod)}
+                required
+              >
+                <option value="">Selecione</option>
+                {vacationAssignmentEmployees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>{getEmployeeOptionLabel(employee)}</option>
+                ))}
+              </Select>
+              <Input
+                label="Gestor responsável"
+                value={vacationForm.gestorNome || userName}
+                onChange={(e) => setVacationForm({ ...vacationForm, gestorNome: e.target.value })}
+                disabled
+                readOnly
+              />
+              <Input
+                label="Data de início das férias"
+                type="date"
+                value={vacationForm.dataInicio}
+                onChange={(e) => setVacationForm({ ...vacationForm, dataInicio: e.target.value })}
+                required
+              />
+              <Input
+                label="Data final das férias"
+                type="date"
+                value={vacationForm.dataFim}
+                onChange={(e) => setVacationForm({ ...vacationForm, dataFim: e.target.value })}
+                required
+              />
+            </div>
+            <Textarea
+              label={editingVacationPeriod ? 'Observação da alteração' : 'Observação opcional'}
+              value={vacationForm.observacao}
+              onChange={(e) => setVacationForm({ ...vacationForm, observacao: e.target.value })}
+              placeholder="Ex.: Férias acordadas com a funcionária"
+            />
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={closeVacationPeriodModal}>Cancelar</Button>
+              <Button onClick={handleSaveVacationPeriod} disabled={savingVacation}>
+                {savingVacation ? 'Salvando...' : editingVacationPeriod ? 'Salvar alteração' : 'Salvar férias'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+
         <Modal isOpen={manualPointModalOpen} onClose={() => setManualPointModalOpen(false)} title="Lançar ponto manual" size="lg">
           <div className="space-y-4">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
               {manualPointIsAbsence
-                ? 'Este registro será marcado como falta e descontará a carga prevista do dia no banco de horas.'
+                ? (isHourlyWorkSchedule(getPointScheduleDayInfo(getScheduleForEmployeeId(manualPointForm.funcionarioId), getDayInfo({ dia: manualPointForm.dia })).schedule) ? 'Horista: esta falta não gera débito automático de horas.' : 'Este registro será marcado como falta e descontará a carga prevista do dia no banco de horas.')
                 : manualPointIsAbsenceExcuse
                 ? 'Este registro será marcado como falta abonada pelo gestor e não descontará banco de horas.'
                 : manualPointIsCompensatedDayOff
@@ -9806,9 +9489,13 @@ function StaffApplication({staffUid=null}) {
                 required
               >
                 <option value="manual">Lançamento manual de ponto</option>
+                <option value="falta">Falta</option>
                 <option value="abono_falta">Abono de falta</option>
                 <option value="folga_compensada">FOLGA COMPENSADA</option>
                 <option value="liberacao_chefia">Liberação Chefia</option>
+                <option value="ferias">Férias</option>
+                <option value="folga">Folga</option>
+                <option value="feriado">Feriado</option>
               </Select>
               <Select
                 label="Colaboradora"
@@ -9819,7 +9506,7 @@ function StaffApplication({staffUid=null}) {
               >
                 <option value="">Selecione</option>
                 {activeEmployees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>{getEmployeeDisplayName(employee)}</option>
+                  <option key={employee.id} value={employee.id}>{getEmployeeOptionLabel(employee)}</option>
                 ))}
               </Select>
               <Input
@@ -9890,9 +9577,13 @@ function StaffApplication({staffUid=null}) {
                 required
               >
                 <option value="manual">Lançamento manual de ponto</option>
+                <option value="falta">Falta</option>
                 <option value="abono_falta">Abono de falta</option>
                 <option value="liberacao_chefia">Liberação Chefia</option>
                 <option value="folga_compensada">FOLGA COMPENSADA</option>
+                <option value="ferias">Férias</option>
+                <option value="folga">Folga</option>
+                <option value="feriado">Feriado</option>
               </Select>
               <Input label="Tipo atual" value={getEditablePointTypeLabel(getEditablePointType(editingRecord || {}))} disabled readOnly />
               {editPointUsesTimeFields && (
@@ -10098,9 +9789,9 @@ function StaffApplication({staffUid=null}) {
   };
 
   // --- CORREÇÃO: Props do Dashboard atualizadas ---
-  const Dashboard = ({handleStopAndSnoozeAlarm, isAlarmPlaying, isAlarmSnoozed, hasNewPendingOrders, snoozeEndTime, alarmPauseMinutes}) => {
+  const Dashboard = ({handleStopAndSnoozeAlarm, handleReactivateAlarm, isAlarmPlaying, isAlarmSnoozed, hasNewPendingOrders, snoozeEndTime, alarmPauseMinutes}) => {
     const { pedidos, clientes } = data;
-    
+
     // --- CORREÇÃO: Lógica de display da soneca movida para dentro do Dashboard ---
     const [snoozeDisplay, setSnoozeDisplay] = useState('');
     const snoozeDisplayTimerRef = useRef(null);
@@ -10124,7 +9815,7 @@ function StaffApplication({staffUid=null}) {
         if (isAlarmSnoozed && snoozeEndTime) {
             // Limpa timer anterior, se houver
             if (snoozeDisplayTimerRef.current) clearInterval(snoozeDisplayTimerRef.current);
-            
+
             // Função para atualizar o display
             const updateDisplay = () => {
                 const now = new Date().getTime();
@@ -10140,7 +9831,7 @@ function StaffApplication({staffUid=null}) {
                     if (snoozeDisplayTimerRef.current) clearInterval(snoozeDisplayTimerRef.current);
                 }
             };
-            
+
             updateDisplay(); // Atualiza imediatamente
             snoozeDisplayTimerRef.current = setInterval(updateDisplay, 1000); // Atualiza a cada segundo
         } else {
@@ -10156,22 +9847,25 @@ function StaffApplication({staffUid=null}) {
     }, [isAlarmSnoozed, snoozeEndTime]); // Roda sempre que o estado de soneca ou o tempo final mudarem
 
 
-    const today = new Date(); 
+    const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const lastSunday = new Date(); 
-    lastSunday.setDate(lastSunday.getDate() - lastSunday.getDay()); 
+    const lastSunday = new Date();
+    lastSunday.setDate(lastSunday.getDate() - lastSunday.getDay());
     lastSunday.setHours(0, 0, 0, 0);
     const vendasHoje = (pedidos || []).filter(pedido => { const pedidoDate = getJSDate(pedido.createdAt); if (!pedidoDate) return false; pedidoDate.setHours(0,0,0,0); return pedidoDate.getTime() === today.getTime() && pedido.status === 'Finalizado'; }).reduce((acc, pedido) => acc + (pedido.total || 0), 0);
     const numVendasHoje = (pedidos || []).filter(pedido => { const pedidoDate = getJSDate(pedido.createdAt); if (!pedidoDate) return false; pedidoDate.setHours(0,0,0,0); return pedidoDate.getTime() === today.getTime() && pedido.status === 'Finalizado'; }).length;
     const vendasSemana = (pedidos || []).filter(pedido => { const pedidoDate = getJSDate(pedido.createdAt); if (!pedidoDate) return false; return pedidoDate >= lastSunday && pedidoDate <= new Date() && pedido.status === 'Finalizado'; }).reduce((acc, pedido) => acc + (pedido.total || 0), 0);
     const numVendasSemana = (pedidos || []).filter(pedido => { const pedidoDate = getJSDate(pedido.createdAt); if (!pedidoDate) return false; return pedidoDate >= lastSunday && pedidoDate <= new Date() && pedido.status === 'Finalizado'; }).length;
-    
-    const activeStatuses = ['Pendente', 'Em Produção', 'Pronto para Entrega'];
-    const pedidosPendentesCRM = (pedidos || []).filter(p => activeStatuses.includes(p.status) && p.origem !== 'Cardapio Online').length;
-    const pedidosPendentesWhatsApp = (pedidos || []).filter(p => activeStatuses.includes(p.status) && p.origem === 'Cardapio Online').length;
-    
+
+    const pedidosPendentesCRM = (pedidos || []).filter(
+      p => isPendingOrder(p) && p.origem !== 'Cardapio Online'
+    ).length;
+    const pedidosPendentesWhatsApp = (pedidos || []).filter(
+      p => isPendingOrder(p) && p.origem === 'Cardapio Online'
+    ).length;
+
     const clientesAtivos = (clientes || []).length;
-    
+
     const upcomingBirthdays = useMemo(() => {
         if (!clientes) return [];
         const today = new Date();
@@ -10193,12 +9887,12 @@ function StaffApplication({staffUid=null}) {
             nextYearBirthday.setHours(0, 0, 0, 0);
 
             const upcomingBirthday = currentYearBirthday < today ? nextYearBirthday : currentYearBirthday;
-            
+
             return upcomingBirthday >= today && upcomingBirthday <= limitDate;
         }).sort((a, b) => {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            
+
             const getUpcomingBirthday = (aniversario) => {
                  const [, month, day] = aniversario.split('-');
                  const birthMonth = parseInt(month, 10) - 1;
@@ -10212,7 +9906,7 @@ function StaffApplication({staffUid=null}) {
 
             const dateA = getUpcomingBirthday(a.aniversario);
             const dateB = getUpcomingBirthday(b.aniversario);
-            
+
             return dateA - dateB;
         });
     }, [clientes]);
@@ -10224,7 +9918,7 @@ function StaffApplication({staffUid=null}) {
         const limitDate = new Date();
         limitDate.setDate(today.getDate() + 7);
         limitDate.setHours(23, 59, 59, 999);
-  
+
         return pedidos
             .filter(pedido => {
                 if (pedido.categoria !== 'Festa' || !pedido.dataEntrega || ['Finalizado', 'Cancelado'].includes(pedido.status)) {
@@ -10232,7 +9926,7 @@ function StaffApplication({staffUid=null}) {
                 }
                 const entregaDate = new Date(pedido.dataEntrega + 'T00:00:00'); // Considera a data no início do dia
                 // entregaDate.setHours(0, 0, 0, 0); // Ajuste já feito na criação
-  
+
                 return entregaDate >= today && entregaDate <= limitDate;
             })
             .sort((a, b) => new Date(a.dataEntrega) - new Date(b.dataEntrega));
@@ -10240,15 +9934,15 @@ function StaffApplication({staffUid=null}) {
 
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
-        
+
         <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
             <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Dashboard</h1>
                 <p className="text-gray-600 mt-1">Visão geral da sua doceria</p>
             </div>
-            
+
             {/* Container para os banners de alarme e soneca */}
-            <div className="w-full md:w-auto md:min-w-[300px] space-y-2"> 
+            <div className="w-full md:w-auto md:min-w-[300px] space-y-2">
                 {hasNewPendingOrders && !isAlarmSnoozed && (
                   <div className={`p-3 rounded-lg transition-colors ${
                     isAlarmPlaying ? 'bg-red-100 border border-red-300 text-red-700' : 'bg-yellow-100 border border-yellow-300 text-yellow-700'
@@ -10268,13 +9962,13 @@ function StaffApplication({staffUid=null}) {
                           )}
                         </div>
                       </div>
-                      
+
                       <div className="flex gap-2 flex-shrink-0">
                          {/* Botão de Ativar Som removido daqui, é global agora */}
-                        
-                        <Button 
-                          variant={isAlarmPlaying ? "danger" : "secondary"} 
-                          size="sm" 
+
+                        <Button
+                          variant={isAlarmPlaying ? "danger" : "secondary"}
+                          size="sm"
                           onClick={handleStopAndSnoozeAlarm}
                           className="text-xs" // Deixa o botão um pouco menor
                         >
@@ -10287,13 +9981,24 @@ function StaffApplication({staffUid=null}) {
                 )}
 
                 {isAlarmSnoozed && (
-                  <div className="bg-blue-100 border border-blue-300 text-blue-700 p-3 rounded-lg flex items-center">
-                    <Clock className="w-5 h-5 mr-3 flex-shrink-0" />
-                    <div>
+                  <div className="bg-blue-100 border border-blue-300 text-blue-700 p-3 rounded-lg flex items-center justify-between gap-3">
+                    <div className="flex items-center min-w-0">
+                      <Clock className="w-5 h-5 mr-3 flex-shrink-0" />
+                      <div>
                         <p className="font-bold">Alarme Pausado</p>
                         {/* Usa o snoozeDisplay local do Dashboard */}
-                        <p className="text-sm">Reativando em <strong>{snoozeDisplay}</strong></p> 
+                        <p className="text-sm">Reativando em <strong>{snoozeDisplay}</strong></p>
+                      </div>
                     </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleReactivateAlarm}
+                      className="text-xs flex-shrink-0"
+                    >
+                      <Play className="w-4 h-4 mr-1" />
+                      Reativar agora
+                    </Button>
                   </div>
                 )}
             </div>
@@ -10360,13 +10065,45 @@ function StaffApplication({staffUid=null}) {
     const [searchTerm, setSearchTerm] = usePersistentState("clientes_searchTerm", "");
     const [showModal, setShowModal] = useState(false);
     const [editingClient, setEditingClient] = useState(null);
-    const [formData, setFormData] = useState(EMPTY_CLIENT_FORM);
+    const defaultClientFormData = { nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", bairro: "", cidade: "Goiania", uf: "GO", codigoIbge: "5208707", aniversario: "", status: "Ativo" };
+    const [formData, setFormData] = useState(defaultClientFormData);
 
-    const filteredClients = useMemo(() => (clientes || []).filter(c => (c.nome && c.nome.toLowerCase().includes(searchTerm.toLowerCase())) || (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase())) ), [clientes, searchTerm]);
-    
+    useEffect(() => {
+      const storeIds = isGeneralViewSelected
+        ? availableStores
+        : [selectedStoreIdForAlarm].filter(Boolean);
+      storeIds.forEach((storeId) => {
+        if (customerMetricsEnsuredStoresRef.current.has(storeId)) return;
+        customerMetricsEnsuredStoresRef.current.add(storeId);
+        const ensureMetrics = httpsCallable(functions, 'ensureCustomerPurchaseMetrics');
+        ensureMetrics({ lojaId: storeId }).catch((error) => {
+          customerMetricsEnsuredStoresRef.current.delete(storeId);
+          console.error('[Clientes] Falha ao sincronizar histórico de compras:', error);
+        });
+      });
+    }, []);
+
+    const getPurchaseMetrics = (client) => {
+      if (!isGeneralViewSelected && selectedStoreIdForAlarm) {
+        return client.metricasComprasPorLoja?.[selectedStoreIdForAlarm] || {
+          valorEmCompras: 0,
+          ultimaCompra: null
+        };
+      }
+      return client;
+    };
+
+    const filteredClients = useMemo(() => {
+      const term = searchTerm.toLowerCase();
+      const digitsTerm = searchTerm.replace(/\D/g, '');
+      return (clientes || []).filter(c => (c.nome && c.nome.toLowerCase().includes(term)) || (c.email && c.email.toLowerCase().includes(term)) || (digitsTerm && (c.cpf || c.documento) && String(c.cpf || c.documento).includes(digitsTerm)));
+    }, [clientes, searchTerm]);
+
+
+
     const resetForm = () => {
       setEditingClient(null);
-      setFormData(EMPTY_CLIENT_FORM);
+      setFormData(defaultClientFormData);
     };
 
     const handleNewClient = () => {
@@ -10376,18 +10113,55 @@ function StaffApplication({staffUid=null}) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const payload = buildClientFiscalPayload(formData, editingClient);
+        const fiscalDocument = String(formData.cpf || formData.documento || '').replace(/\D/g, '');
+        const fiscalZip = String(formData.cep || '').replace(/\D/g, '');
+        const fiscalCity = String(formData.cidade || 'Goiania').trim();
+        const fiscalState = String(formData.uf || 'GO').trim().toUpperCase().slice(0, 2);
+        const fiscalCityCode = String(formData.codigoIbge || '5208707').replace(/\D/g, '');
+        const fiscalAddress = {
+            street: String(formData.endereco || '').trim(),
+            zip: fiscalZip,
+            district: String(formData.bairro || '').trim(),
+            city: fiscalCity,
+            state: fiscalState,
+            cityCode: fiscalCityCode,
+        };
+        const updateData = {
+            ...formData,
+            cpf: fiscalDocument,
+            documento: fiscalDocument,
+            cep: fiscalZip,
+            bairro: fiscalAddress.district,
+            cidade: fiscalCity,
+            uf: fiscalState,
+            codigoIbge: fiscalCityCode,
+            address: fiscalAddress,
+        };
         if (editingClient) {
-            await updateItem('clientes', editingClient.id, payload);
+            const { id, ...clientData } = updateData;
+            await updateItem('clientes', editingClient.id, clientData);
         } else {
-            await addItem('clientes', { ...payload, numeroDeCompras: 0, valorEmCompras: 0 });
+            await addItem('clientes', { ...updateData, numeroDeCompras: 0, valorEmCompras: 0 });
         }
         setShowModal(false);
         resetForm();
     };
     const handleEdit = (client) => {
+      const firstAddress = Array.isArray(client.enderecos) ? client.enderecos[0] : null;
+      const address = client.address || firstAddress || {};
       setEditingClient(client);
-      setFormData(normalizeClientForForm(client));
+      setFormData({
+        ...defaultClientFormData,
+        ...client,
+        cpf: client.cpf || client.documento || '',
+        documento: client.documento || client.cpf || '',
+        endereco: client.endereco || address.street || address.logradouro || address.enderecoCompleto || '',
+        cep: client.cep || address.zip || address.cep || '',
+        bairro: client.bairro || address.district || address.bairro || '',
+        cidade: client.cidade || address.city || address.cidade || 'Goiania',
+        uf: client.uf || address.state || address.uf || 'GO',
+        codigoIbge: client.codigoIbge || address.cityCode || address.codigoIbge || address.codigoMunicipio || '5208707',
+      });
       setShowModal(true);
     };
     const columns = [
@@ -10403,8 +10177,8 @@ function StaffApplication({staffUid=null}) {
             return `${day}/${month}`;
           }
         },
-        { header: "Valor em Compras", render: (row) => (<span className="font-semibold text-green-600">R$ {(row.valorEmCompras || 0).toFixed(2)}</span>) },
-        { header: "Última Compra", render: (row) => row.ultimaCompra ? getJSDate(row.ultimaCompra)?.toLocaleDateString('pt-BR') : '-' },
+        { header: "Valor em Compras", render: (row) => { const metrics = getPurchaseMetrics(row); return (<span className="font-semibold text-green-600">R$ {(metrics.valorEmCompras || 0).toFixed(2)}</span>); } },
+        { header: "Última Compra", render: (row) => { const metrics = getPurchaseMetrics(row); return metrics.ultimaCompra ? getJSDate(metrics.ultimaCompra)?.toLocaleDateString('pt-BR') : '-'; } },
         { header: "Status", render: (row) => (<span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'VIP' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>{row.status}</span>) }
     ];
     const actions = [ { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('clientes', row.id) }) } ];
@@ -10415,115 +10189,37 @@ function StaffApplication({staffUid=null}) {
         <Table columns={columns} data={filteredClients} actions={actions} />
         <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingClient ? "Editar Cliente" : "Novo Cliente"} size="lg">
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <Input
-                label="Nome Completo"
-                type="text"
-                value={formData.nome || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-                required
-              />
-              <Input
-                label="Email"
-                type="email"
-                value={formData.email || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-              />
-              <Input
-                label="Telefone"
-                type="tel"
-                inputMode="numeric"
-                value={formData.telefone || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, telefone: onlyDigitsText(e.target.value) }))}
-                required
-              />
-              <Input
-                label="CPF"
-                type="text"
-                inputMode="numeric"
-                maxLength={14}
-                value={formData.cpf || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, cpf: onlyDigitsText(e.target.value), documento: onlyDigitsText(e.target.value) }))}
-                required
-              />
-              <Input
-                label="Data de Aniversário"
-                type="date"
-                value={formData.aniversario || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, aniversario: e.target.value }))}
-              />
-              <Input
-                label="CEP"
-                type="text"
-                inputMode="numeric"
-                maxLength={8}
-                value={formData.cep || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, cep: onlyDigitsText(e.target.value) }))}
-                required
-              />
-              <Input
-                label="Endereço"
-                type="text"
-                value={formData.endereco || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, endereco: e.target.value }))}
-                required
-              />
-              <Input
-                label="Bairro"
-                type="text"
-                value={formData.bairro || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, bairro: e.target.value }))}
-                required
-              />
-              <Input
-                label="Cidade"
-                type="text"
-                value={formData.cidade || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, cidade: e.target.value }))}
-                required
-              />
-              <Input
-                label="UF"
-                type="text"
-                maxLength={2}
-                value={formData.uf || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, uf: e.target.value.toUpperCase().slice(0, 2) }))}
-                required
-              />
-              <Input
-                label="Código IBGE"
-                type="text"
-                inputMode="numeric"
-                maxLength={7}
-                value={formData.codigoIbge || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, codigoIbge: onlyDigitsText(e.target.value) }))}
-                required
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input label="Nome Completo" type="text" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required />
+              <Input label="Email" type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} />
+              <Input label="Telefone" type="tel" value={formData.telefone} onChange={(e) => setFormData({...formData, telefone: e.target.value})} />
+              <Input label="CPF" type="text" value={formData.cpf || formData.documento || ''} onChange={(e) => setFormData({...formData, cpf: e.target.value, documento: e.target.value})} />
+              <Input label="Data de Aniversário" type="date" value={formData.aniversario} onChange={(e) => setFormData({...formData, aniversario: e.target.value})} />
+              <Input label="CEP" type="text" value={formData.cep || ''} onChange={(e) => setFormData({...formData, cep: e.target.value})} />
+              <Input label="Endereço" type="text" value={formData.endereco} onChange={(e) => setFormData({...formData, endereco: e.target.value})} />
+              <Input label="Bairro" type="text" value={formData.bairro || ''} onChange={(e) => setFormData({...formData, bairro: e.target.value})} />
+              <Input label="Cidade" type="text" value={formData.cidade || ''} onChange={(e) => setFormData({...formData, cidade: e.target.value})} />
+              <Input label="UF" type="text" value={formData.uf || ''} onChange={(e) => setFormData({...formData, uf: e.target.value.toUpperCase().slice(0, 2)})} />
+              <Input label="Código IBGE" type="text" value={formData.codigoIbge || ''} onChange={(e) => setFormData({...formData, codigoIbge: e.target.value})} />
             </div>
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>
-                Cancelar
-              </Button>
-              <Button type="submit">
-                <Save className="w-4 h-4" />
-                {editingClient ? "Salvar Alterações" : "Criar Cliente"}
-              </Button>
+              <Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button>
+              <Button type="submit"><Save className="w-4 h-4" />{editingClient ? "Salvar Alterações" : "Criar Cliente"}</Button>
             </div>
           </form>
         </Modal>
       </div>
     );
   };
-  
+
   const Produtos = () => {
-    const [searchTerm, setSearchTerm] = usePersistentState("produtos_searchTerm", ""); 
-    const [selectedMainCategory, setSelectedMainCategory] = useState('');
+    const [searchTerm, setSearchTerm] = usePersistentState("produtos_searchTerm", "");
     const [selectedSubcategory, setSelectedSubcategory] = useState('');
     const [filterActiveOnly, setFilterActiveOnly] = useState(false);
-    const [showModal, setShowModal] = useState(false); 
-    const [editingProduct, setEditingProduct] = useState(null); 
-    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" }); 
-    const [imageFile, setImageFile] = useState(null); 
+    const [showModal, setShowModal] = useState(false);
+    const [editingProduct, setEditingProduct] = useState(null);
+    const [formData, setFormData] = useState({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", precoIfood: "", preco99Food: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
+    const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
     const [isAddingSubcategory, setIsAddingSubcategory] = useState(false);
@@ -10532,6 +10228,7 @@ function StaffApplication({staffUid=null}) {
     const [stockMovementModal, setStockMovementModal] = useState({ isOpen: false, type: 'entrada', product: null });
     const [stockMovementQuantity, setStockMovementQuantity] = useState('');
     const [stockMovementReason, setStockMovementReason] = useState('venda');
+    const [stockMovementPaymentMethod, setStockMovementPaymentMethod] = useState('');
     const [statusLoading, setStatusLoading] = useState({});
     const [statusOverrides, setStatusOverrides] = useState({});
 
@@ -10539,7 +10236,7 @@ function StaffApplication({staffUid=null}) {
       Delivery: [ 'Queridinhos', 'Mousse', 'Palha Italiana', 'Bolo no pote', 'Copo da felicidade', 'Bombom aberto', 'Pipoca', 'Cone recheado', 'Bolo gelado', 'Bombom recheado' ],
       Festa: [ 'Bolo', 'Docinhos', 'Bombom', 'Doces finos', 'Bem casados', 'Cupcakes' ]
     }), []);
-	
+
 	  const subcategoriasPorCategoria = useMemo(() => {
       const map = Object.keys(defaultSubcategorias).reduce((acc, categoria) => {
         acc[categoria] = [...defaultSubcategorias[categoria]];
@@ -10623,12 +10320,14 @@ function StaffApplication({staffUid=null}) {
       setStockMovementModal({ isOpen: true, type, product });
       setStockMovementQuantity('');
       setStockMovementReason('venda');
+      setStockMovementPaymentMethod('');
     };
 
     const closeStockMovementModal = () => {
       setStockMovementModal({ isOpen: false, type: 'entrada', product: null });
       setStockMovementQuantity('');
       setStockMovementReason('venda');
+      setStockMovementPaymentMethod('');
     };
 
     const buildReasonLabel = () => {
@@ -10658,6 +10357,10 @@ function StaffApplication({staffUid=null}) {
         const unitPrice = Number(product.preco || 0) || 0;
         const subtotal = unitPrice * quantity;
         const shouldCreateQuickSaleOrder = stockMovementModal.type === 'saida' && stockMovementReason === 'venda';
+        if (shouldCreateQuickSaleOrder && !stockMovementPaymentMethod) {
+          alert('Selecione a forma de pagamento da venda.');
+          return;
+        }
         const quickSaleOrder = shouldCreateQuickSaleOrder ? {
           clienteId: 'loja',
           clienteNome: 'Loja',
@@ -10679,7 +10382,7 @@ function StaffApplication({staffUid=null}) {
           categoria: product.categoria || 'Delivery',
           dataEntrega: '',
           observacao: 'Venda registrada automaticamente pela movimentação rápida de estoque.',
-          formaPagamento: 'Não informado',
+          formaPagamento: stockMovementPaymentMethod,
           cupom: null,
         } : null;
 
@@ -10719,16 +10422,14 @@ function StaffApplication({staffUid=null}) {
 
     const subcategoriasCadastradas = useMemo(() => {
       const subcategorias = (data.produtos || [])
-        .filter((product) => selectedMainCategory === '' || (product.categoria || 'Delivery') === selectedMainCategory)
         .map((product) => (product.subcategoria || '').trim())
         .filter(Boolean);
 
       return Array.from(new Set(subcategorias)).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
-    }, [data.produtos, selectedMainCategory]);
+    }, [data.produtos]);
 
     const filteredProducts = (data.produtos || [])
       .filter((p) => (p.nome || '').toLowerCase().includes(searchTerm.toLowerCase()))
-      .filter((p) => selectedMainCategory === '' || (p.categoria || 'Delivery') === selectedMainCategory)
       .filter((p) => selectedSubcategory === '' || p.subcategoria === selectedSubcategory)
       .filter((p) => {
         if (!filterActiveOnly) return true;
@@ -10738,15 +10439,9 @@ function StaffApplication({staffUid=null}) {
       .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR', { sensitivity: 'base' }));
 
     const handleClearFilters = () => {
-      setSelectedMainCategory('');
       setSelectedSubcategory('');
       setFilterActiveOnly(false);
       setSearchTerm('');
-    };
-
-    const handleMainCategoryFilter = (categoria) => {
-      setSelectedMainCategory((current) => current === categoria ? '' : categoria);
-      setSelectedSubcategory('');
     };
 
     useEffect(() => {
@@ -10766,7 +10461,7 @@ function StaffApplication({staffUid=null}) {
     const resetForm = () => {
       setShowModal(false);
       setEditingProduct(null);
-      setFormData({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
+      setFormData({ nome: "", categoria: "Delivery", subcategoria: "", preco: "", precoIfood: "", preco99Food: "", custo: "", estoque: "", status: "Ativo", descricao: "", tempoPreparo: "", imageUrl: "" });
       setImageFile(null);
       setImagePreview(null);
       setIsAddingSubcategory(false);
@@ -10788,7 +10483,15 @@ function StaffApplication({staffUid=null}) {
                 imageUrl = await getDownloadURL(imageRef);
             }
 
-            const productData = { ...formData, preco: parseFloat(formData.preco || 0), custo: parseFloat(formData.custo || 0), estoque: parseInt(formData.estoque || 0), imageUrl: imageUrl };
+            const productData = {
+                ...formData,
+                preco: parseFloat(formData.preco || 0),
+                precoIfood: formData.precoIfood === '' ? null : parseFloat(formData.precoIfood || 0),
+                preco99Food: formData.preco99Food === '' ? null : parseFloat(formData.preco99Food || 0),
+                custo: parseFloat(formData.custo || 0),
+                estoque: parseInt(formData.estoque || 0),
+                imageUrl: imageUrl,
+            };
             if (editingProduct) {
                 const { id, ...updateData } = productData;
                 await updateItem('produtos', editingProduct.id, updateData);
@@ -10818,7 +10521,14 @@ function StaffApplication({staffUid=null}) {
     };
     const handleEdit = (product) => {
       setEditingProduct(product);
-      setFormData({ ...product, preco: String(product.preco), custo: String(product.custo), estoque: String(product.estoque) });
+      setFormData({
+        ...product,
+        preco: String(product.preco),
+        precoIfood: product.precoIfood == null ? '' : String(product.precoIfood),
+        preco99Food: product.preco99Food == null ? '' : String(product.preco99Food),
+        custo: String(product.custo),
+        estoque: String(product.estoque),
+      });
       setImagePreview(product.imageUrl || null);
       setIsAddingSubcategory(false);
       setNewSubcategory("");
@@ -10844,6 +10554,8 @@ function StaffApplication({staffUid=null}) {
         )
       },
       { header: "Preço", render: (row) => <span className="font-semibold text-green-600">R$ {(row.preco || 0).toFixed(2)}</span> },
+      { header: "Preço iFood", render: (row) => row.precoIfood == null ? <span className="text-gray-400">-</span> : <span className="font-semibold text-pink-600">R$ {(Number(row.precoIfood) || 0).toFixed(2)}</span> },
+      { header: "Preço 99Food", render: (row) => row.preco99Food == null ? <span className="text-gray-400">-</span> : <span className="font-semibold text-orange-600">R$ {(Number(row.preco99Food) || 0).toFixed(2)}</span> },
       { header: "Estoque", render: (row) => <span className={`font-medium ${row.estoque < 10 ? 'text-red-600' : 'text-gray-800'}`}>{row.estoque} un</span> },
       {
         header: 'Movimentação Rápida',
@@ -10903,50 +10615,34 @@ function StaffApplication({staffUid=null}) {
       }
     ];
     const actions = [ { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('produtos', row.id) }) } ];
-    
+
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Produtos</h1><p className="text-gray-600 mt-1">Gerencie seu cardápio e estoque</p></div><Button onClick={() => setShowModal(true)} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Novo Produto</Button></div>
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <div className="relative w-full sm:w-auto sm:min-w-[28rem] max-w-md"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" /><input type="text" placeholder="Buscar produtos..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" /></div>
-          <button
-            type="button"
-            onClick={handleClearFilters}
-            className="px-5 py-2.5 rounded-lg text-base font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Limpar filtros
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterActiveOnly((prev) => !prev)}
-            aria-pressed={filterActiveOnly}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-              filterActiveOnly
-                ? 'bg-pink-100 text-pink-700 border-pink-200'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Ativo
-          </button>
-          {['Delivery', 'Festa'].map((categoria) => {
-            const isSelected = selectedMainCategory === categoria;
-
-            return (
+          {subcategoriasCadastradas.length > 0 && (
+            <>
               <button
-                key={categoria}
                 type="button"
-                onClick={() => handleMainCategoryFilter(categoria)}
-                aria-pressed={isSelected}
+                onClick={handleClearFilters}
+                className="px-5 py-2.5 rounded-lg text-base font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Limpar filtro
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterActiveOnly((prev) => !prev)}
                 className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                  isSelected
+                  filterActiveOnly
                     ? 'bg-pink-100 text-pink-700 border-pink-200'
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                {categoria}
+                Ativo
               </button>
-            );
-          })}
+            </>
+          )}
         </div>
         {subcategoriasCadastradas.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
@@ -11003,6 +10699,20 @@ function StaffApplication({staffUid=null}) {
                 <option value="venda">Venda</option>
                 <option value="doacao">Doação</option>
                 <option value="perca">Perda</option>
+              </Select>
+            )}
+
+            {stockMovementModal.type === 'saida' && stockMovementReason === 'venda' && (
+              <Select
+                label="Forma de pagamento"
+                value={stockMovementPaymentMethod}
+                onChange={(e) => setStockMovementPaymentMethod(e.target.value)}
+                required
+              >
+                <option value="">Selecione...</option>
+                {ORDER_PAYMENT_OPTIONS.map((paymentMethod) => (
+                  <option key={paymentMethod} value={paymentMethod}>{paymentMethod}</option>
+                ))}
               </Select>
             )}
 
@@ -11068,8 +10778,10 @@ function StaffApplication({staffUid=null}) {
 							</div>
 						  </div>
 						</div>
-					  )}
+                  )}
                   <Input label="Preço (R$)" type="number" step="0.01" value={formData.preco} onChange={(e) => setFormData({...formData, preco: e.target.value})} />
+                  <Input label="Preço iFood (R$)" type="number" min="0" step="0.01" value={formData.precoIfood} onChange={(e) => setFormData({...formData, precoIfood: e.target.value})} />
+                  <Input label="Preço 99Food (R$)" type="number" min="0" step="0.01" value={formData.preco99Food} onChange={(e) => setFormData({...formData, preco99Food: e.target.value})} />
                   <Input label="Custo (R$)" type="number" step="0.01" value={formData.custo} onChange={(e) => setFormData({...formData, custo: e.target.value})} />
                   <Input label="Estoque" type="number" value={formData.estoque} onChange={(e) => setFormData({...formData, estoque: e.target.value})} />
                   <Input label="Tempo de Preparo" value={formData.tempoPreparo} onChange={(e) => setFormData({...formData, tempoPreparo: e.target.value})} />
@@ -11097,7 +10809,7 @@ function StaffApplication({staffUid=null}) {
       </div>
     );
   };
-  
+
 	const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, deleteItem, availableStores, storeInfoMap, resolveActiveStoreForWrite, selectedStoreId, onOpenCashRecord }) => {
     const [activeTab, setActiveTab] = usePersistentState('configuracoes_activeTab', 'users');
 
@@ -11120,6 +10832,7 @@ function StaffApplication({staffUid=null}) {
         submitting: false,
     });
     const [editingUser, setEditingUser] = useState(null);
+    const [pointScheduleEffectiveDate, setPointScheduleEffectiveDate] = useState('');
     const [selectedExistingUserId, setSelectedExistingUserId] = useState('');
     const [userFormData, setUserFormData] = useState({
         email: "",
@@ -11142,7 +10855,7 @@ function StaffApplication({staffUid=null}) {
         user?.role === ROLE_MANAGER &&
         user?.permissionDetails?.configuracoes?.gerenciarStatusUsuarios === true
     );
-	
+
 	const effectiveStoreId = useMemo(() => {
 	if (!user) return null;
 	if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
@@ -11170,7 +10883,7 @@ const effectiveStoreName = useMemo(() => {
     const [showCupomModal, setShowCupomModal] = useState(false);
     const [editingCupom, setEditingCupom] = useState(null);
     const [cupomFormData, setCupomFormData] = useState({});
-	
+
 	    const userRoles = useMemo(() => {
         const roles = new Set((usuarios || []).map((userItem) => userItem.role).filter(Boolean));
         return Array.from(roles);
@@ -11347,39 +11060,54 @@ const effectiveStoreName = useMemo(() => {
                 };
             }
         }
-        
+
         return () => {
             if (unsubscribe) {
                 unsubscribe();
             }
         };
     }, [activeTab, effectiveStoreId, user]);
-    
+
     // States para Configuração de Frete
     const [freteConfig, setFreteConfig] = useState({ ...EMPTY_FREIGHT_CONFIG });
-    const [freteLoadedStore, setFreteLoadedStore] = useState(null);
     const [isSavingFrete, setIsSavingFrete] = useState(false);
 
     const [storeHoursConfig, setStoreHoursConfig] = useState(getDefaultStoreHoursConfig());
     const [isSavingStoreHours, setIsSavingStoreHours] = useState(false);
     const [entreLojasConfig, setEntreLojasConfig] = useState({ percentualRepasse: 0 });
+    const [transferDestinationConfig, setTransferDestinationConfig] = useState({
+        authorizedDestinationStoreIds: [],
+        stores: [],
+        loading: false,
+        error: ''
+    });
     const [isSavingEntreLojasConfig, setIsSavingEntreLojasConfig] = useState(false);
     const canEditEntreLojasConfig = user?.role === ROLE_OWNER;
+    const canManageTransferDestinations = user?.role === ROLE_OWNER || (
+        user?.role === ROLE_MANAGER &&
+        user?.permissionDetails?.['entre-lojas']?.manageTransferDestinations === true
+    );
 
     useEffect(() => {
         if (activeTab !== 'frete') return;
-        let cancelled = false;
-        setFreteLoadedStore(null);
+
         setFreteConfig({ ...EMPTY_FREIGHT_CONFIG });
-        if (!effectiveStoreId) return;
-        loadStoreFreightConfig(effectiveStoreId).then((config) => {
-            if (cancelled) return;
-            setFreteConfig(config);
-            setFreteLoadedStore(effectiveStoreId);
-        }).catch((error) => {
-            if (!cancelled) alert('Não foi possível carregar o frete desta loja: ' + error.message);
-        });
+        if (!effectiveStoreId) {
+            return;
+        }
+
+        let cancelled = false;
+        const fetchFreteConfig = async () => {
+            try {
+                const freteData = await loadStoreFreightConfig(effectiveStoreId);
+                if (!cancelled) setFreteConfig(freteData);
+            } catch (error) {
+                console.error("Erro ao buscar configurações de frete:", error);
+            }
+        };
+        fetchFreteConfig();
         return () => { cancelled = true; };
+
     }, [activeTab, effectiveStoreId]);
 
 
@@ -11428,23 +11156,48 @@ const effectiveStoreName = useMemo(() => {
         if (activeTab !== 'entre-lojas') return;
         if (!effectiveStoreId) {
             setEntreLojasConfig({ percentualRepasse: 0 });
+            setTransferDestinationConfig({
+                authorizedDestinationStoreIds: [],
+                stores: [],
+                loading: false,
+                error: ''
+            });
             return;
         }
         const fetchEntreLojasConfig = async () => {
+            setTransferDestinationConfig((prev) => ({ ...prev, loading: canManageTransferDestinations, error: '' }));
             try {
-                const configSnap = await getDoc(getStoreConfigDocRef(effectiveStoreId));
+                const destinationConfigurationPromise = canManageTransferDestinations
+                    ? httpsCallable(functions, 'getTransferDestinationConfiguration')({ originStoreId: effectiveStoreId })
+                    : Promise.resolve(null);
+                const [configSnap, destinationResult] = await Promise.all([
+                    getDoc(getStoreConfigDocRef(effectiveStoreId)),
+                    destinationConfigurationPromise
+                ]);
                 const percentual = Number(configSnap.data()?.entreLojas?.percentualRepasse);
                 setEntreLojasConfig({
                     percentualRepasse: Number.isFinite(percentual) && percentual >= 0 ? percentual : 0
                 });
+                setTransferDestinationConfig({
+                    authorizedDestinationStoreIds: destinationResult?.data?.authorizedDestinationStoreIds || [],
+                    stores: destinationResult?.data?.stores || [],
+                    loading: false,
+                    error: ''
+                });
             } catch (error) {
                 console.error('Erro ao carregar configuração de Entre Lojas:', error);
                 setEntreLojasConfig({ percentualRepasse: 0 });
+                setTransferDestinationConfig({
+                    authorizedDestinationStoreIds: [],
+                    stores: [],
+                    loading: false,
+                    error: error?.message || 'Não foi possível carregar os destinos autorizados.'
+                });
             }
         };
         fetchEntreLojasConfig();
-    }, [activeTab, effectiveStoreId]);
-	
+    }, [activeTab, canManageTransferDestinations, effectiveStoreId]);
+
 	//Limpeza quando o componente desmontar
         useEffect(() => {
           return () => {
@@ -11457,7 +11210,7 @@ const effectiveStoreName = useMemo(() => {
                 }
           };
   }, []);
-    
+
     const getCustomPermissionsForUser = useCallback(async (userProfile) => {
         const normalizedRole = normalizeRole(userProfile?.role || ROLE_ATTENDANT);
         const fallbackPermissions = sanitizePermissions(userProfile?.permissions, normalizedRole);
@@ -11488,6 +11241,9 @@ const effectiveStoreName = useMemo(() => {
     }, []);
 
     const buildUserFormState = useCallback(async (userToEdit = null) => {
+        setPointScheduleEffectiveDate(new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date()));
         if (!userToEdit) {
             setEditingUser(null);
             setSelectedExistingUserId('');
@@ -11679,7 +11435,7 @@ const effectiveStoreName = useMemo(() => {
 
 	const handleUserSubmit = async (e) => {
 	  e.preventDefault();
-	  
+
 	  if (!userFormData.email || !userFormData.nome || !userFormData.role) {
 		alert('Por favor, preencha todos os campos obrigatórios');
 		return;
@@ -11689,6 +11445,10 @@ const effectiveStoreName = useMemo(() => {
 		alert('A senha é obrigatória e deve ter pelo menos 6 caracteres');
 		return;
 	  }
+          if (pointScheduleNeedsEffectiveDate && !isValidPointScheduleDate(pointScheduleEffectiveDate)) {
+                alert('Informe uma data válida para o início da nova jornada.');
+                return;
+          }
           try {
                 const selectedRole = normalizeRole(userFormData.role);
                 const lojasSelecionadas = selectedRole === ROLE_OWNER
@@ -11712,14 +11472,14 @@ const effectiveStoreName = useMemo(() => {
                 const permissionDetailsToPersist = applyCustomProfile
                     ? sanitizedPermissionDetails
                     : getDefaultPermissionDetailsForRole(selectedRole, permissionsToPersist);
-                const jornadaTrabalhoToPersist = sanitizeEmployeeWorkSchedule(userFormData.jornadaTrabalho);
+                let jornadaTrabalhoToPersist = sanitizeEmployeeWorkSchedule(userFormData.jornadaTrabalho);
                 const dataInicioBancoHorasToPersist = normalizePointBankStartDate(userFormData.dataInicioBancoHoras);
 
                 let updatedUserId = editingUser?.uid || editingUser?.id;
 
                 if (editingUser) {
                   const updateUserFn = httpsCallable(functions, 'updateUser');
-                  await updateUserFn({
+                  const updatedProfile = await updateUserFn({
                         uid: editingUser.uid,
                         nome: userFormData.nome,
                         role: selectedRole,
@@ -11728,9 +11488,12 @@ const effectiveStoreName = useMemo(() => {
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
                         permissionDetails: permissionDetailsToPersist,
+                        applyCustomProfile,
                         jornadaTrabalho: jornadaTrabalhoToPersist,
+                        ...(pointScheduleNeedsEffectiveDate ? {dataInicioJornada: pointScheduleEffectiveDate} : {}),
                         dataInicioBancoHoras: dataInicioBancoHorasToPersist
                   });
+                  jornadaTrabalhoToPersist = sanitizeEmployeeWorkSchedule(updatedProfile.data.jornadaTrabalho);
                   updatedUserId = editingUser.uid;
                   alert('Usuário atualizado com sucesso!');
                 } else {
@@ -11744,21 +11507,13 @@ const effectiveStoreName = useMemo(() => {
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
                         permissionDetails: permissionDetailsToPersist,
+                        applyCustomProfile,
                         jornadaTrabalho: jornadaTrabalhoToPersist,
                         dataInicioBancoHoras: dataInicioBancoHorasToPersist
                   });
                   updatedUserId = result?.data?.uid || updatedUserId;
                   alert('Usuário criado com sucesso!');
                 }
-
-                if (!applyCustomProfile && updatedUserId) {
-                    try {
-                        await deleteDoc(doc(db, 'customProfiles', updatedUserId));
-                    } catch (deleteError) {
-                        console.error('Erro ao remover perfil personalizado:', deleteError);
-                    }
-                }
-
                 if (updatedUserId && user?.auth?.uid === updatedUserId) {
                     setUser((prev) => prev ? {
                         ...prev,
@@ -11881,12 +11636,12 @@ const effectiveStoreName = useMemo(() => {
         setConfirmDelete({
             isOpen: true,
             title: 'Excluir usuários selecionados',
-            message: `Tem certeza que deseja excluir ${count} usuário${count === 1 ? '' : 's'} selecionado${count === 1 ? '' : 's'}? Esta ação remove o acesso à plataforma e não pode ser desfeita.`,
+            message: `Os usuários selecionados podem possuir histórico na plataforma. Considere inativá-los em vez de excluir. Deseja continuar com a exclusão definitiva de ${count} usuário${count === 1 ? '' : 's'}?`,
             confirmLabel: count === 1 ? 'Excluir usuário' : `Excluir ${count} usuários`,
             onConfirm: handleDeleteSelectedUsers
         });
     }, [handleDeleteSelectedUsers, selectedVisibleUsers.length, setConfirmDelete]);
-    
+
     const handlePasswordChange = async (e) => {
         e.preventDefault();
         if (!editingUser) return;
@@ -11900,28 +11655,28 @@ const effectiveStoreName = useMemo(() => {
           alert("Erro ao alterar senha: " + err.message);
         }
     };
-    
-    const resetCupomForm = () => { 
-        setEditingCupom(null); 
-        setCupomFormData({ codigo: '', tipoDesconto: 'percentual', valor: '', limiteUso: '', valorMinimo: '', status: 'Ativo' }); 
+
+    const resetCupomForm = () => {
+        setEditingCupom(null);
+        setCupomFormData({ codigo: '', tipoDesconto: 'percentual', valor: '', limiteUso: '', valorMinimo: '', status: 'Ativo' });
     };
-    
-    const handleNewCupom = () => { 
-        resetCupomForm(); 
-        setShowCupomModal(true); 
+
+    const handleNewCupom = () => {
+        resetCupomForm();
+        setShowCupomModal(true);
     };
-    
-    const handleEditCupom = (cupom) => { 
-        setEditingCupom(cupom); 
+
+    const handleEditCupom = (cupom) => {
+        setEditingCupom(cupom);
         setCupomFormData({
-            ...cupom, 
-            valor: String(cupom.valor || ''), 
-            limiteUso: String(cupom.limiteUso || ''), 
+            ...cupom,
+            valor: String(cupom.valor || ''),
+            limiteUso: String(cupom.limiteUso || ''),
             valorMinimo: String(cupom.valorMinimo || '')
-        }); 
-        setShowCupomModal(true); 
+        });
+        setShowCupomModal(true);
     };
-    
+
     const handleCupomSubmit = async (e) => {
       e.preventDefault();
 
@@ -11947,7 +11702,7 @@ const effectiveStoreName = useMemo(() => {
           await addItem('cupons', { ...dataToSave, usos: 0 });
           alert('Cupom criado com sucesso!');
         }
-        
+
         setShowCupomModal(false);
         resetCupomForm();
       } catch (error) {
@@ -11961,7 +11716,7 @@ const effectiveStoreName = useMemo(() => {
         setIsSavingFrete(true);
         try {
 
-            if (!effectiveStoreId || freteLoadedStore !== effectiveStoreId) {
+            if (!effectiveStoreId) {
                 alert('Selecione uma loja específica para salvar as configurações.');
                 return;
             }
@@ -12095,7 +11850,7 @@ const effectiveStoreName = useMemo(() => {
             alert('Selecione uma loja específica para salvar a configuração de Entre Lojas.');
             return;
         }
-        if (!canEditEntreLojasConfig) {
+        if (!canEditEntreLojasConfig && !canManageTransferDestinations) {
             alert('Você não tem permissão para alterar essa configuração.');
             return;
         }
@@ -12106,13 +11861,24 @@ const effectiveStoreName = useMemo(() => {
         }
         setIsSavingEntreLojasConfig(true);
         try {
-            await setDoc(getStoreConfigDocRef(effectiveStoreId), {
-                entreLojas: {
-                    percentualRepasse: Number.isFinite(percentual) ? percentual : 0,
-                    updatedAt: serverTimestamp(),
-                    updatedBy: user?.auth?.email || user?.email || 'Sistema'
-                }
-            }, { merge: true });
+            const updates = [];
+            if (canEditEntreLojasConfig) {
+                updates.push(setDoc(getStoreConfigDocRef(effectiveStoreId), {
+                    entreLojas: {
+                        percentualRepasse: Number.isFinite(percentual) ? percentual : 0,
+                        updatedAt: serverTimestamp(),
+                        updatedBy: user?.auth?.email || user?.email || 'Sistema'
+                    }
+                }, { merge: true }));
+            }
+            if (canManageTransferDestinations) {
+                const updateDestinations = httpsCallable(functions, 'updateTransferDestinations');
+                updates.push(updateDestinations({
+                    originStoreId: effectiveStoreId,
+                    authorizedDestinationStoreIds: transferDestinationConfig.authorizedDestinationStoreIds
+                }));
+            }
+            await Promise.all(updates);
             alert('Configuração de Entre Lojas salva com sucesso!');
         } catch (error) {
             console.error('Erro ao salvar configuração de Entre Lojas:', error);
@@ -12127,7 +11893,7 @@ const effectiveStoreName = useMemo(() => {
         return data.logs.map(log => {
             const { action = '', details = '' } = log;
             let formattedDetails = details;
-            
+
             const updateMatch = details.match(/alterações: (\{.*\})/);
             if (action.includes('atualizado') && updateMatch) {
                 try {
@@ -12138,7 +11904,7 @@ const effectiveStoreName = useMemo(() => {
                     const id = idMatch ? idMatch[1].substring(0,8) + '...' : 'ID desconhecido';
 
                     formattedDetails = `Item "ID ${id}" atualizado (${field}: "${oldVal}" para "${newVal}")`;
-                } catch (e) { 
+                } catch (e) {
                 }
             } else {
                 const idMatch = details.match(/ID:? (\w+)/);
@@ -12161,7 +11927,7 @@ const effectiveStoreName = useMemo(() => {
                     }
                 }
             }
-            
+
             return {
                 ...log,
                 user: log.userEmail || 'Não registrado',
@@ -12234,7 +12000,7 @@ const effectiveStoreName = useMemo(() => {
             }),
         },
     ];
-    
+
     const cupomColumns = [
         { header: 'Código', key: 'codigo' },
         { header: 'Desconto', render: (row) => `${row.valor || 0} ${row.tipoDesconto === 'percentual' ? '%' : 'R$'}` },
@@ -12242,9 +12008,9 @@ const effectiveStoreName = useMemo(() => {
         { header: 'Valor Mínimo', render: (row) => `R$ ${(row.valorMinimo || 0).toFixed(2)}` },
         { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'Ativo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{row.status || 'Ativo'}</span> }
     ];
-    const cupomActions = [ 
-        { icon: Edit, label: "Editar", onClick: handleEditCupom }, 
-        { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('cupons', row.id) }) } 
+    const cupomActions = [
+        { icon: Edit, label: "Editar", onClick: handleEditCupom },
+        { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('cupons', row.id) }) }
     ];
 
     const logColumns = [
@@ -12260,7 +12026,11 @@ const effectiveStoreName = useMemo(() => {
     ];
 
     const currentWorkSchedule = sanitizeEmployeeWorkSchedule(userFormData.jornadaTrabalho);
-    
+    const previousWorkSchedule = sanitizeEmployeeWorkSchedule(editingUser?.jornadaTrabalho || editingUser?.escalaTrabalho || editingUser?.workSchedule);
+    const pointScheduleNeedsEffectiveDate = Boolean(editingUser
+      && !arePointWorkSchedulesEqual(previousWorkSchedule, currentWorkSchedule)
+      && (isHourlyWorkSchedule(previousWorkSchedule) || isHourlyWorkSchedule(currentWorkSchedule) || previousWorkSchedule.historicoEscalas?.length));
+
     return (
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
             <div>
@@ -12294,7 +12064,7 @@ const effectiveStoreName = useMemo(() => {
                     </button>
                 </div>
             </div>
-            
+
             {activeTab === 'pagamentos' && <InfinitePaySettings key={effectiveStoreId || 'none'} functions={functions} storeId={effectiveStoreId} />}
             {activeTab === 'users' && (
 
@@ -12392,7 +12162,7 @@ const effectiveStoreName = useMemo(() => {
                         <Button onClick={handleNewUser}><Plus className="w-4 h-4" /> Novo Usuário</Button>
                     </div>
                 </div>
-				
+
                 {(!usuarios || usuarios.length === 0) ? (
                     <div className="text-center p-8 bg-white rounded-2xl shadow-lg">
                         <p className="text-gray-500">Nenhum usuário encontrado.</p>
@@ -12403,7 +12173,7 @@ const effectiveStoreName = useMemo(() => {
                     <div className="text-center p-8 bg-white rounded-2xl shadow-lg">
                         <p className="text-gray-500">Nenhum usuário corresponde aos filtros selecionados.</p>
                         <p className="text-sm text-gray-400 mt-2">Ajuste os filtros ou limpe-os para visualizar todos os usuários.</p>
-                    </div>								
+                    </div>
                 ) : (
                     <>
                         <div className="hidden md:block bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
@@ -12526,10 +12296,10 @@ const effectiveStoreName = useMemo(() => {
                         </div>
                     </>
                 ))}
-                  
+
               </div>
             )}
-            
+
             {activeTab === 'cupons' && (
               <div>
 
@@ -12568,7 +12338,7 @@ const effectiveStoreName = useMemo(() => {
                     )}
                 </div>
             )}
-            
+
             {activeTab === 'frete' && (
 
                 !effectiveStoreId ? (
@@ -12607,12 +12377,13 @@ const effectiveStoreName = useMemo(() => {
                             <Input
                                 label="Valor por KM (R$)"
                                 type="number"
+                                min="0"
                                 step="0.01"
                                 placeholder="Ex: 1.50"
                                 value={freteConfig.valorPorKm || ''}
                                 onChange={e => setFreteConfig({ ...freteConfig, valorPorKm: e.target.value })}
                                 required
-                            />
+                        />
                             <Input
                                 label="Valor mínimo do frete (R$)"
                                 type="number"
@@ -12622,19 +12393,22 @@ const effectiveStoreName = useMemo(() => {
                                 onChange={e => setFreteConfig({ ...freteConfig, valorMinimoFrete: e.target.value })}
                                 required
                             />
-                            <label className="flex items-center gap-3">
+                            <label className="flex items-center gap-3 text-sm font-medium text-gray-800">
                                 <input
                                     type="checkbox"
                                     checked={freteConfig.freteACombinar === true}
                                     onChange={e => setFreteConfig({ ...freteConfig, freteACombinar: e.target.checked })}
+                                    className="h-4 w-4 accent-pink-600"
                                 />
-                                <span>Frete a combinar</span>
+                                Frete a combinar
                             </label>
                             {freteConfig.freteACombinar === true && (
-                                <p className="text-sm text-gray-500">O pedido exibirá Frete: A Combinar, sem adicionar frete ao total.</p>
+                                <p className="text-sm text-gray-600">
+                                    O valor do frete não será calculado ou cobrado automaticamente e será exibido ao cliente como “A Combinar”.
+                                </p>
                             )}
                             <div className="pt-4">
-                                <Button type="submit" disabled={isSavingFrete || freteLoadedStore !== effectiveStoreId}>
+                                <Button type="submit" disabled={isSavingFrete}>
                                     <Save className="w-4 h-4" /> {isSavingFrete ? 'Salvando...' : 'Salvar Configurações'}
                                 </Button>
                             </div>
@@ -12740,7 +12514,7 @@ const effectiveStoreName = useMemo(() => {
                     </div>
                 ) : (
                     <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-                        <form onSubmit={handleSaveEntreLojasConfig} className="space-y-4 max-w-xl">
+                        <form onSubmit={handleSaveEntreLojasConfig} className="space-y-6 max-w-2xl">
                             <h3 className="text-xl font-bold text-gray-800">Configuração de Repasse — Entre Lojas</h3>
                             <p className="text-sm text-gray-500">
                                 Este percentual será somado ao custo do produto para calcular automaticamente o valor de repasse nas remessas entre lojas.
@@ -12764,8 +12538,58 @@ const effectiveStoreName = useMemo(() => {
                                     Apenas Admin/Dono pode alterar esse percentual.
                                 </p>
                             )}
+                            <div className="border-t border-gray-100 pt-5 space-y-3">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-800">Destinos autorizados para Remessas</h3>
+                                    <p className="text-sm text-gray-500">
+                                        Escolha as lojas que podem receber novas remessas desta origem. A autorização é direcional e não concede acesso administrativo ao destino.
+                                    </p>
+                                </div>
+                                {transferDestinationConfig.loading && (
+                                    <p className="text-sm text-gray-500">Carregando lojas...</p>
+                                )}
+                                {transferDestinationConfig.error && (
+                                    <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{transferDestinationConfig.error}</p>
+                                )}
+                                {!canManageTransferDestinations && (
+                                    <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                        Apenas Dono ou Gerente com a permissão “Gerenciar destinos de remessas” pode alterar esta lista.
+                                    </p>
+                                )}
+                                {canManageTransferDestinations && !transferDestinationConfig.loading && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {transferDestinationConfig.stores.map((store) => {
+                                            const checked = transferDestinationConfig.authorizedDestinationStoreIds.includes(store.id);
+                                            return (
+                                                <label key={store.id} className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${store.active ? 'cursor-pointer text-gray-700' : 'bg-gray-50 text-gray-400'}`}>
+                                                    <input
+                                                        type="checkbox"
+                                                        className="mt-0.5"
+                                                        checked={checked}
+                                                        disabled={!store.active && !checked}
+                                                        onChange={(event) => setTransferDestinationConfig((prev) => ({
+                                                            ...prev,
+                                                            authorizedDestinationStoreIds: event.target.checked
+                                                                ? Array.from(new Set([...prev.authorizedDestinationStoreIds, store.id]))
+                                                                : prev.authorizedDestinationStoreIds.filter((storeId) => storeId !== store.id)
+                                                        }))}
+                                                    />
+                                                    <span>
+                                                        <strong>{store.nome || store.id}</strong>
+                                                        {store.identificacao ? <span className="block text-xs">{store.identificacao}</span> : null}
+                                                        {!store.active ? <span className="block text-xs">Loja inativa</span> : null}
+                                                    </span>
+                                                </label>
+                                            );
+                                        })}
+                                        {!transferDestinationConfig.stores.length && (
+                                            <p className="text-sm text-gray-500 sm:col-span-2">Nenhuma outra loja cadastrada.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                             <div className="pt-2">
-                                <Button type="submit" disabled={isSavingEntreLojasConfig || !canEditEntreLojasConfig}>
+                                <Button type="submit" disabled={isSavingEntreLojasConfig || (!canEditEntreLojasConfig && !canManageTransferDestinations)}>
                                     <Save className="w-4 h-4" /> {isSavingEntreLojasConfig ? 'Salvando...' : 'Salvar Configurações'}
                                 </Button>
                             </div>
@@ -12782,7 +12606,7 @@ const effectiveStoreName = useMemo(() => {
                     onOpenCashRecord={onOpenCashRecord}
                 />
             )}
-            
+
             <Modal isOpen={showUserModal} onClose={() => setShowUserModal(false)} title={editingUser ? "Editar Usuário" : "Novo Usuário"}>
                  <form onSubmit={handleUserSubmit} className="space-y-4">
                     <div className="space-y-1">
@@ -12906,165 +12730,18 @@ const effectiveStoreName = useMemo(() => {
                         </div>
                     )}
 
-                    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
-                        <div>
-                            <p className="text-sm font-semibold text-gray-800">Jornada de trabalho</p>
-                            <p className="text-xs text-gray-500">Configure a escala usada na folha de ponto, faltas e banco de horas desta funcionária.</p>
-                        </div>
-                        <Input
-                            label="Data de início do banco de horas"
-                            type="date"
-                            value={normalizePointBankStartDate(userFormData.dataInicioBancoHoras)}
-                            onChange={(e) => setUserFormData({ ...userFormData, dataInicioBancoHoras: e.target.value })}
-                        />
-                        <p className="text-xs text-gray-500 -mt-2">
-                            Se ficar vazio, o sistema usa a data padrão configurada em Meu Espaço &gt; Informações da empresa.
-                        </p>
-                        <Select
-                            label="Tipo de escala"
-                            value={currentWorkSchedule.tipoEscala}
-                            onChange={(e) => {
-                                const nextType = e.target.value;
-                                updateUserWorkSchedule((schedule) => ({
-                                    ...schedule,
-                                    tipoEscala: nextType,
-                                    diasTrabalho: nextType === 'seg-sab-folga'
-                                        ? ['1', '2', '3', '4', '5', '6']
-                                        : nextType === 'seg-sex'
-                                            ? ['1', '2', '3', '4', '5']
-                                            : schedule.diasTrabalho,
-                                    folgaSemanal: nextType === 'seg-sab-folga' ? schedule.folgaSemanal : '',
-                                    folgaVariavel: nextType === 'seg-sab-folga' ? schedule.folgaVariavel : false,
-                                }));
-                            }}
-                        >
-                            {POINT_WORK_SCHEDULE_TYPES.map((type) => (
-                                <option key={type.value} value={type.value}>{type.label}</option>
-                            ))}
-                        </Select>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <label className="block text-sm font-medium text-gray-700">Dias trabalhados e carga horária</label>
-                                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
-                                    {POINT_WEEK_DAYS.map((day) => {
-                                        const checked = currentWorkSchedule.diasTrabalho.includes(day.value);
-                                        return (
-                                            <div key={day.value} className="grid grid-cols-[1fr_110px] items-center gap-3">
-                                                <label className="flex items-center gap-2 text-sm text-gray-700">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={checked}
-                                                        onChange={(e) => updateUserWorkSchedule((schedule) => {
-                                                            const currentDays = new Set(schedule.diasTrabalho);
-                                                            if (e.target.checked) {
-                                                                currentDays.add(day.value);
-                                                            } else {
-                                                                currentDays.delete(day.value);
-                                                            }
-                                                            return {
-                                                                ...schedule,
-                                                                diasTrabalho: Array.from(currentDays).sort((a, b) => Number(a) - Number(b))
-                                                            };
-                                                        })}
-                                                    />
-                                                    {day.label}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={currentWorkSchedule.cargaHorariaPorDia[day.value] || DEFAULT_POINT_DAILY_LOADS[day.value] || '00:00'}
-                                                    onChange={(e) => updateUserWorkSchedule((schedule) => ({
-                                                        ...schedule,
-                                                        cargaHorariaPorDia: {
-                                                            ...schedule.cargaHorariaPorDia,
-                                                            [day.value]: e.target.value
-                                                        }
-                                                    }))}
-                                                    onBlur={(e) => updateUserWorkSchedule((schedule) => ({
-                                                        ...schedule,
-                                                        cargaHorariaPorDia: {
-                                                            ...schedule.cargaHorariaPorDia,
-                                                            [day.value]: formatPointDurationInput(parsePointDurationToMinutes(e.target.value, parsePointDurationToMinutes(DEFAULT_POINT_DAILY_LOADS[day.value], 0)))
-                                                        }
-                                                    }))}
-                                                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-pink-500 focus:ring-2 focus:ring-pink-500"
-                                                    placeholder="08:00"
-                                                    disabled={!checked}
-                                                />
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                {currentWorkSchedule.tipoEscala === 'seg-sab-folga' && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <Select
-                                            label="Folga semanal"
-                                            value={currentWorkSchedule.folgaSemanal}
-                                            onChange={(e) => updateUserWorkSchedule({ folgaSemanal: e.target.value, folgaVariavel: false })}
-                                        >
-                                            <option value="">Sem folga fixa</option>
-                                            {POINT_WEEK_DAYS.filter((day) => day.value !== '0').map((day) => (
-                                                <option key={day.value} value={day.value}>{day.label}</option>
-                                            ))}
-                                        </Select>
-                                        <label className="flex items-end gap-2 pb-3 text-sm text-gray-700">
-                                            <input
-                                                type="checkbox"
-                                                checked={Boolean(currentWorkSchedule.folgaVariavel)}
-                                                onChange={(e) => updateUserWorkSchedule({
-                                                    folgaVariavel: e.target.checked,
-                                                    folgaSemanal: e.target.checked ? '' : currentWorkSchedule.folgaSemanal
-                                                })}
-                                            />
-                                            Folga variável
-                                        </label>
-                                    </div>
-                                )}
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <Input
-                                        label="Entrada padrão"
-                                        type="time"
-                                        value={currentWorkSchedule.horarioPadrao.entrada}
-                                        onChange={(e) => updateUserWorkSchedule((schedule) => ({
-                                            ...schedule,
-                                            horarioPadrao: { ...schedule.horarioPadrao, entrada: e.target.value }
-                                        }))}
-                                    />
-                                    <Input
-                                        label="Saída almoço padrão"
-                                        type="time"
-                                        value={currentWorkSchedule.horarioPadrao.almocoSaida}
-                                        onChange={(e) => updateUserWorkSchedule((schedule) => ({
-                                            ...schedule,
-                                            horarioPadrao: { ...schedule.horarioPadrao, almocoSaida: e.target.value }
-                                        }))}
-                                    />
-                                    <Input
-                                        label="Retorno almoço padrão"
-                                        type="time"
-                                        value={currentWorkSchedule.horarioPadrao.almocoRetorno}
-                                        onChange={(e) => updateUserWorkSchedule((schedule) => ({
-                                            ...schedule,
-                                            horarioPadrao: { ...schedule.horarioPadrao, almocoRetorno: e.target.value }
-                                        }))}
-                                    />
-                                    <Input
-                                        label="Saída final padrão"
-                                        type="time"
-                                        value={currentWorkSchedule.horarioPadrao.saida}
-                                        onChange={(e) => updateUserWorkSchedule((schedule) => ({
-                                            ...schedule,
-                                            horarioPadrao: { ...schedule.horarioPadrao, saida: e.target.value }
-                                        }))}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <PointWorkScheduleFields
+                      schedule={currentWorkSchedule}
+                      bankStartDate={normalizePointBankStartDate(userFormData.dataInicioBancoHoras)}
+                      onBankStartDateChange={(value) => setUserFormData({ ...userFormData, dataInicioBancoHoras: value })}
+                      onScheduleChange={updateUserWorkSchedule}
+                      effectiveDate={pointScheduleEffectiveDate}
+                      onEffectiveDateChange={setPointScheduleEffectiveDate}
+                      showEffectiveDate={pointScheduleNeedsEffectiveDate}
+                      savedEffectiveDate={getPointScheduleEffectiveDate(previousWorkSchedule)}
+                      Input={Input}
+                      Select={Select}
+                    />
 
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -13152,6 +12829,7 @@ const effectiveStoreName = useMemo(() => {
                                     sanitizedFormPermissions
                                 );
                                 const selectedEntreLojasStatuses = sanitizedDetails['entre-lojas']?.statuses || [];
+                                const canManageTransferDestinations = sanitizedDetails['entre-lojas']?.manageTransferDestinations === true;
                                 const selectedCaixaPermissions = sanitizedDetails.caixa || getEmptyCaixaPermissions();
                                 const canManageUserStatuses = sanitizedDetails.configuracoes?.gerenciarStatusUsuarios === true;
 
@@ -13203,7 +12881,10 @@ const effectiveStoreName = useMemo(() => {
                                                                 ...prev,
                                                                 permissionDetails: {
                                                                     ...sanitizePermissionDetails(prev.permissionDetails, prev.role, prev.permissions),
-                                                                    'entre-lojas': { statuses: [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] }
+                                                                    'entre-lojas': {
+                                                                        ...sanitizePermissionDetails(prev.permissionDetails, prev.role, prev.permissions)['entre-lojas'],
+                                                                        statuses: [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES]
+                                                                    }
                                                                 }
                                                             }))}
                                                         >
@@ -13216,7 +12897,10 @@ const effectiveStoreName = useMemo(() => {
                                                                 ...prev,
                                                                 permissionDetails: {
                                                                     ...sanitizePermissionDetails(prev.permissionDetails, prev.role, prev.permissions),
-                                                                    'entre-lojas': { statuses: [] }
+                                                                    'entre-lojas': {
+                                                                        ...sanitizePermissionDetails(prev.permissionDetails, prev.role, prev.permissions)['entre-lojas'],
+                                                                        statuses: []
+                                                                    }
                                                                 }
                                                             }))}
                                                         >
@@ -13242,7 +12926,10 @@ const effectiveStoreName = useMemo(() => {
                                                                             ...prev,
                                                                             permissionDetails: {
                                                                                 ...currentDetails,
-                                                                                'entre-lojas': { statuses: nextStatuses }
+                                                                                'entre-lojas': {
+                                                                                    ...currentDetails['entre-lojas'],
+                                                                                    statuses: nextStatuses
+                                                                                }
                                                                             }
                                                                         };
                                                                     });
@@ -13256,6 +12943,38 @@ const effectiveStoreName = useMemo(() => {
                                                     <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
                                                         O usuário acessará o menu, mas não verá remessas até que pelo menos um status seja marcado.
                                                     </p>
+                                                )}
+                                                {normalizeRole(userFormData.role) === ROLE_MANAGER && (
+                                                    <div className="border-t border-pink-100 pt-3">
+                                                        <label className="flex items-start gap-2 text-xs text-gray-700">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-0.5"
+                                                                checked={canManageTransferDestinations}
+                                                                disabled={user?.role !== ROLE_OWNER}
+                                                                onChange={(event) => {
+                                                                    setUserFormData((prev) => {
+                                                                        const currentPermissions = sanitizePermissions(prev.permissions, prev.role);
+                                                                        const currentDetails = sanitizePermissionDetails(prev.permissionDetails, prev.role, currentPermissions);
+                                                                        return {
+                                                                            ...prev,
+                                                                            permissionDetails: {
+                                                                                ...currentDetails,
+                                                                                'entre-lojas': {
+                                                                                    ...currentDetails['entre-lojas'],
+                                                                                    manageTransferDestinations: event.target.checked,
+                                                                                },
+                                                                            },
+                                                                        };
+                                                                    });
+                                                                }}
+                                                            />
+                                                            <span>Permitir gerenciar destinos de remessas das lojas às quais este gerente possui acesso.</span>
+                                                        </label>
+                                                        {user?.role !== ROLE_OWNER && (
+                                                            <p className="mt-1 text-xs text-gray-500">Somente um Dono pode conceder ou remover esta permissão.</p>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
@@ -13305,7 +13024,9 @@ const effectiveStoreName = useMemo(() => {
                                                 </div>
                                                 {supportsCashPermissions ? (
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                        {CAIXA_PERMISSION_KEYS.map((permissionKey) => (
+                                                        {CAIXA_PERMISSION_KEYS
+                                                            .filter((permissionKey) => permissionKey !== 'ajustarCaixaAposEncerramento')
+                                                            .map((permissionKey) => (
                                                             <label key={permissionKey} className="flex items-start gap-2 text-xs text-gray-700">
                                                                 <input
                                                                     type="checkbox"
@@ -13336,6 +13057,44 @@ const effectiveStoreName = useMemo(() => {
                                                     <p className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-700">
                                                         Este perfil não pode acessar operações ou informações do caixa.
                                                     </p>
+                                                )}
+                                                {normalizeRole(userFormData.role) === ROLE_MANAGER && (
+                                                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-800">Ajustes e correções após encerramento</p>
+                                                            <p className="text-xs text-gray-600">
+                                                                Permite corrigir abertura/encerramento e registrar retiradas ou sangrias após o fechamento, somente nas lojas atribuídas ao gerente.
+                                                            </p>
+                                                        </div>
+                                                        <label className="flex items-start gap-2 text-xs text-gray-700">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="mt-0.5"
+                                                                checked={Boolean(selectedCaixaPermissions.ajustarCaixaAposEncerramento)}
+                                                                disabled={normalizeRole(user?.role) !== ROLE_OWNER}
+                                                                onChange={(event) => {
+                                                                    setUserFormData((prev) => {
+                                                                        const currentPermissions = sanitizePermissions(prev.permissions, prev.role);
+                                                                        const currentDetails = sanitizePermissionDetails(prev.permissionDetails, prev.role, currentPermissions);
+                                                                        return {
+                                                                            ...prev,
+                                                                            permissionDetails: {
+                                                                                ...currentDetails,
+                                                                                caixa: {
+                                                                                    ...currentDetails.caixa,
+                                                                                    ajustarCaixaAposEncerramento: event.target.checked,
+                                                                                },
+                                                                            },
+                                                                        };
+                                                                    });
+                                                                }}
+                                                            />
+                                                            <span>{CAIXA_PERMISSION_LABELS.ajustarCaixaAposEncerramento}</span>
+                                                        </label>
+                                                        {normalizeRole(user?.role) !== ROLE_OWNER && (
+                                                            <p className="text-xs text-gray-500">Somente um Dono pode conceder ou remover esta permissão.</p>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
@@ -13426,7 +13185,6 @@ const effectiveStoreName = useMemo(() => {
                     </div>
                 </form>
             </Modal>
-            
             <Modal isOpen={showPasswordModal} onClose={() => setShowPasswordModal(false)} title="Alterar Senha" size="sm">
                 <form onSubmit={handlePasswordChange} className="space-y-4">
                     <Input label="Nova Senha" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Mínimo 6 caracteres" />
@@ -13440,11 +13198,11 @@ const effectiveStoreName = useMemo(() => {
             <Modal isOpen={showCupomModal} onClose={() => setShowCupomModal(false)} title={editingCupom ? "Editar Cupom" : "Novo Cupom"} size="lg">
                 <form onSubmit={handleCupomSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input 
-                            label="Nome/Código do Cupom" 
-                            value={cupomFormData.codigo || ''} 
-                            onChange={e => setCupomFormData({ ...cupomFormData, codigo: e.target.value.toUpperCase() })} 
-                            required 
+                        <Input
+                            label="Nome/Código do Cupom"
+                            value={cupomFormData.codigo || ''}
+                            onChange={e => setCupomFormData({ ...cupomFormData, codigo: e.target.value.toUpperCase() })}
+                            required
                             disabled={!!editingCupom}
                         />
                         <Select label="Tipo de Desconto" value={cupomFormData.tipoDesconto || 'percentual'} onChange={e => setCupomFormData({ ...cupomFormData, tipoDesconto: e.target.value })}>
@@ -13468,108 +13226,13 @@ const effectiveStoreName = useMemo(() => {
         </div>
     );
   };
-  
-  const Pedidos = ({ orderOpenRequest, onOrderOpenRequestHandled }) => {
-    // Helper para obter a data de hoje no formato YYYY-MM-DD
-    const getTodayString = () => {
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
 
-    const [searchTerm, setSearchTerm] = usePersistentState("pedidos_searchTerm", "");
-    // **MELHORIA:** O padrão inicial continua sendo o dia de hoje.
-    const [startDateFilter, setStartDateFilter] = usePersistentState("pedidos_startDateFilter", getTodayString());
-    const [endDateFilter, setEndDateFilter] = usePersistentState("pedidos_endDateFilter", getTodayString());
-
-    const [statusFilter, setStatusFilter] = usePersistentState("pedidos_statusFilter", 'Todos');
-    const [showModal, setShowModal] = useState(false);
-    const [editingOrder, setEditingOrder] = useState(null);
-    const [isSavingOrder, setIsSavingOrder] = useState(false);
-    const [saveOrderError, setSaveOrderError] = useState('');
-    const [orderSyncNotice, setOrderSyncNotice] = useState('');
-    const [formData, setFormData] = useState({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: 'Pix', cupom: null });
-    const [viewingOrder, setViewingOrder] = useState(null);
-            const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
-    const [descontoValor, setDescontoValor] = useState('');
-    const [descontoPercentual, setDescontoPercentual] = useState('');
-    const [productSearchTerm, setProductSearchTerm] = useState('');
-
-    const deliveryProviders = useMemo(
-        () => (data.fornecedores || []).filter(f => (f.status || 'Ativo') !== 'Inativo'),
-        [data.fornecedores]
-    );
-
-    const canSendToDeliverer = (order) => {
-        if (!order) return false;
-        const { enderecoTexto } = getOrderAddressDetails(order, data.clientes);
-        if (!enderecoTexto || enderecoTexto === 'Não informado' || enderecoTexto === 'Retirar na Loja') {
-            return false;
-        }
-        return deliveryProviders.length > 0;
-    };
-
-    const pedidosComNomes = useMemo(() => (data.pedidos || []).map(pedido => {
-        const cliente = data.clientes.find(c => c.id === pedido.clienteId);
-        return { ...pedido, clienteNome: cliente ? cliente.nome : (pedido.clienteNome || 'Cliente não encontrado') };
-    }), [data.pedidos, data.clientes]);
-
-    const filteredProducts = useMemo(() => {
-        const term = productSearchTerm.trim().toLowerCase();
-
-        return (data.produtos || [])
-            .filter(p => p.categoria === formData.categoria)
-            .filter(p => {
-                if (!term) return true;
-
-                const nome = (p.nome || '').toLowerCase();
-                const descricao = (p.descricao || '').toLowerCase();
-
-                return nome.includes(term) || descricao.includes(term);
-            })
-            .sort((a, b) => a.nome.localeCompare(b.nome, undefined, { sensitivity: 'base' }));
-    }, [data.produtos, formData.categoria, productSearchTerm]);
-
-    const filteredOrders = useMemo(() => pedidosComNomes.filter(p => {
-        // **MELHORIA:** Lógica de busca por nome do cliente OU ID do pedido
-        const term = searchTerm.toLowerCase();
-        const searchMatch = !term ||
-            (p.clienteNome && p.clienteNome.toLowerCase().includes(term)) ||
-            (p.id && p.id.toLowerCase().includes(term));
-        
-        const dateMatch = (() => {
-            if (!startDateFilter && !endDateFilter) return true;
-            
-            const orderDate = getJSDate(p.createdAt);
-            if (!orderDate) return false;
-            
-            const startDate = startDateFilter ? new Date(startDateFilter) : null;
-            if(startDate) startDate.setHours(0, 0, 0, 0);
-
-            const endDate = endDateFilter ? new Date(endDateFilter) : null;
-            if(endDate) endDate.setHours(23, 59, 59, 999);
-
-            if (startDate && orderDate < startDate) return false;
-            if (endDate && orderDate > endDate) return false;
-            
-            return true;
-        })();
-
-        const statusMatch = statusFilter === 'Todos' || p.status === statusFilter;
-
-        return searchMatch && dateMatch && statusMatch;
-    }).sort((a, b) => {
-        const dateA = getJSDate(a.createdAt) || 0;
-        const dateB = getJSDate(b.createdAt) || 0;
-        return dateB - dateA; // Mais recentes primeiro
-    }), [pedidosComNomes, searchTerm, startDateFilter, endDateFilter, statusFilter]);
+  const Pedidos = () => {
+const [orderSyncNotice, setOrderSyncNotice] = useState('');
 
     const calculateOrderSubtotal = (items = []) => roundCurrency(
         items.reduce((sum, item) => sum + ((Number(item.preco) || 0) * getOrderItemQuantity(item)), 0)
     );
-
     const calculateOrderDiscount = (order, subtotal) => {
         const couponDiscount = Number(order?.cupom?.valorDesconto || 0);
         const manualDiscount = Number(order?.desconto || 0);
@@ -13577,7 +13240,6 @@ const effectiveStoreName = useMemo(() => {
         if (!Number.isFinite(discount) || discount <= 0) return 0;
         return roundCurrency(Math.min(discount, subtotal));
     };
-
     const buildOrderWithTotals = (order, items = order.itens || []) => {
         const subtotal = calculateOrderSubtotal(items);
         const desconto = calculateOrderDiscount({ ...order, itens: items }, subtotal);
@@ -13590,7 +13252,6 @@ const effectiveStoreName = useMemo(() => {
             cupom: order.cupom ? { ...order.cupom, valorDesconto: desconto } : null
         };
     };
-
     const mapOrderItemsByProduct = (items = []) => {
         const grouped = new Map();
 
@@ -13609,7 +13270,6 @@ const effectiveStoreName = useMemo(() => {
 
         return grouped;
     };
-
     const calculateOrderStockDelta = (oldItems = [], newItems = []) => {
         const oldMap = mapOrderItemsByProduct(oldItems);
         const newMap = mapOrderItemsByProduct(newItems);
@@ -13627,15 +13287,12 @@ const effectiveStoreName = useMemo(() => {
 
         return delta;
     };
-
     const resolveOrderStoreId = (orderData = {}) => (
         editingOrder?.lojaId ||
         orderData?.lojaId ||
         resolveActiveStoreForWrite()
     );
-
     const isFinalizedStatus = (status) => status === 'Finalizado';
-
     const getCouponDocRefForOrder = async (storeId, cupom) => {
         if (!cupom?.codigo && !cupom?.id) return null;
 
@@ -13662,7 +13319,6 @@ const effectiveStoreName = useMemo(() => {
 
         return legacySnap.empty ? null : legacySnap.docs[0].ref;
     };
-
     const validateCouponSnapshot = (cupomSnap, cupom, subtotal) => {
         if (!cupom) return { cupom: null, desconto: 0 };
         if (!cupomSnap?.exists()) {
@@ -13708,7 +13364,6 @@ const effectiveStoreName = useMemo(() => {
             desconto: valorDesconto
         };
     };
-
     const buildFreshItemsFromProductSnaps = (items = [], productSnapMap = new Map(), changes = []) => (
         items.map((item) => {
             const productId = getOrderItemProductId(item);
@@ -13764,7 +13419,6 @@ const effectiveStoreName = useMemo(() => {
             };
         })
     );
-
     const reloadOrderCriticalData = async (orderData, storeId) => {
         if (!storeId) throw new Error('Selecione uma loja para salvar o pedido.');
         if (!orderData.clienteId) throw new Error('Selecione um cliente antes de salvar o pedido.');
@@ -13835,7 +13489,6 @@ const effectiveStoreName = useMemo(() => {
             changes
         };
     };
-
     const persistOrderWithTransaction = async (orderData, storeId) => {
         const currentAuthUser = await ensureAuthenticatedUserForWrite();
         const orderRef = editingOrder ? getStoreDocRef(storeId, 'pedidos', editingOrder.id) : doc(getStoreCollectionRef(storeId, 'pedidos'));
@@ -13962,7 +13615,6 @@ const effectiveStoreName = useMemo(() => {
         debugCacheSync('Pedido salvo após revalidação transacional', { orderId, storeId });
         return orderId;
     };
-
     const reconcileOpenOrderWithLiveProducts = useCallback((items = []) => {
         const changes = [];
         let hasItemChanges = false;
@@ -14012,6 +13664,152 @@ const effectiveStoreName = useMemo(() => {
         return { nextItems, changes, hasItemChanges };
     }, [data.produtos]);
 
+    // Helper para obter a data de hoje no formato YYYY-MM-DD
+    const getTodayString = () => {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const [searchTerm, setSearchTerm] = usePersistentState("pedidos_searchTerm", "");
+    // **MELHORIA:** O padrão inicial continua sendo o dia de hoje.
+    const [startDateFilter, setStartDateFilter] = usePersistentState("pedidos_startDateFilter", getTodayString());
+    const [endDateFilter, setEndDateFilter] = usePersistentState("pedidos_endDateFilter", getTodayString());
+
+    const [statusFilter, setStatusFilter] = usePersistentState("pedidos_statusFilter", 'Todos');
+    const [showModal, setShowModal] = useState(false);
+    const [editingOrder, setEditingOrder] = useState(null);
+    const [isSavingOrder, setIsSavingOrder] = useState(false);
+    const [saveOrderError, setSaveOrderError] = useState('');
+    const [clientSelectionError, setClientSelectionError] = useState('');
+    const [formData, setFormData] = useState({ clienteId: '', clienteNome: '', clienteEndereco: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
+    const [viewingOrder, setViewingOrder] = useState(null);
+    const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
+    const [rideRequest, setRideRequest] = useState(null);
+    const [rideFeedback, setRideFeedback] = useState('');
+    const [rideLoadingService, setRideLoadingService] = useState('');
+    const [descontoValor, setDescontoValor] = useState('');
+    const [descontoPercentual, setDescontoPercentual] = useState('');
+    const [productSearchTerm, setProductSearchTerm] = useState('');
+
+    const deliveryProviders = useMemo(
+        () => (data.fornecedores || []).filter(f => (f.status || 'Ativo') !== 'Inativo'),
+        [data.fornecedores]
+    );
+
+    const canSendToDeliverer = (order) => {
+        if (!order) return false;
+        const { enderecoTexto } = getOrderAddressDetails(order, data.clientes);
+        if (!enderecoTexto || enderecoTexto === 'Não informado' || enderecoTexto === 'Retirar na Loja') {
+            return false;
+        }
+        return deliveryProviders.length > 0;
+    };
+
+    const getRideAddressesForOrder = (order, freightConfig = {}) => {
+        const orderStoreId = getOrderStoreId(order);
+        const store = storeInfoMap[orderStoreId] || {};
+        return buildRideAddresses(order, store, freightConfig);
+    };
+
+    const prepareRideRequest = async (order, service) => {
+        setRideFeedback('');
+        const orderStoreId = getOrderStoreId(order);
+
+        if (!orderStoreId) {
+            setRideFeedback('Não foi possível identificar a loja responsável por este pedido.');
+            return;
+        }
+
+        setRideLoadingService(service);
+
+        try {
+            const freightConfig = await loadStoreFreightConfig(orderStoreId);
+            const addresses = getRideAddressesForOrder(order, freightConfig);
+
+            if (!addresses.destination.address) {
+                setRideFeedback('Este pedido não possui endereço de entrega válido para solicitar uma corrida.');
+                return;
+            }
+            if (!addresses.origin.address && !addresses.origin.coordinates) {
+                setRideFeedback('A loja não possui endereço ou coordenadas válidas cadastrados na configuração de frete.');
+                return;
+            }
+
+            setRideRequest({ service, addresses });
+        } catch (error) {
+            console.error(`[Ride] Não foi possível carregar o frete da loja ${orderStoreId}.`, error);
+            setRideFeedback('Não foi possível carregar a configuração de frete da loja deste pedido. Tente novamente.');
+        } finally {
+            setRideLoadingService('');
+        }
+    };
+
+    const openPreparedRide = () => {
+        if (!rideRequest) return;
+
+        try {
+            const url = rideRequest.service === 'uber'
+                ? buildUberRideUrl({
+                    ...rideRequest.addresses,
+                    clientId: process.env.REACT_APP_UBER_CLIENT_ID || ''
+                })
+                : build99OpenUrl();
+            const openedWindow = window.open(url, '_blank');
+            if (openedWindow) openedWindow.opener = null;
+            else window.location.assign(url);
+            setRideRequest(null);
+        } catch (error) {
+            console.error('[Ride] Não foi possível abrir o serviço de mobilidade.', error);
+            setRideFeedback(`Não foi possível abrir o aplicativo ${rideRequest.service === 'uber' ? 'Uber' : '99'} neste dispositivo.`);
+            setRideRequest(null);
+        }
+    };
+
+    const pedidosComNomes = (data.pedidos || []).map(pedido => {
+        const cliente = data.clientes.find(c => c.id === pedido.clienteId);
+        return { ...pedido, clienteNome: cliente ? cliente.nome : (pedido.clienteNome || 'Cliente não encontrado') };
+    });
+
+    const filteredProducts = useMemo(() => {
+        const term = productSearchTerm.trim().toLowerCase();
+
+        return (data.produtos || [])
+            .filter(p => p.categoria === formData.categoria && p.status === 'Ativo')
+            .filter(p => {
+                if (!term) return true;
+
+                const nome = (p.nome || '').toLowerCase();
+                const descricao = (p.descricao || '').toLowerCase();
+
+                return nome.includes(term) || descricao.includes(term);
+            })
+            .sort((a, b) => a.nome.localeCompare(b.nome, undefined, { sensitivity: 'base' }));
+    }, [data.produtos, formData.categoria, productSearchTerm]);
+
+    const filteredOrders = useMemo(() => pedidosComNomes.filter(p => {
+        // **MELHORIA:** Lógica de busca por nome do cliente OU ID do pedido
+        const term = searchTerm.toLowerCase();
+        const searchMatch = !term ||
+            (p.clienteNome && p.clienteNome.toLowerCase().includes(term)) ||
+            (p.id && p.id.toLowerCase().includes(term));
+
+        const dateMatch = (() => {
+            const orderDate = getJSDate(p.createdAt);
+            return matchesOrderDateFilter(orderDate, startDateFilter, endDateFilter);
+        })();
+
+        const statusMatch = statusFilter === 'Todos' || p.status === statusFilter;
+
+        return searchMatch && dateMatch && statusMatch;
+    }).sort((a, b) => {
+        const dateA = getJSDate(a.createdAt) || 0;
+        const dateB = getJSDate(b.createdAt) || 0;
+        return dateB - dateA; // Mais recentes primeiro
+    }), [pedidosComNomes, searchTerm, startDateFilter, endDateFilter, statusFilter]);
+
     useEffect(() => {
         if (!showModal || !formData.itens.length) return;
 
@@ -14025,17 +13823,17 @@ const effectiveStoreName = useMemo(() => {
         setOrderSyncNotice(message);
         debugCacheSync('Pedido aberto reconciliado com snapshot de produtos', { changes });
     }, [showModal, formData.itens, reconcileOpenOrderWithLiveProducts]);
-
-    const resetForm = () => {
+const resetForm = () => {
         setEditingOrder(null);
         setSaveOrderError('');
+        setClientSelectionError('');
         setOrderSyncNotice('');
-        setFormData({ clienteId: '', clienteNome: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: 'Pix', cupom: null });
+        setFormData({ clienteId: '', clienteNome: '', clienteEndereco: '', itens: [], subtotal: 0, desconto: 0, total: 0, status: 'Pendente', origem: 'Manual', categoria: 'Delivery', dataEntrega: '', observacao: '', formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD, cupom: null });
         setDescontoValor('');
         setDescontoPercentual('');
         setProductSearchTerm('');
     };
-    
+
     // **MELHORIA:** Função para limpar todos os filtros, incluindo as datas
     const handleClearFilters = () => {
         setSearchTerm('');
@@ -14071,7 +13869,7 @@ const effectiveStoreName = useMemo(() => {
             return buildOrderWithTotals(prev, newItens);
         });
     };
-    
+
     const handleApplyDiscount = () => {
         const valor = parseFloat(descontoValor) || 0;
         const percent = parseFloat(descontoPercentual) || 0;
@@ -14095,7 +13893,7 @@ const effectiveStoreName = useMemo(() => {
              setDescontoPercentual('');
             return;
         }
-        
+
         if (newDiscount < 0) {
             alert("O desconto não pode ser negativo.");
              setDescontoValor('');
@@ -14113,6 +13911,9 @@ const effectiveStoreName = useMemo(() => {
 
 const handleSubmit = async (e) => {
     e.preventDefault();
+    const selectedClient = data.clientes.find(client => String(client.id) === String(formData.clienteId));
+    if (!selectedClient) { setClientSelectionError('Selecione um cliente cadastrado na lista.'); return; }
+    setClientSelectionError('');
     setIsSavingOrder(true);
     setSaveOrderError('');
     setOrderSyncNotice('');
@@ -14161,18 +13962,20 @@ const handleSubmit = async (e) => {
         setIsSavingOrder(false);
     }
 };
-    
-    const handleEdit = useCallback((order) => {
+
+    const handleEdit = (order) => {
         setEditingOrder(order);
+        setClientSelectionError('');
         const subtotal = (order.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
         const desconto = order.cupom?.valorDesconto || order.desconto || 0;
         const total = calculateOrderTotal(order, subtotal, desconto);
-        
+
         // Garante que todos os campos necessários estejam presentes, mesmo que vazios
 
         const defaultOrderData = {
             clienteId: '',
             clienteNome: '',
+            clienteEndereco: '',
             itens: [],
             subtotal: 0,
             desconto: 0,
@@ -14182,7 +13985,7 @@ const handleSubmit = async (e) => {
             categoria: 'Delivery',
             dataEntrega: '',
             observacao: '',
-            formaPagamento: 'Pix',
+            formaPagamento: DEFAULT_ORDER_PAYMENT_METHOD,
             cupom: null
         };
 
@@ -14194,37 +13997,23 @@ const handleSubmit = async (e) => {
             total,
             dataEntrega: order.dataEntrega ? (getJSDate(order.dataEntrega)?.toISOString().split('T')[0] || '') : ''
         });
-        
+
         setDescontoValor(order.desconto && !order.cupom ? String(order.desconto) : ''); // Preenche desconto manual se houver
         setDescontoPercentual(''); // Limpa percentual ao editar
         setShowModal(true);
-    }, []);
-
-    useEffect(() => {
-        if (!orderOpenRequest?.orderId) return;
-
-        const requestedOrder = pedidosComNomes.find((order) => (
-            order.id === orderOpenRequest.orderId
-            && (!orderOpenRequest.lojaId || !order.lojaId || order.lojaId === orderOpenRequest.lojaId)
-        ));
-
-        if (!requestedOrder) return;
-
-        handleEdit(requestedOrder);
-        onOrderOpenRequestHandled();
-    }, [handleEdit, onOrderOpenRequestHandled, orderOpenRequest, pedidosComNomes]);
+    };
 
     const getStatusClass = (status) => { switch (status) { case 'Pendente': return 'bg-yellow-100 text-yellow-800'; case 'Em Produção': return 'bg-blue-100 text-blue-800'; case 'Finalizado': return 'bg-green-100 text-green-800'; case 'Cancelado': return 'bg-red-100 text-red-800'; default: return 'bg-gray-100 text-gray-800'; } };
     const columns = [ { header: "ID do Pedido", render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.substring(0, 8) || 'N/A'}</span> }, { header: "Cliente", key: "clienteNome" }, { header: "Total", render: (row) => <span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span> }, { header: "Data", render: (row) => { const date = getJSDate(row.createdAt); return date ? date.toLocaleDateString('pt-BR') : '-'; } }, { header: "Origem", key: "origem"}, { header: "Status", render: (row) => { const isPendingSync = row._isPendingSync; return <span className={`px-3 py-1 rounded-full text-xs font-medium ${isPendingSync ? 'bg-gray-100 text-gray-600' : getStatusClass(row.status)}`}>{isPendingSync ? 'Sincronizando...' : row.status}</span>; } } ];
     const actions = [ { icon: Eye, label: "Ver", onClick: (row) => setViewingOrder(row) }, { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidos', row.id) }) } ];
-    
+
     return (
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                 <div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Pedidos</h1><p className="text-gray-600 mt-1">Acompanhe e gerencie todos os pedidos</p></div>
                 <Button onClick={handleNewOrder} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Novo Pedido</Button>
             </div>
-            
+
             <div className="flex flex-col md:flex-row md:items-center gap-4 p-4 bg-white rounded-2xl shadow-lg border border-gray-100 flex-wrap">
                 <div className="relative flex-grow w-full md:w-auto">
                     <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -14251,39 +14040,50 @@ const handleSubmit = async (e) => {
             </div>
 
             <Table columns={columns} data={filteredOrders} actions={actions} />
-            
+
             <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingOrder ? "Editar Pedido" : "Novo Pedido"} size="xl">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Select label="Cliente" value={formData.clienteId} onChange={(e) => setFormData({...formData, clienteId: e.target.value})} required><option value="">Selecione um cliente</option>{data.clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</Select>
+                        <SearchableClientSelect
+                            clients={data.clientes}
+                            value={formData.clienteId}
+                            error={clientSelectionError}
+                            onChange={(selectedClient) => {
+                                setClientSelectionError('');
+                                setFormData((current) => ({
+                                    ...current,
+                                    clienteId: selectedClient?.id || '',
+                                    clienteNome: selectedClient?.nome || '',
+                                    clienteEndereco: selectedClient
+                                        ? getClientPrimaryAddressText(selectedClient)
+                                        : ''
+                                }));
+                            }}
+                        />
                         <Select label="Status" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})} required><option>Pendente</option><option>Em Produção</option><option>Pronto para Entrega</option><option>Finalizado</option><option>Cancelado</option></Select>
-                        <Select label="Categoria do Pedido" value={formData.categoria} onChange={(e) => setFormData({...formData, categoria: e.target.value, itens: [], subtotal: 0, desconto: 0, total: 0, cupom: null})} required>
+                        <Select label="Categoria do Pedido" value={formData.categoria} onChange={(e) => setFormData({...formData, categoria: e.target.value, itens: [], total: 0})} required>
                             <option value="Delivery">Delivery</option>
                             <option value="Festa">Festa</option>
                         </Select>
                         <Select label="Forma de Pagamento" value={formData.formaPagamento} onChange={(e) => setFormData({...formData, formaPagamento: e.target.value})} required>
-                            <option>Pix</option>
-                            <option>Cartão de Crédito</option>
-                            <option>Cartão de Débito</option>
-                            <option>Dinheiro</option>
-                            <option>Link de Pagamento</option>
+                            {ORDER_PAYMENT_OPTIONS.map((option) => <option key={option}>{option}</option>)}
                         </Select>
                         {formData.categoria === 'Festa' && (
-                            <Input 
-                                label="Data de Entrega" 
-                                type="date" 
-                                value={formData.dataEntrega} 
+                            <Input
+                                label="Data de Entrega"
+                                type="date"
+                                value={formData.dataEntrega}
                                 onChange={(e) => setFormData({...formData, dataEntrega: e.target.value})}
                                 min={getTodayString()}
-                                required 
+                                required
                             />
                         )}
                     </div>
-                     <Textarea 
-                        label="Observação" 
-                        rows="3" 
-                        value={formData.observacao || ''} 
-                        onChange={(e) => setFormData({...formData, observacao: e.target.value})} 
+                     <Textarea
+                        label="Observação"
+                        rows="3"
+                        value={formData.observacao || ''}
+                        onChange={(e) => setFormData({...formData, observacao: e.target.value})}
                         placeholder="Ex: Bolo sem cobertura, entregar para a secretária, etc."
                     />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -14321,12 +14121,7 @@ const handleSubmit = async (e) => {
                         </div>
                     </div>
 
-                    {orderSyncNotice && (
-                        <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-sm">
-                            {orderSyncNotice}
-                        </div>
-                    )}
-
+                    {orderSyncNotice && <p role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">{orderSyncNotice}</p>}
                     {saveOrderError && (
                         <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">
                             {saveOrderError}
@@ -14336,22 +14131,26 @@ const handleSubmit = async (e) => {
                     <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit" disabled={isSavingOrder}><Save className="w-4 h-4" />{isSavingOrder ? "Salvando..." : (editingOrder ? "Salvar Alterações" : "Criar Pedido")}</Button></div>
                 </form>
             </Modal>
-            <Modal isOpen={!!viewingOrder} onClose={() => setViewingOrder(null)} title="Detalhes do Pedido" size="lg">
+            <Modal isOpen={!!viewingOrder} onClose={() => { setViewingOrder(null); setRideRequest(null); setRideFeedback(''); }} title="Detalhes do Pedido" size="lg">
                 {viewingOrder && (() => {
                     const cliente = data.clientes.find(c => c.id === viewingOrder.clienteId);
                     const endereco = viewingOrder.clienteEndereco || cliente?.enderecos?.[0] || 'Não informado';
                     const telefone = viewingOrder.telefone || cliente?.telefone || '';
+                    const cpfCliente = viewingOrder.clienteDocumento || cliente?.cpf || cliente?.documento || '';
+                    const rideAddresses = getRideAddressesForOrder(viewingOrder);
+                    const showRideActions = isDeliveryOrder(viewingOrder);
                     const subtotal = (viewingOrder.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
-					const freteExibido = getOrderFreight(viewingOrder).label;
-                    const totalFinal = getSavedOrderTotal(viewingOrder).toFixed(2);
+					const frete = parseFloat(viewingOrder.valorFrete ?? viewingOrder.frete ?? 0) || 0;
+                    const freteACombinar = viewingOrder.freteACombinar === true || viewingOrder.tipoFrete === 'a_combinar';
+                    const freteExibido = freteACombinar ? 'A Combinar' : `R$ ${frete.toFixed(2)}`;
 
-                    
+
                     const handleSendToWhatsApp = () => {
                         if (!telefone) {
                            alert("Telefone do cliente não encontrado para enviar mensagem.");
                            return;
                         }
-            
+
                         const formattedPhone = telefone.replace(/\D/g, '');
                         // Adiciona 55 se não tiver, e garante que tenha 11 ou 13 dígitos (com 55)
                         const whatsappNumber = formattedPhone.length === 11 ? `55${formattedPhone}` : formattedPhone.length === 13 && formattedPhone.startsWith('55') ? formattedPhone : `55${formattedPhone}`; // Assume DDD + 9 dígitos se não tiver 55
@@ -14376,17 +14175,17 @@ const handleSubmit = async (e) => {
                         }
 
                         message += `*Frete:* ${freteExibido}\n`;
-                        message += `*Total:* R$ ${totalFinal}\n`;
+                        message += `*Total:* R$ ${(viewingOrder.total || 0).toFixed(2)}\n`;
                         if(viewingOrder.formaPagamento) message += `*Pagamento:* ${viewingOrder.formaPagamento}\n`;
                         message += `*Status:* ${viewingOrder.status}\n\n`;
                         if(viewingOrder.observacao) message += `*Observações:* ${viewingOrder.observacao}\n\n`;
-                        
+
                         message += `Agradecemos a sua preferência! ❤`;
 
                         const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
                         window.open(whatsappUrl, '_blank');
                     };
-                    
+
                     const handlePrint = () => {
                         const printWindow = window.open('', '_blank');
                         if (!printWindow) {
@@ -14419,9 +14218,9 @@ const handleSubmit = async (e) => {
                                 printWindow.document.write(`<p>Desconto:<span style="float: right;">- R$ ${viewingOrder.desconto.toFixed(2)}</span></p>`);
                             }
                         }
-                        
-                        printWindow.document.write(`<p>Frete: ${freteExibido}</p>`);
-                        printWindow.document.write(`<p class="total">Total:<span style="float: right;">R$ ${totalFinal}</span></p>`);
+
+                        printWindow.document.write(`<p>Frete:<span style="float: right;">${freteExibido}</span></p>`);
+                        printWindow.document.write(`<p class="total">Total:<span style="float: right;">R$ ${(viewingOrder.total || 0).toFixed(2)}</span></p>`);
                         if(viewingOrder.formaPagamento) printWindow.document.write(`<p>Pagamento: ${viewingOrder.formaPagamento}</p>`);
 
                         if(viewingOrder.observacao) {
@@ -14443,6 +14242,7 @@ const handleSubmit = async (e) => {
                             <div className="p-4 bg-gray-50 rounded-lg">
                                 <h3 className="font-bold text-lg text-gray-800 mb-2">Informações do Cliente</h3>
                                 <p><strong>Nome:</strong> {viewingOrder.clienteNome || 'N/A'}</p>
+                                <p><strong>CPF:</strong> {cpfCliente || 'Não informado'}</p>
                                 <p><strong>Endereço:</strong> {endereco}</p>
                                 <p><strong>Telefone:</strong> {telefone || 'Não informado'}</p>
                             </div>
@@ -14458,7 +14258,7 @@ const handleSubmit = async (e) => {
                                     {viewingOrder.dataEntrega && (<p><strong>Data de Entrega:</strong> {new Date(viewingOrder.dataEntrega + 'T03:00:00Z').toLocaleDateString('pt-BR')}</p>)}
                                 </div>
                             </div>
-                            
+
                              {viewingOrder.observacao && (
                                 <div className="p-4 bg-yellow-50 rounded-lg">
                                     <h3 className="font-bold text-lg text-yellow-800 mb-2">Observações</h3>
@@ -14483,20 +14283,20 @@ const handleSubmit = async (e) => {
                                     <>
                                         <p className="text-sm text-gray-600">Subtotal: R$ {subtotal.toFixed(2)}</p>
                                         <p className="text-sm text-red-600">
-                                            Desconto {viewingOrder.cupom ? `(${viewingOrder.cupom.codigo})` : ''}: 
+                                            Desconto {viewingOrder.cupom ? `(${viewingOrder.cupom.codigo})` : ''}:
                                             - R$ {(viewingOrder.cupom?.valorDesconto || viewingOrder.desconto || 0).toFixed(2)}
                                         </p>
                                     </>
                                 )}
                                 <p className="text-sm text-gray-600">Frete: {freteExibido}</p>
                                 <p className="font-bold text-2xl text-pink-600">
-                                    Total: R$ {totalFinal}
+                                    Total: R$ ${(viewingOrder.total || 0).toFixed(2)}
                                 </p>
                            </div>
 
                             <WhatsAppOrderStatus key={`${viewingOrder.lojaId || effectiveStoreId}:${viewingOrder.id}`} storeId={viewingOrder.lojaId || effectiveStoreId} orderId={viewingOrder.id} />
                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
-                                 <Button 
+                                 <Button
                                     onClick={handlePrint}
                                     variant="secondary"
                                     size="sm"
@@ -14511,7 +14311,7 @@ const handleSubmit = async (e) => {
                                     size="sm"
                                 >
                                     <MessageCircle className="w-4 h-4" />
-                                    Enviar Resumo Cliente (manual)
+                                    Abrir resumo no WhatsApp
                                 </Button>
                                 <Button
                                     onClick={() => setOrderToSendToDeliverer(viewingOrder)}
@@ -14522,7 +14322,39 @@ const handleSubmit = async (e) => {
                                     <Truck className="w-4 h-4" />
                                     Enviar Endereço para Entregador
                                 </Button>
+                                {showRideActions && rideAddresses.destination.address && (
+                                    <>
+                                        <Button
+                                            onClick={() => prepareRideRequest(viewingOrder, 'uber')}
+                                            disabled={!!rideLoadingService}
+                                            className="bg-gradient-to-r from-gray-800 to-black text-white hover:from-black hover:to-gray-900"
+                                            size="sm"
+                                        >
+                                            <RideCar className="w-4 h-4" />
+                                            {rideLoadingService === 'uber' ? 'Carregando...' : 'Chamar Uber'}
+                                        </Button>
+                                        <Button
+                                            onClick={() => prepareRideRequest(viewingOrder, '99')}
+                                            disabled={!!rideLoadingService}
+                                            className="bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-900 hover:from-yellow-500 hover:to-amber-600"
+                                            size="sm"
+                                        >
+                                            <RideCar className="w-4 h-4" />
+                                            {rideLoadingService === '99' ? 'Carregando...' : 'Chamar 99'}
+                                        </Button>
+                                    </>
+                                )}
                             </div>
+                            {showRideActions && !rideAddresses.destination.address && (
+                                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                                    Este pedido não possui endereço de entrega válido para solicitar uma corrida.
+                                </p>
+                            )}
+                            {rideFeedback && (
+                                <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                    {rideFeedback}
+                                </p>
+                            )}
                         </div>
                     );
                 })()}
@@ -14534,10 +14366,15 @@ const handleSubmit = async (e) => {
                 fornecedores={data.fornecedores}
                 onClose={() => setOrderToSendToDeliverer(null)}
             />
+            <RideConfirmationModal
+                request={rideRequest}
+                onClose={() => setRideRequest(null)}
+                onConfirm={openPreparedRide}
+            />
         </div>
     );
   }
-  
+
   const EntreLojas = () => {
     const [transferencias, setTransferencias] = useState([]);
     const [moduleTab, setModuleTab] = useState('remessas');
@@ -14571,6 +14408,12 @@ const handleSubmit = async (e) => {
     const [transferSyncNotice, setTransferSyncNotice] = useState('');
     const [closingSyncNotice, setClosingSyncNotice] = useState('');
     const [repasseConfigPercentual, setRepasseConfigPercentual] = useState(0);
+    const [authorizedDestinationStores, setAuthorizedDestinationStores] = useState([]);
+    const [isLoadingAuthorizedDestinations, setIsLoadingAuthorizedDestinations] = useState(false);
+    const [authorizedDestinationsError, setAuthorizedDestinationsError] = useState('');
+    const [authorizedClosingDestinationStores, setAuthorizedClosingDestinationStores] = useState([]);
+    const [isLoadingAuthorizedClosingDestinations, setIsLoadingAuthorizedClosingDestinations] = useState(false);
+    const [authorizedClosingDestinationsError, setAuthorizedClosingDestinationsError] = useState('');
     const [actionComment, setActionComment] = useState('');
     const [closingActionComment, setClosingActionComment] = useState('');
     const [closingPaymentForm, setClosingPaymentForm] = useState({
@@ -14609,6 +14452,10 @@ const handleSubmit = async (e) => {
     }, [user]);
 
     const canAccessAllTransfers = user?.role === ROLE_OWNER;
+    const canManageTransferDestinations = user?.role === ROLE_OWNER || (
+      user?.role === ROLE_MANAGER &&
+      user?.permissionDetails?.['entre-lojas']?.manageTransferDestinations === true
+    );
     const allowedOriginStoreIds = useMemo(() => {
       if (!user) return [];
       if (user.role === ROLE_OWNER) return availableStores;
@@ -14619,6 +14466,7 @@ const handleSubmit = async (e) => {
 
     const isEditingTransfer = !!editingTransfer?.id;
     const isEditingClosing = !!editingClosing?.id;
+    const editingClosingHasTransfers = isEditingClosing && (editingClosing?.remessaIds || []).length > 0;
     const canChangeOriginStore = allowedOriginStoreIds.length > 1;
     const visibleTransferColumnSet = useMemo(() => {
       const validColumnIds = new Set(TRANSFER_TABLE_COLUMN_OPTIONS.map((column) => column.id));
@@ -14710,13 +14558,17 @@ const handleSubmit = async (e) => {
     };
 
     const allowedStoreIds = useMemo(() => Array.from(new Set(userStoreIds.map(normalizeStoreId).filter(Boolean))), [userStoreIds]);
-    const allowedTransferStatuses = useMemo(() => getEntreLojasVisibleTransferStatuses({
-      user,
-      allowedStatuses: canAccessAllTransfers
+    const allowedTransferStatuses = useMemo(() => (
+      canAccessAllTransfers
         ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES]
         : getEntreLojasAllowedStatusesFromProfile(user)
-    }), [canAccessAllTransfers, user]);
+    ), [canAccessAllTransfers, user]);
     const allowedTransferStatusSet = useMemo(() => new Set(allowedTransferStatuses), [allowedTransferStatuses]);
+    const canViewTransferStatus = useCallback((transfer) => {
+      if (user?.role === ROLE_OWNER) return true;
+      const status = String(transfer?.status || '').trim();
+      return Boolean(status && allowedTransferStatusSet.has(status));
+    }, [allowedTransferStatusSet, user?.role]);
 
     const selectedStoreIdForView = useMemo(() => {
       if (!currentStoreIdForDisplay || currentStoreIdForDisplay === STORE_ALL_KEY) return null;
@@ -14731,13 +14583,30 @@ const handleSubmit = async (e) => {
       return allowedOriginStoreIds[0] || '';
     }, [allowedOriginStoreIds, currentStoreIdForDisplay]);
 
+    const isDraftHiddenForCurrentViewer = useCallback((transfer) => {
+      if (!transfer || transfer.status !== 'rascunho') return false;
+      const originId = normalizeStoreId(transfer.lojaOrigemId);
+      const destinationId = normalizeStoreId(transfer.lojaDestinoId);
+
+      if (selectedStoreIdForView) {
+        return destinationId === selectedStoreIdForView && originId !== selectedStoreIdForView;
+      }
+
+      if (canAccessAllTransfers) return false;
+      const canSeeAsOrigin = originId && allowedStoreIds.includes(originId);
+      const canSeeAsDestination = destinationId && allowedStoreIds.includes(destinationId);
+      return canSeeAsDestination && !canSeeAsOrigin;
+    }, [allowedStoreIds, canAccessAllTransfers, selectedStoreIdForView]);
+
     const canReadTransferForCurrentViewer = useCallback((transfer) => {
-      return canViewEntreLojasTransfer({
-        user,
-        transfer,
-        allowedStatuses: allowedTransferStatusSet
-      });
-    }, [allowedTransferStatusSet, user]);
+      if (!transfer) return false;
+      if (!canViewTransferStatus(transfer)) return false;
+      if (isDraftHiddenForCurrentViewer(transfer)) return false;
+      if (canAccessAllTransfers) return true;
+      const originId = normalizeStoreId(transfer.lojaOrigemId);
+      const destinationId = normalizeStoreId(transfer.lojaDestinoId);
+      return allowedStoreIds.includes(originId) || allowedStoreIds.includes(destinationId);
+    }, [allowedStoreIds, canAccessAllTransfers, canViewTransferStatus, isDraftHiddenForCurrentViewer]);
 
     const parseLocalDate = (value) => {
       if (!value) return null;
@@ -14796,6 +14665,7 @@ const handleSubmit = async (e) => {
       }
 
       const transfersRef = collection(db, 'transferenciasEntreLojas');
+      setTransferencias([]);
       let isActive = true;
       const unsubscribes = [];
 
@@ -14847,12 +14717,15 @@ const handleSubmit = async (e) => {
 
         const originDocs = Array.from(originDocsByQuery.values()).flat();
         const destinationDocs = Array.from(destinationDocsByQuery.values()).flat();
-        const visibleTransfers = [...originDocs, ...destinationDocs].map((docSnap) => {
-          const transfer = { id: docSnap.id, ...docSnap.data() };
-          return canReadTransferForCurrentViewer(transfer) ? transfer : null;
-        }).filter(Boolean);
+        const merged = new Map();
 
-        const sortedRows = deduplicateEntreLojasTransfers(visibleTransfers).sort((a, b) => {
+        [...originDocs, ...destinationDocs].forEach((docSnap) => {
+          const transfer = { id: docSnap.id, ...docSnap.data() };
+          if (!canReadTransferForCurrentViewer(transfer)) return;
+          merged.set(docSnap.id, transfer);
+        });
+
+        const sortedRows = Array.from(merged.values()).sort((a, b) => {
           const dateA = getJSDate(a.dataCriacao)?.getTime() || 0;
           const dateB = getJSDate(b.dataCriacao)?.getTime() || 0;
           return dateB - dateA;
@@ -14896,6 +14769,8 @@ const handleSubmit = async (e) => {
             });
             mergeTransfers();
           }, (error) => {
+            originDocsByQuery.delete(originKey);
+            mergeTransfers();
             console.error('[EntreLojas] Erro ao carregar transferências por origem:', error);
           });
 
@@ -14921,6 +14796,8 @@ const handleSubmit = async (e) => {
             });
             mergeTransfers();
           }, (error) => {
+            destinationDocsByQuery.delete(destinationKey);
+            mergeTransfers();
             console.error('[EntreLojas] Erro ao carregar transferências por destino:', error);
           });
 
@@ -15030,6 +14907,93 @@ const handleSubmit = async (e) => {
       () => availableStores.map((storeId) => ({ id: storeId, nome: storeInfoMap[storeId]?.nome || storeId })),
       [availableStores, storeInfoMap]
     );
+
+    const authorizedDestinationStoreIds = useMemo(
+      () => new Set(authorizedDestinationStores.map((store) => store.id)),
+      [authorizedDestinationStores]
+    );
+
+    useEffect(() => {
+      const originStoreId = normalizeStoreId(formData.lojaOrigemId);
+      if (!showModal || !originStoreId) {
+        setAuthorizedDestinationStores([]);
+        setAuthorizedDestinationsError('');
+        setIsLoadingAuthorizedDestinations(false);
+        return undefined;
+      }
+
+      let active = true;
+      setIsLoadingAuthorizedDestinations(true);
+      setAuthorizedDestinationsError('');
+      fetchAuthorizedTransferDestinations(functions, originStoreId)
+        .then((destinations) => {
+          if (!active) return;
+          setAuthorizedDestinationStores(destinations);
+          setFormData((prev) => {
+            if (!prev.lojaDestinoId || isEditingTransfer) return prev;
+            return destinations.some((store) => store.id === prev.lojaDestinoId)
+              ? prev
+              : { ...prev, lojaDestinoId: '' };
+          });
+        })
+        .catch((error) => {
+          if (!active) return;
+          console.error('[EntreLojas] Erro ao carregar destinos autorizados:', error);
+          setAuthorizedDestinationStores([]);
+          setAuthorizedDestinationsError(error?.message || 'Não foi possível carregar os destinos autorizados.');
+        })
+        .finally(() => {
+          if (active) setIsLoadingAuthorizedDestinations(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [formData.lojaOrigemId, isEditingTransfer, showModal]);
+
+    const authorizedClosingDestinationStoreIds = useMemo(
+      () => new Set(authorizedClosingDestinationStores.map((store) => store.id)),
+      [authorizedClosingDestinationStores]
+    );
+
+    useEffect(() => {
+      const originStoreId = normalizeStoreId(closingFormData.lojaOrigemId);
+      if (!showClosingModal || !originStoreId) {
+        setAuthorizedClosingDestinationStores([]);
+        setAuthorizedClosingDestinationsError('');
+        setIsLoadingAuthorizedClosingDestinations(false);
+        return undefined;
+      }
+
+      let active = true;
+      setAuthorizedClosingDestinationStores([]);
+      setIsLoadingAuthorizedClosingDestinations(true);
+      setAuthorizedClosingDestinationsError('');
+      fetchAuthorizedTransferDestinations(functions, originStoreId)
+        .then((destinations) => {
+          if (!active) return;
+          setAuthorizedClosingDestinationStores(destinations);
+          setClosingFormData((previous) => {
+            if (!previous.lojaDestinoId || editingClosingHasTransfers) return previous;
+            return destinations.some((store) => store.id === previous.lojaDestinoId)
+              ? previous
+              : { ...previous, lojaDestinoId: '' };
+          });
+        })
+        .catch((error) => {
+          if (!active) return;
+          console.error('[EntreLojas] Erro ao carregar destinos autorizados do fechamento:', error);
+          setAuthorizedClosingDestinationStores([]);
+          setAuthorizedClosingDestinationsError(error?.message || 'Não foi possível carregar os destinos autorizados.');
+        })
+        .finally(() => {
+          if (active) setIsLoadingAuthorizedClosingDestinations(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [closingFormData.lojaOrigemId, editingClosingHasTransfers, showClosingModal]);
 
     const productOptions = useMemo(() => {
       const originStoreId = normalizeStoreId(formData.lojaOrigemId);
@@ -15213,6 +15177,16 @@ const handleSubmit = async (e) => {
       }
     }, [canReadTransferForCurrentViewer, transferencias, viewingTransfer]);
 
+    useEffect(() => {
+      if (!editingTransfer?.id) return;
+      const latest = transferencias.find((item) => item.id === editingTransfer.id);
+      if (!latest || !canReadTransferForCurrentViewer(latest)) {
+        setEditingTransfer(null);
+        setShowModal(false);
+        setFormData((previous) => ({ ...previous, itens: [], observacaoOrigem: '' }));
+      }
+    }, [canReadTransferForCurrentViewer, editingTransfer, transferencias]);
+
     const formatMoney = (value) => `R$ ${(Number(value) || 0).toFixed(2)}`;
     const formatDate = (value) => parseLocalDate(value)?.toLocaleDateString('pt-BR') || '-';
     const statusLabelMap = ENTRE_LOJAS_TRANSFER_STATUS_LABELS;
@@ -15367,7 +15341,7 @@ const handleSubmit = async (e) => {
       setFormData((prev) => ({ ...prev, itens: prev.itens.filter((_, itemIndex) => itemIndex !== index) }));
     };
 
-    const validateTransfer = () => {
+    const validateTransfer = (mode = 'rascunho') => {
       if (!formData.lojaOrigemId || !formData.lojaDestinoId || !formData.itens.length) {
         return 'Informe loja origem, loja destino e pelo menos um item.';
       }
@@ -15378,6 +15352,14 @@ const handleSubmit = async (e) => {
         return isEditingTransfer
           ? 'Você não pode editar remessa para essa loja de origem.'
           : 'Você não pode criar remessa para essa loja de origem.';
+      }
+      const routeNeedsCurrentAuthorization = !isEditingTransfer ||
+        editingTransfer?.status === 'rascunho' ||
+        mode === 'enviar';
+      if (routeNeedsCurrentAuthorization && !authorizedDestinationStoreIds.has(formData.lojaDestinoId)) {
+        return editingTransfer?.status === 'rascunho' && mode === 'enviar'
+          ? 'Esta loja não está mais autorizada como destino de remessas desta origem.'
+          : 'A loja destino não está autorizada para receber remessas desta origem.';
       }
       for (const item of formData.itens) {
         if (!item.produtoId) return 'Selecione um produto para todos os itens.';
@@ -15409,10 +15391,6 @@ const handleSubmit = async (e) => {
       const fechamentoId = normalizeStoreId(formData.fechamentoId);
       const changes = [];
 
-      if (!canAccessAllTransfers && (!allowedStoreIds.includes(origemId) || !allowedStoreIds.includes(destinoId))) {
-        throw new Error('Você não tem permissão para esta loja de origem ou destino.');
-      }
-
       if (!allowedOriginStoreIds.includes(origemId)) {
         throw new Error(isEditingTransfer ? 'Você não pode editar remessa para essa loja de origem.' : 'Você não pode criar remessa para essa loja de origem.');
       }
@@ -15421,9 +15399,28 @@ const handleSubmit = async (e) => {
         throw new Error('A loja destino deve ser diferente da loja origem.');
       }
 
-      const [origemSnap, destinoSnap, configSnap, currentTransferSnap, fechamentoSnap, productSnaps] = await Promise.all([
+      const routeChanged = isEditingTransfer && (
+        normalizeStoreId(editingTransfer?.lojaOrigemId) !== origemId ||
+        normalizeStoreId(editingTransfer?.lojaDestinoId) !== destinoId
+      );
+      const mustRevalidateDestination = !isEditingTransfer ||
+        routeChanged ||
+        (editingTransfer?.status === 'rascunho' && mode === 'enviar');
+      let validatedDestination = null;
+      if (mustRevalidateDestination) {
+        const currentDestinations = await fetchAuthorizedTransferDestinations(functions, origemId);
+        validatedDestination = currentDestinations.find((store) => store.id === destinoId) || null;
+        if (!validatedDestination) {
+          throw new Error(
+            isEditingTransfer && editingTransfer?.status === 'rascunho' && mode === 'enviar'
+              ? 'Esta loja não está mais autorizada como destino de remessas desta origem.'
+              : 'A loja destino não está autorizada para receber remessas desta origem.'
+          );
+        }
+      }
+
+      const [origemSnap, configSnap, currentTransferSnap, fechamentoSnap, productSnaps] = await Promise.all([
         readStoreSnapshotOrThrow(origemId, 'origem'),
-        readStoreSnapshotOrThrow(destinoId, 'destino'),
         getDoc(getStoreConfigDocRef(origemId)),
         isEditingTransfer && editingTransfer?.id
           ? getDoc(doc(db, 'transferenciasEntreLojas', editingTransfer.id))
@@ -15542,7 +15539,10 @@ const handleSubmit = async (e) => {
         ? (mode === 'enviar' && editingTransfer?.status === 'rascunho' ? 'aguardando_conferencia' : (editingTransfer?.status || 'rascunho'))
         : (mode === 'enviar' ? 'aguardando_conferencia' : 'rascunho');
       const origemNome = storeInfoMap[origemId]?.nome || origemSnap.data()?.nome || origemId;
-      const destinoNome = storeInfoMap[destinoId]?.nome || destinoSnap.data()?.nome || destinoId;
+      const destinoNome = validatedDestination?.nome ||
+        editingTransfer?.lojaDestinoNome ||
+        storeInfoMap[destinoId]?.nome ||
+        destinoId;
 
       return {
         changes,
@@ -15682,7 +15682,7 @@ const handleSubmit = async (e) => {
         setFormError(blockedByStatus ? 'Remessa com pagamento confirmado não pode ser editada.' : 'Você não tem permissão para editar esta remessa.');
         return;
       }
-      const validationError = validateTransfer();
+      const validationError = validateTransfer(mode);
       if (validationError) {
         setFormError(validationError);
         return;
@@ -15937,19 +15937,19 @@ const handleSubmit = async (e) => {
       }
     };
 
-    const isStoreAllowedForUser = (storeId) => {
-      if (canAccessAllTransfers) return true;
-      return allowedStoreIds.includes(normalizeStoreId(storeId));
-    };
-
     const canViewClosing = useCallback((closing) => {
-      return canViewEntreLojasClosing({ user, closing });
-    }, [user]);
+      if (canAccessAllTransfers) return true;
+      const originId = normalizeStoreId(closing?.lojaOrigemId);
+      const destinationId = normalizeStoreId(closing?.lojaDestinoId);
+      return allowedStoreIds.includes(originId) || allowedStoreIds.includes(destinationId);
+    }, [allowedStoreIds, canAccessAllTransfers]);
 
     const canCreateClosing = () => {
-      if (!user) return false;
-      if (user.role === ROLE_OWNER || user.role === ROLE_MANAGER) return true;
-      return false;
+      return Boolean(
+        user &&
+        (canAccessAllTransfers || user.permissions?.['entre-lojas'] !== false) &&
+        allowedOriginStoreIds.length
+      );
     };
 
     const getClosingPermissions = (closing) => getClosingActionPermissions({
@@ -16024,6 +16024,16 @@ const handleSubmit = async (e) => {
         return 'Informe nome, origem, destino e período do fechamento.';
       }
       if (origemId === destinoId) return 'A loja destino deve ser diferente da loja origem.';
+      if (!allowedOriginStoreIds.includes(origemId)) {
+        return 'Você não pode criar fechamento para essa loja de origem.';
+      }
+      const routeChanged = isEditingClosing && (
+        normalizeStoreId(editingClosing?.lojaOrigemId) !== origemId ||
+        normalizeStoreId(editingClosing?.lojaDestinoId) !== destinoId
+      );
+      if ((!isEditingClosing || routeChanged) && !authorizedClosingDestinationStoreIds.has(destinoId)) {
+        return 'A loja destino não está autorizada para receber remessas desta origem.';
+      }
       const start = parseLocalDate(closingFormData.periodoInicio);
       const end = parseLocalDate(closingFormData.periodoFim);
       if (!start || !end || start > end) return 'Informe um período válido para o fechamento.';
@@ -16031,9 +16041,6 @@ const handleSubmit = async (e) => {
         if (!canEditClosing(editingClosing)) return 'Você não tem permissão para editar este fechamento.';
       } else if (!canCreateClosing()) {
         return 'Você não tem permissão para criar fechamentos.';
-      }
-      if (!canAccessAllTransfers && !isStoreAllowedForUser(origemId) && !isStoreAllowedForUser(destinoId)) {
-        return 'Você não tem permissão para criar fechamento para estas lojas.';
       }
       return '';
     };
@@ -16052,6 +16059,16 @@ const handleSubmit = async (e) => {
       setClosingSyncNotice('');
 
       try {
+        const routeChanged = isEditingClosing && (
+          normalizeStoreId(editingClosing?.lojaOrigemId) !== origemId ||
+          normalizeStoreId(editingClosing?.lojaDestinoId) !== destinoId
+        );
+        if (!isEditingClosing || routeChanged) {
+          const currentDestinations = await fetchAuthorizedTransferDestinations(functions, origemId);
+          if (!currentDestinations.some((store) => store.id === destinoId)) {
+            throw new Error('A loja destino não está autorizada para receber remessas desta origem.');
+          }
+        }
         const [origemSnap, destinoSnap] = await Promise.all([
           readStoreSnapshotOrThrow(origemId, 'origem'),
           readStoreSnapshotOrThrow(destinoId, 'destino')
@@ -16541,6 +16558,13 @@ const handleSubmit = async (e) => {
       return canReadTransferForCurrentViewer(transfer);
     }, [canReadTransferForCurrentViewer]);
 
+    const matchesSelectedStoreView = useCallback((transfer) => {
+      if (!selectedStoreIdForView) return true;
+      const originId = normalizeStoreId(transfer?.lojaOrigemId);
+      const destinationId = normalizeStoreId(transfer?.lojaDestinoId);
+      return originId === selectedStoreIdForView || destinationId === selectedStoreIdForView;
+    }, [selectedStoreIdForView]);
+
     const matchesSelectedStoreClosingView = useCallback((closing) => {
       if (!selectedStoreIdForView) return true;
       const originId = normalizeStoreId(closing?.lojaOrigemId);
@@ -16583,21 +16607,48 @@ const handleSubmit = async (e) => {
       });
     }, [canViewClosing, closingDestinoFilter, closingEndDateFilter, closingMonthFilter, closingOrigemFilter, closingStartDateFilter, closingStatusFilter, fechamentos, matchesSelectedStoreClosingView]);
 
-    const filteredTransfers = useMemo(() => filterEntreLojasTransfers({
-      transfers: transferencias,
-      user,
-      allowedStatuses: allowedTransferStatusSet,
-      selectedStoreId: selectedStoreIdForView,
-      activeTab,
-      statusFilter,
-      originFilter: origemFilter,
-      destinationFilter: destinoFilter,
-      startDateFilter,
-      endDateFilter,
-      paymentStatuses: ENTRE_LOJAS_PAYMENT_TAB_STATUS_VALUES,
-      historyStatuses: ENTRE_LOJAS_HISTORY_STATUS_VALUES,
-      resolveDate: getJSDate
-    }), [activeTab, allowedTransferStatusSet, destinoFilter, endDateFilter, origemFilter, selectedStoreIdForView, startDateFilter, statusFilter, transferencias, user]);
+    const filteredTransfers = useMemo(() => {
+      return (transferencias || []).filter((item) => {
+        const originId = normalizeStoreId(item.lojaOrigemId);
+        const destinationId = normalizeStoreId(item.lojaDestinoId);
+
+        if (!canViewTransfer(item)) {
+          entreLojasLog('Remessa removida por canViewTransfer', { id: item.id, originId, destinationId, allowedStoreIds });
+          return false;
+        }
+
+        if (!matchesSelectedStoreView(item)) {
+          entreLojasLog('Remessa removida por matchesSelectedStoreView', { id: item.id, originId, destinationId, selectedStoreIdForView });
+          return false;
+        }
+
+        const sentInCurrentView = selectedStoreIdForView
+          ? originId === selectedStoreIdForView
+          : Boolean(originId && (canAccessAllTransfers || allowedStoreIds.includes(originId)));
+        const receivedInCurrentView = selectedStoreIdForView
+          ? destinationId === selectedStoreIdForView
+          : Boolean(destinationId && (canAccessAllTransfers || allowedStoreIds.includes(destinationId)));
+
+        if (activeTab === 'enviadas' && !sentInCurrentView) {
+          entreLojasLog('Remessa removida por aba enviadas', { id: item.id, originId, selectedStoreIdForView });
+          return false;
+        }
+        if (activeTab === 'recebidas' && !receivedInCurrentView) {
+          entreLojasLog('Remessa removida por aba recebidas', { id: item.id, destinationId, selectedStoreIdForView });
+          return false;
+        }
+        if (activeTab === 'aguardando_conferencia' && item.status !== 'aguardando_conferencia') return false;
+        if (activeTab === 'aguardando_pagamento' && !ENTRE_LOJAS_PAYMENT_TAB_STATUS_VALUES.includes(item.status)) return false;
+        if (activeTab === 'historico' && !ENTRE_LOJAS_HISTORY_STATUS_VALUES.includes(item.status)) return false;
+        if (statusFilter !== 'todos' && item.status !== statusFilter) return false;
+        if (origemFilter !== 'todos' && item.lojaOrigemId !== origemFilter) return false;
+        if (destinoFilter !== 'todos' && item.lojaDestinoId !== destinoFilter) return false;
+        const createdAtDate = getJSDate(item.dataCriacao);
+        if (startDateFilter && createdAtDate && createdAtDate < new Date(`${startDateFilter}T00:00:00`)) return false;
+        if (endDateFilter && createdAtDate && createdAtDate > new Date(`${endDateFilter}T23:59:59`)) return false;
+        return true;
+      });
+    }, [activeTab, allowedStoreIds, canAccessAllTransfers, canViewTransfer, destinoFilter, endDateFilter, matchesSelectedStoreView, origemFilter, selectedStoreIdForView, startDateFilter, statusFilter, transferencias]);
 
     useEffect(() => {
       entreLojasLog('Resultado após filtros', {
@@ -16611,7 +16662,14 @@ const handleSubmit = async (e) => {
       });
     }, [activeTab, destinoFilter, filteredTransfers.length, origemFilter, selectedStoreIdForView, statusFilter, transferencias.length]);
 
-    const summary = useMemo(() => summarizeEntreLojasTransfers(filteredTransfers), [filteredTransfers]);
+    const summary = useMemo(() => filteredTransfers.reduce((acc, item) => {
+      acc.total += 1;
+      acc.totalRepasse += Number(item.totalRepasse) || 0;
+      acc.totalRevenda += Number(item.totalRevenda) || 0;
+      if (item.status === 'aguardando_conferencia') acc.aguardandoConferencia += 1;
+      if (item.status === 'pagamento_informado') acc.aguardandoConfirmacao += 1;
+      return acc;
+    }, { total: 0, totalRepasse: 0, totalRevenda: 0, aguardandoConferencia: 0, aguardandoConfirmacao: 0 }), [filteredTransfers]);
 
     const closingSummary = useMemo(() => filteredClosings.reduce((acc, closing) => {
       acc.total += 1;
@@ -16659,7 +16717,7 @@ const handleSubmit = async (e) => {
     const visibleTransferTableColumns = columns.filter((column) => visibleTransferColumnSet.has(column.id));
 
     const actions = [
-      { icon: Eye, label: 'Visualizar', onClick: (row) => setViewingTransfer(row) },
+      { icon: Eye, label: 'Visualizar', onClick: (row) => { if (canReadTransferForCurrentViewer(row)) setViewingTransfer(row); } },
       {
         icon: ArrowLeftRight,
         label: 'Mover para fechamento',
@@ -16722,8 +16780,6 @@ const handleSubmit = async (e) => {
           : null;
       })
       .filter(Boolean);
-    const editingClosingHasTransfers = isEditingClosing && (editingClosing?.remessaIds || []).length > 0;
-
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -16901,7 +16957,7 @@ const handleSubmit = async (e) => {
                   setFormData((prev) => ({
                     ...prev,
                     lojaOrigemId: nextOriginId,
-                    lojaDestinoId: prev.lojaDestinoId === nextOriginId ? '' : prev.lojaDestinoId,
+                    lojaDestinoId: '',
                     itens: []
                   }));
                 }}
@@ -16911,14 +16967,28 @@ const handleSubmit = async (e) => {
                   <option key={store.id} value={store.id}>{store.nome}</option>
                 ))}
               </Select>
-              <Select label="Loja destino" disabled={Boolean(formData.fechamentoId) || (isEditingTransfer && editingTransfer?.status !== 'rascunho')} value={formData.lojaDestinoId} onChange={(e) => setFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
-                <option value="">Selecione</option>
-                {storesForSelect.filter((store) => store.id !== formData.lojaOrigemId).map((store) => (
+              <Select label="Loja destino" disabled={!formData.lojaOrigemId || isLoadingAuthorizedDestinations || Boolean(formData.fechamentoId) || (isEditingTransfer && editingTransfer?.status !== 'rascunho')} value={formData.lojaDestinoId} onChange={(e) => setFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
+                <option value="">{isLoadingAuthorizedDestinations ? 'Carregando destinos...' : 'Selecione'}</option>
+                {formData.lojaDestinoId && !authorizedDestinationStoreIds.has(formData.lojaDestinoId) && (
+                  <option value={formData.lojaDestinoId} disabled>
+                    {editingTransfer?.lojaDestinoNome || formData.lojaDestinoId} — não autorizado
+                  </option>
+                )}
+                {authorizedDestinationStores.map((store) => (
                   <option key={store.id} value={store.id}>{store.nome}</option>
                 ))}
               </Select>
               <Input label="Data da remessa" type="date" value={formData.dataRemessa} onChange={(e) => setFormData((prev) => ({ ...prev, dataRemessa: e.target.value }))} />
             </div>
+            {!isLoadingAuthorizedDestinations && formData.lojaOrigemId && !authorizedDestinationStores.length && !authorizedDestinationsError && (
+              <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p>Nenhuma loja destino está autorizada para receber remessas desta unidade.</p>
+                {canManageTransferDestinations && <p className="mt-1">Configure os destinos em Configurações &gt; Entre Lojas.</p>}
+              </div>
+            )}
+            {authorizedDestinationsError && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{authorizedDestinationsError}</div>
+            )}
             <Textarea label="Observação da origem" value={formData.observacaoOrigem} onChange={(e) => setFormData((prev) => ({ ...prev, observacaoOrigem: e.target.value }))} rows={3} />
 
             <div className="border rounded-xl p-4 space-y-3">
@@ -16988,8 +17058,8 @@ const handleSubmit = async (e) => {
                 <Button variant="secondary" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button>
                 {(!isEditingTransfer || editingTransfer?.status === 'rascunho') && (
                   <>
-                    <Button variant="outline" disabled={isSavingTransfer} onClick={() => saveTransfer('rascunho')}>Salvar Rascunho</Button>
-                    <Button disabled={isSavingTransfer} onClick={() => saveTransfer('enviar')}>{isSavingTransfer ? 'Salvando...' : 'Enviar para Conferência'}</Button>
+                    <Button variant="outline" disabled={isSavingTransfer || isLoadingAuthorizedDestinations || !authorizedDestinationStores.length} onClick={() => saveTransfer('rascunho')}>Salvar Rascunho</Button>
+                    <Button disabled={isSavingTransfer || isLoadingAuthorizedDestinations || !authorizedDestinationStores.length} onClick={() => saveTransfer('enviar')}>{isSavingTransfer ? 'Salvando...' : 'Enviar para Conferência'}</Button>
                   </>
                 )}
                 {isEditingTransfer && editingTransfer?.status !== 'rascunho' && (
@@ -17011,24 +17081,29 @@ const handleSubmit = async (e) => {
               <Select
                 label="Loja origem"
                 value={closingFormData.lojaOrigemId}
-                disabled={editingClosingHasTransfers}
+                disabled={editingClosingHasTransfers || !canChangeOriginStore}
                 onChange={(e) => {
                   const nextOriginId = e.target.value;
                   setClosingFormData((prev) => ({
                     ...prev,
                     lojaOrigemId: nextOriginId,
-                    lojaDestinoId: prev.lojaDestinoId === nextOriginId ? '' : prev.lojaDestinoId
+                    lojaDestinoId: ''
                   }));
                 }}
               >
                 <option value="">Selecione</option>
-                {storesForSelect.filter((store) => canAccessAllTransfers || allowedStoreIds.includes(store.id)).map((store) => (
+                {storesForSelect.filter((store) => allowedOriginStoreIds.includes(store.id)).map((store) => (
                   <option key={store.id} value={store.id}>{store.nome}</option>
                 ))}
               </Select>
-              <Select label="Loja destino" disabled={editingClosingHasTransfers} value={closingFormData.lojaDestinoId} onChange={(e) => setClosingFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
-                <option value="">Selecione</option>
-                {storesForSelect.filter((store) => store.id !== closingFormData.lojaOrigemId).map((store) => (
+              <Select label="Loja destino" disabled={!closingFormData.lojaOrigemId || isLoadingAuthorizedClosingDestinations || editingClosingHasTransfers} value={closingFormData.lojaDestinoId} onChange={(e) => setClosingFormData((prev) => ({ ...prev, lojaDestinoId: e.target.value }))}>
+                <option value="">{isLoadingAuthorizedClosingDestinations ? 'Carregando destinos...' : 'Selecione'}</option>
+                {closingFormData.lojaDestinoId && !authorizedClosingDestinationStoreIds.has(closingFormData.lojaDestinoId) && (
+                  <option value={closingFormData.lojaDestinoId} disabled>
+                    {editingClosing?.lojaDestinoNome || closingFormData.lojaDestinoId} — não autorizado
+                  </option>
+                )}
+                {authorizedClosingDestinationStores.map((store) => (
                   <option key={store.id} value={store.id}>{store.nome}</option>
                 ))}
               </Select>
@@ -17062,13 +17137,22 @@ const handleSubmit = async (e) => {
                 <Input label="Nome do fechamento" value={closingFormData.nome} onChange={(e) => setClosingFormData((prev) => ({ ...prev, nome: e.target.value }))} />
               </div>
             </div>
+            {!isLoadingAuthorizedClosingDestinations && closingFormData.lojaOrigemId && !authorizedClosingDestinationStores.length && !authorizedClosingDestinationsError && (
+              <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p>Nenhuma loja destino está autorizada para receber remessas desta unidade.</p>
+                {canManageTransferDestinations && <p className="mt-1">Configure os destinos em Configurações &gt; Entre Lojas.</p>}
+              </div>
+            )}
+            {authorizedClosingDestinationsError && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{authorizedClosingDestinationsError}</div>
+            )}
             <Textarea label="Observação da origem" value={closingFormData.observacaoOrigem} onChange={(e) => setClosingFormData((prev) => ({ ...prev, observacaoOrigem: e.target.value }))} rows={2} />
             <Textarea label="Observação do destino" value={closingFormData.observacaoDestino} onChange={(e) => setClosingFormData((prev) => ({ ...prev, observacaoDestino: e.target.value }))} rows={2} />
             {closingSyncNotice && <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">{closingSyncNotice}</div>}
             {closingFormError && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{closingFormError}</div>}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => { setShowClosingModal(false); resetClosingForm(); }}>Cancelar</Button>
-              <Button disabled={isSavingClosing} onClick={saveClosing}>{isSavingClosing ? 'Salvando...' : (isEditingClosing ? 'Salvar alterações' : 'Criar fechamento')}</Button>
+              <Button disabled={isSavingClosing || isLoadingAuthorizedClosingDestinations || (!isEditingClosing && !authorizedClosingDestinationStores.length)} onClick={saveClosing}>{isSavingClosing ? 'Salvando...' : (isEditingClosing ? 'Salvar alterações' : 'Criar fechamento')}</Button>
             </div>
           </div>
         </Modal>
@@ -17229,7 +17313,7 @@ const handleSubmit = async (e) => {
           )}
         </Modal>
 
-        <Modal isOpen={!!viewingTransfer} onClose={() => { setViewingTransfer(null); setActionComment(''); }} title="Detalhe da Remessa" size="xl">
+        <Modal isOpen={!!viewingTransfer && canReadTransferForCurrentViewer(viewingTransfer)} onClose={() => { setViewingTransfer(null); setActionComment(''); }} title="Detalhe da Remessa" size="xl">
           {viewingTransfer && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-gray-50 rounded-xl p-4 text-sm">
@@ -17310,8 +17394,6 @@ const handleSubmit = async (e) => {
     const [selectedDay, setSelectedDay] = useState(null);
     const [viewingOrder, setViewingOrder] = useState(null);
     const [orderToSendToDeliverer, setOrderToSendToDeliverer] = useState(null);
-    const [reminderForm, setReminderForm] = useState({ titulo: '', hora: '', descricao: '' });
-    const [isSavingReminder, setIsSavingReminder] = useState(false);
 
     const deliveryProviders = useMemo(
         () => (data.fornecedores || []).filter(f => (f.status || 'Ativo') !== 'Inativo'),
@@ -17326,63 +17408,48 @@ const handleSubmit = async (e) => {
         }
         return deliveryProviders.length > 0;
     };
-    
-    const getStatusClass = (status) => { 
-        switch (status) { 
-            case 'Pendente': return 'bg-yellow-400'; 
-            case 'Em Produção': return 'bg-blue-400'; 
-            case 'Finalizado': return 'bg-green-400'; 
-            case 'Cancelado': return 'bg-red-400'; 
-            default: return 'bg-gray-400'; 
-        } 
+
+    const getStatusClass = (status) => {
+        switch (status) {
+            case 'Pendente': return 'bg-yellow-400';
+            case 'Em Produção': return 'bg-blue-400';
+            case 'Finalizado': return 'bg-green-400';
+            case 'Cancelado': return 'bg-red-400';
+            default: return 'bg-gray-400';
+        }
     };
-    
-    const getStatusClassText = (status) => { 
-        switch (status) { 
-            case 'Pendente': return 'bg-yellow-100 text-yellow-800'; 
-            case 'Em Produção': return 'bg-blue-100 text-blue-800'; 
-            case 'Finalizado': return 'bg-green-100 text-green-800'; 
-            case 'Cancelado': return 'bg-red-100 text-red-800'; 
-            default: return 'bg-gray-100 text-gray-800'; 
-        } 
+
+    const getStatusClassText = (status) => {
+        switch (status) {
+            case 'Pendente': return 'bg-yellow-100 text-yellow-800';
+            case 'Em Produção': return 'bg-blue-100 text-blue-800';
+            case 'Finalizado': return 'bg-green-100 text-green-800';
+            case 'Cancelado': return 'bg-red-100 text-red-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
     };
 
     const daysOfWeek = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-    const calendarWeekCount = Math.ceil((firstDayOfMonth + daysInMonth) / daysOfWeek.length);
 
     const changeMonth = (offset) => {
         setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + offset, 1));
     };
 
-    const getScheduledOrderInfo = (order) => {
-        const dateValue = order.dataEntrega || order.dataAgendada || order.entregaData || order.deliveryDate || order.scheduledDate || order.agendadoPara;
-        const timeValue = order.horaEntrega || order.horarioEntrega || order.deliveryTime || order.horarioAgendado || '';
-        if (!dateValue && !timeValue) return null;
-
-        const parsedDate = dateValue ? parseDateKey(dateValue) : getJSDate(order.createdAt);
-        if (!parsedDate) return null;
-
-        return {
-            date: parsedDate,
-            dateKey: formatDateKey(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate()),
-            time: timeValue
-        };
-    };
-
-    const pedidosProgramadosDoMes = (data.pedidos || []).filter(p => {
-        if (['Cancelado', 'Cancelada'].includes(p.status)) return false;
-        const schedule = getScheduledOrderInfo(p);
-        return schedule && schedule.date.getFullYear() === currentDate.getFullYear() && schedule.date.getMonth() === currentDate.getMonth();
-    });
-
-    const lembretesDoMes = (data.agendaLembretes || []).filter((reminder) => {
-        const reminderDate = parseDateKey(reminder.data);
-        return reminderDate && reminderDate.getFullYear() === currentDate.getFullYear() && reminderDate.getMonth() === currentDate.getMonth();
-    });
-
-    const feriadosNacionais = useMemo(() => getBrazilNationalHolidays(currentDate.getFullYear()), [currentDate]);
+    const pedidosDoMes = (data.pedidos || []).filter(p => {
+		const relevantDateStr = p.categoria === 'Festa' && p.dataEntrega ? p.dataEntrega : p.createdAt;
+		let pedidoDate = getJSDate(relevantDateStr);
+		if (p.categoria === 'Festa' && p.dataEntrega) {
+			const [year, month, day] = p.dataEntrega.split('-');
+			const y = parseInt(year, 10);
+			const m = parseInt(month, 10) - 1;
+			const d = parseInt(day, 10);
+			pedidoDate = new Date(Date.UTC(y, m, d));
+		  }
+	  return pedidoDate && pedidoDate.getFullYear() === currentDate.getFullYear() &&
+			 pedidoDate.getMonth() === currentDate.getMonth();
+	});
 
     const clientes = data.clientes || [];
     const aniversariantesDoMes = useMemo(() => {
@@ -17395,72 +17462,44 @@ const handleSubmit = async (e) => {
         });
     }, [data.clientes, currentDate]);
 
-    const openAgendaDay = ({ day, dateKey, pedidos, aniversariantes, lembretes, feriado }) => {
-        setReminderForm({ titulo: '', hora: '', descricao: '' });
-        setSelectedDay({ day, dateKey, pedidos, aniversariantes, lembretes, feriado });
-    };
-
-    const handleReminderSubmit = async (event) => {
-        event.preventDefault();
-        if (!selectedDay?.dateKey) return;
-        const title = reminderForm.titulo.trim();
-        if (!title) {
-            alert('Informe o título do lembrete.');
-            return;
-        }
-
-        try {
-            setIsSavingReminder(true);
-            await addItem('agendaLembretes', {
-                titulo: title,
-                data: selectedDay.dateKey,
-                hora: reminderForm.hora || '',
-                descricao: reminderForm.descricao.trim(),
-                criadoPorUid: user?.auth?.uid || '',
-                criadoPorNome: user?.auth?.displayName || user?.auth?.email || ''
-            });
-            setReminderForm({ titulo: '', hora: '', descricao: '' });
-            setSelectedDay(null);
-        } catch (error) {
-            console.error('Erro ao criar lembrete na agenda:', error);
-            alert(error?.message || 'Não foi possível salvar o lembrete.');
-        } finally {
-            setIsSavingReminder(false);
-        }
-    };
-
     return (
-        <div className="p-3 sm:p-4 md:p-6 space-y-4 md:space-y-5 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen md:min-h-0 md:h-full md:flex md:flex-col">
-             <div className="shrink-0">
-                <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Agenda</h1>
-                <p className="text-gray-600 mt-1">Visualize entregas programadas, lembretes, feriados e aniversários</p>
+        <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
+             <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Agenda</h1>
+                <p className="text-gray-600 mt-1">Visualize entregas e aniversários</p>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2.5 sm:p-4 md:p-5 md:flex-1 md:min-h-0 md:flex md:flex-col">
-                <div className="flex justify-between items-center mb-2 sm:mb-4 shrink-0">
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 md:p-6">
+                <div className="flex justify-between items-center mb-4">
                     <Button variant="secondary" size="sm" onClick={() => changeMonth(-1)}><ChevronLeft/></Button>
-                    <h2 className="text-base sm:text-xl font-bold text-gray-800 text-center">{currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</h2>
+                    <h2 className="text-xl font-bold text-gray-800 text-center">{currentDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</h2>
                     <Button variant="secondary" size="sm" onClick={() => changeMonth(1)}><ChevronRight/></Button>
                 </div>
 
-                <div className="grid grid-cols-7 gap-1 text-center text-xs sm:text-sm font-semibold text-gray-600 shrink-0">
-                    {daysOfWeek.map(day => <div key={day} className="py-1.5 sm:py-2">{day}</div>)}
+                <div className="grid grid-cols-7 gap-1 text-center text-sm font-semibold text-gray-600">
+                    {daysOfWeek.map(day => <div key={day} className="py-2">{day}</div>)}
                 </div>
 
-                <div
-                    className="grid grid-cols-7 gap-1 md:gap-2 md:flex-1 md:min-h-0"
-                    style={{ gridTemplateRows: `repeat(${calendarWeekCount}, minmax(0, 1fr))` }}
-                >
-                    {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} className="border rounded-lg min-h-[4.25rem] sm:min-h-[5.5rem] md:min-h-0"></div>)}
+                <div className="grid grid-cols-7 gap-1 md:gap-2">
+                    {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} className="border rounded-lg aspect-square"></div>)}
                     {Array.from({ length: daysInMonth }).map((_, day) => {
                         const dayNumber = day + 1;
-                        const dateKey = formatDateKey(currentDate.getFullYear(), currentDate.getMonth(), dayNumber);
-                        const feriado = feriadosNacionais[dateKey] || '';
-                        
+
                         const today = new Date();
                         const isToday = today.getDate() === dayNumber && today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear();
-                        
-                        const pedidosDoDia = pedidosProgramadosDoMes.filter(p => getScheduledOrderInfo(p)?.dateKey === dateKey);
+
+                        const pedidosDoDia = pedidosDoMes.filter(p => {
+                            const relevantDateStr = p.categoria === 'Festa' && p.dataEntrega ? p.dataEntrega : p.createdAt;
+                            const pedidoDate = getJSDate(relevantDateStr);
+                            if (!pedidoDate) return false;
+                            // Se for Festa, compara com UTC
+                             if (p.categoria === 'Festa' && p.dataEntrega) {
+                                const [year, month, d] = p.dataEntrega.split('-');
+                                return parseInt(d, 10) === dayNumber;
+                             }
+                             // Senão, compara data local
+                            return pedidoDate.getDate() === dayNumber;
+                        });
 
                         const aniversariantesDoDia = aniversariantesDoMes.filter(c => {
 
@@ -17468,41 +17507,16 @@ const handleSubmit = async (e) => {
                              return parseInt(dayString, 10) === dayNumber;
                         });
 
-                        const lembretesDoDia = lembretesDoMes.filter((reminder) => reminder.data === dateKey);
-                        const hasEvents = pedidosDoDia.length > 0 || aniversariantesDoDia.length > 0 || lembretesDoDia.length > 0 || Boolean(feriado);
-                        
+                        const hasEvents = pedidosDoDia.length > 0 || aniversariantesDoDia.length > 0;
+
                         return (
-                            <button
-                                type="button"
-                                key={dayNumber}
-                                onClick={() => openAgendaDay({ day: dayNumber, dateKey, pedidos: pedidosDoDia, aniversariantes: aniversariantesDoDia, lembretes: lembretesDoDia, feriado })}
-                                className={`border rounded-lg p-1 md:p-2 min-h-[4.25rem] sm:min-h-[5.5rem] md:min-h-0 flex flex-col text-left cursor-pointer transition-colors hover:bg-pink-50 overflow-hidden ${isToday ? 'bg-pink-100' : ''} ${feriado ? 'border-red-300 bg-red-50/70' : ''}`}
-                            >
-                                <span className={`font-bold text-xs md:text-base ${feriado ? 'text-red-700' : (isToday ? 'text-pink-600' : 'text-gray-800')}`}>{dayNumber}</span>
-                                {hasEvents && (
-                                    <div className="mt-auto flex flex-wrap gap-0.5 sm:hidden" aria-hidden="true">
-                                        {feriado && <span className="h-1.5 w-1.5 rounded-full bg-red-600" />}
-                                        {pedidosDoDia.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />}
-                                        {lembretesDoDia.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />}
-                                        {aniversariantesDoDia.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />}
-                                    </div>
-                                )}
-                                <div className="mt-1 hidden sm:block space-y-1 overflow-y-auto text-[10px] md:text-xs">
-                                    {feriado && (
-                                        <div className="w-full bg-red-600 text-white rounded px-1 truncate" title={feriado}>
-                                            {feriado}
-                                        </div>
-                                    )}
+                            <div key={dayNumber} onClick={() => hasEvents && setSelectedDay({ day: dayNumber, pedidos: pedidosDoDia, aniversariantes: aniversariantesDoDia })} className={`border rounded-lg p-1 md:p-2 aspect-square flex flex-col ${hasEvents ? 'cursor-pointer hover:bg-pink-50' : ''} transition-colors ${isToday ? 'bg-pink-100' : ''}`}>
+                                <span className={`font-bold text-xs md:text-base ${isToday ? 'text-pink-600' : 'text-gray-800'}`}>{dayNumber}</span>
+                                <div className="mt-1 space-y-1 overflow-y-auto text-[10px] md:text-xs">
                                     {pedidosDoDia.map(p => (
                                         <div key={p.id} className={`w-full text-white rounded px-1 truncate ${getStatusClass(p.status)}`} title={`${p.clienteNome} (${p.status})`}>
                                             {p.categoria === 'Festa' ? <Gift size={10} className="inline mr-1"/> : <ShoppingCart size={10} className="inline mr-1"/>}
                                             {p.clienteNome}
-                                        </div>
-                                    ))}
-                                    {lembretesDoDia.map((reminder) => (
-                                        <div key={reminder.id} className="w-full bg-purple-100 text-purple-800 rounded px-1 truncate" title={reminder.descricao || reminder.titulo}>
-                                            <Calendar size={10} className="inline mr-1" />
-                                            {reminder.hora ? `${reminder.hora} ` : ''}{reminder.titulo}
                                         </div>
                                     ))}
                                     {aniversariantesDoDia.map(c => (
@@ -17512,24 +17526,18 @@ const handleSubmit = async (e) => {
                                         </div>
                                     ))}
                                 </div>
-                            </button>
+                            </div>
                         );
                     })}
                 </div>
             </div>
-            
-            <Modal isOpen={!!selectedDay} onClose={() => setSelectedDay(null)} title={`Agenda do dia ${selectedDay?.day}`}>
+
+            <Modal isOpen={!!selectedDay} onClose={() => setSelectedDay(null)} title={`Eventos do dia ${selectedDay?.day}`}>
                 {selectedDay && (
                     <div className="space-y-4">
-                        {selectedDay.feriado && (
-                            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">
-                                <p className="font-bold">Feriado nacional</p>
-                                <p>{selectedDay.feriado}</p>
-                            </div>
-                        )}
                         {selectedDay.pedidos.length > 0 && (
                             <div>
-                                <h3 className="font-bold text-lg mb-2 text-gray-700">Entregas programadas ({selectedDay.pedidos.length})</h3>
+                                <h3 className="font-bold text-lg mb-2 text-gray-700">Pedidos ({selectedDay.pedidos.length})</h3>
                                 <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
                                 {selectedDay.pedidos.map(p => (
                                     <div key={p.id} onClick={() => { setSelectedDay(null); setViewingOrder(p); }} className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer flex justify-between items-center">
@@ -17539,24 +17547,10 @@ const handleSubmit = async (e) => {
                                                 {p.clienteNome}
                                             </p>
                                             <p className="text-sm text-gray-600">Total: R$ {p.total.toFixed(2)}</p>
-                                            {getScheduledOrderInfo(p)?.time && <p className="text-xs text-gray-500">Horário: {getScheduledOrderInfo(p).time}</p>}
                                         </div>
                                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusClassText(p.status)}`}>{p.status}</span>
                                     </div>
                                 ))}
-                                </div>
-                            </div>
-                        )}
-                        {selectedDay.lembretes.length > 0 && (
-                            <div>
-                                <h3 className="font-bold text-lg mb-2 text-gray-700">Lembretes ({selectedDay.lembretes.length})</h3>
-                                <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
-                                    {selectedDay.lembretes.map((reminder) => (
-                                        <div key={reminder.id} className="p-3 bg-purple-50 rounded-lg">
-                                            <p className="font-bold text-purple-800">{reminder.hora ? `${reminder.hora} - ` : ''}{reminder.titulo}</p>
-                                            {reminder.descricao && <p className="text-sm text-purple-700 mt-1">{reminder.descricao}</p>}
-                                        </div>
-                                    ))}
                                 </div>
                             </div>
                         )}
@@ -17573,20 +17567,7 @@ const handleSubmit = async (e) => {
                                 </div>
                             </div>
                         )}
-                        {selectedDay.pedidos.length === 0 && selectedDay.aniversariantes.length === 0 && selectedDay.lembretes.length === 0 && !selectedDay.feriado && <p>Nenhum evento para este dia.</p>}
-                        <form onSubmit={handleReminderSubmit} className="border-t pt-4 space-y-3">
-                            <h3 className="font-bold text-lg text-gray-700">Adicionar lembrete/compromisso</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <div className="md:col-span-2">
-                                    <Input label="Título" value={reminderForm.titulo} onChange={(e) => setReminderForm(prev => ({ ...prev, titulo: e.target.value }))} placeholder="Ex: Comprar embalagem" required />
-                                </div>
-                                <Input label="Horário" type="time" value={reminderForm.hora} onChange={(e) => setReminderForm(prev => ({ ...prev, hora: e.target.value }))} />
-                            </div>
-                            <Textarea label="Descrição" rows="3" value={reminderForm.descricao} onChange={(e) => setReminderForm(prev => ({ ...prev, descricao: e.target.value }))} placeholder="Detalhes do compromisso" />
-                            <div className="flex justify-end">
-                                <Button type="submit" disabled={isSavingReminder}>{isSavingReminder ? 'Salvando...' : 'Salvar lembrete'}</Button>
-                            </div>
-                        </form>
+                        {selectedDay.pedidos.length === 0 && selectedDay.aniversariantes.length === 0 && <p>Nenhum evento para este dia.</p>}
                     </div>
                 )}
             </Modal>
@@ -17600,7 +17581,7 @@ const handleSubmit = async (e) => {
                     const handleSendToWhatsApp = () => { /* ... (código igual ao do Pedidos.js) ... */ };
                     const handlePrint = () => { /* ... (código igual ao do Pedidos.js) ... */ };
 
-                    return ( 
+                    return (
                          <div className="space-y-4 text-sm text-gray-700">
                             {/* ... (Conteúdo idêntico ao modal do Pedidos.js) ... */}
                             <div className="p-4 bg-gray-50 rounded-lg">
@@ -17611,8 +17592,8 @@ const handleSubmit = async (e) => {
                             </div>
                             {/* ... (resto do conteúdo) ... */}
                              <WhatsAppOrderStatus key={`${viewingOrder.lojaId || effectiveStoreId}:${viewingOrder.id}`} storeId={viewingOrder.lojaId || effectiveStoreId} orderId={viewingOrder.id} />
-                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
-                                 <Button 
+                            <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
+                                 <Button
                                     onClick={handlePrint}
                                     variant="secondary"
                                     size="sm"
@@ -17655,7 +17636,9 @@ const handleSubmit = async (e) => {
   };
 
 
-  const NotaFiscal = ({
+  // Keep the fiscal page mounted when realtime data updates its parent.
+  // All changing context is received through props.
+  const NotaFiscal = useMemo(() => function NotaFiscal({
     data,
     addItem,
     updateItem,
@@ -17665,7 +17648,7 @@ const handleSubmit = async (e) => {
     selectedStoreId,
     storeInfoMap,
     currentUser
-  }) => {
+  }) {
     const [activeTab, setActiveTab] = usePersistentState('nota_fiscal_activeTab', 'emitir');
     const [orderSearch, setOrderSearch] = usePersistentState('nota_fiscal_orderSearch', '');
     const [orderFilters, setOrderFilters] = useState(() => ({
@@ -17692,7 +17675,7 @@ const handleSubmit = async (e) => {
     }));
     const [showAdvancedInvoiceFilters, setShowAdvancedInvoiceFilters] = useState(false);
     const [modelOverride, setModelOverride] = usePersistentState('nota_fiscal_modelOverride', '');
-    const [operationCfop, setOperationCfop] = usePersistentState('nota_fiscal_operationCfop', DEFAULT_CFOP_OPERATION);
+    const [operationCfop, setOperationCfop] = usePersistentState('nota_fiscal_operationCfop', '');
     const [busyOrderId, setBusyOrderId] = useState('');
     const [message, setMessage] = useState(null);
     const [validationByOrder, setValidationByOrder] = useState({});
@@ -17700,6 +17683,7 @@ const handleSubmit = async (e) => {
     const [editingFiscalProduct, setEditingFiscalProduct] = useState(null);
     const [productCorrectionOrderId, setProductCorrectionOrderId] = useState('');
     const [orderToIssue, setOrderToIssue] = useState(null);
+    const [orderDraftId, setOrderDraftId] = useState('');
     const [issueAdditionalInfo, setIssueAdditionalInfo] = useState('');
     const [issueError, setIssueError] = useState('');
     const [invoiceToCancel, setInvoiceToCancel] = useState(null);
@@ -17707,19 +17691,51 @@ const handleSubmit = async (e) => {
     const [showManualInvoiceModal, setShowManualInvoiceModal] = useState(false);
     const [manualInvoiceSaving, setManualInvoiceSaving] = useState(false);
     const [manualInvoiceError, setManualInvoiceError] = useState('');
+    const [manualDraftId, setManualDraftId] = useState('');
+    const [previewDraftId, setPreviewDraftId] = useState('');
+    const [draftCheck, setDraftCheck] = useState(null);
+    const [confirmDraftIssue, setConfirmDraftIssue] = useState(false);
+    const [cloneConfirmation, setCloneConfirmation] = useState(null);
+    const [cloneBusy, setCloneBusy] = useState(false);
+    const cloneBusyRef = useRef(false);
+    const [cloneError, setCloneError] = useState('');
+    const [draftCloneInfo, setDraftCloneInfo] = useState(null);
+    const [inutilizationOpen, setInutilizationOpen] = useState(false);
+    const [inutilizationBusy, setInutilizationBusy] = useState(false);
+    const [inutilizationForm, setInutilizationForm] = useState({model: '55', series: '1', start: '', end: '', year: new Date().getUTCFullYear(), reason: ''});
+    const [inutilizationConfirm, setInutilizationConfirm] = useState(false);
+    const [inutilizations, setInutilizations] = useState([]);
+    useEffect(() => {
+      setManualDraftId('');
+      setPreviewDraftId('');
+      setDraftCheck(null);
+      setShowManualInvoiceModal(false);
+      setOrderDraftId('');
+      setOrderToIssue(null);
+      setCloneConfirmation(null);
+      setDraftCloneInfo(null);
+      setConfirmDraftIssue(false);
+    }, [effectiveStoreId]);
     const [manualInvoiceForm, setManualInvoiceForm] = useState(() => ({
       customerMode: 'existing',
       customer: createManualInvoiceCustomerDraft(),
       modelOverride: '',
-      operationCfop: DEFAULT_CFOP_OPERATION,
+      operationCfop: '',
       paymentMethodCode: '',
       additionalInfo: '',
       stockMovementRequested: false,
       items: [createManualInvoiceItemDraft()]
     }));
+    const manualInvoiceFormRef = useRef(manualInvoiceForm);
+    manualInvoiceFormRef.current = manualInvoiceForm;
+    useEffect(() => {
+      setDraftCheck(null);
+      setManualInvoiceError('');
+    }, [manualInvoiceForm]);
     const [cancelReason, setCancelReason] = useState('');
     const [cancelError, setCancelError] = useState('');
     const [orderToEditBeforeInvoice, setOrderToEditBeforeInvoice] = useState(null);
+    const [orderDraftToEdit, setOrderDraftToEdit] = useState(null);
     const [orderEditProductSearch, setOrderEditProductSearch] = useState('');
     const [orderEditSaving, setOrderEditSaving] = useState(false);
     const [orderEditError, setOrderEditError] = useState('');
@@ -17740,14 +17756,15 @@ const handleSubmit = async (e) => {
       productId: '',
       code: '',
       description: '',
-      ncm: DEFAULT_NCM_PRODUCT,
-      cfopNfe: DEFAULT_CFOP_OPERATION,
-      cfopNfce: DEFAULT_CFOP_OPERATION,
-      unit: 'un',
-      origin: 0,
-      csosn: '102',
-      pisCst: '49',
-      cofinsCst: '49',
+      ncm: '',
+      cfopNfe: '',
+      cfopNfce: '',
+      unit: '',
+      origin: '',
+      csosn: '',
+      cst: '',
+      pisCst: '',
+      cofinsCst: '',
       cest: '',
       cBenef: ''
     });
@@ -17755,6 +17772,22 @@ const handleSubmit = async (e) => {
     const [fiscalProductSearchTerm, setFiscalProductSearchTerm] = useState('');
     const [fiscalProductConflictMode, setFiscalProductConflictMode] = useState('fill-empty');
     const [savingFiscalProducts, setSavingFiscalProducts] = useState(false);
+    const [customNcmOptions, setCustomNcmOptions] = useState([]);
+    const [isAddingNcm, setIsAddingNcm] = useState(false);
+    const [newNcmCode, setNewNcmCode] = useState('');
+    const [newNcmDescription, setNewNcmDescription] = useState('');
+    const [ncmOptionError, setNcmOptionError] = useState('');
+    const [savingNcmOption, setSavingNcmOption] = useState(false);
+    const [customCfopOptions, setCustomCfopOptions] = useState([]);
+    const [cfopOptionsLoading, setCfopOptionsLoading] = useState(false);
+    const [cfopCatalogError, setCfopCatalogError] = useState('');
+    const [isAddingCfop, setIsAddingCfop] = useState(false);
+    const [newCfopCode, setNewCfopCode] = useState('');
+    const [newCfopDescription, setNewCfopDescription] = useState('');
+    const [cfopOptionError, setCfopOptionError] = useState('');
+    const [savingCfopOption, setSavingCfopOption] = useState(false);
+    const fiscalStoreIdRef = useRef(effectiveStoreId);
+    fiscalStoreIdRef.current = effectiveStoreId;
     const [issuerForm, setIssuerForm] = useState({
       cnpj: '37185245000140',
       legalName: 'ANA GUIMARAES DOCERIA LTDA',
@@ -17792,9 +17825,8 @@ const handleSubmit = async (e) => {
       cscId: '',
       csc: ''
     });
-    const isAccountant = currentUser?.role === ROLE_ACCOUNTANT;
-    const isReadOnly = false;
-    const isPlatformAdmin = currentUser?.role === ROLE_OWNER;
+    const isReadOnly = currentUser?.role === ROLE_ACCOUNTANT;
+    const isPlatformAdmin = currentUser?.role === ROLE_OWNER && currentUser?.canAccessAllStores;
     const canViewFullFiscalDocument = [ROLE_OWNER, ROLE_MANAGER, ROLE_ACCOUNTANT].includes(currentUser?.role);
 
     const storeName = effectiveStoreId
@@ -17806,6 +17838,34 @@ const handleSubmit = async (e) => {
     const storeProducts = data.produtos || [];
     const orders = data.pedidos || [];
     const clients = data.clientes || [];
+    const availableNcmOptions = useMemo(() => {
+      const options = [...NCM_PRODUCT_OPTIONS];
+      const known = new Set(options.map((option) => option.value));
+      customNcmOptions.forEach((item) => {
+        const code = normalizeFiscalCode(item.code);
+        if (code.length !== 8 || known.has(code)) return;
+        known.add(code);
+        options.push({value: code, label: `${formatNcmCode(code)} - ${item.description}`});
+      });
+      fiscalProducts.forEach((item) => {
+        const code = normalizeFiscalCode(item.ncm);
+        if (code.length !== 8 || known.has(code)) return;
+        known.add(code);
+        options.push({value: code, label: `${formatNcmCode(code)} - NCM usado em produto cadastrado`});
+      });
+      return options;
+    }, [customNcmOptions, fiscalProducts]);
+    const availableCfopOptions = useMemo(() => {
+      const options = [...CFOP_OPERATION_OPTIONS];
+      const known = new Set(options.map((option) => option.value));
+      customCfopOptions.forEach((item) => {
+        const code = String(item.code || '');
+        if (!/^\d{4}$/.test(code) || known.has(code)) return;
+        known.add(code);
+        options.push({value: code, label: `${code} - ${item.description}`});
+      });
+      return options;
+    }, [customCfopOptions]);
     const fiscalProductsById = useMemo(() => {
       const map = new Map();
       fiscalProducts.forEach((item) => {
@@ -17865,14 +17925,17 @@ const handleSubmit = async (e) => {
           label: product.nome || fiscal.description || productId,
           code: fiscal.code || product.codigo || productId,
           description: fiscal.description || product.nome || productId,
-          ncm: normalizeFiscalCode(fiscal.ncm || product.fiscal?.ncm || DEFAULT_NCM_PRODUCT),
-          unit: fiscal.unit || fiscal.unidade || product.unidade || 'un',
+          ncm: normalizeFiscalCode(fiscal.ncm || product.fiscal?.ncm),
+          unit: fiscal.unit || fiscal.unidade || product.unidade || '',
           unitPrice: Number(product.precoIfood ?? product.preco ?? 0) || 0,
-          origin: Number(fiscal.origin ?? fiscal.origem ?? product.fiscal?.origin ?? 0),
-          csosn: fiscal.csosn || product.fiscal?.csosn || '102',
-          pisCst: fiscal.pisCst || product.fiscal?.pisCst || '49',
-          cofinsCst: fiscal.cofinsCst || product.fiscal?.cofinsCst || '49',
+          origin: fiscal.origin ?? fiscal.origem ?? product.fiscal?.origin ?? '',
+          csosn: fiscal.csosn || product.fiscal?.csosn || '',
+          cst: fiscal.cst || product.fiscal?.cst || '',
+          pisCst: fiscal.pisCst || product.fiscal?.pisCst || '',
+          cofinsCst: fiscal.cofinsCst || product.fiscal?.cofinsCst || '',
           cBenef: fiscal.cBenef || product.fiscal?.cBenef || '',
+          cest: fiscal.cest || product.fiscal?.cest || '',
+          ipiCst: fiscal.ipiCst || product.fiscal?.ipiCst || '',
           source: 'catalog'
         });
       });
@@ -17885,14 +17948,17 @@ const handleSubmit = async (e) => {
           label: fiscal.description || fiscal.nome || id,
           code: fiscal.code || id,
           description: fiscal.description || fiscal.nome || id,
-          ncm: normalizeFiscalCode(fiscal.ncm || DEFAULT_NCM_PRODUCT),
-          unit: fiscal.unit || fiscal.unidade || 'un',
+          ncm: normalizeFiscalCode(fiscal.ncm),
+          unit: fiscal.unit || fiscal.unidade || '',
           unitPrice: 0,
-          origin: Number(fiscal.origin ?? fiscal.origem ?? 0),
-          csosn: fiscal.csosn || '102',
-          pisCst: fiscal.pisCst || '49',
-          cofinsCst: fiscal.cofinsCst || '49',
+          origin: fiscal.origin ?? fiscal.origem ?? '',
+          csosn: fiscal.csosn || '',
+          cst: fiscal.cst || '',
+          pisCst: fiscal.pisCst || '',
+          cofinsCst: fiscal.cofinsCst || '',
           cBenef: fiscal.cBenef || '',
+          cest: fiscal.cest || '',
+          ipiCst: fiscal.ipiCst || '',
           source: 'catalog'
         });
       });
@@ -17901,15 +17967,18 @@ const handleSubmit = async (e) => {
 
     const manualInvoiceTotals = useMemo(() => {
       const products = (manualInvoiceForm.items || []).reduce((sum, item) => (
-        sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0))
+        sum + roundCurrency(Number(item.quantity || 0) * Number(item.unitPrice || 0))
       ), 0);
-      const discount = (manualInvoiceForm.items || []).reduce((sum, item) => sum + Number(item.discount || 0), 0);
+      const discount = (manualInvoiceForm.items || []).reduce((sum, item) => sum + roundCurrency(Number(item.discount || 0)), 0);
       return {
         products: roundCurrency(products),
         discount: roundCurrency(discount),
-        invoice: roundCurrency(Math.max(products - discount, 0))
+        freight: roundCurrency(Number(manualInvoiceForm.freight || 0)),
+        insurance: roundCurrency(Number(manualInvoiceForm.insurance || 0)),
+        other: roundCurrency(Number(manualInvoiceForm.other || 0)),
+        invoice: roundCurrency(products - discount + Number(manualInvoiceForm.freight || 0) + Number(manualInvoiceForm.insurance || 0) + Number(manualInvoiceForm.other || 0))
       };
-    }, [manualInvoiceForm.items]);
+    }, [manualInvoiceForm.items, manualInvoiceForm.freight, manualInvoiceForm.insurance, manualInvoiceForm.other]);
 
     const ordersById = useMemo(() => {
       const map = new Map();
@@ -17959,12 +18028,14 @@ const handleSubmit = async (e) => {
       { value: 'all', label: 'Todos os status' },
       { value: 'authorized', label: 'Autorizada' },
       { value: 'rejected', label: 'Rejeitada' },
+      { value: 'draft', label: 'Rascunho' },
       { value: 'pending', label: 'Pendente' },
       { value: 'cancelled', label: 'Cancelada' },
       { value: 'inutilized', label: 'Inutilizada' }
     ];
 
     const statusLabel = {
+      draft: 'Rascunho',
       validating: 'Validando',
       authorized: 'Autorizada',
       rejected: 'Rejeitada',
@@ -17976,6 +18047,7 @@ const handleSubmit = async (e) => {
     };
 
     const statusClass = {
+      draft: 'bg-gray-100 text-gray-700',
       validating: 'bg-blue-100 text-blue-800',
       authorized: 'bg-green-100 text-green-800',
       rejected: 'bg-red-100 text-red-800',
@@ -18361,19 +18433,6 @@ const handleSubmit = async (e) => {
     }, [invoices, invoiceFilters, fiscalReturnReason, getInvoiceCustomerDocument, getInvoiceCustomerName, getInvoiceIssuerDocument, getInvoiceItems, getInvoiceOrder, getInvoiceOrigin, getInvoiceOriginLabel, getInvoicePaymentMethod, getInvoiceValue, matchesInvoiceStatusFilter]);
 
     const shouldShowFiscalReason = (invoice) => ['rejected', 'denied', 'pending_return'].includes(invoice?.status);
-    const isDuplicateInvoiceRejection = useCallback((invoice) => {
-      const cStat = Number(invoice?.cStat ?? invoice?.serviceResult?.cStat ?? 0);
-      const reason = normalizeSearchText([
-        invoice?.xMotivo,
-        invoice?.error,
-        invoice?.message,
-        invoice?.detail,
-        invoice?.serviceResult?.xMotivo,
-        invoice?.serviceResult?.error,
-        fiscalReturnReason(invoice)
-      ].filter(Boolean).join(' '));
-      return invoice?.status === 'rejected' && ([204, 539].includes(cStat) || reason.includes('duplicidade de nf-e') || reason.includes('duplicidade de nfe'));
-    }, [fiscalReturnReason]);
 
     const fiscalStats = useMemo(() => ({
       authorized: invoices.filter((item) => item.status === 'authorized').length,
@@ -18437,9 +18496,8 @@ const handleSubmit = async (e) => {
       if (invoice.status === 'authorized') return 'Este pedido já possui nota autorizada.';
       if (invoice.status === 'cancelled') return 'Este pedido já possui nota cancelada.';
       if (invoice.status === 'validating' || invoice.status === 'pending_return') return 'Este pedido possui nota em processamento.';
-      if (isDuplicateInvoiceRejection(invoice)) return 'Este pedido possui nota rejeitada por duplicidade. Consulte o retorno antes de tentar emitir outra.';
       return '';
-    }, [invoicesByOrderId, isDuplicateInvoiceRejection]);
+    }, [invoicesByOrderId]);
 
     const buildOrderEditItemFromProduct = useCallback((product, previous = {}) => {
       const productId = String(product?.id || previous.produtoId || previous.productId || previous.id || '').trim();
@@ -18481,9 +18539,7 @@ const handleSubmit = async (e) => {
       });
       const subtotal = roundCurrency(items.reduce((sum, item) => sum + (Number(item.preco || 0) * Number(item.quantity || 1)), 0));
       const desconto = roundCurrency(Math.min(Math.max(Number(draft.desconto || 0), 0), subtotal));
-      const valorFrete = draft.freteACombinar === true || draft.tipoFrete === 'a_combinar'
-        ? 0
-        : roundCurrency(Math.max(Number(draft.valorFrete ?? draft.frete ?? 0), 0));
+      const valorFrete = draft.freteACombinar === true ? 0 : roundCurrency(Math.max(Number(draft.valorFrete ?? draft.frete ?? 0), 0));
       return {
         ...draft,
         itens: items,
@@ -18511,9 +18567,8 @@ const handleSubmit = async (e) => {
         observacao: order?.observacao || order?.additionalInfo || '',
         itens: items,
         desconto: Number(order?.desconto || order?.cupom?.valorDesconto || 0) || 0,
-        valorFrete: getOrderFreight(order).value,
-        freteACombinar: getOrderFreight(order).agreed,
-        tipoFrete: order?.tipoFrete,
+        valorFrete: Number(order?.valorFrete ?? order?.frete ?? 0) || 0,
+        freteACombinar: order?.freteACombinar === true || order?.tipoFrete === 'a_combinar',
         subtotal: Number(order?.subtotal || 0) || 0,
         total: Number(order?.total || 0) || 0,
         cupom: order?.cupom || null,
@@ -18530,11 +18585,19 @@ const handleSubmit = async (e) => {
         setMessage({ type: 'error', text: `${lockReason} Não é seguro alterar o pedido nesta etapa.` });
         return;
       }
+      const draft = findOrderDraft(invoices, order.id);
+      setOrderDraftToEdit(draft);
+      if (draft) {
+        setModelOverride(draft.model ? String(draft.model) : '');
+        setOperationCfop(draft.operationCfop || '');
+      }
       setOrderToEditBeforeInvoice(order);
-      setOrderEditForm(normalizeOrderForPreInvoiceEdit(order));
+      setOrderEditForm(normalizeOrderForPreInvoiceEdit(draft
+        ? {...order, observacao: draft.additionalInfo ?? order.observacao}
+        : order));
       setOrderEditProductSearch('');
       setOrderEditError('');
-    }, [getPreInvoiceLockedReason, normalizeOrderForPreInvoiceEdit]);
+    }, [getPreInvoiceLockedReason, normalizeOrderForPreInvoiceEdit, invoices]);
 
     const setOrderEditDraft = (updater) => {
       setOrderEditForm((prev) => buildOrderEditFormWithTotals(typeof updater === 'function' ? updater(prev) : updater));
@@ -18663,17 +18726,26 @@ const handleSubmit = async (e) => {
           desconto: normalizedForm.desconto,
           valorFrete: normalizedForm.valorFrete,
           frete: normalizedForm.valorFrete,
+          freteACombinar: normalizedForm.freteACombinar === true,
+          tipoFrete: normalizedForm.freteACombinar === true ? 'a_combinar' : 'calculado',
           total: normalizedForm.total,
           cupom: null,
           updatedAt: new Date()
         };
-        if (isAccountant) {
-          const updatePreInvoiceOrder = httpsCallable(functions, 'fiscalUpdatePreInvoiceOrder');
-          await updatePreInvoiceOrder(callablePayload({orderId: orderToEditBeforeInvoice.id, order: payload}));
-        } else {
-          await updateItem('pedidos', orderToEditBeforeInvoice.id, payload, effectiveStoreId);
+        await updateItem('pedidos', orderToEditBeforeInvoice.id, payload, effectiveStoreId);
+        setValidationByOrder((prev) => {
+          const next = {...prev};
+          delete next[orderToEditBeforeInvoice.id];
+          return next;
+        });
+        if (orderDraftToEdit) {
+          const save = httpsCallable(functions, 'fiscalSaveDraft');
+          await save(callablePayload({orderId: orderToEditBeforeInvoice.id,
+            model: orderDraftToEdit.model || null, operationCfop: orderDraftToEdit.operationCfop || '',
+            additionalInfo: payload.observacao}));
         }
         setOrderToEditBeforeInvoice(null);
+        setOrderDraftToEdit(null);
         setOrderEditProductSearch('');
         setOrderEditError('');
         setMessage({ type: 'success', text: 'Pedido atualizado. Agora valide novamente antes de emitir a nota.' });
@@ -18686,6 +18758,8 @@ const handleSubmit = async (e) => {
     };
 
     useEffect(() => {
+      setCustomNcmOptions([]);
+      setIsAddingNcm(false);
       if (!effectiveStoreId) return undefined;
       setConfigLoading(true);
       let cancelled = false;
@@ -18704,6 +18778,7 @@ const handleSubmit = async (e) => {
             serviceUrl: configuration.platformService?.serviceUrl || configuration.settings.serviceUrl || ''
           }));
         }
+        setCustomNcmOptions(Array.isArray(configuration.ncmOptions) ? configuration.ncmOptions : []);
         setCertificateInfo(configuration.certificate || null);
         setPlatformService(configuration.platformService || null);
       }).catch((error) => {
@@ -18713,6 +18788,26 @@ const handleSubmit = async (e) => {
         if (!cancelled) setConfigLoading(false);
       });
 
+      return () => { cancelled = true; };
+    }, [effectiveStoreId]);
+
+    useEffect(() => {
+      setCustomCfopOptions([]);
+      setIsAddingCfop(false);
+      setNewCfopCode('');
+      setNewCfopDescription('');
+      setCfopOptionError('');
+      setCfopCatalogError('');
+      setCfopOptionsLoading(Boolean(effectiveStoreId));
+      if (!effectiveStoreId) return undefined;
+      let cancelled = false;
+      httpsCallable(functions, 'fiscalListCfopOptions')({lojaId: effectiveStoreId}).then((response) => {
+        if (!cancelled) setCustomCfopOptions(Array.isArray(response.data?.options) ? response.data.options : []);
+      }).catch((error) => {
+        if (!cancelled) setCfopCatalogError(error?.message || 'Não foi possível carregar os CFOPs cadastrados.');
+      }).finally(() => {
+        if (!cancelled) setCfopOptionsLoading(false);
+      });
       return () => { cancelled = true; };
     }, [effectiveStoreId]);
 
@@ -18748,6 +18843,10 @@ const handleSubmit = async (e) => {
 
     const resetProductForm = () => {
       setEditingFiscalProduct(null);
+      setIsAddingNcm(false);
+      setNewNcmCode('');
+      setNewNcmDescription('');
+      setNcmOptionError('');
       setSelectedFiscalProductIds([]);
       setFiscalProductSearchTerm('');
       setFiscalProductConflictMode('fill-empty');
@@ -18755,14 +18854,15 @@ const handleSubmit = async (e) => {
         productId: '',
         code: '',
         description: '',
-        ncm: DEFAULT_NCM_PRODUCT,
-        cfopNfe: DEFAULT_CFOP_OPERATION,
-        cfopNfce: DEFAULT_CFOP_OPERATION,
-        unit: 'un',
-        origin: 0,
-        csosn: '102',
-        pisCst: '49',
-        cofinsCst: '49',
+        ncm: '',
+        cfopNfe: '',
+        cfopNfce: '',
+        unit: '',
+        origin: '',
+        csosn: '',
+        cst: '',
+        pisCst: '',
+        cofinsCst: '',
         cest: '',
         cBenef: ''
       });
@@ -18814,16 +18914,44 @@ const handleSubmit = async (e) => {
       }
     };
 
-    const requestOrderValidation = async (order) => {
-      const fn = httpsCallable(functions, 'fiscalValidateOrder');
-      const response = await fn(callablePayload({
-        orderId: order.id,
-        modelOverride: modelOverride ? Number(modelOverride) : undefined,
-        operationCfop
-      }));
-      const result = response.data || {};
+    const requestOrderValidation = async (order, save = true) => {
+      const result = await validateFiscalOrder({order, draft: findOrderDraft(invoices, order.id),
+        model: modelOverride, operationCfop, save,
+        call: async (name, payload) => (await httpsCallable(functions, name)(callablePayload(payload))).data || {}});
       setValidationByOrder((prev) => ({ ...prev, [order.id]: result }));
       return result;
+    };
+
+    const handleCheckOrderRequirements = async (order) => {
+      if (isReadOnly || !effectiveStoreId || busyOrderId || getPreInvoiceLockedReason(order)) return;
+      setBusyOrderId(`check:${order.id}`);
+      setMessage(null);
+      try {
+        const result = await requestOrderValidation(order, false);
+        setMessage({type: result.ok === true ? 'success' : 'error', text: result.ok === true
+          ? 'Requisitos checados. Nenhuma emissão realizada. Para preparar a emissão, use Salvar e Validar.'
+          : `Pendências: ${(result.errors || []).join(' ')}`});
+      } catch (error) {
+        setValidationByOrder((prev) => ({...prev, [order.id]: {ok: false}}));
+        setMessage({type: 'error', text: error?.message || 'Não foi possível checar os requisitos.'});
+      } finally {
+        setBusyOrderId('');
+      }
+    };
+
+    const handleViewOrderDraft = async (invoice) => {
+      if (invoice.status !== 'draft' || !invoice.orderId) return;
+      setModelOverride(invoice.model ? String(invoice.model) : '');
+      setActiveTab('emitir');
+      const order = ordersById.get(invoice.orderId);
+      if (!order) return;
+      try {
+        const fn = httpsCallable(functions, 'fiscalCheckDraft');
+        const response = await fn(callablePayload({draftId: invoice.id}));
+        setValidationByOrder((prev) => ({...prev, [invoice.orderId]: {...response.data, model: invoice.model, draftId: invoice.id, operationCfop: invoice.operationCfop}}));
+      } catch (error) {
+        setMessage({type: 'error', text: error?.message || 'Não foi possível visualizar o rascunho.'});
+      }
     };
 
     const handleValidateOrder = async (order) => {
@@ -18834,13 +18962,20 @@ const handleSubmit = async (e) => {
       }
       setBusyOrderId(`validate:${order.id}`);
       setMessage(null);
+      setValidationByOrder((prev) => {
+        const next = {...prev};
+        delete next[order.id];
+        return next;
+      });
 
       try {
         const result = await requestOrderValidation(order);
         const hasErrors = Array.isArray(result.errors) && result.errors.length > 0;
         setMessage({
           type: hasErrors ? 'error' : 'success',
-          text: hasErrors ? result.errors.join(' ') : 'Pedido validado para emissão fiscal.'
+          text: hasErrors
+            ? `Rascunho salvo sem emissão. Pendências: ${result.errors.join(' ')}`
+            : 'Rascunho salvo e validado. Emitir Nota Fiscal está habilitado.'
         });
       } catch (error) {
         console.error('[NotaFiscal] Validação fiscal falhou:', error);
@@ -18852,6 +18987,7 @@ const handleSubmit = async (e) => {
 
     const handleIssueOrder = async (order) => {
       if (isReadOnly) return;
+      if (!modelOverride) { setMessage({type: 'error', text: 'Selecione NF-e ou NFC-e antes de emitir.'}); return; }
       if (!effectiveStoreId) {
         setMessage({ type: 'error', text: 'Selecione uma loja específica para emitir notas.' });
         return;
@@ -18860,8 +18996,16 @@ const handleSubmit = async (e) => {
       setMessage(null);
 
       try {
-        const validation = await requestOrderValidation(order);
-        if (Array.isArray(validation.errors) && validation.errors.length > 0) {
+        const previous = validationByOrder[order.id];
+        if (!previous?.ok || !previous.draftId || previous.model !== Number(modelOverride) || previous.operationCfop !== operationCfop) {
+          setMessage({type: 'error', text: 'Salve e valide novamente antes de emitir esta nota.'});
+          return;
+        }
+        const fn = httpsCallable(functions, 'fiscalCheckDraft');
+        const response = await fn(callablePayload({draftId: previous.draftId}));
+        const validation = {...(response.data || {}), draftId: previous.draftId, model: previous.model, operationCfop};
+        setValidationByOrder((prev) => ({...prev, [order.id]: validation}));
+        if (validation.ok !== true || (Array.isArray(validation.errors) && validation.errors.length > 0)) {
           const hasItemIssues = Array.isArray(validation.itemIssues) && validation.itemIssues.length > 0;
           setMessage({
             type: 'error',
@@ -18872,6 +19016,7 @@ const handleSubmit = async (e) => {
           return;
         }
         setOrderToIssue(order);
+        setOrderDraftId(validation.draftId);
         setIssueAdditionalInfo(order.observacao || order.additionalInfo || '');
         setIssueError('');
       } catch (error) {
@@ -18890,13 +19035,10 @@ const handleSubmit = async (e) => {
       setIssueError('');
 
       try {
-        const fn = httpsCallable(functions, 'fiscalIssueInvoice');
+        const fn = httpsCallable(functions, 'fiscalIssueDraft');
         const response = await fn(callablePayload({
-          orderId: orderToIssue.id,
-          modelOverride: modelOverride ? Number(modelOverride) : undefined,
-          justification: 'Emissão manual pelo painel Nota Fiscal',
-          additionalInfo: issueAdditionalInfo.trim(),
-          operationCfop
+          draftId: orderDraftId,
+          model: Number(modelOverride)
         }));
         setOrderToIssue(null);
         setIssueAdditionalInfo('');
@@ -18943,22 +19085,87 @@ const handleSubmit = async (e) => {
     };
 
     const resetManualInvoiceForm = useCallback(() => {
+      setIsAddingCfop(false);
+      setNewCfopCode('');
+      setNewCfopDescription('');
+      setCfopOptionError('');
       setManualInvoiceForm({
         customerMode: 'existing',
         customer: createManualInvoiceCustomerDraft(),
-        modelOverride: modelOverride || '',
-        operationCfop: operationCfop || DEFAULT_CFOP_OPERATION,
+        modelOverride: '',
+        operationCfop: '',
         paymentMethodCode: settingsForm.defaultPaymentMethodCode || '99',
         additionalInfo: '',
         stockMovementRequested: false,
         items: [createManualInvoiceItemDraft()]
       });
+      setManualDraftId('');
+      setDraftCheck(null);
+      setDraftCloneInfo(null);
       setManualInvoiceError('');
-    }, [modelOverride, operationCfop, settingsForm.defaultPaymentMethodCode]);
+    }, [settingsForm.defaultPaymentMethodCode]);
 
     const handleOpenManualInvoice = () => {
       resetManualInvoiceForm();
       setShowManualInvoiceModal(true);
+    };
+
+    const handleEditManualDraft = (invoice) => {
+      if (isReadOnly || invoice.status !== 'draft' || !invoice.manualInvoice) return;
+      setManualInvoiceForm({
+        ...invoice.manualInvoice,
+        modelOverride: invoice.model ? String(invoice.model) : '',
+        items: (invoice.manualInvoice.items || []).map((item, index) => ({...item, draftId: item.draftId || `saved-${index}`}))
+      });
+      setManualDraftId(invoice.id);
+      setDraftCheck(null);
+      setDraftCloneInfo(invoice.clonedFromFiscalDocumentId ? invoice : null);
+      setManualInvoiceError('');
+      setPreviewDraftId('');
+      setShowManualInvoiceModal(true);
+    };
+
+    const handlePreviewManualDraft = (invoice) => {
+      if (invoice.status !== 'draft' || !invoice.manualInvoice) return;
+      setManualInvoiceForm({
+        ...invoice.manualInvoice,
+        modelOverride: invoice.model ? String(invoice.model) : '',
+        items: (invoice.manualInvoice.items || []).map((item, index) => ({...item, draftId: item.draftId || `saved-${index}`}))
+      });
+      setManualDraftId(invoice.id);
+      setDraftCheck(null);
+      setDraftCloneInfo(invoice.clonedFromFiscalDocumentId ? invoice : null);
+      setPreviewDraftId(invoice.id);
+    };
+
+    const handleOpenCloneInvoice = (invoice) => {
+      if (isReadOnly || cloneBusyRef.current || !['authorized', 'rejected', 'cancelled'].includes(invoice.status)) return;
+      setCloneError('');
+      setCloneConfirmation({invoice, requestId: crypto.randomUUID()});
+    };
+
+    const handleConfirmCloneInvoice = async () => {
+      if (!cloneConfirmation || isReadOnly || cloneBusyRef.current) return;
+      cloneBusyRef.current = true;
+      setCloneBusy(true);
+      setCloneError('');
+      const targetStoreId = effectiveStoreId;
+      try {
+        const response = await httpsCallable(functions, 'fiscalCloneInvoice')(callablePayload({
+          invoiceId: cloneConfirmation.invoice.id, cloneRequestId: cloneConfirmation.requestId,
+        }));
+        if (fiscalStoreIdRef.current !== targetStoreId) return;
+        const draft = response.data || {};
+        if (draft.status !== 'draft' || !draft.draftId || !draft.manualInvoice) throw new Error('O rascunho já iniciou emissão ou não está disponível para edição. Consulte a lista de notas.');
+        handleEditManualDraft({...draft, id: draft.draftId});
+        setCloneConfirmation(null);
+        setMessage({type: 'success', text: 'Nova nota criada em Rascunho. Revise os dados, visualize e cheque os requisitos antes de emitir.'});
+      } catch (error) {
+        if (fiscalStoreIdRef.current === targetStoreId) setCloneError(error?.message || 'Não foi possível clonar a nota. Tente novamente; a mesma confirmação não cria outro rascunho.');
+      } finally {
+        cloneBusyRef.current = false;
+        setCloneBusy(false);
+      }
     };
 
     const setManualInvoiceCustomerField = (field, value) => {
@@ -19010,14 +19217,18 @@ const handleSubmit = async (e) => {
           productId: '',
           code: '',
           description: '',
-          ncm: DEFAULT_NCM_PRODUCT,
-          unit: 'un',
+          ncm: '',
+          unit: '',
           unitPrice: '',
-          origin: 0,
-          csosn: '102',
-          pisCst: '49',
-          cofinsCst: '49',
-          cBenef: ''
+          origin: '',
+          csosn: '',
+          cst: '',
+          pisCst: '',
+          cofinsCst: '',
+          cBenef: '',
+          cfop: '',
+          cest: '',
+          ipiCst: ''
         });
         return;
       }
@@ -19027,14 +19238,18 @@ const handleSubmit = async (e) => {
         productId: product.id,
         code: product.code,
         description: product.description,
-        ncm: product.ncm || DEFAULT_NCM_PRODUCT,
-        unit: product.unit || 'un',
+        ncm: product.ncm || '',
+        unit: product.unit || '',
         unitPrice: product.unitPrice || '',
-        origin: product.origin ?? 0,
-        csosn: product.csosn || '102',
-        pisCst: product.pisCst || '49',
-        cofinsCst: product.cofinsCst || '49',
-        cBenef: product.cBenef || ''
+        origin: product.origin ?? '',
+        csosn: product.csosn || '',
+        cst: product.cst || '',
+        pisCst: product.pisCst || '',
+        cofinsCst: product.cofinsCst || '',
+        cBenef: product.cBenef || '',
+        cfop: '',
+        cest: product.cest || '',
+        ipiCst: product.ipiCst || ''
       });
     };
 
@@ -19054,110 +19269,137 @@ const handleSubmit = async (e) => {
       }));
     };
 
-    const handleIssueManualInvoice = async (event) => {
-      event.preventDefault();
-      if (isReadOnly || manualInvoiceSaving) return;
+    const saveManualDraft = async ({validate = false, openPreview = false} = {}) => {
+      if (isReadOnly || manualInvoiceSaving || savingCfopOption || isAddingCfop) return;
       if (!effectiveStoreId) {
-        setManualInvoiceError('Selecione uma loja específica para emitir a nota manual.');
+        setManualInvoiceError('Selecione uma loja específica.');
         return;
       }
-
-      const customer = manualInvoiceForm.customer || {};
-      const customerDocument = onlyDigitsText(customer.document);
-      if (!String(customer.name || '').trim()) {
-        setManualInvoiceError('Informe o nome ou razão social do cliente.');
-        return;
-      }
-      if (![11, 14].includes(customerDocument.length)) {
-        setManualInvoiceError('Informe CPF/CNPJ válido para o cliente da nota.');
-        return;
-      }
-      if (!customer.address?.street || !customer.address?.district || !customer.address?.zip) {
-        setManualInvoiceError('Informe endereço, bairro e CEP fiscal do cliente.');
-        return;
-      }
-
-      const items = (manualInvoiceForm.items || []).map((item) => {
-        const quantity = Number(item.quantity || 0);
-        const unitPrice = Number(item.unitPrice || 0);
-        const discount = Number(item.discount || 0);
-        return {
-          ...item,
-          quantity,
-          unitPrice,
-          discount,
-          ncm: normalizeFiscalCode(item.ncm || DEFAULT_NCM_PRODUCT),
-          cfop: manualInvoiceForm.operationCfop
-        };
-      });
-      const invalidItem = items.find((item) => (
-        !String(item.description || '').trim()
-        || normalizeFiscalCode(item.ncm).length !== 8
-        || Number(item.quantity || 0) <= 0
-        || Number(item.unitPrice || 0) < 0
-        || Number(item.discount || 0) < 0
-        || Number(item.discount || 0) > Number(item.quantity || 0) * Number(item.unitPrice || 0)
-      ));
-      if (invalidItem) {
-        setManualInvoiceError('Revise os itens: descrição, NCM, quantidade, valor e desconto precisam estar corretos.');
-        return;
-      }
-
+      const selectedModel = Number(manualInvoiceForm.modelOverride);
+      const model = [55, 65].includes(selectedModel) ? selectedModel : null;
       setManualInvoiceSaving(true);
       setManualInvoiceError('');
-      setMessage(null);
+      setDraftCheck(null);
+      const submittedForm = JSON.stringify(manualInvoiceForm);
       try {
-        const fn = httpsCallable(functions, 'fiscalIssueManualInvoice');
+        const fn = httpsCallable(functions, 'fiscalSaveDraft');
         const response = await fn(callablePayload({
-          modelOverride: manualInvoiceForm.modelOverride ? Number(manualInvoiceForm.modelOverride) : undefined,
-          operationCfop: manualInvoiceForm.operationCfop,
-          additionalInfo: manualInvoiceForm.additionalInfo.trim(),
-          justification: 'Emissão de nota fiscal manual/avulsa pelo painel Nota Fiscal',
+          draftId: manualDraftId || undefined,
+          model,
           manualInvoice: {
-            customer: {
-              ...customer,
-              document: customerDocument
-            },
-            operationCfop: manualInvoiceForm.operationCfop,
-            paymentMethodCode: manualInvoiceForm.paymentMethodCode || settingsForm.defaultPaymentMethodCode || '99',
-            additionalInfo: manualInvoiceForm.additionalInfo.trim(),
-            stockMovementRequested: Boolean(manualInvoiceForm.stockMovementRequested),
-            items: items.map((item, index) => ({
-              productId: item.productId || '',
-              source: item.source === 'catalog' ? 'catalog' : 'manual',
-              code: item.code || item.productId || `MANUAL-${index + 1}`,
-              description: item.description,
-              ncm: item.ncm,
-              unit: item.unit || 'un',
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              discount: item.discount,
-              origin: Number(item.origin || 0),
-              csosn: item.csosn || '102',
-              pisCst: item.pisCst || '49',
-              cofinsCst: item.cofinsCst || '49',
-              cBenef: item.cBenef || ''
-            }))
+            ...manualInvoiceForm,
+            items: (manualInvoiceForm.items || []).map((item) => ({...item}))
           }
         }));
-        const result = response.data || {};
-        setShowManualInvoiceModal(false);
-        resetManualInvoiceForm();
-        setActiveTab('notas');
-        if (result.status === 'authorized') {
-          setMessage({ type: 'success', text: result.xMotivo || 'Nota manual autorizada. Baixando DANFE em PDF.' });
-          if (result.invoiceId && result.danfePdfReady) {
-            await downloadInvoiceArtifact(result.invoiceId, 'danfePdf');
+        const id = response.data?.draftId;
+        setManualDraftId(id);
+        if (JSON.stringify(manualInvoiceFormRef.current) !== submittedForm) {
+          setManualInvoiceError('Rascunho salvo. Há alterações feitas durante o salvamento; clique em Salvar e Validar novamente.');
+          return;
+        }
+        if (validate) {
+          try {
+            const check = httpsCallable(functions, 'fiscalCheckDraft');
+            const checked = await check(callablePayload({draftId: id}));
+            const result = checked.data || {ok: false, errors: ['Não foi possível concluir a checagem.'], warnings: []};
+            if (JSON.stringify(manualInvoiceFormRef.current) !== submittedForm) {
+              setManualInvoiceError('Rascunho salvo. Há alterações ainda não validadas; clique em Salvar e Validar novamente.');
+              return;
+            }
+            setDraftCheck(result);
+            setManualInvoiceError(result.ok
+              ? 'Rascunho salvo e validado. A emissão já pode ser confirmada.'
+              : 'Rascunho salvo. Corrija as pendências abaixo e clique novamente em Salvar e Validar.');
+          } catch (error) {
+            setDraftCheck({ok: false, errors: [error?.message || 'Não foi possível validar o rascunho salvo.'], warnings: []});
+            setManualInvoiceError('Rascunho salvo. A checagem não foi concluída; tente novamente.');
           }
         } else {
-          setMessage({ type: 'error', text: result.xMotivo || 'Retorno fiscal recebido para a nota manual. Consulte a nota em Notas emitidas.' });
+          setShowManualInvoiceModal(false);
+          if (openPreview) setPreviewDraftId(id);
+          else setMessage({type: 'success', text: `Rascunho ${model === 55 ? 'NF-e' : model === 65 ? 'NFC-e' : 'de nota fiscal'} salvo sem transmissão fiscal.`});
         }
       } catch (error) {
-        console.error('[NotaFiscal] Emissão manual falhou:', error);
-        setManualInvoiceError(error?.message || 'Não foi possível emitir a nota fiscal manual.');
-        setMessage({ type: 'error', text: error?.message || 'Não foi possível emitir a nota fiscal manual.' });
+        setManualInvoiceError(error?.message || 'Não foi possível salvar o rascunho.');
       } finally {
         setManualInvoiceSaving(false);
+      }
+    };
+
+    const checkManualDraft = async () => {
+      if (!previewDraftId || manualInvoiceSaving) return;
+      setManualInvoiceSaving(true);
+      setDraftCheck(null);
+      try {
+        const fn = httpsCallable(functions, 'fiscalCheckDraft');
+        const response = await fn(callablePayload({draftId: previewDraftId}));
+        setDraftCheck(response.data || null);
+      } catch (error) {
+        setDraftCheck({ok: false, errors: [error?.message || 'Falha ao checar requisitos.'], warnings: []});
+      } finally {
+        setManualInvoiceSaving(false);
+      }
+    };
+
+    const issueManualDraft = async (event) => {
+      event.preventDefault();
+      if (!previewDraftId || !draftCheck?.ok || manualInvoiceSaving) return;
+      setManualInvoiceSaving(true);
+      try {
+        const model = Number(manualInvoiceForm.modelOverride);
+        const fn = httpsCallable(functions, 'fiscalIssueDraft');
+        const response = await fn(callablePayload({draftId: previewDraftId, model}));
+        const result = response.data || {};
+        setConfirmDraftIssue(false);
+        setPreviewDraftId('');
+        setActiveTab('notas');
+        setMessage({type: result.status === 'authorized' ? 'success' : 'error', text: result.xMotivo || `Emissão ${statusLabel[result.status] || result.status}.`});
+        if (result.status === 'authorized' && result.danfePdfReady) await downloadInvoiceArtifact(previewDraftId, 'danfePdf');
+      } catch (error) {
+        setConfirmDraftIssue(false);
+        setDraftCheck({ok: false, errors: [error?.message || 'Emissão não concluída. Consulte o status da nota.'], warnings: []});
+      } finally {
+        setManualInvoiceSaving(false);
+      }
+    };
+
+    useEffect(() => {
+      if (!effectiveStoreId || effectiveStoreId === STORE_ALL_KEY) {
+        setInutilizations([]);
+        return undefined;
+      }
+      return onSnapshot(collection(db, 'lojas', effectiveStoreId, 'fiscalInutilizations'), (snapshot) => {
+        setInutilizations(snapshot.docs.map((entry) => ({id: entry.id, ...entry.data()})));
+      }, () => setInutilizations([]));
+    }, [effectiveStoreId]);
+
+    const submitInutilization = async (event) => {
+      event.preventDefault();
+      if (!inutilizationConfirm) {
+        setInutilizationConfirm(true);
+        return;
+      }
+      if (inutilizationBusy || isReadOnly) return;
+      setInutilizationBusy(true);
+      try {
+        const fn = httpsCallable(functions, 'fiscalInutilizeNumbering');
+        const response = await fn(callablePayload({
+          model: Number(inutilizationForm.model),
+          series: Number(inutilizationForm.series),
+          start: Number(inutilizationForm.start),
+          end: Number(inutilizationForm.end),
+          year: Number(inutilizationForm.year),
+          reason: inutilizationForm.reason.trim()
+        }));
+        const result = response.data || {};
+        setMessage({type: result.status === 'inutilized' ? 'success' : 'error', text: result.xMotivo || `Inutilização: ${result.status}.`});
+        setInutilizationOpen(false);
+        setInutilizationConfirm(false);
+      } catch (error) {
+        setMessage({type: 'error', text: error?.message || 'Não foi possível inutilizar a numeração.'});
+        setInutilizationConfirm(false);
+      } finally {
+        setInutilizationBusy(false);
       }
     };
 
@@ -19175,7 +19417,7 @@ const handleSubmit = async (e) => {
             await downloadInvoiceArtifact(result.invoiceId, 'danfePdf');
           }
         } else {
-          setMessage({ type: ['pending_return', 'rejected', 'denied'].includes(result.status) ? 'error' : 'success', text: result.xMotivo || 'Consulta fiscal concluída.' });
+          setMessage({ type: result.status === 'pending_return' ? 'error' : 'success', text: result.xMotivo || 'Consulta fiscal concluída.' });
         }
       } catch (error) {
         console.error('[NotaFiscal] Consulta de retorno fiscal falhou:', error);
@@ -19569,9 +19811,9 @@ const handleSubmit = async (e) => {
           return {
             code: item.code || item.codigo || fiscalProduct?.code || productId || String(index + 1),
             description: item.description || item.nome || item.produto || fiscalProduct?.description || 'Produto',
-            ncm: formatNcmCode(item.ncm || fiscalProduct?.ncm || DEFAULT_NCM_PRODUCT),
-            cst: item.csosn || item.cst || item.icmsCst || fiscalProduct?.csosn || '102',
-            cfop: item.cfop || item.cfopNfe || item.cfopNfce || fiscalProduct?.cfopNfe || fiscalProduct?.cfop || DEFAULT_CFOP_OPERATION,
+            ncm: formatNcmCode(item.ncm || fiscalProduct?.ncm),
+            cst: item.csosn || item.cst || item.icmsCst || fiscalProduct?.csosn || fiscalProduct?.cst || '',
+            cfop: item.cfop || item.cfopNfe || item.cfopNfce || fiscalProduct?.cfopNfe || fiscalProduct?.cfop || '',
             unit: item.unit || item.unidade || item.uCom || fiscalProduct?.unit || 'un',
             quantity: qtyPlain(quantity),
             unitValue: moneyPlain(unitValue),
@@ -19861,14 +20103,15 @@ const handleSubmit = async (e) => {
         productId: row.id || '',
         code: row.code || '',
         description: row.description || '',
-        ncm: normalizeFiscalCode(row.ncm || DEFAULT_NCM_PRODUCT),
-        cfopNfe: row.cfopNfe || row.cfop || DEFAULT_CFOP_OPERATION,
-        cfopNfce: row.cfopNfce || row.cfop || DEFAULT_CFOP_OPERATION,
-        unit: row.unit || 'un',
-        origin: Number(row.origin ?? 0),
-        csosn: row.csosn || '102',
-        pisCst: row.pisCst || '49',
-        cofinsCst: row.cofinsCst || '49',
+        ncm: normalizeFiscalCode(row.ncm),
+        cfopNfe: row.cfopNfe || row.cfop || '',
+        cfopNfce: row.cfopNfce || row.cfop || '',
+        unit: row.unit || '',
+        origin: row.origin ?? '',
+        csosn: row.csosn || '',
+        cst: row.cst || '',
+        pisCst: row.pisCst || '',
+        cofinsCst: row.cofinsCst || '',
         cest: row.cest || '',
         cBenef: row.cBenef || ''
       });
@@ -19892,11 +20135,85 @@ const handleSubmit = async (e) => {
         productId: issue.productId || product?.id || '',
         code: issue.code || product?.codigo || issue.productId || '',
         description: issue.description || product?.nome || '',
-        ncm: normalizeFiscalCode(issue.ncm || DEFAULT_NCM_PRODUCT),
-        cfopNfe: DEFAULT_CFOP_OPERATION,
-        cfopNfce: DEFAULT_CFOP_OPERATION
+        ncm: normalizeFiscalCode(issue.ncm),
+        cfopNfe: '',
+        cfopNfce: ''
       }));
       setShowProductModal(true);
+    };
+
+    const handleCreateNcmOption = async () => {
+      if (isReadOnly || !effectiveStoreId || savingNcmOption) return;
+      const codeInput = newNcmCode.trim();
+      const code = normalizeFiscalCode(codeInput);
+      const description = newNcmDescription.trim();
+      if (!/^(?:\d{8}|\d{4}\.\d{2}\.\d{2})$/.test(codeInput)) {
+        setNcmOptionError('Informe o NCM com 8 dígitos, com ou sem pontos.');
+        return;
+      }
+      if (description.length < 3 || description.length > 120) {
+        setNcmOptionError('Informe uma descrição de 3 a 120 caracteres.');
+        return;
+      }
+      if (NCM_PRODUCT_OPTIONS.some((option) => option.value === code) || customNcmOptions.some((item) => normalizeFiscalCode(item.code) === code)) {
+        setNcmOptionError('Este NCM já está disponível na lista.');
+        return;
+      }
+      setSavingNcmOption(true);
+      setNcmOptionError('');
+      const targetStoreId = effectiveStoreId;
+      try {
+        const saveNcmOption = httpsCallable(functions, 'fiscalSaveNcmOption');
+        const response = await saveNcmOption(callablePayload({code, description}));
+        const option = response.data?.option;
+        if (!option?.code) throw new Error('O NCM não foi retornado pelo servidor. Atualize a tela e confira o cadastro.');
+        if (fiscalStoreIdRef.current !== targetStoreId) return;
+        setCustomNcmOptions((previous) => [...previous, option]);
+        setProductForm((previous) => ({...previous, ncm: option.code}));
+        setIsAddingNcm(false);
+        setNewNcmCode('');
+        setNewNcmDescription('');
+      } catch (error) {
+        if (fiscalStoreIdRef.current === targetStoreId) setNcmOptionError(error?.message || 'Não foi possível cadastrar o NCM.');
+      } finally {
+        setSavingNcmOption(false);
+      }
+    };
+
+    const handleCreateCfopOption = async () => {
+      if (isReadOnly || !effectiveStoreId || savingCfopOption || cfopOptionsLoading || manualInvoiceSaving) return;
+      const code = newCfopCode.trim();
+      const description = newCfopDescription.trim();
+      if (!/^\d{4}$/.test(code)) {
+        setCfopOptionError('Informe o CFOP com 4 dígitos.');
+        return;
+      }
+      if (description.length < 3 || description.length > 120) {
+        setCfopOptionError('Informe uma descrição de 3 a 120 caracteres.');
+        return;
+      }
+      if (availableCfopOptions.some((option) => option.value === code)) {
+        setCfopOptionError('Este CFOP já está disponível na lista.');
+        return;
+      }
+      const targetStoreId = effectiveStoreId;
+      setSavingCfopOption(true);
+      setCfopOptionError('');
+      try {
+        const response = await httpsCallable(functions, 'fiscalSaveCfopOption')(callablePayload({code, description}));
+        const option = response.data?.option;
+        if (!option?.code) throw new Error('O CFOP não foi retornado pelo servidor. Atualize a tela e confira o cadastro.');
+        if (fiscalStoreIdRef.current !== targetStoreId) return;
+        setCustomCfopOptions((previous) => [...previous, option]);
+        setManualInvoiceForm((previous) => ({...previous, operationCfop: option.code}));
+        setIsAddingCfop(false);
+        setNewCfopCode('');
+        setNewCfopDescription('');
+      } catch (error) {
+        if (fiscalStoreIdRef.current === targetStoreId) setCfopOptionError(error?.message || 'Não foi possível cadastrar o CFOP.');
+      } finally {
+        setSavingCfopOption(false);
+      }
     };
 
     const handleSaveFiscalProduct = async (event) => {
@@ -19925,11 +20242,12 @@ const handleSubmit = async (e) => {
 
       const commonFiscalPayload = {
         ncm: normalizedNcm,
-        unit: productForm.unit || 'un',
-        origin: Number(productForm.origin || 0),
-        csosn: productForm.csosn || '102',
-        pisCst: productForm.pisCst || '49',
-        cofinsCst: productForm.cofinsCst || '49',
+        unit: productForm.unit || '',
+        origin: productForm.origin === '' ? null : Number(productForm.origin),
+        csosn: productForm.csosn || '',
+        cst: productForm.cst || '',
+        pisCst: productForm.pisCst || '',
+        cofinsCst: productForm.cofinsCst || '',
         cest: productForm.cest || '',
         cBenef: productForm.cBenef || '',
         updatedAt: serverTimestamp()
@@ -20048,21 +20366,12 @@ const handleSubmit = async (e) => {
 
         const summary = { created: 0, updated: 0, errors: 0 };
         for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          chunk.forEach((item) => {
+            batch.set(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', item.id), item.payload, { merge: true });
+          });
           try {
-            if (isAccountant) {
-              const saveProducts = httpsCallable(functions, 'fiscalSaveProducts');
-              const products = chunk.map((item) => ({
-                id: item.id,
-                ...Object.fromEntries(Object.entries(item.payload).filter(([field]) => !['createdAt', 'updatedAt'].includes(field)))
-              }));
-              await saveProducts(callablePayload({ products }));
-            } else {
-              const batch = writeBatch(db);
-              chunk.forEach((item) => {
-                batch.set(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', item.id), item.payload, { merge: true });
-              });
-              await batch.commit();
-            }
+            await batch.commit();
             chunk.forEach((item) => {
               if (item.action === 'created') summary.created += 1;
               if (item.action === 'updated') summary.updated += 1;
@@ -20091,17 +20400,6 @@ const handleSubmit = async (e) => {
       }
     };
 
-    const handleDeleteFiscalProduct = async (row) => {
-      if (!row?.id || !effectiveStoreId) return;
-      if (isAccountant) {
-        const deleteProduct = httpsCallable(functions, 'fiscalDeleteProduct');
-        await deleteProduct(callablePayload({ productId: row.id }));
-        setMessage({ type: 'success', text: 'Produto fiscal excluído.' });
-        return;
-      }
-      await deleteItem('fiscalProducts', row.id, effectiveStoreId);
-    };
-
     const orderColumns = [
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.slice(0, 8) || '-'}</span> },
       { header: 'Cliente', key: 'clienteNome' },
@@ -20120,19 +20418,12 @@ const handleSubmit = async (e) => {
       } }
     ];
 
-    const orderActions = isReadOnly ? [] : [
-      {
-        icon: Edit,
-        label: 'Editar pedido antes da nota',
-        onClick: handleOpenPreInvoiceOrderEdit,
-        isVisible: (row) => !getPreInvoiceLockedReason(row)
-      },
-      { icon: RefreshCw, label: 'Validar', onClick: handleValidateOrder },
-      { icon: Printer, label: 'Emitir', onClick: handleIssueOrder }
-    ];
+    const orderActions = createFiscalOrderActions({readOnly: isReadOnly, icons: {Edit, RefreshCw, Save, Printer},
+      edit: handleOpenPreInvoiceOrderEdit, check: handleCheckOrderRequirements, save: handleValidateOrder, issue: handleIssueOrder,
+      locked: getPreInvoiceLockedReason, busy: busyOrderId !== '', validations: validationByOrder, model: modelOverride, operationCfop});
 
     const invoiceColumns = [
-      { header: 'NFC-e', render: (row) => <span className="font-mono text-xs font-semibold text-gray-800">{formatFiscalNumber(row.number)}</span> },
+      { header: 'Número', render: (row) => <span className="font-mono text-xs font-semibold text-gray-800">{row.status === 'draft' ? 'Ainda não atribuído' : formatFiscalNumber(row.number)}</span> },
       { header: 'Série', render: (row) => <span className="font-mono text-xs text-gray-600">{formatFiscalSeries(row.series)}</span> },
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs">{row.orderId?.slice(0, 8) || '-'}</span> },
       { header: 'Origem', render: (row) => {
@@ -20143,7 +20434,7 @@ const handleSubmit = async (e) => {
       { header: 'CPF/CNPJ', render: (row) => <span className="font-mono text-xs text-gray-600">{maskCpfCnpj(getInvoiceCustomerDocument(row))}</span> },
       { header: 'Status', render: (row) => <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass[row.status] || 'bg-gray-100 text-gray-700'}`}>{statusLabel[row.status] || row.status}</span> },
       { header: 'Valor', render: (row) => <span className="font-semibold text-green-700">{formatCurrencyBR(getInvoiceValue(row))}</span> },
-      { header: 'Emissão', render: (row) => formatDateTime(row.issuedAt || row.createdAt) },
+      { header: 'Emissão', render: (row) => row.status === 'draft' ? 'Não emitida' : formatDateTime(row.issuedAt || row.createdAt) },
       { header: 'Motivo', render: (row) => {
         const reason = fiscalReturnReason(row);
         return <span className="block max-w-[280px] truncate text-gray-700" title={reason || ''}>{reason || '-'}</span>;
@@ -20152,10 +20443,13 @@ const handleSubmit = async (e) => {
 
     const invoiceActions = [
       { icon: Eye, label: 'Ver detalhes', onClick: (row) => setInvoiceToView(row) },
-      { icon: FileText, label: 'Baixar/visualizar DANFE PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => row.status === 'authorized' },
+      { icon: Copy, label: 'Clonar Nota Fiscal', onClick: handleOpenCloneInvoice, isVisible: (row) => !isReadOnly && ['authorized', 'rejected', 'cancelled'].includes(row.status), isDisabled: () => cloneBusy },
+      { icon: Edit, label: 'Editar rascunho', onClick: handleEditManualDraft, isVisible: (row) => !isReadOnly && row.status === 'draft' && !row.orderId },
+      { icon: Eye, label: 'Visualizar Nota', onClick: (row) => row.orderId ? handleViewOrderDraft(row) : handlePreviewManualDraft(row), isVisible: (row) => row.status === 'draft' },
+      { icon: FileText, label: 'Baixar/visualizar DANFE PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
       { icon: Printer, label: 'Exportar DANFE A4', onClick: handleExportDanfeA4, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
-      { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => row.status === 'authorized' },
-      { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && (row.status === 'pending_return' || isDuplicateInvoiceRejection(row)) },
+      { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
+      { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' && Boolean(row.receipt) },
       { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => !isReadOnly && row.status === 'authorized' }
     ];
 
@@ -20169,7 +20463,7 @@ const handleSubmit = async (e) => {
 
     const productActions = isReadOnly ? [] : [
       { icon: Edit, label: 'Editar', onClick: handleEditFiscalProduct },
-      { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => handleDeleteFiscalProduct(row) }) }
+      { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('fiscalProducts', row.id, effectiveStoreId) }) }
     ];
 
     const DetailSection = ({ title, children }) => (
@@ -20211,7 +20505,7 @@ const handleSubmit = async (e) => {
           </div>
           <div className="flex items-center gap-2 px-4 py-2 bg-white border rounded-xl shadow-sm text-sm text-gray-700">
             <CheckCircle className="w-4 h-4 text-green-600" />
-            {isAccountant ? 'Administração fiscal (Contador)' : `Ambiente: ${settingsForm.environment === 'production' ? 'Produção' : 'Homologação'}`}
+            {isReadOnly ? 'Consulta contábil' : `Ambiente: ${settingsForm.environment === 'production' ? 'Produção' : 'Homologação'}`}
           </div>
         </div>
 
@@ -20232,6 +20526,7 @@ const handleSubmit = async (e) => {
           {[
             ['emitir', isReadOnly ? 'Pedidos' : 'Emitir'],
             ['notas', 'Notas emitidas'],
+            ['inutilizacao', 'Inutilizar Numeração'],
             ['produtos', 'Produtos fiscais'],
             ['configuracao', 'Configuração']
           ].map(([id, label]) => (
@@ -20275,12 +20570,14 @@ const handleSubmit = async (e) => {
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(280px,360px)_auto_minmax(240px,1fr)] gap-3 items-end">
                 <Select value={modelOverride} onChange={(e) => setModelOverride(e.target.value)} className="md:w-56">
-                  <option value="">Modelo automático</option>
-                  <option value="55">Forçar NF-e 55</option>
-                  <option value="65">Forçar NFC-e 65</option>
+                  <option value="">Selecione NF-e ou NFC-e</option>
+                  <option value="55">NF-e 55</option>
+                  <option value="65">NFC-e 65</option>
                 </Select>
                 <Select label="CFOP da operação" value={operationCfop} onChange={(e) => setOperationCfop(e.target.value)}>
-                  {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  <option value="">Selecione o CFOP</option>
+                  {operationCfop && !availableCfopOptions.some((option) => option.value === operationCfop) && <option value={operationCfop}>{operationCfop} - CFOP selecionado</option>}
+                  {availableCfopOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </Select>
                 <a href="https://www.confaz.fazenda.gov.br/legislacao/ajustes/sinief/cfop_cvsn_70_vigente" target="_blank" rel="noreferrer" className="self-end pb-3 text-sm text-pink-700 underline hover:text-pink-800">
                   Tabela CFOP
@@ -20291,7 +20588,7 @@ const handleSubmit = async (e) => {
                   </p>
                   {!isReadOnly && (
                     <Button size="sm" onClick={handleOpenManualInvoice}>
-                      <FileText className="w-4 h-4" /> Emitir Nota Fiscal Manual
+                      <FileText className="w-4 h-4" /> Criar rascunho NF-e/NFC-e
                     </Button>
                   )}
                   <Button
@@ -20315,8 +20612,17 @@ const handleSubmit = async (e) => {
             )}
             {Object.entries(validationByOrder).map(([orderId, result]) => (
               <div key={orderId} className={`p-4 rounded-xl border text-sm ${result.ok === false ? 'bg-red-50 border-red-200 text-red-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
-                <p className="font-semibold">Validação do pedido {orderId.slice(0, 8)}</p>
+                <p className="font-semibold">PRÉVIA — DOCUMENTO NÃO EMITIDO · {result.model === 55 ? 'NF-e' : result.model === 65 ? 'NFC-e' : 'modelo pendente'} · pedido {orderId.slice(0, 8)}</p>
                 {result.errors?.length ? <p>{result.errors.join(' ')}</p> : <p>Modelo {result.model}, série {result.series}, próximo número {result.number}. Total: R$ {(result.totals?.invoice || 0).toFixed(2)}</p>}
+                {result.preview && (
+                  <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 text-gray-800">
+                    <p><strong>Emitente:</strong> {result.preview.issuer?.legalName}</p>
+                    <p><strong>Cliente:</strong> {result.preview.customer?.name} · {result.preview.customer?.document}</p>
+                    <p><strong>Série:</strong> {result.preview.series} · <strong>Ambiente:</strong> {result.preview.environment}</p>
+                    <ul className="mt-2 list-disc pl-5">{(result.preview.items || []).map((item, index) => <li key={index}>{item.description} · {item.quantity} {item.unit} · NCM {item.ncm || 'pendente'} · CFOP {item.cfop || 'pendente'} · {formatCurrencyBR(item.total)}</li>)}</ul>
+                    <p className="mt-2 font-semibold">Total: {formatCurrencyBR(result.preview.totals?.invoice || 0)}</p>
+                  </div>
+                )}
                 {!isReadOnly && result.itemIssues?.length ? (
                   <div className="mt-3 space-y-2">
                     <p className="font-medium">Complete o cadastro fiscal do produto para liberar a emissão:</p>
@@ -20326,7 +20632,7 @@ const handleSubmit = async (e) => {
                           <strong>{issue.description}</strong> - pendente: {issue.fields.join(', ')}
                           {issue.fields.length === 1 && issue.fields.includes('NCM') && (
                             <span className="block text-xs text-red-700 mt-1">
-                              Clique para conferir e salvar o NCM. O padrão 1905.90.90 já será sugerido para confeitaria/pastelaria.
+                              Confira o NCM com o responsável fiscal antes de salvar.
                             </span>
                           )}
                         </span>
@@ -20452,6 +20758,16 @@ const handleSubmit = async (e) => {
           </div>
         )}
 
+        {activeTab === 'inutilizacao' && (
+          <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><h2 className="text-lg font-bold text-gray-900">Inutilização de numeração</h2><p className="text-sm text-gray-600">Operação fiscal separada do cancelamento de uma nota autorizada.</p></div>
+              {!isReadOnly && <Button onClick={() => { setInutilizationForm({model: '55', series: String(settingsForm.nfeSeries || 1), start: '', end: '', year: new Date().getUTCFullYear(), reason: ''}); setInutilizationConfirm(false); setInutilizationOpen(true); }}>Inutilizar Numeração</Button>}
+            </div>
+            <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b"><th className="p-2">Modelo</th><th className="p-2">Série</th><th className="p-2">Faixa</th><th className="p-2">Status</th><th className="p-2">Protocolo</th><th className="p-2">Data</th><th className="p-2">Responsável</th><th className="p-2">Justificativa / retorno</th></tr></thead><tbody>{[...inutilizations].sort((a, b) => String(b.id).localeCompare(String(a.id))).map((record) => <tr key={record.id} className="border-b align-top"><td className="p-2">{record.model === 55 ? 'NF-e' : 'NFC-e'}</td><td className="p-2">{record.series}</td><td className="p-2">{record.start}–{record.end}</td><td className="p-2">{record.status}</td><td className="p-2 font-mono">{record.protocol || '-'}</td><td className="p-2">{formatDateTime(record.completedAt || record.createdAt)}</td><td className="p-2">{record.requestedByUid || '-'}</td><td className="p-2">{record.reason}<br /><span className="text-gray-500">{record.xMotivo || ''}</span></td></tr>)}</tbody></table>{inutilizations.length === 0 && <p className="p-4 text-sm text-gray-500">Nenhuma inutilização registrada para esta loja.</p>}</div>
+          </div>
+        )}
+
         {activeTab === 'produtos' && (
           <div className="space-y-4">
             {!isReadOnly && <div className="flex justify-end">
@@ -20463,9 +20779,9 @@ const handleSubmit = async (e) => {
 
         {activeTab === 'configuracao' && (
           <form onSubmit={handleSaveFiscalConfig} className="space-y-6">
-            {isAccountant && (
+            {isReadOnly && (
               <div className="p-4 rounded-xl border border-blue-200 bg-blue-50 text-sm text-blue-800">
-                Perfil Contador: administração fiscal habilitada para as lojas vinculadas. A URL global do serviço permanece exclusiva do Dono.
+                Perfil Contador: consulta habilitada. Alterações fiscais, emissão e cancelamento não estão disponíveis.
               </div>
             )}
             <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
@@ -20540,10 +20856,10 @@ const handleSubmit = async (e) => {
                 <Input disabled={isReadOnly} label="Natureza da operação" value={settingsForm.operationNature || ''} onChange={(e) => setSettingsForm({ ...settingsForm, operationNature: e.target.value })} />
                 <Input disabled={isReadOnly} label="Pagamento padrão" value={settingsForm.defaultPaymentMethodCode || '99'} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPaymentMethodCode: e.target.value })} />
                 <Input disabled={isReadOnly} label="Indicador de presença" type="number" value={settingsForm.defaultPresence || 2} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPresence: e.target.value })} />
-                {(isPlatformAdmin || isAccountant) && (
+                {isPlatformAdmin && (
                   <div className="md:col-span-3">
                     <Input
-                      disabled={isAccountant}
+                      disabled={isReadOnly}
                       label="URL única do serviço fiscal (Cloud Run) - plataforma"
                       value={settingsForm.serviceUrl || ''}
                       placeholder="https://fiscal-service-xxxxx-rj.a.run.app"
@@ -20552,7 +20868,6 @@ const handleSubmit = async (e) => {
                     <p className="mt-1 text-xs text-gray-500">
                       Configuração global protegida; não pertence a uma loja.
                       {platformService?.configured ? ` Origem atual: ${platformService.source || 'backend'}.` : ' Ainda não configurada.'}
-                      {isAccountant ? ' Configuração exclusiva do Dono.' : ''}
                     </p>
                   </div>
                 )}
@@ -20668,15 +20983,30 @@ const handleSubmit = async (e) => {
                 onChange={(e) => setProductForm({ ...productForm, description: e.target.value })}
                 required={!hasMultipleFiscalProductsSelected}
               />
-              <Select label="NCM do produto" value={normalizeFiscalCode(productForm.ncm)} onChange={(e) => setProductForm({ ...productForm, ncm: e.target.value })} required>
-                {productForm.ncm && !NCM_PRODUCT_OPTIONS.some((option) => option.value === normalizeFiscalCode(productForm.ncm)) && (
-                  <option value={normalizeFiscalCode(productForm.ncm)}>{formatNcmCode(productForm.ncm)} - NCM cadastrado</option>
-                )}
-                {NCM_PRODUCT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </Select>
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="fiscal-product-ncm" className="block text-sm font-medium text-gray-700">NCM do produto</label>
+                  {!isReadOnly && <button type="button" onClick={() => { setIsAddingNcm(true); setNcmOptionError(''); }} className="text-xs font-medium text-pink-600 hover:text-pink-700">+ Novo NCM</button>}
+                </div>
+                <Select id="fiscal-product-ncm" value={normalizeFiscalCode(productForm.ncm)} onChange={(event) => setProductForm((previous) => ({...previous, ncm: event.target.value}))} required className="mt-1">
+                  <option value="">Selecione o NCM</option>
+                  {productForm.ncm && !availableNcmOptions.some((option) => option.value === normalizeFiscalCode(productForm.ncm)) && (
+                    <option value={normalizeFiscalCode(productForm.ncm)}>{formatNcmCode(productForm.ncm)} - NCM cadastrado</option>
+                  )}
+                  {availableNcmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+              </div>
+              {isAddingNcm && (
+                <FiscalCodeOptionForm kind="NCM" code={newNcmCode} description={newNcmDescription} error={ncmOptionError} saving={savingNcmOption} className="md:col-span-2"
+                  onCodeChange={(value) => { setNewNcmCode(value); setNcmOptionError(''); }}
+                  onDescriptionChange={(value) => { setNewNcmDescription(value); setNcmOptionError(''); }}
+                  onSave={handleCreateNcmOption}
+                  onCancel={() => { setIsAddingNcm(false); setNewNcmCode(''); setNewNcmDescription(''); setNcmOptionError(''); }} />
+              )}
               <Input label="Unidade" value={productForm.unit} onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })} />
               <Input label="Origem" type="number" value={productForm.origin} onChange={(e) => setProductForm({ ...productForm, origin: e.target.value })} />
-              <Input label="ICMS/CST" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
+              <Input label="ICMS CSOSN" value={productForm.csosn} onChange={(e) => setProductForm({ ...productForm, csosn: e.target.value })} />
+              <Input label="ICMS CST" value={productForm.cst} onChange={(e) => setProductForm({ ...productForm, cst: e.target.value })} />
               <Input label="CEST" value={productForm.cest} onChange={(e) => setProductForm({ ...productForm, cest: e.target.value })} />
               <Input label="PIS CST" value={productForm.pisCst} onChange={(e) => setProductForm({ ...productForm, pisCst: e.target.value })} />
               <Input label="COFINS CST" value={productForm.cofinsCst} onChange={(e) => setProductForm({ ...productForm, cofinsCst: e.target.value })} />
@@ -20684,7 +21014,7 @@ const handleSubmit = async (e) => {
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="secondary" type="button" disabled={savingFiscalProducts} onClick={() => { setShowProductModal(false); resetProductForm(); }}>Cancelar</Button>
-              <Button type="submit" disabled={savingFiscalProducts}><Save className="w-4 h-4" /> {savingFiscalProducts ? 'Salvando...' : 'Salvar'}</Button>
+              <Button type="submit" disabled={savingFiscalProducts || savingNcmOption}><Save className="w-4 h-4" /> {savingFiscalProducts ? 'Salvando...' : 'Salvar'}</Button>
             </div>
           </form>
         </Modal>
@@ -20697,12 +21027,13 @@ const handleSubmit = async (e) => {
             setOrderEditProductSearch('');
             setOrderEditError('');
           }}
-          title="Editar pedido antes da nota"
+          title={orderDraftToEdit ? `Editar rascunho ${orderDraftToEdit.model === 55 ? 'NF-e' : orderDraftToEdit.model === 65 ? 'NFC-e' : '— modelo pendente'}` : 'Editar pedido antes da nota'}
           size="xl"
         >
           <form onSubmit={handleSavePreInvoiceOrderEdit} data-unsaved-changes={Boolean(orderToEditBeforeInvoice)} className="space-y-5">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               Ajuste aqui os dados que serão usados na emissão fiscal. Depois de salvar, valide o pedido novamente antes de emitir a nota.
+              {orderDraftToEdit && <p className="mt-2 font-semibold">DOCUMENTO NÃO EMITIDO · Rascunho existente: {orderDraftToEdit.id}. Os itens e dados do pedido serão atualizados nesse mesmo rascunho.</p>}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Select label="Cliente cadastrado" value={orderEditForm.clienteId || ''} onChange={(event) => handleOrderEditClientChange(event.target.value)}>
@@ -20834,30 +21165,32 @@ const handleSubmit = async (e) => {
                 Cancelar
               </Button>
               <Button type="submit" disabled={orderEditSaving}>
-                <Save className="w-4 h-4" /> {orderEditSaving ? 'Salvando...' : 'Salvar pedido'}
+                <Save className="w-4 h-4" /> {orderEditSaving ? 'Salvando...' : orderDraftToEdit ? 'Salvar rascunho' : 'Salvar pedido'}
               </Button>
             </div>
           </form>
         </Modal>
 
-        <Modal isOpen={Boolean(orderToIssue)} onClose={() => { if (!busyOrderId) { setOrderToIssue(null); setIssueAdditionalInfo(''); setIssueError(''); } }} title="Emitir nota fiscal" size="lg">
+        <Modal isOpen={Boolean(orderToIssue)} onClose={() => { if (!busyOrderId) { setOrderToIssue(null); setIssueAdditionalInfo(''); setIssueError(''); } }} title={`Confirmar emissão de ${modelOverride === '55' ? 'NF-e' : 'NFC-e'}`} size="lg">
           <form onSubmit={handleConfirmIssue} className="space-y-4">
             <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 text-sm text-gray-700">
               <p><strong>Pedido:</strong> {orderToIssue?.id?.slice(0, 8) || '-'}</p>
               <p><strong>Cliente:</strong> {orderToIssue?.clienteNome || '-'}</p>
+              <p><strong>CPF/CNPJ:</strong> {getOrderCustomerDocument(orderToIssue) || '-'}</p>
               <p><strong>Total:</strong> R$ {(orderToIssue?.total || 0).toFixed(2)}</p>
+              <p><strong>Itens:</strong> {orderToIssue?.itens?.length || 0}</p>
             </div>
             <Textarea
               label="Informações adicionais da nota fiscal"
               rows={4}
               maxLength={5000}
               value={issueAdditionalInfo}
-              onChange={(event) => setIssueAdditionalInfo(event.target.value)}
+              readOnly
             />
             {issueError && <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-800">{issueError}</div>}
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="secondary" type="button" disabled={Boolean(busyOrderId)} onClick={() => { setOrderToIssue(null); setIssueAdditionalInfo(''); setIssueError(''); }}>Cancelar</Button>
-              <Button type="submit" disabled={Boolean(busyOrderId)}><Printer className="w-4 h-4" /> {busyOrderId ? 'Emitindo...' : 'Confirmar emissão'}</Button>
+              <Button type="submit" disabled={Boolean(busyOrderId)}><Printer className="w-4 h-4" /> {busyOrderId ? 'Emitindo...' : `Confirmar emissão ${modelOverride === '55' ? 'NF-e' : 'NFC-e'}`}</Button>
             </div>
           </form>
         </Modal>
@@ -20865,14 +21198,19 @@ const handleSubmit = async (e) => {
         <Modal
           isOpen={showManualInvoiceModal}
           onClose={() => {
-            if (manualInvoiceSaving) return;
+            if (manualInvoiceSaving || savingCfopOption) return;
             setShowManualInvoiceModal(false);
             resetManualInvoiceForm();
           }}
-          title="Emitir Nota Fiscal Manual"
+          title={manualInvoiceForm.modelOverride === '55' ? 'Preparar NF-e' : manualInvoiceForm.modelOverride === '65' ? 'Preparar NFC-e' : 'Preparar nota fiscal'}
           size="xl"
         >
-          <form onSubmit={handleIssueManualInvoice} className="space-y-5">
+          <form onSubmit={(event) => event.preventDefault()} className="space-y-5">
+            <div className="rounded-xl border border-orange-300 bg-orange-50 p-3 text-sm text-orange-900">
+              <strong>RASCUNHO — DOCUMENTO NÃO EMITIDO</strong>
+              {draftCloneInfo && <p>Clonada da {draftCloneInfo.clonedFromModel === 55 ? 'NF-e' : 'NFC-e'} nº {draftCloneInfo.clonedFromNumber ?? 'não disponível'}. A nova numeração será atribuída somente na emissão.</p>}
+              {(draftCloneInfo?.cloneWarnings || []).map((warning, index) => <p key={index} className="mt-2">{warning}</p>)}
+            </div>
             <section className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Select
@@ -20917,11 +21255,22 @@ const handleSubmit = async (e) => {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Input label="Logradouro" value={manualInvoiceForm.customer?.address?.street || ''} onChange={(event) => setManualInvoiceCustomerAddressField('street', event.target.value)} required />
                 <Input label="Número" value={manualInvoiceForm.customer?.address?.number || ''} onChange={(event) => setManualInvoiceCustomerAddressField('number', event.target.value)} />
+                <Input label="Complemento" value={manualInvoiceForm.customer?.address?.complement || ''} onChange={(event) => setManualInvoiceCustomerAddressField('complement', event.target.value)} />
                 <Input label="Bairro" value={manualInvoiceForm.customer?.address?.district || ''} onChange={(event) => setManualInvoiceCustomerAddressField('district', event.target.value)} required />
                 <Input label="CEP" value={manualInvoiceForm.customer?.address?.zip || ''} onChange={(event) => setManualInvoiceCustomerAddressField('zip', event.target.value)} required />
                 <Input label="Município" value={manualInvoiceForm.customer?.address?.city || ''} onChange={(event) => setManualInvoiceCustomerAddressField('city', event.target.value)} />
                 <Input label="Código IBGE" value={manualInvoiceForm.customer?.address?.cityCode || ''} onChange={(event) => setManualInvoiceCustomerAddressField('cityCode', event.target.value)} />
                 <Input label="UF" value={manualInvoiceForm.customer?.address?.state || ''} onChange={(event) => setManualInvoiceCustomerAddressField('state', event.target.value)} />
+              </div>
+              <div className="flex flex-wrap gap-4 text-sm text-gray-700">
+                {[
+                  ['isFinalConsumer', 'Consumidor final'],
+                  ['receivesIcmsCredit', 'Destinatário recebe crédito de ICMS'],
+                  ['requiresNfe', 'Destinatário exige NF-e']
+                ].map(([field, label]) => <label key={field} className="flex items-center gap-2">
+                  <input type="checkbox" checked={Boolean(manualInvoiceForm.customer?.[field])} onChange={(event) => setManualInvoiceCustomerField(field, event.target.checked)} />
+                  {label}
+                </label>)}
               </div>
             </section>
 
@@ -20930,19 +21279,26 @@ const handleSubmit = async (e) => {
                 <Select
                   label="Modelo"
                   value={manualInvoiceForm.modelOverride}
+                  disabled={Boolean(draftCloneInfo)}
                   onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, modelOverride: event.target.value }))}
                 >
-                  <option value="">Automático</option>
+                  <option value="">Selecione o modelo</option>
                   <option value="55">NF-e 55</option>
                   <option value="65">NFC-e 65</option>
                 </Select>
-                <Select
-                  label="CFOP da operação"
-                  value={manualInvoiceForm.operationCfop}
-                  onChange={(event) => setManualInvoiceForm((prev) => ({ ...prev, operationCfop: event.target.value }))}
-                >
-                  {CFOP_OPERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </Select>
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-1">
+                    <label htmlFor="manual-invoice-cfop" className="text-sm font-medium text-gray-700">CFOP da operação</label>
+                    {!isReadOnly && <button type="button" disabled={cfopOptionsLoading || savingCfopOption || manualInvoiceSaving} onClick={() => { setIsAddingCfop(true); setCfopOptionError(''); }} className="text-xs font-medium text-pink-600 hover:text-pink-700 disabled:opacity-50">+ Novo CFOP</button>}
+                  </div>
+                  <Select id="manual-invoice-cfop" value={manualInvoiceForm.operationCfop} className="mt-1" onChange={(event) => setManualInvoiceForm((previous) => ({...previous, operationCfop: event.target.value}))}>
+                    <option value="">Selecione o CFOP</option>
+                    {manualInvoiceForm.operationCfop && !availableCfopOptions.some((option) => option.value === manualInvoiceForm.operationCfop) && <option value={manualInvoiceForm.operationCfop}>{manualInvoiceForm.operationCfop} - CFOP selecionado</option>}
+                    {availableCfopOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </Select>
+                  {cfopOptionsLoading && <p className="mt-1 text-xs text-gray-500">Carregando CFOPs...</p>}
+                  {cfopCatalogError && <p role="alert" className="mt-1 text-xs text-red-700">{cfopCatalogError}</p>}
+                </div>
                 <Input
                   label="Código de pagamento"
                   value={manualInvoiceForm.paymentMethodCode}
@@ -20959,6 +21315,11 @@ const handleSubmit = async (e) => {
                   Baixar estoque ao emitir esta nota?
                 </label>
               </div>
+              {isAddingCfop && !isReadOnly && <FiscalCodeOptionForm kind="CFOP" code={newCfopCode} description={newCfopDescription} error={cfopOptionError} saving={savingCfopOption}
+                onCodeChange={(value) => { setNewCfopCode(value); setCfopOptionError(''); }}
+                onDescriptionChange={(value) => { setNewCfopDescription(value); setCfopOptionError(''); }}
+                onSave={handleCreateCfopOption}
+                onCancel={() => { setIsAddingCfop(false); setNewCfopCode(''); setNewCfopDescription(''); setCfopOptionError(''); }} />}
             </section>
 
             <section className="rounded-xl border border-gray-100 bg-white p-4 space-y-4">
@@ -21018,20 +21379,30 @@ const handleSubmit = async (e) => {
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                         <Input label="Código" value={item.code || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { code: event.target.value })} />
-                        <Select label="NCM" value={normalizeFiscalCode(item.ncm || DEFAULT_NCM_PRODUCT)} onChange={(event) => updateManualInvoiceItem(item.draftId, { ncm: event.target.value })}>
-                          {NCM_PRODUCT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        <Select label="NCM" value={normalizeFiscalCode(item.ncm)} onChange={(event) => updateManualInvoiceItem(item.draftId, { ncm: event.target.value })}>
+                          <option value="">Selecione o NCM</option>
+                          {item.ncm && !availableNcmOptions.some((option) => option.value === normalizeFiscalCode(item.ncm)) && <option value={normalizeFiscalCode(item.ncm)}>{formatNcmCode(item.ncm)} - NCM do item</option>}
+                          {availableNcmOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                         </Select>
-                        <Input label="Unidade" value={item.unit || 'un'} onChange={(event) => updateManualInvoiceItem(item.draftId, { unit: event.target.value })} />
-                        <Input label="CSOSN/CST" value={item.csosn || '102'} onChange={(event) => updateManualInvoiceItem(item.draftId, { csosn: event.target.value })} />
+                        <Input label="Unidade" value={item.unit || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { unit: event.target.value })} />
+                        <Input label="Origem" type="number" min="0" max="8" value={item.origin ?? ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { origin: event.target.value })} />
+                          <Input label="CFOP do item" value={item.cfop || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { cfop: event.target.value })} placeholder="Usar CFOP da operação" />
+                          <Input label="ICMS CSOSN" value={item.csosn || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { csosn: event.target.value })} />
+                        <Input label="ICMS CST" value={item.cst || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { cst: event.target.value })} />
+                        <Input label="PIS CST" value={item.pisCst || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { pisCst: event.target.value })} />
+                          <Input label="COFINS CST" value={item.cofinsCst || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { cofinsCst: event.target.value })} />
+                          <Input label="CEST" value={item.cest || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { cest: event.target.value })} />
+                          <Input label="Código de benefício" value={item.cBenef || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { cBenef: event.target.value })} />
+                          <Input label="IPI CST" value={item.ipiCst || ''} onChange={(event) => updateManualInvoiceItem(item.draftId, { ipiCst: event.target.value })} />
                         <div className="rounded-xl bg-white p-3 text-right text-sm text-gray-700">
                           <p>Total do item</p>
                           <p className="text-lg font-bold text-gray-900">{formatCurrencyBR(Math.max(itemTotal, 0))}</p>
                         </div>
                       </div>
                       <p className="text-xs text-gray-500">
-                        Origem do item: {item.productId ? 'produto cadastrado' : 'descrição manual'}.
+                        Origem do item: {item.source === 'snapshot' ? 'dados históricos da nota original' : item.productId ? 'produto cadastrado selecionado' : 'descrição manual'}.
                       </p>
                     </div>
                   );
@@ -21040,6 +21411,14 @@ const handleSubmit = async (e) => {
             </section>
 
             <section className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Input label="Frete" type="number" min="0" step="0.01" value={manualInvoiceForm.freight ?? ''} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, freight: event.target.value}))} />
+                <Input label="Seguro" type="number" min="0" step="0.01" value={manualInvoiceForm.insurance ?? ''} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, insurance: event.target.value}))} />
+                <Input label="Outras despesas" type="number" min="0" step="0.01" value={manualInvoiceForm.other ?? ''} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, other: event.target.value}))} />
+                <Input label="Natureza da operação" value={manualInvoiceForm.operationNature ?? ''} placeholder="Usar configuração atual da loja" onChange={(event) => setManualInvoiceForm((prev) => ({...prev, operationNature: event.target.value}))} />
+                <Input label="Modalidade de frete" value={manualInvoiceForm.freightMode ?? '9'} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, freightMode: event.target.value}))} />
+                <Input label="Indicador de presença" value={manualInvoiceForm.presence ?? ''} placeholder="Usar configuração atual da loja" onChange={(event) => setManualInvoiceForm((prev) => ({...prev, presence: event.target.value}))} />
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                 <div className="rounded-xl bg-white p-3 text-sm text-gray-700">
                   <p>Subtotal</p>
@@ -21064,14 +21443,20 @@ const handleSubmit = async (e) => {
             </section>
 
             {manualInvoiceError && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{manualInvoiceError}</div>
+              <div className={`rounded-xl border p-3 text-sm ${draftCheck?.ok ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{manualInvoiceError}</div>
+            )}
+            {draftCheck?.errors?.length > 0 && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                <p className="font-semibold">Campos obrigatórios ou valores incorretos:</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">{draftCheck.errors.map((error, index) => <li key={`${index}-${error}`}>{error}</li>)}</ul>
+              </div>
             )}
 
             <div className="flex justify-end gap-3 pt-2">
               <Button
                 variant="secondary"
                 type="button"
-                disabled={manualInvoiceSaving}
+                disabled={manualInvoiceSaving || savingCfopOption}
                 onClick={() => {
                   setShowManualInvoiceModal(false);
                   resetManualInvoiceForm();
@@ -21079,14 +21464,69 @@ const handleSubmit = async (e) => {
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={manualInvoiceSaving}>
-                <Printer className="w-4 h-4" /> {manualInvoiceSaving ? 'Emitindo...' : 'Emitir Nota Fiscal'}
+              <Button type="button" variant="secondary" onClick={() => saveManualDraft()} disabled={manualInvoiceSaving || savingCfopOption || isAddingCfop}>
+                <Save className="w-4 h-4" /> {manualInvoiceSaving ? 'Salvando...' : `Salvar rascunho ${manualInvoiceForm.modelOverride === '55' ? 'NF-e' : manualInvoiceForm.modelOverride === '65' ? 'NFC-e' : ''}`}
               </Button>
+              <Button type="button" variant="secondary" onClick={() => saveManualDraft({openPreview: true})} disabled={manualInvoiceSaving || savingCfopOption || isAddingCfop}>
+                <Eye className="w-4 h-4" /> Visualizar Nota
+              </Button>
+              <Button type="button" onClick={() => saveManualDraft({validate: true})} disabled={manualInvoiceSaving}>
+                <RefreshCw className="w-4 h-4" /> {manualInvoiceSaving ? 'Salvando...' : 'Salvar e Validar'}
+              </Button>
+              {manualDraftId && draftCheck?.ok && (
+                <Button type="button" onClick={() => { setShowManualInvoiceModal(false); setPreviewDraftId(manualDraftId); }} disabled={manualInvoiceSaving || savingCfopOption || isAddingCfop}>
+                  <Printer className="w-4 h-4" /> Emitir Nota Fiscal — {manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'}
+                </Button>
+              )}
             </div>
           </form>
         </Modal>
 
-        <Modal isOpen={Boolean(invoiceToView)} onClose={() => setInvoiceToView(null)} title="Detalhes da NFC-e" size="xl">
+        <Modal isOpen={Boolean(previewDraftId)} onClose={() => { if (!manualInvoiceSaving) setPreviewDraftId(''); }} title={`PRÉVIA ${manualInvoiceForm.modelOverride === '55' ? 'NF-e / DANFE' : manualInvoiceForm.modelOverride === '65' ? 'NFC-e / cupom' : 'Nota Fiscal — modelo pendente'}`} size="xl">
+          <div className="space-y-4">
+            <div className="rounded-xl border-2 border-orange-300 bg-orange-50 p-4 text-center font-bold text-orange-900">PRÉVIA — DOCUMENTO NÃO EMITIDO · SEM VALIDADE FISCAL</div>
+            <div className={`rounded-xl border border-gray-200 bg-white p-5 ${manualInvoiceForm.modelOverride === '65' ? 'mx-auto max-w-md font-mono' : ''}`}>
+              <h3 className="text-center text-lg font-bold">{manualInvoiceForm.modelOverride === '55' ? 'Prévia de NF-e — DANFE' : manualInvoiceForm.modelOverride === '65' ? 'Prévia de NFC-e — DANFE NFC-e' : 'Prévia de Nota Fiscal — selecione o modelo'}</h3>
+              <p className="mt-3"><strong>Emitente:</strong> {issuerForm.legalName} · {issuerForm.cnpj}</p>
+              <p><strong>Destinatário:</strong> {manualInvoiceForm.customer?.name || 'Não informado'} · {manualInvoiceForm.customer?.document || 'Documento pendente'}</p>
+              <p><strong>Endereço:</strong> {[manualInvoiceForm.customer?.address?.street, manualInvoiceForm.customer?.address?.number, manualInvoiceForm.customer?.address?.city, manualInvoiceForm.customer?.address?.state, manualInvoiceForm.customer?.address?.zip].filter(Boolean).join(', ') || 'Pendente'}</p>
+              <p><strong>Modelo:</strong> {manualInvoiceForm.modelOverride} · <strong>Série:</strong> {manualInvoiceForm.modelOverride === '55' ? settingsForm.nfeSeries : settingsForm.nfceSeries} · <strong>Número:</strong> ainda não atribuído</p>
+              <div className="mt-3 border-t border-gray-200 pt-2">
+                {(manualInvoiceForm.items || []).map((item, index) => <div key={item.draftId || index} className="border-b border-gray-100 py-2 text-sm"><strong>{item.description || `Item ${index + 1}`}</strong><br />{item.quantity} {item.unit} × {formatCurrencyBR(Number(item.unitPrice || 0))} · NCM {item.ncm || 'pendente'} · CFOP {item.cfop || manualInvoiceForm.operationCfop || 'pendente'} · ICMS {item.csosn || item.cst || 'pendente'} · PIS {item.pisCst || 'pendente'} · COFINS {item.cofinsCst || 'pendente'} · desconto {formatCurrencyBR(Number(item.discount || 0))}</div>)}
+              </div>
+                <p className="mt-3">Produtos: {formatCurrencyBR(manualInvoiceTotals.products)} · Desconto: {formatCurrencyBR(manualInvoiceTotals.discount)} · Frete: {formatCurrencyBR(manualInvoiceTotals.freight)} · Seguro: {formatCurrencyBR(manualInvoiceTotals.insurance)} · Outras despesas: {formatCurrencyBR(manualInvoiceTotals.other)}</p>
+              <p className="text-lg font-bold">Total: {formatCurrencyBR(manualInvoiceTotals.invoice)}</p>
+              {manualInvoiceForm.additionalInfo && <p className="mt-2 text-sm"><strong>Observações:</strong> {manualInvoiceForm.additionalInfo}</p>}
+            </div>
+            {draftCheck && <div className={`rounded-xl border p-4 text-sm ${draftCheck.ok ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+              <p className="font-bold">{draftCheck.ok ? 'ESTÁ PRONTA PARA EMISSÃO' : 'POSSUI PENDÊNCIAS'}</p>
+              {(draftCheck.errors || []).map((error, index) => <p key={`error-${index}`}>❌ {error}</p>)}
+              {(draftCheck.warnings || []).map((warning, index) => <p key={`warning-${index}`}>⚠️ {warning}</p>)}
+              {draftCheck.ok && <p>✅ Validação fiscal concluída. O backend checará novamente antes da transmissão.</p>}
+            </div>}
+            <div className="flex flex-wrap justify-end gap-2">
+              {!isReadOnly && <Button variant="secondary" onClick={() => { setPreviewDraftId(''); setShowManualInvoiceModal(true); }} disabled={manualInvoiceSaving}><Edit className="w-4 h-4" /> Voltar para edição</Button>}
+              {!isReadOnly && <Button variant="secondary" onClick={checkManualDraft} disabled={manualInvoiceSaving}><RefreshCw className="w-4 h-4" /> Checar requisitos</Button>}
+              {!isReadOnly && <Button onClick={() => setConfirmDraftIssue(true)} disabled={manualInvoiceSaving || !draftCheck?.ok}><Printer className="w-4 h-4" /> Emitir Nota Fiscal — {manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'}</Button>}
+            </div>
+          </div>
+        </Modal>
+
+        <Modal isOpen={confirmDraftIssue} onClose={() => { if (!manualInvoiceSaving) setConfirmDraftIssue(false); }} title={`Confirmar emissão da ${manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'}?`} size="md">
+          <form onSubmit={issueManualDraft} className="space-y-4">
+            <p><strong>Cliente:</strong> {manualInvoiceForm.customer?.name || '-'}</p>
+            <p><strong>CPF/CNPJ:</strong> {manualInvoiceForm.customer?.document || '-'}</p>
+            <p><strong>Itens:</strong> {manualInvoiceForm.items?.length || 0}</p>
+            <p><strong>Total:</strong> {formatCurrencyBR(manualInvoiceTotals.invoice)}</p>
+            <p className="text-sm text-gray-600">A confirmação envia esta {manualInvoiceForm.modelOverride === '55' ? 'NF-e' : 'NFC-e'} ao ambiente fiscal.</p>
+            <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setConfirmDraftIssue(false)} disabled={manualInvoiceSaving}>Cancelar</Button><Button type="submit" disabled={manualInvoiceSaving}>{manualInvoiceSaving ? 'Enviando...' : 'Confirmar emissão'}</Button></div>
+          </form>
+        </Modal>
+
+        <FiscalCloneConfirmation invoice={cloneConfirmation?.invoice} busy={cloneBusy} error={cloneError} Modal={Modal} Button={Button}
+          onCancel={() => setCloneConfirmation(null)} onConfirm={handleConfirmCloneInvoice} />
+
+        <Modal isOpen={Boolean(invoiceToView)} onClose={() => setInvoiceToView(null)} title={`Detalhes da ${invoiceToView?.model === 55 ? 'NF-e' : invoiceToView?.model === 65 ? 'NFC-e' : 'nota fiscal em preparação'}`} size="xl">
           {invoiceToView && (() => {
             const invoice = invoiceToView;
             const order = getInvoiceOrder(invoice);
@@ -21110,7 +21550,7 @@ const handleSubmit = async (e) => {
                 <DetailSection title="Identificação da nota">
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     <DetailField label="Chave de acesso" value={invoice.key || '-'} mono full />
-                    <DetailField label="Número da NFC-e" value={formatFiscalNumber(invoice.number)} mono />
+                    <DetailField label="Número" value={invoice.status === 'draft' ? 'Não atribuído' : formatFiscalNumber(invoice.number)} mono />
                     <DetailField label="Série" value={formatFiscalSeries(invoice.series)} mono />
                     <DetailField label="Modelo" value={invoice.model || '-'} />
                     <DetailField label="Origem" value={getInvoiceOriginLabel(invoice)} />
@@ -21118,12 +21558,17 @@ const handleSubmit = async (e) => {
                       <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Status</p>
                       <div className="mt-1">{statusBadge}</div>
                     </div>
-                    <DetailField label="Emissão" value={formatDateTime(invoice.issuedAt || invoice.createdAt)} />
+                    <DetailField label="Emissão" value={invoice.status === 'draft' ? 'Não emitida' : formatDateTime(invoice.issuedAt || invoice.createdAt)} />
                     <DetailField label="Protocolo de autorização" value={invoice.protocol || '-'} mono />
                     <DetailField label="Autorização" value={formatDateTime(invoice.authorizedAt || invoice.serviceResult?.authorizedAt || (invoice.status === 'authorized' ? invoice.updatedAt : null))} />
                     <DetailField label="Motivo/status SEFAZ" value={reason || '-'} full />
                     <DetailField label="Observação" value={invoice.additionalInfo || '-'} full />
                     <DetailField label="Justificativa de cancelamento" value={invoice.cancelReason || '-'} full />
+                    {invoice.cancelRequestedAt && <DetailField label="Cancelamento solicitado" value={formatDateTime(invoice.cancelRequestedAt)} />}
+                    {invoice.cancelledAt && <DetailField label="Cancelamento registrado" value={formatDateTime(invoice.cancelledAt)} />}
+                    {invoice.cancelProtocol && <DetailField label="Protocolo de cancelamento" value={invoice.cancelProtocol} mono />}
+                    {invoice.cancelCStat && <DetailField label="Código do cancelamento" value={invoice.cancelCStat} />}
+                    {invoice.cancelRequestedByUid && <DetailField label="Solicitado por" value={invoice.cancelRequestedByUid} />}
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button size="sm" variant="secondary" onClick={() => handleCopyInvoiceKey(invoice)}><Key className="w-4 h-4" /> Copiar chave</Button>
@@ -21222,9 +21667,9 @@ const handleSubmit = async (e) => {
 
                 <DetailSection title="Arquivos e ações fiscais">
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoicePdf(invoice)} disabled={invoice.status !== 'authorized'} title="Visualizar ou baixar DANFE/PDF"><FileText className="w-4 h-4" /> DANFE/PDF</Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoicePdf(invoice)} disabled={!['authorized', 'cancelled'].includes(invoice.status)} title="Visualizar ou baixar DANFE/PDF"><FileText className="w-4 h-4" /> DANFE/PDF</Button>
                     <Button size="sm" variant="secondary" onClick={() => handleExportDanfeA4(invoice)} disabled={!['authorized', 'cancelled'].includes(invoice.status)} title="Exportar DANFE em folha A4"><Printer className="w-4 h-4" /> DANFE A4</Button>
-                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoiceXml(invoice)} disabled={invoice.status !== 'authorized'} title="Baixar XML autorizado"><Download className="w-4 h-4" /> XML</Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleDownloadInvoiceXml(invoice)} disabled={!['authorized', 'cancelled'].includes(invoice.status)} title="Baixar XML autorizado"><Download className="w-4 h-4" /> XML</Button>
                     <Button size="sm" variant="secondary" onClick={() => handleCopyInvoiceKey(invoice)} title="Copiar chave de acesso"><Key className="w-4 h-4" /> Copiar chave</Button>
                     {sefazUrl && (
                       <a href={sefazUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-md transition-all hover:bg-gray-50" title="Consultar na SEFAZ pela chave de acesso">
@@ -21232,20 +21677,24 @@ const handleSubmit = async (e) => {
                       </a>
                     )}
                     {!isReadOnly && invoice.status === 'authorized' && (
-                      <Button size="sm" variant="danger" onClick={() => { setInvoiceToView(null); handleOpenCancelInvoice(invoice); }} title="Cancelar NFC-e autorizada"><X className="w-4 h-4" /> Cancelar NFC-e</Button>
+                      <Button size="sm" variant="danger" onClick={() => { setInvoiceToView(null); handleOpenCancelInvoice(invoice); }} title={`Cancelar ${invoice.model === 55 ? 'NF-e' : 'NFC-e'} autorizada`}><X className="w-4 h-4" /> Cancelar {invoice.model === 55 ? 'NF-e' : 'NFC-e'}</Button>
                     )}
                   </div>
+                </DetailSection>
+                <DetailSection title="Histórico fiscal">
+                  <div className="space-y-2 text-sm">{(invoice.history || []).map((entry, index) => <div key={index} className="rounded-lg border border-gray-100 bg-white p-2"><strong>{statusLabel[entry.status] || entry.action || entry.status}</strong> · {formatDateTime(entry.at)} · {entry.by || '-'}{entry.message ? ` · ${entry.message}` : ''}{entry.protocol ? ` · protocolo ${entry.protocol}` : ''}</div>)}</div>
                 </DetailSection>
               </div>
             );
           })()}
         </Modal>
 
-        <Modal isOpen={Boolean(invoiceToCancel)} onClose={() => { if (!busyOrderId) { setInvoiceToCancel(null); setCancelReason(''); setCancelError(''); } }} title="Cancelar nota fiscal" size="md">
+        <Modal isOpen={Boolean(invoiceToCancel)} onClose={() => { if (!busyOrderId) { setInvoiceToCancel(null); setCancelReason(''); setCancelError(''); } }} title={`Cancelar ${invoiceToCancel?.model === 55 ? 'NF-e' : 'NFC-e'} autorizada`} size="md">
           <form onSubmit={handleConfirmCancelInvoice} className="space-y-4">
             <div className="rounded-xl bg-red-50 border border-red-100 p-4 text-sm text-red-800">
               <p><strong>Nota:</strong> {invoiceToCancel ? `${invoiceToCancel.model || '-'} / ${invoiceToCancel.series || '-'} / ${invoiceToCancel.number || '-'}` : '-'}</p>
               <p><strong>Chave:</strong> {invoiceToCancel?.key || '-'}</p>
+              <p>Esta ação envia um evento fiscal de cancelamento.</p>
             </div>
             <Textarea
               label="Justificativa do cancelamento"
@@ -21263,9 +21712,22 @@ const handleSubmit = async (e) => {
             </div>
           </form>
         </Modal>
+
+        <Modal isOpen={inutilizationOpen} onClose={() => { if (!inutilizationBusy) { setInutilizationOpen(false); setInutilizationConfirm(false); } }} title="Inutilizar Numeração" size="md">
+          <form onSubmit={submitInutilization} className="space-y-4">
+            <p className="text-sm text-gray-600">Esta operação é transmitida à SEFAZ. Use apenas números sem documento emitido ou reservado.</p>
+            <Select label="Modelo" value={inutilizationForm.model} disabled={inutilizationConfirm} onChange={(event) => setInutilizationForm((prev) => ({...prev, model: event.target.value, series: String(event.target.value === '55' ? settingsForm.nfeSeries : settingsForm.nfceSeries)}))}><option value="55">NF-e</option><option value="65">NFC-e</option></Select>
+            <Input label="Série" type="number" min="0" max="999" required disabled={inutilizationConfirm} value={inutilizationForm.series} onChange={(event) => setInutilizationForm((prev) => ({...prev, series: event.target.value}))} />
+            <div className="grid grid-cols-2 gap-3"><Input label="Número inicial" type="number" min="1" required disabled={inutilizationConfirm} value={inutilizationForm.start} onChange={(event) => setInutilizationForm((prev) => ({...prev, start: event.target.value}))} /><Input label="Número final" type="number" min="1" required disabled={inutilizationConfirm} value={inutilizationForm.end} onChange={(event) => setInutilizationForm((prev) => ({...prev, end: event.target.value}))} /></div>
+            <Input label="Ano da integração" type="number" value={inutilizationForm.year} readOnly />
+            <Textarea label="Justificativa" rows={3} minLength={15} maxLength={255} required disabled={inutilizationConfirm} value={inutilizationForm.reason} onChange={(event) => setInutilizationForm((prev) => ({...prev, reason: event.target.value}))} />
+            {inutilizationConfirm && <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900"><strong>Confirmar inutilização da numeração {inutilizationForm.start} a {inutilizationForm.end}?</strong><p>{inutilizationForm.model === '55' ? 'NF-e' : 'NFC-e'} · série {inutilizationForm.series} · ano {inutilizationForm.year}. Esta operação será transmitida ao ambiente fiscal.</p></div>}
+            <div className="flex justify-end gap-2"><Button type="button" variant="secondary" disabled={inutilizationBusy} onClick={() => { if (inutilizationConfirm) setInutilizationConfirm(false); else setInutilizationOpen(false); }}>{inutilizationConfirm ? 'Voltar' : 'Cancelar'}</Button><Button type="submit" disabled={inutilizationBusy}>{inutilizationBusy ? 'Transmitindo...' : inutilizationConfirm ? 'Confirmar inutilização' : 'Continuar'}</Button></div>
+          </form>
+        </Modal>
       </div>
     );
-  };
+  }, []);
 
   const PlaceholderPage = ({ title }) => (<div className="p-6"><h1 className="text-3xl font-bold text-pink-600">{title}</h1><p>Em desenvolvimento...</p></div>);
   const userHasPermission = useCallback((menuId) => {
@@ -21276,8 +21738,8 @@ const handleSubmit = async (e) => {
     const menuItem = allMenuItems.find(item => item.id === menuId);
     const permissionKey = menuItem?.permission || menuId;
 
-    if (user.customPermissions) {
-      return Boolean(user.customPermissions[permissionKey]);
+    if (user.customPermissions && typeof user.customPermissions === 'object') {
+      return Boolean(sanitizePermissions(user.customPermissions, user.role)[permissionKey]);
     }
 
     const normalizedPermissions = sanitizePermissions(user.permissions, user.role);
@@ -21316,22 +21778,6 @@ const handleSubmit = async (e) => {
     return ids.length ? ids[0] : null;
   }, [user, selectedStoreId, resolveStoreIdsForView]);
 
-  const openPendingOrderFromNotification = useCallback((order) => {
-    if (!order?.id) return;
-    if (!confirmDiscardUnsavedChanges()) return;
-
-    pendingOrderOpenRequestRef.current = {
-      orderId: order.id,
-      lojaId: order.lojaId || null
-    };
-    setCurrentPage('pedidos');
-    setShowNotifications(false);
-  }, [confirmDiscardUnsavedChanges, setCurrentPage]);
-
-  const handleOrderOpenRequestHandled = useCallback(() => {
-    pendingOrderOpenRequestRef.current = null;
-  }, []);
-
   const openCashRecordFromAlert = useCallback((alert = {}) => {
     try {
       sessionStorage.setItem('fornecedores_activeTab', JSON.stringify('caixa'));
@@ -21346,72 +21792,52 @@ const handleSubmit = async (e) => {
   }, [selectStoreById, setCurrentPage]);
 
   const renderCurrentPage = () => {
-    if (authLoading || (loading && user && loadedWorkspaceUserIdRef.current !== userId)) {
+    if (authLoading || (loading && user)) {
       return (<div className="flex h-full w-full items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-pink-500"></div></div>);
     }
 
-    const inlinePage = (pageKey, renderPage) => <InlinePageHost key={pageKey} renderPage={renderPage} />;
-    const homePage = () => inlinePage('pagina-inicial', PaginaInicial);
-
     switch (currentPage) {
-
-      case 'pagina-inicial': return homePage();
-      case 'dashboard': return userHasPermission('dashboard')
-        ? inlinePage('dashboard', () => Dashboard({
-            handleStopAndSnoozeAlarm,
-            isAlarmPlaying,
-            isAlarmSnoozed,
-            snoozeEndTime,
-            hasNewPendingOrders,
-            alarmPauseMinutes: resolvedAlarmPauseMinutes
-          }))
-        : homePage();
-      case 'clientes': return userHasPermission('clientes') ? inlinePage('clientes', Clientes) : homePage();
-      case 'produtos': return userHasPermission('produtos') ? inlinePage('produtos', Produtos) : homePage();
-      case 'pedidos': return userHasPermission('pedidos')
-        ? inlinePage('pedidos', () => Pedidos({
-            orderOpenRequest: pendingOrderOpenRequestRef.current,
-            onOrderOpenRequestHandled: handleOrderOpenRequestHandled
-          }))
-        : homePage();
-      case 'entre-lojas': return userHasPermission('entre-lojas') ? inlinePage('entre-lojas', EntreLojas) : homePage();
-      case 'agenda': return userHasPermission('agenda') ? inlinePage('agenda', Agenda) : homePage();
-      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} availableStores={availableStores} storeInfoMap={storeInfoMap} /> : homePage();
-      case 'relatorios': return userHasPermission('relatorios') ? <Relatorios data={data} /> : homePage();
-      case 'meu-espaco': return userHasPermission('meu-espaco')
-        ? inlinePage('meu-espaco', () => MeuEspaco({ user, resolveActiveStoreForWrite, currentStoreIdForDisplay, storeInfoMap }))
-        : homePage();
-          case 'financeiro': return userHasPermission('financeiro') ? (
-            <FinancialControlPanel
-              data={data}
-              addItem={addItem}
-              updateItem={updateItem}
-              deleteItem={deleteItem}
-              setConfirmDelete={setConfirmDelete}
-              availableStores={availableStores}
-              storeInfoMap={storeInfoMap}
-              currentStoreId={currentStoreIdForDisplay}
-              user={user}
-            />
-          ) : homePage();
-      case 'nota-fiscal': return userHasPermission('nota-fiscal')
-        ? inlinePage('nota-fiscal', () => NotaFiscal({
-            data,
-            addItem,
-            updateItem,
-            deleteItem,
-            setConfirmDelete,
-            effectiveStoreId,
-            selectedStoreId,
-            storeInfoMap,
-            currentUser: user
-          }))
-        : homePage();
-      case 'configuracoes': return userHasPermission('configuracoes')
-        ? inlinePage('configuracoes', () => Configuracoes({ user, setConfirmDelete, data, addItem, updateItem, deleteItem, availableStores, storeInfoMap, resolveActiveStoreForWrite, selectedStoreId, onOpenCashRecord: openCashRecordFromAlert }))
-        : homePage();
-      default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : homePage();
-
+      case 'pagina-inicial': return <PaginaInicial />;
+      case 'dashboard': return userHasPermission('dashboard') ? <Dashboard
+                                        handleStopAndSnoozeAlarm={handleStopAndSnoozeAlarm}
+                                        handleReactivateAlarm={reactivateAlarmForCurrentContext}
+                                        isAlarmPlaying={isAlarmPlaying}
+                                        isAlarmSnoozed={isAlarmSnoozed}
+                                        snoozeEndTime={snoozeEndTime}
+                                        hasNewPendingOrders={hasNewPendingOrders}
+                                        alarmPauseMinutes={resolvedAlarmPauseMinutes}
+                                        // --- REMOVIDO: unlockAudio e audioUnlocked ---
+                                        /> : <PaginaInicial />;
+      case 'clientes': return userHasPermission('clientes') ? <Clientes /> : <PaginaInicial />;
+      case 'produtos': return userHasPermission('produtos') ? <Produtos /> : <PaginaInicial />;
+      case 'pedidos': return userHasPermission('pedidos') ? <Pedidos /> : <PaginaInicial />;
+      case 'entre-lojas': return userHasPermission('entre-lojas') ? <EntreLojas /> : <PaginaInicial />;
+      case 'agenda': return userHasPermission('agenda') ? <Agenda /> : <PaginaInicial />;
+      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} availableStores={availableStores} storeInfoMap={storeInfoMap} /> : <PaginaInicial />;
+      case 'relatorios': return userHasPermission('relatorios') ? (
+        <Relatorios
+          data={data}
+          user={user}
+          availableStores={availableStores}
+          storeInfoMap={storeInfoMap}
+        />
+      ) : <PaginaInicial />;
+      case 'meu-espaco': return userHasPermission('meu-espaco') ? (
+        <MeuEspaco
+          user={user}
+          resolveActiveStoreForWrite={resolveActiveStoreForWrite}
+          currentStoreIdForDisplay={currentStoreIdForDisplay}
+          storeInfoMap={storeInfoMap}
+        />
+      ) : <PaginaInicial />;
+      case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
+      case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial />;
+      case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
+      case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
+      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} /> : <PaginaInicial />;
+      case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
+      case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
+      default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;
     }
   };
 
@@ -21422,28 +21848,15 @@ const handleSubmit = async (e) => {
                 {showActivateSoundButton && (
              <button
                 id="btn-ativar-som"
-                onClick={async () => {
-                    await audioManager.userUnlock({ userGesture: true });
-                    setAudioAllowed(audioManager.unlocked);
-                    setShowActivateSoundButton(!audioManager.unlocked); // Esconde se desbloqueado
-                }}
+                onClick={activateOrderAlerts}
                 className="fixed bottom-4 right-4 z-[9999] px-4 py-2 rounded-xl bg-pink-600 text-white border-none shadow-lg hover:bg-pink-700 transition-colors cursor-pointer"
              >
-                🔊 Ativar som de pedidos
+                🔔 Ativar alertas de pedidos
              </button>
         )}
 
-        {isiOS && !soundUnlocked && (
-          <div className="fixed inset-0 z-[12000] flex items-center justify-center bg-black/50 px-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 text-center max-w-sm w-full space-y-3">
-              <p className="text-lg font-semibold text-gray-800">Toque na tela para ativar o som</p>
-              <p className="text-sm text-gray-600">Precisamos da sua interação para liberar os alertas de pedidos no iOS.</p>
-            </div>
-          </div>
-        )}
-
         {!isDesktop && sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30"></div>}
-        
+
         <div className={`fixed md:relative flex flex-col bg-white shadow-lg h-full transition-transform duration-300 z-40 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${isDesktop ? (sidebarOpen ? 'w-64' : 'w-20') : 'w-64'}`}>
             <div className="flex items-center justify-between p-4 border-b h-16">
                 <img src="logotipo.png" alt="Logotipo Ana Doceria" className={`h-8 transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0'}`} />
@@ -21453,7 +21866,7 @@ const handleSubmit = async (e) => {
             </div>
             <nav className="flex-1 p-4 space-y-2 overflow-y-auto"> {/* Adicionado overflow */}
                 {menuItems.map((item) => (
-                    <button key={item.id} onClick={() => { if (requestPageChange(item.id) && !isDesktop) setSidebarOpen(false); }} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${currentPage === item.id ? 'bg-pink-100 text-pink-700' : 'hover:bg-pink-50 text-gray-700'} ${!sidebarOpen ? 'justify-center' : ''}`}>
+                    <button key={item.id} onClick={() => {setCurrentPage(item.id); if(!isDesktop) setSidebarOpen(false);}} className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${currentPage === item.id ? 'bg-pink-100 text-pink-700' : 'hover:bg-pink-50 text-gray-700'} ${!sidebarOpen ? 'justify-center' : ''}`}>
                     <item.icon className="w-5 h-5 flex-shrink-0" />
                     {(sidebarOpen || !isDesktop) && <span className="font-medium text-sm">{item.label}</span>} {/* Diminuído font size */}
                     </button>
@@ -21547,43 +21960,37 @@ const handleSubmit = async (e) => {
             </div>
             <div className="flex items-center gap-4">
                                 {user && (
-
                                     <NotificationsBell
                                         user={user}
                                         pendingOrders={pendingOrders}
                                         isOpen={showNotifications}
-                                        onToggle={() => {
-                                            setShowUserMenu(false);
-                                            setShowLogin(false);
-                                            setShowNotifications((current) => !current);
-                                        }}
+                                        onToggle={() => setShowNotifications((current) => !current)}
                                         onClose={() => setShowNotifications(false)}
                                         onOpenOrders={() => setCurrentPage('pedidos')}
-                                        onOpenOrder={openPendingOrderFromNotification}
                                         storeInfoMap={storeInfoMap}
                                     />
                                 )}
 
-				
 				<div className="relative">
-					<button ref={userMenuButtonRef} type="button" onClick={() => {
-                        setShowNotifications(false);
+					<button onClick={() => {
 						if (!user) {
-							setShowLogin((previous) => !previous);
-                            setShowUserMenu(false);
+							setShowLogin(true);
 							setShowPasswordReset(false);
 							setPasswordResetMessage({ text: '', type: '' });
 						} else {
-							setShowUserMenu((previous) => !previous);
+							setShowUserMenu(!showUserMenu);
 						}
-					}} className="p-2 rounded-full hover:bg-gray-100" aria-label={user ? 'Menu do usuário' : 'Acesso da Equipe'} title={user ? 'Menu do usuário' : 'Acesso da Equipe'} aria-haspopup={user ? 'menu' : 'dialog'} aria-controls={user ? 'user-menu' : undefined} aria-expanded={user ? showUserMenu : showLogin}>
+					}} className="p-2 rounded-full hover:bg-gray-100">
 						<UserIcon className="w-6 h-6 text-gray-600" />
 					</button>
 					{user && <span className="absolute top-0 right-0 w-2 h-2 bg-green-500 rounded-full border-2 border-white"></span>}
 					{showUserMenu && user && (
-						<div id="user-menu" ref={userMenuRef} role="menu" aria-label="Conta do usuário" className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-xl z-20 border p-2">
+						<div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-xl z-20 border p-2">
 							<p className="px-2 py-1 text-sm text-gray-700 font-semibold truncate">{user.auth.displayName || user.auth.email}</p>
-                            <button onClick={() => { if (requestPageChange('configuracoes')) setShowUserMenu(false); }} className="w-full text-left px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded">Configurações</button>
+							{user.auth.email && (
+								<p className="px-2 pb-2 text-xs leading-snug text-gray-500 break-all">{user.auth.email}</p>
+							)}
+                            <button onClick={() => { setCurrentPage('configuracoes'); setShowUserMenu(false); }} className="w-full text-left px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded">Configurações</button>
                             <button onClick={handleLogout} className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded">Sair</button>
 						</div>
 					)}
@@ -21612,18 +22019,14 @@ const handleSubmit = async (e) => {
         availableStores={availableStores}
         storeInfoMap={storeInfoMap}
         onCreateStore={handleCreateStore}
-        onSelectStore={(storeId) => {
-          if (confirmDiscardUnsavedChanges()) {
-            selectStoreById(storeId);
-          }
-        }}
+        onSelectStore={selectStoreById}
         canCreate={canCreateStores}
         allowAllOption={user?.role === ROLE_OWNER}
         currentStoreId={currentStoreIdForDisplay}
         isCreatingStore={isCreatingStore}
       />
 
-      <Modal isOpen={showLogin} onClose={() => {setShowLogin(false); setLoginError(''); setPasswordResetMessage({ text: '', type: '' });}} title={showPasswordReset ? "Recuperar acesso da equipe" : "Acesso da Equipe"} size="sm" closeOnEscape>
+      <Modal isOpen={showLogin} onClose={() => {setShowLogin(false); setLoginError(''); setPasswordResetMessage({ text: '', type: '' });}} title={showPasswordReset ? "Recuperar Senha" : "Login"} size="sm">
         {showPasswordReset ? (
             <div className="space-y-4">
                 <p className="text-sm text-gray-600">Insira seu e-mail para enviarmos um link de recuperação.</p>
@@ -21651,7 +22054,7 @@ const handleSubmit = async (e) => {
                 </button>
                 {loginError && <p className="text-red-500 text-sm text-center">{loginError}</p>}
                 <div className="flex flex-col gap-4 pt-2">
-                    <Button onClick={handleLogin} disabled={!email.trim() || !password}>Entrar com email</Button>
+                    <Button onClick={handleLogin}>Entrar</Button>
                     <div className="relative">
                         <div className="absolute inset-0 flex items-center">
                             <div className="w-full border-t border-gray-300" />
@@ -21687,7 +22090,7 @@ const handleSubmit = async (e) => {
             </div>
         </div>
       </Modal>
-      
+
       {lightboxImage && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setLightboxImage(null)}> {/* Aumentado z-index e adicionado backdrop */}
             <img src={lightboxImage} alt="Visualização Ampliada" className="max-w-[90%] max-h-[90%] rounded-lg shadow-2xl object-contain"/>
@@ -21697,4 +22100,6 @@ const handleSubmit = async (e) => {
   );
 }
 
-export default function App(){return <ApplicationGate StaffApplication={StaffApplication} />;}
+export default function App() {
+  return <ApplicationGate StaffApplication={StaffApplication} />;
+}
