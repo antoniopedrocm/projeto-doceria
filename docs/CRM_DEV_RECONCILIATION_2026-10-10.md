@@ -29,4 +29,9 @@
 
 ## Publicação e homologação
 
-Os resultados de publicação, artefato remoto, testes reais e bloqueios devem ser registrados no checkpoint principal após o deploy. Publicação e cobertura local não equivalem a homologação autenticada. Mantém-se a dívida de escala de 1.000 candidatos por requisição e os bloqueios Maps/InfinitePay. Não iniciar produção.
+- Commit funcional publicado/push: `9b2e0698c3b4c912c5ffc9ade20bb46dde8d1c1f`. Hosting DEV publicado em `2026-10-10T05:04:50.647Z`, versão `d162d3a799df96b8`, via `deploy --only hosting --project crmdoceria-9959e --non-interactive`.
+- Hashes dos 46 arquivos enviados (gzip nível 9 da CLI) coincidem com a release; index/main também foram comparados diretamente. Firebase init remoto confirma o projectId DEV. SHA-256 descomprimido do main: `ca6c490a7d2ccfb734eef5b8e2d9a5de07c8cc294ed079f3d82b32851b029f54`.
+- Smoke remoto: catálogos/carrinhos Matriz, Garavelo e Festas; shell de login/drawer/menu em 320, 375, 390 e 1440px sem overflow/erro JS/menu administrativo; rotas privadas exigem login. CORS: 30 preflights e dez negações 401 sem autenticação. Não houve criação de usuário/Customer ou mutação de negócio nesses testes.
+- Testes autenticados reais do novo shell continuam pendentes: ferramenta interativa não inicializa (Windows error 3). A rota foi solicitada ao painel e o usuário consultado para confirmação manual. Não se substituiu OAuth por impersonação. Perfis, endereços, pedidos, IDOR A/B, recompra e visual privado não foram classificados como homologados remotamente.
+- Ressalva baixa observada: após resolução sem sessão, o shell conserva o texto externo “Carregando sua conta…” junto dos controles de login. Não impede login e não foi corrigida silenciosamente. Mantém-se a dívida de escala de 1.000 candidatos por requisição e os bloqueios Maps/InfinitePay.
+- Publicação e cobertura local não equivalem a homologação autenticada. Fase 12 permanece 25%; global permanece 88,50%. Produção, Functions, Rules, índices, configurações financeiras e WhatsApp não foram alterados. Não iniciar produção.
