@@ -329,7 +329,7 @@ Fórmula: `contribuição em p.p. = peso (%) × conclusão interna (%) / 100`; `
 | 8 — InfinitePay por loja | 10% | 100% | 100% | 10,00 → 10,00 | Configuração, permissão, auditoria, checkout e prefill locais; contas/ensaio real em 12 |
 | 9 — Webhook/conciliação | 8% | 75% | 75% | 6,00 → 6,00 | Verificação financeira, idempotência e revisão/recuperação presentes; contrato operacional FAILED/REFUNDED ainda pendente |
 | 11 — Validação local do escopo completo | 5% | 75% | 75% | 3,75 → 3,75 | Negócio/autorização, integração e sessão cobertos; falta jornada completa ampliada com 6B/6C e visual/mobile |
-| 12 — Homologação DEV | 7% | 25% | 25% | 1,75 → 1,75 | Publicação seletiva e smoke públicos de 2026-10-09 aprovados; homologação PARCIAL. Aguardam escolha/login das contas, jornada privada, Maps server-side, configuração/ensaio financeiro por loja e webhook |
+| 12 — Homologação DEV | 7% | 25% | 25% | 1,75 → 1,75 | Publicação/smoke e homologação manual parcial aprovados: login Google A/B e e-mail/senha, shell Customer, Minha Conta, logout e troca A→B. Pendentes e-mails/push, endereços, histórico completo, IDOR remoto, recompra, Maps server-side e ensaio financeiro por loja/webhook |
 | 13 — Produção | 3% | 0% | 0% | 0,00 → 0,00 | Não iniciada; exige homologação e autorização específicas |
 | **Total obrigatório** | **100%** | — | — | **72,50 → 88,50** | Linha formal inicial → atual; 6A +3 p.p., 6B +6 p.p. e 6C +7 p.p. |
 | 10 — Recuperação do legado (opcional) | **0% / excluída** | 0% | 0% | **não contabilizada** | Exige autorização específica; entrada futura no escopo requer nova ponderação formal |
@@ -341,7 +341,7 @@ Critério interno: marco aceito exige implementação e teste local; homologaç�
 - **6C — quatro marcos de 25%:** autorização/identificação e loja original; catálogo/preço/estoque atuais e indisponibilidades; confirmação e integração atômica do carrinho (mesma loja ou navegação confirmada); nova compra sem reaproveitar checkout histórico, sessão/erros e testes. Antes: quatro marcos 0%; depois: quatro marcos 100% local. Homologação real não está incluída nesta fase.
 - **9 — quatro marcos de 25%:** verificação server-side e correlação; idempotência/conferência; recuperação/registro de tentativas (concluídos localmente); contrato e tratamento operacional dos estados financeiros definitivos restantes (pendente).
 - **11 — quatro marcos de 25%:** negócio/autorização; emuladores/integração; sessão e isolamento; jornada ampliada/validação visual/mobile. Os três primeiros estão cobertos; o último aguarda os módulos restantes. Os 100% históricos referiam-se ao escopo anterior, não à validação total do roadmap ampliado.
-- **12 — quatro marcos de 25%:** infraestrutura/configuração/smoke DEV (concluído); Auth/e-mails/OAuth/push reais; ensaio financeiro por loja e recuperação; jornada completa do novo escopo (pendentes). Configuração server-side de rotas e publicação das correções locais continuam pré-requisitos de homologação, sem alterar dados nesta execução.
+- **12 — quatro marcos de 25%:** infraestrutura/configuração/smoke DEV (concluído); Auth/e-mails/OAuth/push reais (parcial: login Google A/B e e-mail/senha e logout homologados manualmente; e-mails/push pendentes); ensaio financeiro por loja e recuperação (pendente); jornada completa do novo escopo (parcial: shell/Minha Conta e troca A→B homologados; endereços, histórico completo, IDOR remoto e recompra pendentes). Somente um marco completo contabilizado: 25%. Publicação não equivale a homologação; não atribuir novos subpesos a cenários parciais para elevar o percentual.
 
 Referências de código/evidência: `customer-account.js`, `customer-area.mjs`, `customer-profile.mjs`, `checkout-auth.js`, `checkout-payment.js`, `checkout-reservation.js`, `payment-settings.js` e suites de Auth/Customer/checkout/configuração/reservas/Rules. Escopos são disjuntos: implementar/testar uma tela em 6A não comprova automaticamente a jornada completa de 11, a homologação de 12 ou a publicação de 13.
 
@@ -754,3 +754,32 @@ O checkpoint de 2026-09-14 altera somente o rascunho local da autenticação Goo
 - **BAIXO:** a tela sem sessão apresenta os controles de login, mas conserva o status externo “Carregando sua conta…” após resolver como deslogada; registrado sem correção silenciosa. Não impede login. Dívida de escala dos 1.000 candidatos por requisição permanece, sem alteração.
 - **Produção alterada: NÃO.** Nenhum deploy ocorreu fora de `crmdoceria-9959e`. Nenhuma alteração remota de Auth, Firestore, Maps, InfinitePay ou WhatsApp foi realizada além da publicação Hosting autorizada.
 - **PUBLICADO: SIM. HOMOLOGAÇÃO INTEGRADA COMPLETA: NÃO. Fase 12: 25% → 25%; contribuição 1,75 → 1,75 p.p. Global: 88,50% → 88,50% (+0 p.p.).** Infraestrutura/smoke reaprovados; os outros três marcos oficiais permanecem incompletos. Pesos/fases 6A/6B/6C inalterados. Próxima ação: retomar homologação interativa Google A, Google B e e-mail/senha e fixtures próprias disponíveis; tratar o status de login baixo separadamente. Maps/configuração financeira exigem etapa própria autorizada. Não iniciar Fase 13.
+
+## Checkpoint 2026-10-10 — homologação manual parcial da Área do Cliente DEV
+
+### Origem e alcance da evidência
+
+- Resultados manuais informados pelo usuário nesta conversa, sobre o shell Customer publicado no Firebase DEV `crmdoceria-9959e`, commit funcional `9b2e0698`. Não representam nova execução automatizada pelo agente. Este registro atualiza as pendências de autenticação do checkpoint anterior; preserva o histórico da publicação.
+- Nenhuma credencial, senha, código ou token foi compartilhado. Nenhum novo deploy, alteração de código ou escrita no Firebase foi realizado nesta atualização documental. Produção preservada.
+
+| Conta autorizada | Cenários efetivamente aprovados pelo usuário | Meus Pedidos / limite da evidência |
+|---|---|---|
+| Google A — `antoniopedro.castromota4@gmail.com` | Login; shell e menu Customer; menus administrativos ocultos; acesso manual a rota administrativa negado/redirecionado; Minha Conta; logout | Informado como `[APROVADO / estado vazio]`: registrado somente como abertura/estado vazio aprovado, sem comprovar pedidos reais, paginação, detalhe ou comprovante |
+| Google B — `anabm.guimaraes@gmail.com` | Login; shell Customer; Minha Conta; ausência de dados privados de A após troca de sessão; logout | `[resultado]` não é resultado de teste: PENDENTE de confirmação |
+| E-mail/senha — `antonio.pedro@gmail.com` | Login; shell Customer; Minha Conta; Segurança da Conta específica do provider; logout | `[resultado]` não é resultado de teste: PENDENTE de confirmação |
+
+### O que esta homologação comprova e o que ainda falta
+
+- Login real Google A/B e e-mail/senha, acesso à interface própria do Customer e logout aprovados. Bloqueio manual de rota administrativa aprovado no cenário Google A; não extrapolar para todas as rotas ou chamadas administrativas diretas.
+- Troca A → logout → B: ausência de dados de A confirmada manualmente. Não equivale a teste controlado de resposta assíncrona tardia, reutilização de cursor ou IDOR remoto.
+- Minha Conta aprovada nas três contas; segurança específica do provider aprovada na conta e-mail/senha. Edição/persistência de nome/telefone/campos opcionais, limpeza após refresh e CRUD/padrão de endereços não foram relatados como executados nesta rodada. Reautenticação, troca de senha/e-mail e envio de links de recuperação/verificação permanecem pendentes de homologação; não inferir sucesso dessas operações pela apresentação da tela.
+- Histórico com pedidos reais, ordenação/paginação, detalhe, snapshots e comprovante permanecem pendentes. Meus Pedidos de B e e-mail/senha aguardam resultado explícito. Se não houver pedido próprio elegível, registrar a trilha correspondente como pendente por ausência de fixture DEV, sem fabricar ownership.
+- **IDOR remoto de perfil/endereços/pedidos/recompra: NÃO homologado. Comprar Novamente, conflitos de carrinho e checkout após recompra: NÃO homologados.** Nenhuma aprovação nova de mobile privado ou Staff autenticado foi informada.
+- **Maps server-side e InfinitePay financeiro por loja: NÃO homologados.** Permanecem os bloqueios já registrados de `GOOGLE_MAPS_SERVER_API_KEY` e configuração InfinitePay ausentes; sem nova consulta remota nesta rodada. Webhook/recuperação financeiros e push real continuam pendentes.
+- WhatsApp permanece registrado como desabilitado no último pré-check; não foi habilitado nem houve envio nesta atualização. Nenhuma cobrança, criação de fixture, reprocessamento ou alteração manual de dados foi realizada pelo agente.
+- Ressalvas baixas anteriores (limite defensivo de 1.000 candidatos e texto de carregamento na tela deslogada) permanecem registradas, sem correção nesta execução.
+
+### Progresso e próxima ação
+
+- **Fase 12: 25% → 25%; peso 7%; contribuição global 1,75 → 1,75 p.p. Global: 88,50% → 88,50%; evolução +0 p.p.** A evidência manual avança parcialmente os marcos Auth e jornada, mas não conclui outro dos quatro marcos oficiais de 25%. Não foram criados subpesos nem alteradas as fases 6A/6B/6C.
+- Próxima ação: confirmar Meus Pedidos de B/e-mail, homologar edição e limpeza de campos/endereço padrão com refresh, os fluxos reais de segurança/e-mails e, com pedidos próprios elegíveis, histórico/detalhe/paginação, IDOR A/B e Comprar Novamente. Maps e configuração financeira exigem resolução autorizada dos bloqueios antes dos testes correspondentes. Homologação integrada completa permanece pendente; não iniciar produção.
