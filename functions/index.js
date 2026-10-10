@@ -2665,7 +2665,7 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
 });
 
 // Exporta o app Express como uma Cloud Function HTTP
-exports.api = onRequest(app);
+exports.api = onRequest({secrets: ["GOOGLE_MAPS_SERVER_API_KEY"]}, app);
 
 // Cria uma nova loja e garante que os dados fiquem isolados por loja
 exports.createStore = onCall(async (request) => {

@@ -6,6 +6,22 @@ const config = {lat: -16, lng: -49};
 const success = meters => ({ok: true, json: async () => ({status: 'OK',
   rows: [{elements: [{status: 'OK', distance: {value: meters}}]}]})});
 
+test('segredo do runtime é lido na chamada sem precisar fornecer chave pelo payload', async () => {
+  const previous = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+  try {
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = 'runtime-test-only';
+    const distance = await resolveFreightDistance({config, address: 'Rua de teste',
+      fetch: async url => {
+        assert.equal(new URL(url).searchParams.get('key'), 'runtime-test-only');
+        return success(2000);
+      }});
+    assert.equal(distance, 2);
+  } finally {
+    if (previous === undefined) delete process.env.GOOGLE_MAPS_SERVER_API_KEY;
+    else process.env.GOOGLE_MAPS_SERVER_API_KEY = previous;
+  }
+});
+
 test('distância oficial usa origem da loja e endereço do pedido, sem distância/coordenadas do cliente', async () => {
   const requests = [];
   const distance = await resolveFreightDistance({config, address: 'Rua X, 1 &origins=outro',
