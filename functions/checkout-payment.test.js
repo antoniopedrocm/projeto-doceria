@@ -14,5 +14,5 @@ test('provider envia JSON somente ao endpoint oficial e não aceita falha HTTP',
   await provider.check({handle:'loja',order_nsu:'pedido'});
   assert.equal(seen.url,'https://api.checkout.infinitepay.io/payment_check');
   assert.deepEqual(JSON.parse(seen.options.body),{handle:'loja',order_nsu:'pedido'});
-  await assert.rejects(()=>new InfinitePayProvider({fetchImpl:async()=>({ok:false})}).create({}));
+  await assert.rejects(()=>new InfinitePayProvider({fetchImpl:async()=>({ok:false}),logError:()=>{}}).create({}), {httpStatus:502});
 });

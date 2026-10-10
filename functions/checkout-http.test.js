@@ -10,6 +10,7 @@ const admin=require('firebase-admin');
 const {digest}=require('./checkout-auth');
 const originalFetch=global.fetch;
 let links=0;
+let nextLinkError=null;
 const linkBodies=[];
 // Only this test process substitutes the external provider. Production has no mock endpoint.
 global.fetch=async(url,options)=>{
@@ -20,7 +21,11 @@ global.fetch=async(url,options)=>{
     const meters=params.get('destinations')==='Rua de teste' ? 2000 : 6000;
     return {ok:true,json:async()=>({status:'OK',rows:[{elements:[{status:'OK',distance:{value:meters}}]}]})};
   }
-  if(String(url)==='https://api.checkout.infinitepay.io/links') {links++;linkBodies.push(JSON.parse(options.body));return {ok:true,json:async()=>({url:'https://buy.infinitepay.io/test-only'})};}
+  if(String(url)==='https://api.checkout.infinitepay.io/links') {
+    links++;linkBodies.push(JSON.parse(options.body));
+    if(nextLinkError) {const error=nextLinkError;nextLinkError=null;return new Response(JSON.stringify(error),{status:400,headers:{'Content-Type':'application/json'}});}
+    return {ok:true,json:async()=>({url:'https://buy.infinitepay.io/test-only'})};
+  }
   if(String(url).startsWith('https://api.checkout.infinitepay.io/')) throw new Error('Unexpected provider call in test');
   return originalFetch(url,options);
 };
@@ -86,6 +91,31 @@ test('falha temporária na consulta do provedor retorna 5xx ao webhook para perm
   const response=await originalFetch(base+'/checkout/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_nsu:created.data.paymentId,transaction_nsu:'unavailable',invoice_slug:'unavailable'})});
   assert.equal(response.status,500);
   assert.equal((await db.doc(`checkoutPayments/${created.data.paymentId}`).get()).data().payment_status,'PENDING');
+});
+test('HTTP oculta erro upstream e mantém tentativa ambígua sem novo link ou reserva duplicada',async()=>{
+  const b=body();
+  const callsBefore=links;
+  const stockRef=db.doc(`lojas/${store}/produtos/diagnostic-test`);
+  await stockRef.set({nome:'Produto diagnóstico',ativo:true,status:'Ativo',preco:10,estoque:2});
+  b.itens=[{produtoId:'diagnostic-test',quantity:1,preco:10}];
+  const stockBefore=(await stockRef.get()).data().estoque;
+  nextLinkError={error:{code:'invalid_customer',message:'private-fixture@example.test secret-fixture-token'}};
+  const result=await send(b);
+  assert.equal(result.status,502);
+  assert.deepEqual(result.data,{ok:false,message:'A InfinitePay não respondeu. Consulte o pedido antes de tentar novamente.'});
+  const uid=(await admin.auth().verifyIdToken(token)).uid;
+  const pending=await db.collection('checkoutPayments').where('ownerUid','==',uid).get();
+  const matches=pending.docs.filter(doc=>doc.data().linkState==='RECONCILIATION_REQUIRED');
+  assert.equal(matches.length,1);
+  assert.equal(matches[0].data().payment_status,'PENDING');
+  const order=(await db.doc(matches[0].data().orderPath).get()).data();
+  assert.equal(order.order_status,'PENDING');
+  assert.equal(order.payment_status,'PENDING');
+  assert.equal((await stockRef.get()).data().estoque,stockBefore-1);
+  const retry=await send(b);
+  assert.equal(retry.status,409);
+  assert.equal(links,callsBefore+1);
+  assert.equal((await stockRef.get()).data().estoque,stockBefore-1);
 });
 test('HTTP rejeita quantidade duplicada/preço/frete manipulados',async()=>{
   const b=body();

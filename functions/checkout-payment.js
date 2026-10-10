@@ -1,6 +1,8 @@
 const crypto = require('node:crypto');
 const {FieldValue} = require('firebase-admin/firestore');
 const {readReservation, settleReservation, operationalState} = require('./checkout-reservation');
+const logger = require('firebase-functions/logger');
+const {readErrorBody, diagnostic} = require('./infinitepay-diagnostics');
 function paymentError(message, httpStatus = 409) {return Object.assign(new Error(message), {httpStatus});}
 const cents = value => {const n = Math.round(Number(value)*100);if (!Number.isSafeInteger(n) || n <= 0) throw paymentError('Valor de pagamento inválido.',400);return n;};
 function assertPaid(result, expectedAmount) {
@@ -9,11 +11,33 @@ function assertPaid(result, expectedAmount) {
   if (!['pix','credit_card'].includes(result.capture_method)) throw paymentError('Forma de pagamento não reconhecida.');
 }
 class InfinitePayProvider {
-  constructor({fetchImpl = fetch} = {}) {this.fetch = fetchImpl;}
+  constructor({fetchImpl = fetch, logError = entry => logger.error('InfinitePay request failed', entry)} = {}) {
+    this.fetch = fetchImpl;
+    this.logError = logError;
+  }
   async post(path, body) {
-    const response = await this.fetch(`https://api.checkout.infinitepay.io/${path}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
-    if (!response.ok) throw paymentError('A InfinitePay não respondeu. Consulte o pedido antes de tentar novamente.',502);
-    return response.json();
+    let response;
+    const record = details => {
+      // Logging failures must not retry the request or expose upstream exceptions.
+      try {this.logError(diagnostic({path, body, response, ...details}));} catch (_) { /* controlled error below */ }
+    };
+    try {
+      response = await this.fetch(`https://api.checkout.infinitepay.io/${path}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
+    } catch (error) {
+      record({kind:'network_error',error});
+      throw paymentError('A InfinitePay não respondeu. Consulte o pedido antes de tentar novamente.',path === 'links' ? 502 : 500);
+    }
+    if (!response.ok) {
+      let sample;
+      let error;
+      try {sample = await readErrorBody(response);} catch (readError) {error = readError;}
+      record({kind:'http_error',sample,error});
+      throw paymentError('A InfinitePay não respondeu. Consulte o pedido antes de tentar novamente.',502);
+    }
+    try {return await response.json();} catch (error) {
+      record({kind:'invalid_response',error});
+      throw paymentError('A InfinitePay não respondeu. Consulte o pedido antes de tentar novamente.',path === 'links' ? 502 : 500);
+    }
   }
   create(payload) {return this.post('links', payload);}
   check(payload) {return this.post('payment_check',payload);}
