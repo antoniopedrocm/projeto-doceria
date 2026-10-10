@@ -10,7 +10,7 @@ const user = (uid = 'uid-a', provider = 'password') => ({uid, isAnonymous: false
 const customer = (id = 'a') => ({id, accountLinked: true, nome: `Cliente ${id}`, telefone: '62999991234', enderecos: []});
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture({initialUser = user(), sdk = {}, backend = async (name, auth) =>
+async function fixture({embedded=false,initialUser = user(), sdk = {}, backend = async (name, auth) =>
   name === 'customerAccount' ? {customer: customer(auth.currentUser?.uid || 'a')} : {orders: []}} = {}) {
   const {isCustomerIdentity, createCustomerAreaNavigation} = await import('../crm/public/customer-area.mjs');
   const {createCustomerAuthState} = await import('../crm/public/customer-session.mjs');
@@ -24,7 +24,9 @@ async function fixture({initialUser = user(), sdk = {}, backend = async (name, a
   window.HTMLDialogElement.prototype.close = function() {this.open = false;};
   const auth = {currentUser: initialUser};
   let listener;
-  const calls = [], sessions = [], logouts = [], checkout = [];
+  const calls = [], sessions = [], logouts = [], checkout = [],routes=[];
+  const host=embedded?window.document.createElement('main'):null;
+  if(host) window.document.body.append(host);
   const context = vm.createContext({document: window.document, window, URL, console,
     auth, functions: {}, isCustomerUser: isCustomerIdentity, createCustomerAreaNavigation, createCustomerAuthState, createCustomerProfileSecurity, createCustomerOrderHistory, createCustomerReorderView, createStoredCartBridge,
     EmailAuthProvider: {credential:()=>({})}, reauthenticateWithCredential:async()=>{}, verifyBeforeUpdateEmail:async()=>{}, updatePassword:async()=>{},
@@ -37,18 +39,18 @@ async function fixture({initialUser = user(), sdk = {}, backend = async (name, a
     GoogleAuthProvider: class {},
     signInWithPopup: async () => {auth.currentUser = user('google-a', 'google.com'); listener(auth.currentUser);},
   });
-  const source = fs.readFileSync(path.join(__dirname, '../crm/public/customer-account.js'), 'utf8')
+  const source = fs.readFileSync(path.join(__dirname, '../crm/public/customer-account-core.mjs'), 'utf8')
     .replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, '')
     .replace('export function installCustomerAccount', 'function installCustomerAccount')
     .replace(/import\.meta\.url/g, "'https://example.test/customer-account.js'");
   vm.runInContext(source, context);
-  const api = context.installCustomerAccount({onSession: value => sessions.push(value),
+  const api = context.installCustomerAccount({runtime:context,host,onRoute:route=>routes.push(route),onSession: value => sessions.push(value),
     onLogout: () => logouts.push(true), onCustomer: value => checkout.push(value)});
   listener(initialUser); await api.ready;
-  const dialog = window.document.querySelector('dialog');
+  const dialog = host?host.querySelector('.customer-area-dialog'):window.document.querySelector('dialog');
   const el = name => dialog.querySelector(`[data-${name}]`);
   const navigate = route => dialog.querySelector(`[data-customer-route="${route}"]`).onclick({preventDefault() {}});
-  return {api, auth, calls, sessions, logouts, checkout, window, dialog, el, navigate,
+  return {api, auth, calls, sessions, logouts, checkout, routes,host,window, dialog, el, navigate,
     emit: next => {auth.currentUser = next; listener(next);}, close: () => window.close()};
 }
 
@@ -350,4 +352,37 @@ test('estados financeiros não dependem do estado operacional do pedido',async()
     assert.equal(paymentStatus({status:'CONFIRMED',payment_status:status}),label);
   assert.equal(paymentStatus({status:'CONFIRMED'}),'Não informado');assert.equal(paymentStatus({payment_status:'PAID',requiresReview:true}),'Em revisão');
   assert.equal(orderStatus({status:'CANCELLED',payment_status:'REFUNDED'}),'Cancelado');
+});
+
+test('CRM embute o mesmo perfil aprovado, sem modal ou segundo modelo',async t=>{
+  const f=await fixture({embedded:true});t.after(f.close);
+  assert.equal(f.dialog.tagName,'SECTION');
+  assert.equal(f.dialog.querySelector('form[method="dialog"]'),null);
+  await f.api.openAccount('profile');
+  assert.equal(f.el('profile').hidden,false);
+  assert.equal(f.el('name').value,'Cliente uid-a');
+  assert.equal(f.calls.filter(c=>c.name==='customerAccount').length,2);
+  assert.doesNotMatch(f.dialog.textContent,/PAN|CVV|Gerenciar cartões/);
+});
+
+test('CRM abre detalhe e recompra pelo mesmo backend, sem tocar snapshot/carrinho',async t=>{
+  const snapshot={id:'order-a',storeId:'matriz',itens:[{productId:'x',nome:'Nome histórico',quantity:1,preco:12,total:12}],total:16,frete:4};
+  const f=await fixture({embedded:true,backend:async(name,auth)=>name==='customerAccount'?{customer:customer(auth.currentUser.uid)}:name==='customerOrderDetail'?{order:snapshot}:{orders:[snapshot]}});t.after(f.close);
+  f.window.sessionStorage.setItem('checkoutState_v1','carrinho público');
+  await f.api.openOrder({storeId:'matriz',orderId:'order-a'});
+  assert.equal(f.el('order-detail').hidden,false);
+  assert.match(f.el('order-detail-content').textContent,/Nome histórico/);
+  assert.match(f.el('order-detail-content').textContent,/Comprar Novamente/);
+  assert.deepEqual(f.calls.find(c=>c.name==='customerOrderDetail').data,{storeId:'matriz',orderId:'order-a'});
+  assert.equal(f.window.sessionStorage.getItem('checkoutState_v1'),'carrinho público');
+});
+
+test('desmontar área Customer descarta resposta tardia e remove UI privada',async t=>{
+  let finish;
+  const f=await fixture({embedded:true,backend:async(name,auth)=>name==='customerAccount'?{customer:customer(auth.currentUser.uid)}:new Promise(resolve=>{finish=resolve;})});t.after(f.close);
+  const pending=f.api.openAccount('orders');await tick();
+  f.api.dispose();finish({orders:[{id:'private-a',storeId:'matriz',itens:[{nome:'Privado A'}]}]});await pending;
+  assert.equal(f.api.getCustomer(),null);
+  assert.equal(f.host.textContent,'');
+  assert.equal(f.window.document.querySelector('dialog'),null);
 });

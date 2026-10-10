@@ -63,7 +63,7 @@ test('conta sem perfil completo pode trocar ou sair sem publicar sessão obsolet
 test('módulo de conta propaga invalidação aos dois contratos dos consumidores',()=>{
   const fs=require('node:fs');
   const path=require('node:path');
-  const source=fs.readFileSync(path.join(__dirname,'..','crm','public','customer-account.js'),'utf8');
+  const source=fs.readFileSync(path.join(__dirname,'..','crm','public','customer-account-core.mjs'),'utf8');
   assert.match(source,/createCustomerAuthState\(\{onInvalidate:clearPublishedSession\}\)/);
   assert.match(source,/onSession\(null\);onLogout\(\)/);
 });

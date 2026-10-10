@@ -1,4 +1,4 @@
-import {auth} from './firebaseClientConfig.js';
+import {auth} from './firebaseClientConfig.js?v=20261010-customer-shell';
 import {apiBaseUrl} from './checkout-environment.js';
 import {isLinkedCustomer} from './customer-session.mjs';
 const key='doceria-payment-pending';

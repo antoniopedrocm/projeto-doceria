@@ -1,0 +1,24 @@
+import React,{act} from 'react';
+import {createRoot} from 'react-dom/client';
+import CustomerShell from './CustomerShell';
+import {CUSTOMER_LINKS,customerRoute,menuDestination} from './customerContext';
+import {signOut} from 'firebase/auth';
+jest.mock('../firebaseConfig',()=>({auth:{app:{name:'[DEFAULT]'}}}));
+jest.mock('./customerRuntime',()=>({customerAuth:{app:{name:'cardapioPublic'}},runtimeFor:jest.fn(a=>({auth:a})),loadCustomerController:jest.fn()}));
+jest.mock('firebase/auth',()=>({signOut:jest.fn(async()=>{})}));
+let host,root,controller,install,session;
+beforeEach(()=>{global.IS_REACT_ACT_ENVIRONMENT=true;host=document.createElement('div');document.body.append(host);root=createRoot(host);window.history.replaceState(null,'','/area-cliente');sessionStorage.clear();session={app:{name:'cardapioPublic'},currentUser:{uid:'a'}};controller={ready:Promise.resolve(),openAccount:jest.fn(async()=>{}),openOrder:jest.fn(async()=>{}),dispose:jest.fn()};install=jest.fn(()=>controller);});
+afterEach(async()=>{await act(async()=>root.unmount());host.remove();jest.clearAllMocks();});
+// Direct ReactDOM rendering needs act; this helper does not use Testing Library.
+// eslint-disable-next-line testing-library/no-unnecessary-act
+const mount=(props={})=>act(async()=>root.render(<CustomerShell uid="a" sessionAuth={session} loadController={async()=>({installCustomerAccount:install})} {...props}/>));
+async function click(label){await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent===label).click());}
+test('sidebar e menu superior têm apenas opções Customer, incluindo drawer mobile',async()=>{await mount();expect(CUSTOMER_LINKS.map(x=>x.label)).toEqual(['Página Inicial','Minha Conta','Meus Pedidos']);expect(host.textContent).not.toMatch(/Dashboard|Configurações|Financeiro|Produtos|Clientes/);await click('Minha conta ▾');expect(host.querySelector('[aria-label="Menu do usuário Customer"]')).not.toBeNull();await click('☰');expect(host.querySelector('aside').className).toBe('is-open');});
+test('URL administrativa é substituída e nunca vira painel Customer',async()=>{window.history.replaceState(null,'','/configuracoes');await mount();expect(window.location.pathname).toBe('/area-cliente');expect(controller.openAccount).not.toHaveBeenCalled();});
+test('perfil, histórico e detalhe reutilizam controlador aprovado sem tocar carrinho',async()=>{sessionStorage.setItem('checkoutState_v1','{"storeId":"ana-guimaraes-doceria-garavelo","cart":[{"id":"x"}]}');await mount();await click('Minha Conta');expect(controller.openAccount).toHaveBeenCalledWith('profile');await click('Meus Pedidos');expect(controller.openAccount).toHaveBeenCalledWith('orders');expect(sessionStorage.getItem('checkoutState_v1')).toContain('"id":"x"');});
+test('rota de detalhe passa IDs ao mesmo controlador com ownership server-side',async()=>{window.history.replaceState(null,'','/meus-pedidos/order-a?store=ana-guimaraes-doceria-garavelo');await mount();expect(controller.openOrder).toHaveBeenCalledWith(expect.objectContaining({orderId:'order-a',storeId:'ana-guimaraes-doceria-garavelo'}));});
+test('logout remove controlador e encerra ambas as sessões, sem apagar carrinho',async()=>{sessionStorage.setItem('checkoutState_v1','cart');await mount();await click('Sair');expect(controller.dispose).toHaveBeenCalled();expect(signOut).toHaveBeenCalledWith(session);expect(sessionStorage.getItem('checkoutState_v1')).toBe('cart');});
+test('montagem atrasada é descartada ao trocar Customer A por B',async()=>{let finish;await mount({loadController:()=>new Promise(resolve=>{finish=resolve;})});const load=jest.fn(async()=>({installCustomerAccount:install}));await mount({uid:'b',sessionAuth:{app:{name:'cardapioPublic'},currentUser:{uid:'b'}},loadController:load});await act(async()=>finish({installCustomerAccount:jest.fn(()=>{throw Error('stale');})}));expect(install).toHaveBeenCalledTimes(1);});
+test('desempate de rotas recusa URLs arbitrárias e retorno respeita loja/sessão',()=>{expect(customerRoute('/financeiro').screen).toBe('home');expect(customerRoute('/meus-pedidos/id','?store=../bad').screen).toBe('home');sessionStorage.setItem('checkoutState_v1',JSON.stringify({storeId:'ana-guimaraes-doceria-garavelo'}));expect(menuDestination(sessionStorage,true)).toBe('/cardapio-garavelo?accountContext=crm');});
+
+test('erro tardio da rota anterior não altera a sessão Customer seguinte',async()=>{let reject;controller.openAccount.mockImplementation(()=>new Promise((_,no)=>{reject=no;}));await mount();await click('Meus Pedidos');const rejectA=reject;await mount({uid:'b',sessionAuth:{app:{name:'cardapioPublic'},currentUser:{uid:'b'}}});await act(async()=>rejectA(Error('private-a')));expect(host.textContent).not.toContain('Não foi possível carregar esta página.');expect(host.textContent).not.toContain('private-a');});

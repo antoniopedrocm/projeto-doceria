@@ -752,7 +752,7 @@
 
     <!-- SCRIPTS -->
         <script type="module">
-          import { db, doc, getDoc } from "./firebaseClientConfig.js";
+          import { db, doc, getDoc } from "./firebaseClientConfig.js?v=20261010-customer-shell";
 
           const DEFAULT_STORE_ID = 'ana-guimaraes-doceria-garavelo';
           const STORE_ID = new URLSearchParams(window.location.search).get('store') || DEFAULT_STORE_ID;
@@ -1216,13 +1216,13 @@
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js";
         import {
             app
-        } from "./firebaseClientConfig.js";
+        } from "./firebaseClientConfig.js?v=20261010-customer-shell";
 
         import {apiBaseUrl} from './checkout-environment.js';
         import {createPageCartBridge,stockLimit} from './reorder-cart.mjs';
-        import {installCustomerAccount} from './customer-account.js?v=20261006-customer-reorder';
+        import {installCustomerAccount} from './customer-account.js?v=20261010-customer-shell';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
-        import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js';
+        import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261010-customer-shell';
         import {STORE_AVAILABILITY, getStoreAvailability, getStoreAvailabilityMessage} from './store-availability.mjs';
         function resetWhatsAppConsent() {
             ['platform-whatsapp-consent', 'guest-whatsapp-consent'].forEach((id) => {
@@ -1574,7 +1574,7 @@
         // Funções de Produtos
         async function fetchStoreConfig() {
             try {
-                const { db, doc, getDoc } = await import('./firebaseClientConfig.js');
+                const { db, doc, getDoc } = await import('./firebaseClientConfig.js?v=20261010-customer-shell');
                 const configDoc = await getDoc(doc(db, ...storeConfigDocPath()));
                 if (configDoc.exists()) {
                     storeConfig = configDoc.data() || {};
@@ -1698,7 +1698,7 @@
         }
 
         async function listenToStoreConfig() {
-            const { db, doc, onSnapshot } = await import('./firebaseClientConfig.js');
+            const { db, doc, onSnapshot } = await import('./firebaseClientConfig.js?v=20261010-customer-shell');
             if (storeConfigListenerUnsubscribe) storeConfigListenerUnsubscribe();
 
             storeConfigListenerUnsubscribe = onSnapshot(doc(db, ...storeConfigDocPath()), (snap) => {
@@ -1712,7 +1712,7 @@
         }
 
         async function listenToProducts() {
-            const { db, collection, onSnapshot } = await import('./firebaseClientConfig.js');
+            const { db, collection, onSnapshot } = await import('./firebaseClientConfig.js?v=20261010-customer-shell');
             if (productListenerUnsubscribe) productListenerUnsubscribe();
 
             return new Promise((resolve, reject) => {
@@ -1748,7 +1748,7 @@
         async function fetchProducts() {
             try {
                 console.log("🔄 Revalidando produtos do Firebase...");
-                const { db, collection, getDocs } = await import('./firebaseClientConfig.js');
+                const { db, collection, getDocs } = await import('./firebaseClientConfig.js?v=20261010-customer-shell');
                 const productsSnapshot = await getDocs(collection(db, ...storePath("produtos")));
                 const products = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 return applyLatestProducts(products, { notifyCartChanges: false });
@@ -2722,7 +2722,7 @@
                 document.getElementById('customer-modal-error').classList.add('hidden');
 
                 try {
-                    const { updateClientProfile, normalizeCallableError } = await import('./firebaseClientConfig.js');
+                    const { updateClientProfile, normalizeCallableError } = await import('./firebaseClientConfig.js?v=20261010-customer-shell');
                     const response = await updateClientProfile({
                         lojaId: STORE_ID,
                         clientId: client.id,
@@ -3315,7 +3315,7 @@
     </script>
 
 	<script type="module">
-		import { db, doc, getDoc } from './firebaseClientConfig.js';
+		import { db, doc, getDoc } from './firebaseClientConfig.js?v=20261010-customer-shell';
 	</script>
 
 	<script>

@@ -1,3 +1,4 @@
+import ApplicationGate from './customer/ApplicationGate';
 import InfinitePaySettings from './payments/InfinitePaySettings';
 import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -5023,7 +5024,7 @@ const Relatorios = ({ data }) => {
 
 
 // Componente principal
-function App() {
+function StaffApplication({staffUid=null}) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
 
@@ -6406,27 +6407,9 @@ function App() {
       if (userDoc.exists()) {
         profile = userDoc.data() || {};
       } else {
-        let initialRole = ROLE_CLIENT;
-
-        try {
-          const anyUserSnap = await getDocs(query(collection(db, "users"), limit(1)));
-          if (anyUserSnap.empty) {
-            initialRole = ROLE_OWNER;
-          }
-        } catch (roleCheckError) {
-          console.error("Erro ao verificar usuários existentes:", roleCheckError);
-          initialRole = ROLE_OWNER;
-        }
-
-        profile = {
-          email: authUser.email || "",
-          nome: authUser.displayName || authUser.email || "Usuário",
-          role: initialRole,
-          lojaId: null,
-          lojaIds: [],
-        };
-
-        await setDoc(userDocRef, profile, { merge: true });
+        const error=new Error('Entre pela Área do Cliente.');
+        error.code=CLIENT_ADMIN_ACCESS_DENIED;
+        throw error;
       }
 
       if (!isUserAccountActive(profile)) {
@@ -6542,7 +6525,7 @@ function App() {
 
       unsubscribe = onIdTokenChanged(auth, async (authUser) => {
         try {
-          if (authUser) {
+          if (authUser && authUser.uid === staffUid) {
             await applyAuthenticatedUser(authUser);
           } else if (isMounted) {
             applySignedOutState();
@@ -6561,7 +6544,7 @@ function App() {
       isMounted = false;
       unsubscribe();
     };
-  }, [stopAlarm, setCurrentPage]);
+  }, [stopAlarm, setCurrentPage, staffUid]);
 
     useEffect(() => {
         const uid = user?.auth?.uid;
@@ -21714,4 +21697,4 @@ const handleSubmit = async (e) => {
   );
 }
 
-export default App;
+export default function App(){return <ApplicationGate StaffApplication={StaffApplication} />;}

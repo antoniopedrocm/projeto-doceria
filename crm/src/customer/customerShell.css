@@ -1,0 +1,14 @@
+.customer-shell{min-height:100vh;background:#fff7fb;color:#1f2937;font-family:inherit}
+.customer-shell header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;background:white;border-bottom:1px solid #fbcfe8}
+.customer-shell header>nav{position:absolute;right:16px;top:60px;z-index:30;background:white;border:1px solid #fbcfe8;border-radius:12px;padding:12px;box-shadow:0 4px 20px #0002}
+.customer-shell aside{position:fixed;width:220px;top:70px;bottom:0;background:white;padding:20px;border-right:1px solid #fbcfe8}
+.customer-shell nav{display:flex;flex-direction:column;gap:8px}
+.customer-shell button{padding:10px 14px;border-radius:8px;text-align:left;cursor:pointer}
+.customer-shell button:hover,.customer-shell button[aria-current=page]{background:#fce7f3;color:#be185d}
+.customer-shell main{margin-left:220px;padding:24px;max-width:1100px}
+.customer-shell .customer-area-dialog{width:100%;max-width:none;border:0;background:white;border-radius:16px;padding:24px}
+.customer-shell main>section{background:white;border-radius:16px;padding:24px}
+.customer-shell h1{font-size:24px;font-weight:700;margin-bottom:16px}
+.customer-shell [data-area]>nav,.customer-shell [data-logout]{display:none}
+.customer-shell header>button:first-child{display:none}
+@media(max-width:767px){.customer-shell header>button:first-child{display:block}.customer-shell header strong{font-size:14px}.customer-shell aside{display:none;z-index:20;top:64px;box-shadow:4px 0 16px #0002}.customer-shell aside.is-open{display:block}.customer-shell main{margin-left:0;padding:12px}.customer-shell .customer-area-dialog{padding:16px}.customer-shell header>nav{max-width:calc(100vw - 32px)}}

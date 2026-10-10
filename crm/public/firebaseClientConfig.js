@@ -40,7 +40,8 @@ const firebaseConfig = await getCheckoutFirebaseConfig();
 
 // Create or retrieve a named app instance.  Using a distinct name
 // prevents interference with other Firebase initialisations on the page.
-const appName = 'cardapioPublic';
+// Explicit return from a Customer using the main Auth app; this never grants Staff access.
+const appName = new URLSearchParams(window.location.search).get('accountContext')==='crm' ? '[DEFAULT]' : 'cardapioPublic';
 const app = getApps().find((a) => a.name === appName) || initializeApp(firebaseConfig, appName);
 
 // Firestore service for data operations.

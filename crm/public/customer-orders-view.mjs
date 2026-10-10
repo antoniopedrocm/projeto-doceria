@@ -103,5 +103,5 @@ export function createCustomerOrderHistory({panel,call,snapshot,isCurrent,onExpi
   }
   el('history').onclick=()=>load();el('orders-more').onclick=()=>load(true);
   el('order-back').onclick=()=>{detailGeneration++;el('order-detail').hidden=true;el('order-detail-content').replaceChildren();el('orders-list').hidden=false;el('orders-heading').focus();};
-  return {load,clear};
+  return {load,clear,openDetail};
 }
