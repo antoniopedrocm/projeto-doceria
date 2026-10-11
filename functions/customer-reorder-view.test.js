@@ -13,7 +13,7 @@ async function fixture({current=cart(),response=async()=>preview()}={}) {
   const panel=dom.window.document.querySelector('section'),calls=[],applied=[];let uid='a',state=current;
   const view=createCustomerReorderView({panel,call:async(name,data)=>{calls.push({name,data});return response(calls.length,data);},
     snapshot:()=>({uid}),isCurrent:s=>s.uid===uid && !!uid,cart:{snapshot:()=>structuredClone(state),apply:p=>{applied.push(p);state=cart(p.items,p.storeId);},open:()=>{}},onExpired:()=>{uid=null;view.clear();},onCartOpen:()=>{}});
-  return {view,panel,calls,applied,setCart:c=>{state=c;},logout:()=>{uid=null;view.clear();},swap:()=>{uid='b';view.clear();},
+  return {view,panel,calls,applied,getCart:()=>structuredClone(state),setCart:c=>{state=c;},logout:()=>{uid=null;view.clear();},swap:()=>{uid='b';view.clear();},
     click:async label=>{const button=[...panel.querySelectorAll('button')].find(b=>b.textContent===label);assert.ok(button,label);await button.onclick();},close:()=>dom.window.close()};
 }
 test('recompra usa IDs/preço atual e produz novo carrinho sem modificar snapshots',async()=>{
@@ -102,6 +102,17 @@ test('logout/troca Customer descarta resposta tardia e limpa estado privado',asy
 test('logout durante revalidação final não aplica carrinho preparado',async t=>{
   let release;const f=await fixture({response:async count=>count===1?preview():new Promise(resolve=>{release=resolve;})});t.after(f.close);
   await f.view.start(order());const pending=f.click('Preparar carrinho');f.logout();release(preview());await pending;assert.equal(f.applied.length,0);
+});
+
+test('resposta final da recompra de A após login B preserva exatamente o carrinho B',async t=>{
+  let release;
+  const original=cart([{id:'original-a',quantity:1,preco:9}],other);
+  const ownedB=cart([{id:'only-b',nome:'Item B',quantity:2,preco:20}],other);
+  const f=await fixture({current:original,response:async count=>count===1?preview():new Promise(resolve=>{release=resolve;})});t.after(f.close);
+  await f.view.start(order());const pending=f.click('Substituir e continuar');
+  f.logout();f.swap();f.setCart(ownedB);release(preview());await pending;
+  assert.equal(f.applied.length,0);assert.deepEqual(f.getCart(),ownedB);
+  assert.equal(f.panel.hidden,true);assert.equal(f.panel.textContent,'');
 });
 test('preço/estoque mudaram entre preparação e confirmação: exige nova revisão',async t=>{
   const f=await fixture({response:async count=>({...preview(),products:[product('p',{preco:count===1?16:20,estoque:count===1?5:1})]})});t.after(f.close);

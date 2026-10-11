@@ -10,6 +10,8 @@ const functions=require('./index');
 const app=express();app.use(express.json());
 app.post('/list',functions.customerOrders);app.post('/detail',functions.customerOrderDetail);app.post('/profile',functions.customerCompleteProfile);
 app.post('/reorder',functions.customerReorderPreview);
+app.post('/account',functions.customerAccount);app.post('/address/add',functions.customerAddAddress);
+app.post('/address/update',functions.customerUpdateAddress);app.post('/address/default',functions.customerSetDefaultAddress);
 const server=http.createServer(app),db=admin.firestore();
 let base,a,b,anonymous,customerA,customerB;
 async function signup(email) {
@@ -136,4 +138,21 @@ test('recompra não usa produto de outra loja como fallback e limita IDs enviado
   const result=await send('/reorder',{storeId:'history-garavelo',orderId:'history-42',cartProductIds:['only-matrix']});
   assert.deepEqual(result.body.result.products.map(p=>p.id),['brownie']);
   assert.equal((await send('/reorder',{storeId:'history-garavelo',orderId:'history-42',cartProductIds:['../private']})).status,400);
+});
+
+test('IDOR HTTP de endereço com token B recusa ID A e preserva ambos os Customers',async()=>{
+  const created=await send('/address/add',{address:{nickname:'DEV A',enderecoCompleto:'Rua fictícia, 1',lat:-16,lng:-49,isDefault:true}});
+  assert.equal(created.status,200);
+  const addressId=created.body.result.customer.enderecos.at(-1).id;
+  const refA=db.doc(`clientes/${customerA}`),refB=db.doc(`clientes/${customerB}`);
+  const beforeA=(await refA.get()).data(),beforeB=(await refB.get()).data();
+  for(const route of ['/address/update','/address/default']) {
+    const result=await send(route,{customerId:customerA,uid:a.localId,addressId,address:{nickname:'DEV A'}},b.idToken);
+    assert.equal(result.status,404);assert.equal(result.body.error.status,'NOT_FOUND');
+    assert.doesNotMatch(JSON.stringify(result.body),/Rua fictícia|authOwnerUid|enderecos/);
+  }
+  const account=await send('/account',{customerId:customerA},b.idToken);
+  assert.equal(account.body.result.customer.id,customerB);
+  assert.ok(account.body.result.customer.enderecos.every(value=>value.id!==addressId));
+  assert.deepEqual((await refA.get()).data(),beforeA);assert.deepEqual((await refB.get()).data(),beforeB);
 });

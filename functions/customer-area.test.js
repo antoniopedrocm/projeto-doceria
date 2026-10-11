@@ -10,7 +10,7 @@ const user = (uid = 'uid-a', provider = 'password') => ({uid, isAnonymous: false
 const customer = (id = 'a') => ({id, accountLinked: true, nome: `Cliente ${id}`, telefone: '62999991234', enderecos: []});
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-async function fixture({embedded=false,initialUser = user(), sdk = {}, backend = async (name, auth) =>
+async function fixture({embedded=false,waitForReady=true,initialUser = user(), sdk = {}, backend = async (name, auth) =>
   name === 'customerAccount' ? {customer: customer(auth.currentUser?.uid || 'a')} : {orders: []}} = {}) {
   const {isCustomerIdentity, createCustomerAreaNavigation} = await import('../crm/public/customer-area.mjs');
   const {createCustomerAuthState} = await import('../crm/public/customer-session.mjs');
@@ -46,7 +46,7 @@ async function fixture({embedded=false,initialUser = user(), sdk = {}, backend =
   vm.runInContext(source, context);
   const api = context.installCustomerAccount({runtime:context,host,onRoute:route=>routes.push(route),onSession: value => sessions.push(value),
     onLogout: () => logouts.push(true), onCustomer: value => checkout.push(value)});
-  listener(initialUser); await api.ready;
+  listener(initialUser); if(waitForReady) await api.ready;
   const dialog = host?host.querySelector('.customer-area-dialog'):window.document.querySelector('dialog');
   const el = name => dialog.querySelector(`[data-${name}]`);
   const navigate = route => dialog.querySelector(`[data-customer-route="${route}"]`).onclick({preventDefault() {}});
@@ -385,4 +385,65 @@ test('desmontar área Customer descarta resposta tardia e remove UI privada',asy
   assert.equal(f.api.getCustomer(),null);
   assert.equal(f.host.textContent,'');
   assert.equal(f.window.document.querySelector('dialog'),null);
+});
+
+for(const action of ['logout','swap']) {
+  test(`perfil inicial de A atrasado é descartado após ${action}`,async t=>{
+    let finish;
+    const privateA={...customer('uid-a'),nome:'Perfil privado A',telefone:'62999990001',
+      enderecos:[{id:'address-a',nickname:'Privado A',enderecoCompleto:'Rua privada A'}]};
+    const f=await fixture({embedded:true,waitForReady:false,backend:async(name,auth)=>{
+      if(name==='customerAccount' && auth.currentUser.uid==='uid-a') return new Promise(resolve=>{finish=resolve;});
+      return {customer:customer(auth.currentUser.uid)};
+    }});t.after(f.close);
+    f.emit(null);
+    if(action==='swap') f.emit(user('uid-b'));
+    await tick();
+    finish({customer:privateA});await f.api.ready;await tick();
+    assert.doesNotMatch(f.host.textContent,/Perfil privado A|Rua privada A/);
+    assert.ok(f.sessions.every(c=>!c || c.id!=='uid-a'));
+    if(action==='logout') {
+      assert.equal(f.api.getCustomer(),null);assert.equal(f.el('area').hidden,true);
+      assert.equal(f.el('name').value,'');assert.equal(f.el('addresses').textContent,'');
+    } else {
+      assert.equal(f.api.getCustomer().id,'uid-b');assert.equal(f.el('name').value,'Cliente uid-b');
+    }
+  });
+
+  test(`edição de endereço A pendente não restaura formulário ou dados após ${action}`,async t=>{
+    let finish;
+    const owned={...customer('uid-a'),enderecos:[{id:'address-a',nickname:'Casa A',enderecoCompleto:'Rua A',lat:-16,lng:-49}]};
+    const f=await fixture({embedded:true,backend:async(name,auth)=>{
+      if(name==='customerUpdateAddress') return new Promise(resolve=>{finish=resolve;});
+      return {customer:auth.currentUser.uid==='uid-a'?owned:customer('uid-b')};
+    }});t.after(f.close);await f.api.openAccount('profile');
+    await [...f.el('addresses').querySelectorAll('button')].find(b=>b.textContent==='Editar').onclick();
+    const pending=f.el('address-form').onsubmit({preventDefault(){}});await tick();
+    f.emit(null);if(action==='swap') f.emit(user('uid-b'));await tick();
+    const readsBefore=f.calls.filter(c=>c.name==='customerAccount').length;
+    finish({customer:owned});await pending;await tick();
+    assert.equal(f.calls.filter(c=>c.name==='customerAccount').length,readsBefore);
+    assert.equal(f.el('address-form').hidden,true);assert.equal(f.el('address-enderecoCompleto').value,'');
+    assert.doesNotMatch(f.el('addresses').textContent,/Casa A|Rua A/);
+    assert.equal(f.api.getCustomer()?.id || null,action==='swap'?'uid-b':null);
+  });
+}
+
+test('detalhe tardio A após logout/login B não recria endereço, comprovante ou cursor de A',async t=>{
+  let finish;
+  const f=await fixture({embedded:true,backend:async(name,auth,data)=>{
+    if(name==='customerAccount') return {customer:customer(auth.currentUser.uid)};
+    if(name==='customerOrderDetail') return new Promise(resolve=>{finish=resolve;});
+    const uid=auth.currentUser.uid;
+    return {orders:[historicalOrder(uid)],nextCursor:data.cursor?null:`lojas/matriz/pedidos/${uid}`};
+  }});t.after(f.close);await f.api.openAccount('orders');
+  const pending=f.el('orders').querySelector('[data-order-key]').onclick();await tick();
+  f.emit(null);f.emit(user('uid-b'));await tick();await tick();
+  finish({order:{...historicalOrder('private-a'),endereco:'Endereço privado A',receipt_url:'https://receipt.example.test/private-a'}});
+  await pending;
+  assert.equal(f.el('order-detail').hidden,true);assert.equal(f.el('order-detail-content').textContent,'');
+  assert.doesNotMatch(f.host.textContent,/Endereço privado A|private-a/);
+  assert.equal(f.el('orders').querySelector('[data-order-key]').dataset.orderKey,'matriz/uid-b');
+  await f.el('orders-more').onclick();
+  assert.equal(f.calls.filter(c=>c.name==='customerOrders').at(-1).data.cursor,'lojas/matriz/pedidos/uid-b');
 });

@@ -29,3 +29,15 @@ test('falha de validação server-side fecha acesso, sem fallback administrativo
 test('Staff que também é Customer pode abrir rota Customer sem herdar permissões',async()=>{window.history.replaceState(null,'','/minha-conta');getDoc.mockResolvedValue({exists:()=>true,data:()=>({role:'admin',ativo:true})});await mount();await emit(auth,identity('both'));await emit(customerAuth,null);expect(host.textContent).toBe('Customer:both');expect(staff).not.toHaveBeenCalled();});
 
 test('renovação de token do mesmo Staff preserva a tela enquanto revalida autorização',async()=>{getDoc.mockResolvedValue({exists:()=>true,data:()=>({role:'admin',ativo:true})});await mount();await emit(auth,identity('staff'));await emit(customerAuth,null);let finish;getDoc.mockReturnValue(new Promise(resolve=>{finish=resolve;}));await emit(auth,identity('staff'));expect(host.textContent).toContain('Staff administrativo');await act(async()=>finish({exists:()=>true,data:()=>({role:'admin',ativo:true})}));expect(host.textContent).toContain('Staff administrativo');});
+
+test('Customer tardio após logout não reaparece nem interfere no novo contexto Staff',async()=>{
+  let finish;
+  runtimeFor.mockImplementation(()=>({functions:{},httpsCallable:()=>async()=>new Promise(resolve=>{finish=resolve;})}));
+  await mount();await emit(auth,null);await emit(customerAuth,identity('customer-a'));
+  await emit(customerAuth,null);getDoc.mockResolvedValue({exists:()=>true,data:()=>({role:'admin',ativo:true})});
+  await emit(auth,identity('staff-b'));
+  expect(host.textContent).toContain('Staff administrativo');
+  await act(async()=>finish({data:{customer:{id:'private-a'}}}));
+  expect(host.textContent).not.toContain('Customer:customer-a');
+  expect(staff.mock.calls.at(-1)[0].staffUid).toBe('staff-b');
+});
