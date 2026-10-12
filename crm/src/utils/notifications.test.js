@@ -20,10 +20,10 @@ jest.mock('../firebaseConfig', () => ({
 
 const origin = window.location.origin;
 const canonical = {
-  scope: `${origin}/`,
+  scope: `${origin}/firebase-cloud-messaging-push-scope`,
   active: { scriptURL: `${origin}/firebase-messaging-sw.js`, state: 'activated' },
 };
-const legacy = { ...canonical, scope: `${origin}/firebase-cloud-messaging-push-scope` };
+const pageWorker = { ...canonical, scope: `${origin}/` };
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const deferred = () => {
   let resolve;
@@ -40,10 +40,10 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'serviceWorker', {
     configurable: true,
     value: {
-      getRegistrations: jest.fn().mockResolvedValue([legacy, canonical]),
+      getRegistrations: jest.fn().mockResolvedValue([pageWorker, canonical]),
       register: jest.fn().mockResolvedValue(canonical),
       // A different registration becoming ready must not select its subscription.
-      ready: Promise.resolve(legacy),
+      ready: Promise.resolve(pageWorker),
     },
   });
   getToken.mockResolvedValue('fixture-token');
@@ -53,17 +53,27 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-test('selects the canonical root worker regardless of enumeration order', async () => {
+test('selects the SDK default FCM scope regardless of enumeration order', async () => {
   await registerDeviceForPush('staff-a');
   expect(getToken).toHaveBeenCalledWith(expect.anything(), { serviceWorkerRegistration: canonical });
   expect(navigator.serviceWorker.register).not.toHaveBeenCalled();
 });
 
-test('does not reuse the legacy subscription when the canonical worker is missing', async () => {
-  navigator.serviceWorker.getRegistrations.mockResolvedValue([legacy]);
+test('Staff registration matches the implicit token scope used by the installed Functions SDK', async () => {
+  const fs = require('fs');
+  const messagingSDK = fs.readFileSync(require.resolve('@firebase/messaging'), 'utf8');
+  const functionsSDK = fs.readFileSync(require.resolve('@firebase/functions'), 'utf8');
+  const defaultScope = messagingSDK.match(/DEFAULT_SW_SCOPE\s*=\s*['"]([^'"]+)['"]/)[1];
+  expect(functionsSDK).toMatch(/this\.messaging\.getToken\(\)/);
+  await registerDeviceForPush('staff-a');
+  expect(getToken.mock.calls[0][1].serviceWorkerRegistration.scope).toBe(`${origin}${defaultScope}`);
+});
+
+test('does not reuse the page subscription when the default FCM worker is missing', async () => {
+  navigator.serviceWorker.getRegistrations.mockResolvedValue([pageWorker]);
   await registerDeviceForPush('staff-a');
   expect(navigator.serviceWorker.register).toHaveBeenCalledWith(
-    `${origin}/firebase-messaging-sw.js`, { scope: `${origin}/` },
+    `${origin}/firebase-messaging-sw.js`, { scope: canonical.scope },
   );
   expect(getToken).toHaveBeenCalledWith(expect.anything(), { serviceWorkerRegistration: canonical });
 });
@@ -142,7 +152,7 @@ test('waits for its installing worker instead of a different ready registration'
     removeEventListener: jest.fn(),
   };
   const registration = { scope: canonical.scope, installing: worker, active: null };
-  navigator.serviceWorker.getRegistrations.mockResolvedValue([registration, legacy]);
+  navigator.serviceWorker.getRegistrations.mockResolvedValue([registration, pageWorker]);
   const pending = registerDeviceForPush('staff-a');
   await flush();
   expect(getToken).not.toHaveBeenCalled();

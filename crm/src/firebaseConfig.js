@@ -428,9 +428,8 @@ export const messagingPromise = (async () => {
   try {
     const supported = await messagingIsSupported();
     if (!supported) return null;
-    // Token/permission acquisition belongs exclusively to the Staff registration
-    // flow, which supplies the canonical worker. The SDK's implicit worker has
-    // a different scope/subscription and can replace this app's cached token.
+    // Bootstrap does not request permission or persist device tokens. The Staff
+    // flow uses the same FCM scope as Functions' implicit Messaging token lookup.
     return getMessaging(app);
   } catch (err) {
     console.error('Failed to initialise Firebase Messaging:', err);

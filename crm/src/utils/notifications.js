@@ -67,7 +67,10 @@ async function ensureServiceWorkerRegistration() {
 
   const registrations = await navigator.serviceWorker.getRegistrations();
   const scriptURL = new URL('/firebase-messaging-sw.js', window.location.origin).href;
-  const scope = new URL('/', window.location.origin).href;
+  // Functions also obtains a Messaging token implicitly with the SDK's default
+  // scope. Use that same subscription; choosing the page's root worker would
+  // make the two paths replace each other's cached token on reload.
+  const scope = new URL('/firebase-cloud-messaging-push-scope', window.location.origin).href;
   const existing = registrations.find((registration) => {
     const workerURL =
       registration.active?.scriptURL ||
