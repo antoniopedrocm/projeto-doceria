@@ -9,6 +9,7 @@ import { summarizePointMonth } from './meuEspaco/pointMonthSummary';
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { Play } from 'lucide-react';
 import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
+import OrderPaymentStatus from './components/orders/OrderPaymentStatus';
 import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
 import {findOrderDraft, validateFiscalOrder, createFiscalOrderActions} from './fiscalOrderActions';
 import {
@@ -14263,6 +14264,7 @@ const handleSubmit = async (e) => {
                                     <p><strong>Data do Pedido:</strong> {viewingOrder.createdAt ? getJSDate(viewingOrder.createdAt)?.toLocaleString('pt-BR') : '-'}</p>
                                     <p><strong>Origem:</strong> {viewingOrder.origem}</p>
                                     <p><strong>Pagamento:</strong> {viewingOrder.formaPagamento || 'Não informado'}</p>
+                                    <OrderPaymentStatus order={viewingOrder} />
                                     {viewingOrder.categoria && (<p><strong>Categoria:</strong> {viewingOrder.categoria}</p>)}
                                     {viewingOrder.dataEntrega && (<p><strong>Data de Entrega:</strong> {new Date(viewingOrder.dataEntrega + 'T03:00:00Z').toLocaleDateString('pt-BR')}</p>)}
                                 </div>
