@@ -104,7 +104,9 @@ async function ensureServiceWorkerRegistration() {
 function getStaffWebToken(messaging) {
   if (!webTokenFlight) {
     webTokenFlight = (async () => {
-      if (messaging.app?.options?.projectId !== 'crmdoceria-9959e') {
+      // Auth and Messaging are created from the same app in firebaseConfig.
+      // Messaging has no public .app property in this SDK version.
+      if (auth.app?.options?.projectId !== 'crmdoceria-9959e') {
         throw new Error('Notificações vinculadas ao projeto Firebase incorreto.');
       }
       const registration = await ensureServiceWorkerRegistration();

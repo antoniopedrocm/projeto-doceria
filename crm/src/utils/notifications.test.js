@@ -1,6 +1,6 @@
 import { getToken } from 'firebase/messaging';
 import { deleteDoc, setDoc } from 'firebase/firestore';
-import { auth, messagingPromise } from '../firebaseConfig';
+import { auth } from '../firebaseConfig';
 import { registerDeviceForPush, unregisterDeviceForPush } from './notifications';
 
 jest.mock('@capacitor/core', () => ({
@@ -13,8 +13,9 @@ jest.mock('firebase/firestore', () => ({
   doc: (_db, collection, id) => ({ collection, id }),
 }));
 jest.mock('../firebaseConfig', () => ({
-  auth: { currentUser: { uid: 'staff-a' } }, db: {}, VAPID_KEY: '',
-  messagingPromise: Promise.resolve({ app: { options: { projectId: 'crmdoceria-9959e' } } }),
+  auth: { currentUser: { uid: 'staff-a' }, app: { options: { projectId: 'crmdoceria-9959e' } } }, db: {}, VAPID_KEY: '',
+  // Messaging is opaque and has no public .app property in Firebase 10.14.1.
+  messagingPromise: Promise.resolve({}),
 }));
 
 const origin = window.location.origin;
@@ -152,16 +153,15 @@ test('waits for its installing worker instead of a different ready registration'
   expect(getToken).toHaveBeenCalledWith(expect.anything(), { serviceWorkerRegistration: registration });
 });
 
-test('rejects a Messaging instance from another project before requesting a token', async () => {
-  const messaging = await messagingPromise;
-  messaging.app.options.projectId = 'other-project';
+test('rejects a Staff Firebase app from another project before requesting a token', async () => {
+  auth.app.options.projectId = 'other-project';
   const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
   try {
     await expect(registerDeviceForPush('staff-a')).rejects.toThrow('projeto Firebase incorreto');
     expect(getToken).not.toHaveBeenCalled();
     expect(setDoc).not.toHaveBeenCalled();
   } finally {
-    messaging.app.options.projectId = 'crmdoceria-9959e';
+    auth.app.options.projectId = 'crmdoceria-9959e';
     errorLog.mockRestore();
   }
 });
