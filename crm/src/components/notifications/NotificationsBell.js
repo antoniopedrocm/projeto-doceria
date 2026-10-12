@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {getOrderStatusLabel} from '../../utils/orderStatus';
 import { Bell, CheckCheck, Eye, EyeOff, Filter, X } from 'lucide-react';
 import { formatCentsBRL, isCashNotification } from '../../caixa/caixaCore';
 import {
@@ -167,7 +168,7 @@ const NotificationsBell = ({
           <p className="font-semibold">{order.clienteNome || 'Cliente'}</p>
           <p className="text-sm text-gray-500">ID: {order.id?.substring(0, 8) || 'N/A'}</p>
           <p className="text-sm text-gray-500">Data: {toDate(order.createdAt)?.toLocaleDateString('pt-BR') || '-'}</p>
-          <p className="text-sm">Status: <span className="font-medium">{order.status}</span></p>
+          <p className="text-sm">Status: <span className="font-medium">{getOrderStatusLabel(order)}</span></p>
         </button>
       )) : <p className="p-4 text-center text-gray-500">Nenhum pedido pendente.</p>}
     </div>

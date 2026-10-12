@@ -10,6 +10,8 @@ import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMe
 import { Play } from 'lucide-react';
 import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
 import OrderPaymentStatus from './components/orders/OrderPaymentStatus';
+import OrderStatusBadge from './components/orders/OrderStatusBadge';
+import {getOrderStatusLabel} from './utils/orderStatus';
 import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
 import {findOrderDraft, validateFiscalOrder, createFiscalOrderActions} from './fiscalOrderActions';
 import {
@@ -13811,7 +13813,7 @@ const [orderSyncNotice, setOrderSyncNotice] = useState('');
             return matchesOrderDateFilter(orderDate, startDateFilter, endDateFilter);
         })();
 
-        const statusMatch = statusFilter === 'Todos' || p.status === statusFilter;
+        const statusMatch = statusFilter === 'Todos' || getOrderStatusLabel(p) === statusFilter;
 
         return searchMatch && dateMatch && statusMatch;
     }).sort((a, b) => {
@@ -14013,8 +14015,7 @@ const handleSubmit = async (e) => {
         setShowModal(true);
     };
 
-    const getStatusClass = (status) => { switch (status) { case 'Pendente': return 'bg-yellow-100 text-yellow-800'; case 'Em Produção': return 'bg-blue-100 text-blue-800'; case 'Finalizado': return 'bg-green-100 text-green-800'; case 'Cancelado': return 'bg-red-100 text-red-800'; default: return 'bg-gray-100 text-gray-800'; } };
-    const columns = [ { header: "ID do Pedido", render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.substring(0, 8) || 'N/A'}</span> }, { header: "Cliente", key: "clienteNome" }, { header: "Total", render: (row) => <span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span> }, { header: "Data", render: (row) => { const date = getJSDate(row.createdAt); return date ? date.toLocaleDateString('pt-BR') : '-'; } }, { header: "Origem", key: "origem"}, { header: "Status", render: (row) => { const isPendingSync = row._isPendingSync; return <span className={`px-3 py-1 rounded-full text-xs font-medium ${isPendingSync ? 'bg-gray-100 text-gray-600' : getStatusClass(row.status)}`}>{isPendingSync ? 'Sincronizando...' : row.status}</span>; } } ];
+    const columns = [ { header: "ID do Pedido", render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.substring(0, 8) || 'N/A'}</span> }, { header: "Cliente", key: "clienteNome" }, { header: "Total", render: (row) => <span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span> }, { header: "Data", render: (row) => { const date = getJSDate(row.createdAt); return date ? date.toLocaleDateString('pt-BR') : '-'; } }, { header: "Origem", key: "origem"}, { header: "Status", render: (row) => <OrderStatusBadge order={row} pendingSync={row._isPendingSync} className="px-3 py-1" /> } ];
     const actions = [ { icon: Eye, label: "Ver", onClick: (row) => setViewingOrder(row) }, { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidos', row.id) }) } ];
 
     return (
@@ -14038,9 +14039,11 @@ const handleSubmit = async (e) => {
                     <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full">
                         <option value="Todos">Todos os Status</option>
                         <option value="Pendente">Pendente</option>
+                        <option value="Confirmado">Confirmado</option>
                         <option value="Em Produção">Em Produção</option>
                         <option value="Pronto para Entrega">Pronto para Entrega</option>
                         <option value="Finalizado">Finalizado</option>
+                        <option value="Entregue">Entregue</option>
                         <option value="Cancelado">Cancelado</option>
                     </Select>
                 </div>
@@ -14187,7 +14190,7 @@ const handleSubmit = async (e) => {
                         message += `*Frete:* ${freteExibido}\n`;
                         message += `*Total:* R$ ${(viewingOrder.total || 0).toFixed(2)}\n`;
                         if(viewingOrder.formaPagamento) message += `*Pagamento:* ${viewingOrder.formaPagamento}\n`;
-                        message += `*Status:* ${viewingOrder.status}\n\n`;
+                        message += `*Status:* ${getOrderStatusLabel(viewingOrder)}\n\n`;
                         if(viewingOrder.observacao) message += `*Observações:* ${viewingOrder.observacao}\n\n`;
 
                         message += `Agradecemos a sua preferência! ❤`;
@@ -14260,7 +14263,7 @@ const handleSubmit = async (e) => {
                             <div className="p-4 bg-gray-50 rounded-lg">
                                 <h3 className="font-bold text-lg text-gray-800 mb-2">Informações do Pedido</h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <p><strong>Status:</strong> <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusClass(viewingOrder.status)}`}>{viewingOrder.status}</span></p>
+                                    <p><strong>Status:</strong> <OrderStatusBadge order={viewingOrder} /></p>
                                     <p><strong>Data do Pedido:</strong> {viewingOrder.createdAt ? getJSDate(viewingOrder.createdAt)?.toLocaleString('pt-BR') : '-'}</p>
                                     <p><strong>Origem:</strong> {viewingOrder.origem}</p>
                                     <p><strong>Pagamento:</strong> {viewingOrder.formaPagamento || 'Não informado'}</p>
@@ -17423,20 +17426,12 @@ const handleSubmit = async (e) => {
     const getStatusClass = (status) => {
         switch (status) {
             case 'Pendente': return 'bg-yellow-400';
+            case 'Confirmado': return 'bg-blue-400';
             case 'Em Produção': return 'bg-blue-400';
             case 'Finalizado': return 'bg-green-400';
+            case 'Entregue': return 'bg-green-400';
             case 'Cancelado': return 'bg-red-400';
             default: return 'bg-gray-400';
-        }
-    };
-
-    const getStatusClassText = (status) => {
-        switch (status) {
-            case 'Pendente': return 'bg-yellow-100 text-yellow-800';
-            case 'Em Produção': return 'bg-blue-100 text-blue-800';
-            case 'Finalizado': return 'bg-green-100 text-green-800';
-            case 'Cancelado': return 'bg-red-100 text-red-800';
-            default: return 'bg-gray-100 text-gray-800';
         }
     };
 
@@ -17525,7 +17520,7 @@ const handleSubmit = async (e) => {
                                 <span className={`font-bold text-xs md:text-base ${isToday ? 'text-pink-600' : 'text-gray-800'}`}>{dayNumber}</span>
                                 <div className="mt-1 space-y-1 overflow-y-auto text-[10px] md:text-xs">
                                     {pedidosDoDia.map(p => (
-                                        <div key={p.id} className={`w-full text-white rounded px-1 truncate ${getStatusClass(p.status)}`} title={`${p.clienteNome} (${p.status})`}>
+                                        <div key={p.id} className={`w-full text-white rounded px-1 truncate ${getStatusClass(getOrderStatusLabel(p))}`} title={`${p.clienteNome} (${getOrderStatusLabel(p)})`}>
                                             {p.categoria === 'Festa' ? <Gift size={10} className="inline mr-1"/> : <ShoppingCart size={10} className="inline mr-1"/>}
                                             {p.clienteNome}
                                         </div>
@@ -17559,7 +17554,7 @@ const handleSubmit = async (e) => {
                                             </p>
                                             <p className="text-sm text-gray-600">Total: R$ {p.total.toFixed(2)}</p>
                                         </div>
-                                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusClassText(p.status)}`}>{p.status}</span>
+                                        <OrderStatusBadge order={p} className="px-3 py-1" />
                                     </div>
                                 ))}
                                 </div>
