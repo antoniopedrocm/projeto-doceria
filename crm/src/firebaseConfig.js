@@ -19,7 +19,6 @@ import { Capacitor } from '@capacitor/core';
 import { shouldUseFirebaseEmulators } from './firebaseRuntime.js';
 import {
   getMessaging,
-  getToken,
   isSupported as messagingIsSupported,
 } from 'firebase/messaging';
 
@@ -429,17 +428,10 @@ export const messagingPromise = (async () => {
   try {
     const supported = await messagingIsSupported();
     if (!supported) return null;
-    const messaging = getMessaging(app);
-    if (!VAPID_KEY) {
-      return messaging;
-    }
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.warn('🔔 Notification permission not granted');
-      return messaging;
-    }
-    await getToken(messaging, { vapidKey: VAPID_KEY });
-    return messaging;
+    // Token/permission acquisition belongs exclusively to the Staff registration
+    // flow, which supplies the canonical worker. The SDK's implicit worker has
+    // a different scope/subscription and can replace this app's cached token.
+    return getMessaging(app);
   } catch (err) {
     console.error('Failed to initialise Firebase Messaging:', err);
     return null;

@@ -56,6 +56,7 @@ import {
   PUSH_PERMISSION_STATUS,
   registerDeviceForPush,
   subscribeToServiceWorkerMessages,
+  unregisterDeviceForPush,
 } from './utils/notifications.js';
 import { updateStock as updateStockService } from './services/stockService.js';
 import { EMPTY_FREIGHT_CONFIG, loadStoreFreightConfig, validateFreightCoordinates } from './services/freightConfigService.js';
@@ -3844,6 +3845,7 @@ function StaffApplication({ staffUid = null }) {
   const clientesDataRef = useRef([]);
   const customerMetricsEnsuredStoresRef = useRef(new Set());
   const pushTokenRef = useRef(null);
+  const pushLogoutInProgressRef = useRef(false);
   const configMigrationStatusRef = useRef(new Set());
   // --- REMOVIDO: audioRef e alarmIntervalRef ---
 
@@ -4473,12 +4475,13 @@ function StaffApplication({ staffUid = null }) {
     let cancelled = false;
 
     const setupPushNotifications = async () => {
+      if (pushLogoutInProgressRef.current) return;
       try {
         const permissionStatus = await getPushPermissionStatus();
         if (!cancelled) setPushPermissionStatus(permissionStatus);
 
         const token = await registerDeviceForPush(userId, { requestPermission: false });
-        if (token) {
+        if (token && !cancelled && auth.currentUser?.uid === userId) {
           pushTokenRef.current = token;
           console.log('[App.js] Dispositivo habilitado para receber alertas push.');
         } else if (permissionStatus === PUSH_PERMISSION_STATUS.PROMPT && !cancelled) {
@@ -4531,6 +4534,7 @@ function StaffApplication({ staffUid = null }) {
   }, [userId, handleIncomingPushNotification]);
 
   const activateOrderAlerts = useCallback(async () => {
+    if (pushLogoutInProgressRef.current) return;
     const hadPendingAlarm = audioManager.pendingPlay;
     const audioUnlockPromise = audioManager.userUnlock({ userGesture: true });
     const pushRegistrationPromise = userId
@@ -4544,7 +4548,7 @@ function StaffApplication({ staffUid = null }) {
     if (audioResult.status === 'rejected') {
       console.error('[App.js] Não foi possível ativar o áudio:', audioResult.reason);
     }
-    if (pushResult.status === 'fulfilled' && pushResult.value) {
+    if (pushResult.status === 'fulfilled' && pushResult.value && auth.currentUser?.uid === userId) {
       pushTokenRef.current = pushResult.value;
     } else if (pushResult.status === 'rejected') {
       console.error('[App.js] Não foi possível ativar as notificações:', pushResult.reason);
@@ -5671,15 +5675,17 @@ function StaffApplication({ staffUid = null }) {
 
 
   const handleLogout = async () => {
+      pushLogoutInProgressRef.current = true;
+      try {
       stopAlarm(); // Garante que o alarme pare
       await clearNativeAlarmContext();
 
       const registeredPushToken = pushTokenRef.current || (
         typeof window !== 'undefined' ? window.__anaAndroidPushTokenSync : null
       );
-      if (registeredPushToken) {
+      if (userId) {
         try {
-          await deleteDoc(doc(db, 'notificationTokens', registeredPushToken));
+          await unregisterDeviceForPush(userId, registeredPushToken);
           pushTokenRef.current = null;
           if (typeof window !== 'undefined') window.__anaAndroidPushTokenSync = null;
         } catch (error) {
@@ -5688,6 +5694,9 @@ function StaffApplication({ staffUid = null }) {
       }
 
       await signOut(auth);
+      } finally {
+        pushLogoutInProgressRef.current = false;
+      }
       // O useEffect do onAuthStateChanged agora cuida de resetar a página
   };
 
