@@ -1,13 +1,12 @@
+import {isActiveStaffProfile} from './staffRole';
 export const CUSTOMER_LINKS = [
   {path:'/area-cliente', label:'Página Inicial'},
   {path:'/minha-conta', label:'Minha Conta'},
   {path:'/meus-pedidos', label:'Meus Pedidos'},
 ];
 export const isCustomerIdentity = user => Boolean(user && !user.isAnonymous && user.providerData?.some(p=>['google.com','password'].includes(p.providerId)));
-export function isStaffProfile(profile) {
-  return profile && profile.ativo!==false && !['inativo'].includes(String(profile.status||'').toLowerCase().trim()) &&
-    ['dono','admin','gerente','atendente','contador'].includes(String(profile.role||'').toLowerCase());
-}
+export const isStaffProfile = isActiveStaffProfile;
+
 export function customerRoute(path, search='') {
   if(path==='/minha-conta') return {path,screen:'profile'};
   if(path==='/meus-pedidos') return {path,screen:'orders'};
@@ -21,5 +20,5 @@ export function menuDestination(storage, mainSession=false) {
   let storeId=null;
   try {storeId=JSON.parse(storage.getItem('checkoutState_v1')||'{}').storeId;} catch {}
   const path=storeId==='ana-guimaraes-doceria-garavelo'?'/cardapio-garavelo':'/cardapio-matriz';
-  return mainSession?path+'?accountContext=crm':path;
+  return path;
 }

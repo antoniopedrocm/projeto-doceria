@@ -195,6 +195,7 @@ async function registerStaffDevice(uid, { requestPermission = false } = {}) {
       { merge: true }
     );
 
+    try { sessionStorage.setItem('doceria-staff-push-device', JSON.stringify({uid,token})); } catch {}
     if (platform === 'android') {
       window.__anaAndroidPushTokenSync = token;
     }

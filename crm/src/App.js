@@ -1,3 +1,6 @@
+import {normalizeRole, isActiveStaffProfile} from './customer/staffRole';
+import {createCapabilityResolver} from './customer/userCapabilities';
+import {logoutCanonicalSession} from './customer/customerRuntime';
 import ApplicationGate from './customer/ApplicationGate';
 import InfinitePaySettings from './payments/InfinitePaySettings';
 import { calculateOrderTotal } from './utils/orderFreight';
@@ -34,7 +37,7 @@ import {
   setFirestoreTelemetryContext
 } from './firebaseConfig.js';
 import { httpsCallable } from "firebase/functions";
-import { onIdTokenChanged, indexedDBLocalPersistence, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence, getIdToken } from "firebase/auth";
+import { onIdTokenChanged, indexedDBLocalPersistence, signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence, getIdToken } from "firebase/auth";
 import { collection, query, doc, setDoc, addDoc, updateDoc, where, limit, orderBy, Timestamp, serverTimestamp, arrayUnion, writeBatch, waitForPendingWrites, runTransaction, deleteField, getDocFromServer } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { audioManager, isIOSWebBrowser } from './utils/AudioManager.js';
@@ -59,7 +62,6 @@ import {
   PUSH_PERMISSION_STATUS,
   registerDeviceForPush,
   subscribeToServiceWorkerMessages,
-  unregisterDeviceForPush,
 } from './utils/notifications.js';
 import { updateStock as updateStockService } from './services/stockService.js';
 import { EMPTY_FREIGHT_CONFIG, loadStoreFreightConfig, validateFreightCoordinates } from './services/freightConfigService.js';
@@ -148,13 +150,6 @@ const safeStorageRemove = (storageName, key) => {
   }
 };
 const getAuthProfileCacheKey = (uid) => `${AUTH_PROFILE_CACHE_PREFIX}:${uid}`;
-const safeStorageGet = (storageName, key) => {
-  try {
-    return getSafeStorage(storageName)?.getItem(key) || '';
-  } catch (error) {
-    return '';
-  }
-};
 const parseTimeToMinutes = (value) => {
   if (typeof value !== 'string') return null;
   const match = value.match(/^(\d{2}):(\d{2})$/);
@@ -251,48 +246,6 @@ const setPreferredAuthPersistence = async (contextLabel) => {
   console.warn(`[Auth][${contextLabel}] persistent login unavailable, falling back to session:`, localPersistenceError?.code || localPersistenceError);
   await setPersistence(auth, browserSessionPersistence);
 };
-const buildFallbackAuthenticatedUserData = (authUser) => buildUserDataFromProfile(authUser, {
-  email: authUser?.email || '',
-  nome: authUser?.displayName || authUser?.email || 'Usuário',
-  role: ROLE_CLIENT,
-  lojaIds: [],
-  permissions: getDefaultPermissionsForRole(ROLE_CLIENT)
-});
-const getCachedAuthenticatedProfile = (authUser) => {
-  if (!authUser?.uid) return null;
-
-  try {
-    const cached = safeStorageGet('localStorage', getAuthProfileCacheKey(authUser.uid));
-    if (!cached) return null;
-    const parsed = JSON.parse(cached);
-    if (parsed?.uid !== authUser.uid) return null;
-    return parsed;
-  } catch (error) {
-    return null;
-  }
-};
-const buildUserDataFromCache = (authUser, cachedProfile) => {
-  if (!authUser || !cachedProfile) return null;
-  const role = normalizeRole(cachedProfile.role);
-  const lojaIds = extractStoreIdsFromProfile(cachedProfile);
-  const customProfileData = cachedProfile.customPermissions || cachedProfile.customPermissionDetails
-    ? {
-        permissions: cachedProfile.customPermissions,
-        permissionDetails: cachedProfile.customPermissionDetails,
-      }
-    : null;
-
-  return {
-    ...buildUserDataFromProfile(authUser, {
-      ...cachedProfile,
-      role,
-      lojaIds,
-      permissions: cachedProfile.permissions,
-      permissionDetails: cachedProfile.permissionDetails,
-    }, customProfileData),
-    canAccessAllStores: Boolean(cachedProfile.canAccessAllStores)
-  , onIdTokenChanged};
-};
 const clearGoogleAuthFlow = () => {
   ['sessionStorage', 'localStorage'].forEach((storageName) => {
     safeStorageRemove(storageName, GOOGLE_AUTH_FLOW_KEY);
@@ -354,6 +307,19 @@ const buildUserDataFromProfile = (authUser, profile = {}, customProfileData = nu
     authDisabled: profile.authDisabled === true || profile.firebaseAuthDisabled === true,
   };
 };
+const loadCurrentStaffProfile = async authUser => {
+  let snapshot;
+  try { snapshot = await getDocFromServer(doc(db, 'users', authUser.uid)); }
+  catch (error) { if (['permission-denied','firestore/permission-denied'].includes(error.code)) return null; throw error; }
+  const profile = snapshot.exists() ? snapshot.data() : null;
+  if (!isActiveStaffProfile(profile)) return null;
+  const custom = await getDocFromServer(doc(db, 'customProfiles', authUser.uid));
+  return {...buildUserDataFromProfile(authUser, profile, custom.exists() ? custom.data() : null), profile,
+    stores: extractStoreIdsFromProfile(profile)};
+};
+const resolveUserCapabilities = createCapabilityResolver({loadStaff: loadCurrentStaffProfile,
+  loadCustomer: async () => (await httpsCallable(functions, 'customerAccount')()).data});
+
 const USER_INACTIVE_ACCESS_DENIED = 'auth/user-inactive';
 const CLIENT_ADMIN_ACCESS_DENIED = 'auth/client-admin-access-denied';
 
@@ -424,7 +390,6 @@ const ROLE_MANAGER = 'gerente';
 const ROLE_ATTENDANT = 'atendente';
 const ROLE_ACCOUNTANT = 'contador';
 const ROLE_CLIENT = 'cliente';
-const ROLE_DEFAULT = ROLE_ATTENDANT;
 const STORE_ALL_KEY = '__all__';
 const USER_STATUS_ACTIVE = 'ativo';
 const USER_STATUS_INACTIVE = 'inativo';
@@ -978,97 +943,7 @@ const getInitialDataState = () => ({
   users: []
 });
 
-const normalizeRole = (role) => {
-  if (!role || typeof role !== 'string') return ROLE_DEFAULT;
 
-  const value = role.trim().toLowerCase();
-  if (!value) return ROLE_DEFAULT;
-
-  const normalizedValue = value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-  const ownerAliases = new Set([
-    ROLE_OWNER,
-    'owner',
-    'proprietario',
-    'proprietaria',
-    'admin',
-    'adm',
-    'administrador',
-    'administradora',
-    'administrador master',
-    'administradora master',
-    'administradormaster',
-    'administrador_master',
-    'admin master',
-    'admin_master',
-    'master',
-    'adminstrador',
-    'adminstradora',
-    'superadmin',
-    'superadministrador',
-    'superadministradora'
-  ]);
-
-  const managerAliases = new Set([
-    ROLE_MANAGER,
-    'manager',
-    'gerencia',
-    'gerente',
-    'gestor',
-    'gestora'
-  ]);
-
-  const attendantAliases = new Set([
-    ROLE_ATTENDANT,
-    'atendente',
-    'colaborador',
-    'colaboradora',
-    'funcionario',
-    'funcionaria',
-    'vendedor',
-    'vendedora'
-  ]);
-
-  const clientAliases = new Set([
-    ROLE_CLIENT,
-    'client',
-    'cliente'
-  ]);
-
-  const accountantAliases = new Set([
-    ROLE_ACCOUNTANT,
-    'accountant',
-    'contabilidade'
-  ]);
-
-  if (ownerAliases.has(normalizedValue)) {
-    return ROLE_OWNER;
-  }
-
-  if (managerAliases.has(normalizedValue)) {
-    return ROLE_MANAGER;
-  }
-
-  if (attendantAliases.has(normalizedValue)) {
-    return ROLE_ATTENDANT;
-  }
-
-  if (accountantAliases.has(normalizedValue)) {
-    return ROLE_ACCOUNTANT;
-  }
-
-  if (clientAliases.has(normalizedValue)) {
-    return ROLE_CLIENT;
-  }
-
-  if ([ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT, ROLE_CLIENT].includes(value)) {
-    return value;
-  }
-
-  return ROLE_DEFAULT;
-};
 
 const getDefaultPermissionsForRole = (role) => {
   const base = MENU_PERMISSION_KEYS.reduce((acc, key) => ({ ...acc, [key]: false }), {});
@@ -3795,7 +3670,9 @@ const Relatorios = ({ data, user, availableStores, storeInfoMap }) => {
 
 
 // Componente principal
-function StaffApplication({ staffUid = null }) {
+function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomerContext, onLogout = logoutCanonicalSession, onStaffAccessLost }) {
+  // Leaving a shell is not logout, but its foreground alarm must stop.
+  useEffect(() => () => audioManager.stopAlarmSound(), []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
 
@@ -5234,48 +5111,10 @@ function StaffApplication({ staffUid = null }) {
       setCurrentPage((prevPage) => (!prevPage || prevPage === 'pagina-inicial' ? 'dashboard' : prevPage));
     };
 
-    const loadAuthenticatedUserData = async (authUser) => {
-      const userDocRef = doc(db, "users", authUser.uid);
-      const userDoc = await getDoc(userDocRef);
-
-      let profile;
-
-      if (userDoc.exists()) {
-        profile = userDoc.data() || {};
-      } else {
-        const error=new Error('Entre pela Área do Cliente.');
-        error.code=CLIENT_ADMIN_ACCESS_DENIED;
-        throw error;
-      }
-
-      if (!isUserAccountActive(profile)) {
-        const accessError = new Error('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
-        accessError.code = USER_INACTIVE_ACCESS_DENIED;
-        throw accessError;
-      }
-
-      const role = normalizeRole(profile.role);
-      if (role === ROLE_CLIENT) {
-        const accessError = new Error('Perfil Cliente não pode acessar a aplicação administrativa.');
-        accessError.code = CLIENT_ADMIN_ACCESS_DENIED;
-        throw accessError;
-      }
-
-      const permissionsDefaults = getDefaultPermissionsForRole(role);
-      const customProfileRef = doc(db, "customProfiles", authUser.uid);
-      const customProfileSnap = await getDoc(customProfileRef);
-      const customProfileData = customProfileSnap.exists() ? customProfileSnap.data() : null;
-
-      if (!customProfileSnap.exists()) {
-        await setDoc(customProfileRef, {
-          uid: authUser.uid,
-          role,
-          permissions: permissionsDefaults,
-          permissionDetails: getDefaultPermissionDetailsForRole(role, permissionsDefaults),
-        }, { merge: true });
-      }
-
-      return buildUserDataFromProfile(authUser, profile, customProfileData);
+    const loadAuthenticatedUserData = async authUser => {
+      const profile = await loadCurrentStaffProfile(authUser);
+      if (!profile) { const error = new Error('Perfil administrativo não autorizado.'); error.code = CLIENT_ADMIN_ACCESS_DENIED; throw error; }
+      return profile;
     };
 
     const applyAuthenticatedUser = async (authUser) => {
@@ -5304,7 +5143,7 @@ function StaffApplication({ staffUid = null }) {
           error?.code === 'permission-denied'
         ) {
           try {
-            await signOut(auth);
+            await onStaffAccessLost?.();
           } catch (signOutError) {
             console.warn('Erro ao encerrar sessão de perfil Cliente:', signOutError);
           }
@@ -5319,19 +5158,9 @@ function StaffApplication({ staffUid = null }) {
           return;
         }
 
-        const cachedUserData = buildUserDataFromCache(authUser, getCachedAuthenticatedProfile(authUser));
-        if (cachedUserData) {
-          setUser(cachedUserData);
-          setLoginError('');
-          goToAuthenticatedPage();
-          clearGoogleAuthFlow();
-          return;
-        }
-
-        setUser(buildFallbackAuthenticatedUserData(authUser));
-        setLoginError('Sua sessão Google continua ativa, mas não foi possível carregar seu perfil completo. Verifique a conexão e recarregue a página.');
-        goToAuthenticatedPage();
-        clearGoogleAuthFlow();
+        setUser(null);
+        setLoginError('Não foi possível validar seu acesso atual. Recarregue a página.');
+        setShowLogin(true);
       }
     };
 
@@ -5380,19 +5209,19 @@ function StaffApplication({ staffUid = null }) {
       isMounted = false;
       unsubscribe();
     };
-  }, [stopAlarm, setCurrentPage, staffUid]);
+  }, [stopAlarm, setCurrentPage, staffUid, onStaffAccessLost]);
 
     useEffect(() => {
       const uid = user?.auth?.uid;
       if (!uid) return undefined;
 
       return onSnapshot(doc(db, 'users', uid), (snapshot) => {
-        if (!snapshot.exists() || isUserAccountActive(snapshot.data() || {})) return;
+        if (snapshot.exists() && isActiveStaffProfile(snapshot.data() || {})) return;
         setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
         setShowLogin(true);
         setCurrentPage('pagina-inicial');
-        signOut(auth).catch((error) => {
-          console.error('Erro ao encerrar sessão de usuário inativo:', error);
+        Promise.resolve(onStaffAccessLost?.()).catch((error) => {
+          console.error('Erro ao revalidar usuário inativo:', error);
         });
       }, (error) => {
         console.error('Erro ao acompanhar status da conta:', error);
@@ -5400,12 +5229,12 @@ function StaffApplication({ staffUid = null }) {
           setLoginError('Sua conta está inativa. Entre em contato com o responsável pela empresa.');
           setShowLogin(true);
           setCurrentPage('pagina-inicial');
-          signOut(auth).catch((signOutError) => {
-            console.error('Erro ao encerrar sessão sem permissão:', signOutError);
+          Promise.resolve(onStaffAccessLost?.()).catch((signOutError) => {
+            console.error('Erro ao revalidar sessão sem permissão:', signOutError);
           });
         }
       });
-    }, [user?.auth?.uid, setCurrentPage]);
+    }, [user?.auth?.uid, setCurrentPage, onStaffAccessLost]);
 
     useEffect(() => {
       const uid = user?.auth?.uid;
@@ -5683,20 +5512,8 @@ function StaffApplication({ staffUid = null }) {
       stopAlarm(); // Garante que o alarme pare
       await clearNativeAlarmContext();
 
-      const registeredPushToken = pushTokenRef.current || (
-        typeof window !== 'undefined' ? window.__anaAndroidPushTokenSync : null
-      );
-      if (userId) {
-        try {
-          await unregisterDeviceForPush(userId, registeredPushToken);
-          pushTokenRef.current = null;
-          if (typeof window !== 'undefined') window.__anaAndroidPushTokenSync = null;
-        } catch (error) {
-          console.error('[Push] Não foi possível remover o token no logout:', error);
-        }
-      }
-
-      await signOut(auth);
+      await onLogout();
+      pushTokenRef.current = null;
       } finally {
         pushLogoutInProgressRef.current = false;
       }
@@ -21997,6 +21814,7 @@ const handleSubmit = async (e) => {
 								<p className="px-2 pb-2 text-xs leading-snug text-gray-500 break-all">{user.auth.email}</p>
 							)}
                             <button onClick={() => { setCurrentPage('configuracoes'); setShowUserMenu(false); }} className="w-full text-left px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded">Configurações</button>
+                            {canOpenCustomer && <button onClick={() => { setShowUserMenu(false); onCustomerContext(); }} className="w-full text-left px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded">Área do Cliente</button>}
                             <button onClick={handleLogout} className="w-full text-left px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded">Sair</button>
 						</div>
 					)}
@@ -22107,5 +21925,5 @@ const handleSubmit = async (e) => {
 }
 
 export default function App() {
-  return <ApplicationGate StaffApplication={StaffApplication} />;
+  return <ApplicationGate StaffApplication={StaffApplication} resolveCapabilities={resolveUserCapabilities} />;
 }

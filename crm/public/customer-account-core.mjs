@@ -2,12 +2,13 @@ import {customerAuthErrorMessage} from './customer-auth-errors.mjs';
 import {createCustomerAuthState} from './customer-session.mjs';
 import {isCustomerIdentity as isCustomerUser, createCustomerAreaNavigation} from './customer-area.mjs';
 import {createCustomerProfileSecurity} from './customer-profile.mjs';
-import {createCustomerOrderHistory} from './customer-orders-view.mjs?v=20261010-customer-shell';
+import {createCustomerOrderHistory} from './customer-orders-view.mjs?v=20261014-single-session';
 import {createCustomerReorderView} from './customer-reorder-view.mjs';
 import {createStoredCartBridge} from './reorder-cart.mjs';
 
 export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onLogout=()=>{}, notify=()=>{}, createAccountButton=true, showCheckoutAddressAction=true,reorderCart=null,host=null,onRoute=()=>{},navigateToMenu=url=>window.location.assign(url),runtime}) {
-  const {auth,functions,httpsCallable,GoogleAuthProvider,createUserWithEmailAndPassword,sendEmailVerification,sendPasswordResetEmail,signInWithEmailAndPassword,signInWithPopup,onAuthStateChanged,signOut,updateProfile,setPersistence,browserLocalPersistence,EmailAuthProvider,reauthenticateWithCredential,verifyBeforeUpdateEmail,updatePassword,reload}=runtime;
+  const {auth,functions,httpsCallable,GoogleAuthProvider,createUserWithEmailAndPassword,sendEmailVerification,sendPasswordResetEmail,signInWithEmailAndPassword,signInWithPopup,onAuthStateChanged,signOut,updateProfile,setPersistence,browserLocalPersistence,EmailAuthProvider,reauthenticateWithCredential,verifyBeforeUpdateEmail,updatePassword,reload,logout=()=>signOut(auth)}=runtime;
+  let disposed=false;
   const closeAccount=()=>{if(host) onRoute('home');else dialog.close();};
   const showAccount=()=>{if(!host && !dialog.open) dialog.showModal();};
   const call = async (name, data = {}) => (await httpsCallable(functions, name)(data)).data;
@@ -111,7 +112,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const clearPublishedSession = () => {current=null;checkoutIntent=false;renderSignedOut();onSession(null);onLogout();};
   const authState = createCustomerAuthState({onInvalidate:clearPublishedSession});
   const orderSession=()=>({...authState.observe(auth.currentUser?.uid),customerId:current?.id});
-  const orderSessionCurrent=snapshot=>authState.isCurrent(snapshot) && navigation.isAllowed() && navigation.getRoute()==='orders' && current?.id===snapshot.customerId;
+  const orderSessionCurrent=snapshot=>!disposed && authState.isCurrent(snapshot) && navigation.isAllowed() && navigation.getRoute()==='orders' && current?.id===snapshot.customerId;
   const reorder=createCustomerReorderView({panel:el('reorder-panel'),call,snapshot:orderSession,isCurrent:orderSessionCurrent,
     cart:reorderCart || createStoredCartBridge({storage:window.sessionStorage,navigate:navigateToMenu,getUid:()=>auth.currentUser?.uid}),
     onExpired:()=>authState.invalidate(),onCartOpen:()=>closeAccount()});
@@ -124,6 +125,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const ensurePersistence = () => setPersistence(auth,browserLocalPersistence);
   function showEmail(mode='login') {const registering=mode==='register';emailEl('login-form').hidden=registering;emailEl('register-form').hidden=!registering;emailEl('email-title').textContent=registering?'Criar conta':'Entrar com e-mail';emailMessage('');if(!emailDialog.open) emailDialog.showModal();}
   async function refresh() {
+    if(disposed) return;
     const user=auth.currentUser;
     if (!isCustomerUser(user)) {authState.observe(null);current=null;renderSignedOut();return;}
     const snapshot=authState.observe(user.uid);
@@ -133,6 +135,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
       if (authState.isCurrent(snapshot)) {authState.invalidate();current=null;renderSignedOut();}
       throw new Error('Não foi possível carregar sua conta. Tente novamente.');
     }
+    if(disposed) return;
     const activeUser=auth.currentUser;
     if (!isCustomerUser(activeUser) || activeUser.uid!==snapshot.uid) {authState.observe(isCustomerUser(activeUser)?activeUser.uid:null);return;}
     if (!authState.isCurrent(snapshot)) return;
@@ -218,7 +221,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
       if (route === 'orders') await loadOrders();
     });
   });
-  el('logout').onclick=busy(el('logout'),async()=>{await signOut(auth);authState.observe(null);authState.invalidate();current=null;checkoutIntent=false;el('orders').replaceChildren();renderSignedOut();closeAccount();notify('Você saiu da sua conta.');});
+  el('logout').onclick=busy(el('logout'),async()=>{authState.observe(null);authState.invalidate();current=null;checkoutIntent=false;el('orders').replaceChildren();renderSignedOut();await logout();closeAccount();notify('Você saiu da sua conta.');});
   el('area-logout').onclick = el('logout').onclick;
   emailEl('show-register').onclick=()=>showEmail('register');emailEl('show-login').onclick=()=>showEmail('login');
   emailEl('forgot').onclick=emailButtonBusy(emailEl('forgot'),async()=>{const email=emailEl('login-email').value.trim();if(!email)throw new Error('Informe seu e-mail.');await sendPasswordResetEmail(auth,email);emailMessage('Enviamos as instruções para redefinir sua senha.');});
@@ -227,5 +230,5 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const unsubscribe=onAuthStateChanged(auth,user=>{const customerUser=isCustomerUser(user);authState.observe(customerUser?user.uid:null);if(!customerUser){current=null;renderSignedOut();markReady();return;}refresh().catch(()=>{}).finally(markReady);});
   return {getCustomer:()=>current,openAccount,ready,
     openOrder:async({storeId,orderId})=>{await openAccount('orders');if(navigation.isAllowed()) await orderHistory.openDetail({storeId,id:orderId});},
-    dispose:()=>{if(typeof unsubscribe==='function')unsubscribe();authState.invalidate();orderHistory.clear();google?.removeEventListener('click',googleHandler);emailButton?.removeEventListener('click',emailHandler);accountButton?.removeEventListener('click',accountHandler);dialog.remove();emailDialog.remove();}};
+    dispose:()=>{disposed=true;navigation.invalidate();authState.observe(null);if(typeof unsubscribe==='function')unsubscribe();authState.invalidate();orderHistory.clear();google?.removeEventListener('click',googleHandler);emailButton?.removeEventListener('click',emailHandler);accountButton?.removeEventListener('click',accountHandler);dialog.remove();emailDialog.remove();}};
 }

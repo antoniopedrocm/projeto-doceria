@@ -1,0 +1,3 @@
+// Only existing Staff UI preferences/drafts; never public cart or checkout state.
+const keys=["fornecedores_activeTab","fornecedores_searchTerm","financeiro_activeTab","financeiro_startDate","financeiro_endDate","financeiro_despesaFilter","relatorios_reportType","relatorios_startDate","relatorios_endDate","currentPage","selectedStoreId","configuracoes_activeTab","entreLojasVisibleTransferColumns","nota_fiscal_activeTab","nota_fiscal_orderSearch","nota_fiscal_modelOverride","nota_fiscal_operationCfop"];
+export function clearStaffUiState(storage=window.sessionStorage) { keys.forEach(key=>storage.removeItem(key)); }

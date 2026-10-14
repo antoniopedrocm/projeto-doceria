@@ -447,3 +447,13 @@ test('detalhe tardio A após logout/login B não recria endereço, comprovante o
   await f.el('orders-more').onclick();
   assert.equal(f.calls.filter(c=>c.name==='customerOrders').at(-1).data.cursor,'lojas/matriz/pedidos/uid-b');
 });
+
+test('disposed Customer controller discards SAME UID late profile after context switch',async t=>{
+  let finish;
+  const f=await fixture({embedded:true,waitForReady:false,backend:async()=>new Promise(done=>{finish=done;})});t.after(f.close);
+  f.api.dispose();
+  finish({customer:customer('a')});await tick();await tick();
+  assert.equal(f.sessions.some(value=>value?.id==='a'),false);
+  assert.equal(f.host.textContent,'');
+  assert.equal(f.auth.currentUser.uid,'uid-a');
+});

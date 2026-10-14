@@ -82,7 +82,7 @@ export const VAPID_KEY =
 
 // Initialise the Firebase app.  Use getApps() to avoid creating
 // duplicate instances if this module is imported multiple times.
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+const app = getApps().find(candidate => candidate.name === '[DEFAULT]') || initializeApp(firebaseConfig);
 
 // Optionally enable Google Analytics (only works in browsers).  When
 // running in Node or during SSR the analytics import will be unused.

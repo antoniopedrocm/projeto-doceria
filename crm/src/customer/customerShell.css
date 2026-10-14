@@ -12,3 +12,6 @@
 .customer-shell [data-area]>nav,.customer-shell [data-logout]{display:none}
 .customer-shell header>button:first-child{display:none}
 @media(max-width:767px){.customer-shell header>button:first-child{display:block}.customer-shell header strong{font-size:14px}.customer-shell aside{display:none;z-index:20;top:64px;box-shadow:4px 0 16px #0002}.customer-shell aside.is-open{display:block}.customer-shell main{margin-left:0;padding:12px}.customer-shell .customer-area-dialog{padding:16px}.customer-shell header>nav{max-width:calc(100vw - 32px)}}
+
+.customer-shell aside{overflow-y:auto;max-width:100vw}
+.customer-shell header>nav{max-height:calc(100dvh - 90px);overflow-y:auto}

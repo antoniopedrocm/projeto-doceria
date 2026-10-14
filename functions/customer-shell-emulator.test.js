@@ -37,3 +37,30 @@ test('Customer não lê administrativo privado nem escreve produtos/clientes/ped
     }
   } finally {await env.cleanup();}
 });
+
+test('dual-role Staff remains subject to Customer ownership; Staff-only lookup has no Customer writes',async()=>{
+  const db=admin.firestore();
+  const user=async(uid,email)=>{
+    await admin.auth().getUser(uid).catch(error=>{if(error.code!=='auth/user-not-found') throw error;return admin.auth().createUser({uid,email,password:'Emulator-only-credential-123!'});});
+    return {uid,token:{email,firebase:{identities:{email:[email]},sign_in_provider:'password'}}};
+  };
+  const dual=await user('dual-context-owner','dual-context@example.test');
+  const other=await user('dual-context-other','dual-other@example.test');
+  await db.doc('users/'+dual.uid).set({role:'dono',ativo:true,lojaIds:[]});
+  const before=await handlers.customerAccount.run({auth:dual,data:{}});
+  assert.equal(before.needsPhone,true);
+  assert.equal((await db.collection('clientes').where('authOwnerUid','==',dual.uid).get()).size,0);
+  const own=await handlers.customerCompleteProfile.run({auth:dual,data:{nome:'Dual fixture',phone:'62999999991'}});
+  const foreign=await handlers.customerCompleteProfile.run({auth:other,data:{nome:'Other fixture',phone:'62999999992'}});
+  assert.ok(own.customer.id);assert.notEqual(own.customer.id,foreign.customer.id);
+  const foreignRef=db.doc('clientes/'+foreign.customer.id);
+  await foreignRef.update({enderecos:[{id:'fixture-foreign-address',nickname:'Fixture',enderecoCompleto:'DEV only',lat:-16,lng:-49,isDefault:true}]});
+  const original=JSON.stringify((await foreignRef.get()).data());
+  await db.doc('lojas/shell-store/pedidos/foreign-dual-order').set({clienteId:foreign.customer.id,ownerUid:other.uid,itens:[],total:1});
+  for(const name of ['customerOrderDetail','customerReorderPreview']) {
+    await assert.rejects(()=>handlers[name].run({auth:dual,data:{storeId:'shell-store',orderId:'foreign-dual-order',customerId:foreign.customer.id}}),error=>error.code==='not-found',name);
+  }
+  await assert.rejects(()=>handlers.customerUpdateAddress.run({auth:dual,data:{customerId:foreign.customer.id,addressId:'fixture-foreign-address',address:{nickname:'MUST NOT APPLY'}}}),error=>error.code==='not-found');
+  assert.equal(JSON.stringify((await foreignRef.get()).data()),original);
+  assert.equal((await handlers.customerAccount.run({auth:dual,data:{customerId:foreign.customer.id}})).customer.id,own.customer.id);
+});
