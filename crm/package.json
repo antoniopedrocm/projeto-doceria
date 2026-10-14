@@ -27,6 +27,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:public-auth": "node --test tests/public-auth-esm.test.mjs tests/staff-push-cross-tab.test.mjs ../functions/canonical-session.test.mjs",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

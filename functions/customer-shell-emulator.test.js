@@ -64,3 +64,31 @@ test('dual-role Staff remains subject to Customer ownership; Staff-only lookup h
   assert.equal(JSON.stringify((await foreignRef.get()).data()),original);
   assert.equal((await handlers.customerAccount.run({auth:dual,data:{customerId:foreign.customer.id}})).customer.id,own.customer.id);
 });
+
+test('existing Staff Rules allow exact token transaction cleanup and preserve other device',async()=>{
+  const env=await initializeTestEnvironment({projectId:'demo-doceria-checkout',firestore:{host:'127.0.0.1',port:8080,rules:fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8')}});
+  const uid='push-cleanup-staff';
+  const {runTransaction}=require('firebase/firestore');
+  try {
+    const db=admin.firestore();
+    await db.doc('users/'+uid).set({role:'dono',ativo:true});
+    await db.doc('notificationTokens/cleanup-current').set({uid});
+    await db.doc('notificationTokens/cleanup-other-device').set({uid});
+    const staff=env.authenticatedContext(uid).firestore();
+    for(let attempt=0;attempt<2;attempt++) {
+      await runTransaction(staff,async transaction=>{
+        const ref=doc(staff,'notificationTokens','cleanup-current');
+        const snapshot=await transaction.get(ref);
+        if(snapshot.exists() && snapshot.data().uid===uid) transaction.delete(ref);
+      });
+    }
+    assert.equal((await db.doc('notificationTokens/cleanup-current').get()).exists,false);
+    assert.equal((await db.doc('notificationTokens/cleanup-other-device').get()).exists,true);
+    const customer=env.authenticatedContext('push-cleanup-customer').firestore();
+    await assertFails(runTransaction(customer,async transaction=>{
+      const ref=doc(customer,'notificationTokens','cleanup-other-device');
+      await transaction.get(ref);transaction.delete(ref);
+    }));
+    assert.equal((await db.doc('notificationTokens/cleanup-other-device').get()).exists,true);
+  } finally {await env.cleanup();}
+});

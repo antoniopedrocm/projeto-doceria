@@ -1,6 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { getToken, onMessage } from 'firebase/messaging';
-import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, messagingPromise, VAPID_KEY } from '../firebaseConfig.js';
 import { claimOrderAlert } from './orderAlertDeduper.js';
 
@@ -8,6 +8,7 @@ const isBrowser = typeof window !== 'undefined';
 const OrderPush = registerPlugin('OrderPush');
 const registrationFlights = new Map();
 let webTokenFlight = null;
+const pushCleanupModule = () => import(/* webpackIgnore: true */ '/staff-push-cleanup.mjs?v=20261014-logout');
 
 export const PUSH_PERMISSION_STATUS = Object.freeze({
   GRANTED: 'granted',
@@ -156,50 +157,55 @@ async function registerStaffDevice(uid, { requestPermission = false } = {}) {
   if (!isBrowser || !uid) return null;
   if (auth.currentUser?.uid !== uid) return null;
 
+  // Keep permission requests in the original click chain, before loading code.
   const permissionStatus = await requestPushPermissionIfNeeded({ requestPermission });
-  if (permissionStatus !== PUSH_PERMISSION_STATUS.GRANTED) {
+  if (permissionStatus !== PUSH_PERMISSION_STATUS.GRANTED || auth.currentUser?.uid !== uid) return null;
+  const {staffPushRegistrationAllowed, withStaffPushLock} = await pushCleanupModule();
+  if (!staffPushRegistrationAllowed(auth.currentUser)) return null;
+  // Browser writes and logout deletes share an origin-wide lock. Without it,
+  // keep in-app alerts rather than issuing an uncoordinated new web association.
+  if (!isNativeAndroidPushRuntime() && !navigator.locks?.request) {
+    console.warn('[Auth] Push registration unavailable: coordination-unavailable');
     return null;
   }
-  if (auth.currentUser?.uid !== uid) return null;
 
   try {
-    let token = null;
-    let platform = 'web';
+    return await withStaffPushLock(async () => {
+      if (auth.currentUser?.uid !== uid || !staffPushRegistrationAllowed(auth.currentUser)) return null;
+      let token = null;
+      let platform = 'web';
 
-    if (isNativeAndroidPushRuntime()) {
-      const result = await OrderPush.getToken();
-      token = String(result?.token || '').trim();
-      platform = 'android';
-    } else {
-      const messaging = await messagingPromise;
-      if (!messaging) return null;
+      if (isNativeAndroidPushRuntime()) {
+        const result = await OrderPush.getToken();
+        token = String(result?.token || '').trim();
+        platform = 'android';
+      } else {
+        const messaging = await messagingPromise;
+        if (!messaging) return null;
+        token = await getStaffWebToken(messaging);
+      }
 
-      token = await getStaffWebToken(messaging);
-    }
+      if (!token) {
+        console.warn('Não foi possível obter o token de push.');
+        return null;
+      }
+      if (auth.currentUser?.uid !== uid || !staffPushRegistrationAllowed(auth.currentUser)) return null;
+      await setDoc(
+        doc(db, 'notificationTokens', token),
+        {
+          uid,
+          platform,
+          devicePlatform: navigator.platform || platform,
+          userAgent: navigator.userAgent || '',
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-    if (!token) {
-      console.warn('Não foi possível obter o token de push.');
-      return null;
-    }
-    if (auth.currentUser?.uid !== uid) return null;
-
-    await setDoc(
-      doc(db, 'notificationTokens', token),
-      {
-        uid,
-        platform,
-        devicePlatform: navigator.platform || platform,
-        userAgent: navigator.userAgent || '',
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    try { sessionStorage.setItem('doceria-staff-push-device', JSON.stringify({uid,token})); } catch {}
-    if (platform === 'android') {
-      window.__anaAndroidPushTokenSync = token;
-    }
-    return token;
+      try { sessionStorage.setItem('doceria-staff-push-device', JSON.stringify({uid,token})); } catch {}
+      if (platform === 'android') window.__anaAndroidPushTokenSync = token;
+      return token;
+    });
   } catch (error) {
     const errorCode = error?.code || '';
     const errorMessage = String(error?.message || '');
@@ -218,15 +224,32 @@ async function registerStaffDevice(uid, { requestPermission = false } = {}) {
   }
 }
 
-export async function unregisterDeviceForPush(uid, fallbackToken = null) {
-  // Await this browser's pending write before removing its association. Do not
-  // enumerate/delete tokens of other devices or invalidate their subscriptions.
-  const pending = registrationFlights.get(uid);
-  const pendingToken = pending ? await pending.catch(() => null) : null;
-  const token = pendingToken || fallbackToken;
-  if (token && auth.currentUser?.uid === uid) {
-    await deleteDoc(doc(db, 'notificationTokens', token));
-  }
+export async function unregisterDeviceForPush(uid, fallbackToken = null, signal) {
+  if (!uid || auth.currentUser?.uid !== uid || signal?.aborted) return 'uid-changed';
+  const {cleanupStaffDevice, existingBrowserPushToken} = await pushCleanupModule();
+  return cleanupStaffDevice({auth, uid, fallbackToken, signal,
+    pendingRegistration: registrationFlights.get(uid),
+    warn: code => console.warn('[Auth] Push cleanup incomplete:', code),
+    resolveToken: async () => {
+      if (isNativeAndroidPushRuntime()) {
+        if (await getPushPermissionStatus() !== PUSH_PERMISSION_STATUS.GRANTED) return null;
+        return String((await OrderPush.getToken())?.token || '').trim() || null;
+      }
+      return existingBrowserPushToken({app: auth.app, isCurrent: () => !signal?.aborted && auth.currentUser?.uid === uid, loadMessaging: async () => {
+        const instance = await messagingPromise;
+        return instance ? {instance, getToken} : null;
+      }});
+    },
+    removeAssociation: (token, current) => runTransaction(db, async transaction => {
+      const ref = doc(db, 'notificationTokens', token);
+      const snapshot = await transaction.get(ref);
+      if (!current()) return 'uid-changed';
+      if (!snapshot.exists()) return 'missing';
+      if (snapshot.data().uid !== uid) return 'different-owner';
+      transaction.delete(ref);
+      return 'removed';
+    }),
+  });
 }
 
 export async function listenForForegroundMessages(callback) {

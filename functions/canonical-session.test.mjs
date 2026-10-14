@@ -30,7 +30,18 @@ test('central logout cleans only current Staff device, before signOut, deduplica
 });
 test('cleanup failure still ends both identities',async()=>{
   const auth=session('a'),legacyAuth=session('b');const logout=createCanonicalLogout({auth,legacyAuth,storage:storage(),signOut:async a=>{a.currentUser=null;},beforeSignOut:async()=>{throw Error('cleanup');}});
-  await assert.rejects(logout);assert.equal(auth.currentUser,null);assert.equal(legacyAuth.currentUser,null);
+  await assert.doesNotReject(logout);assert.equal(auth.currentUser,null);assert.equal(legacyAuth.currentUser,null);
+});
+
+test('cleanup timeout ends both sessions and aborts late cleanup, without holding private cart', async()=>{
+  const auth=session('a'),legacyAuth=session('a'),s=storage(),warnings=[];let signal;
+  syncPrivateCart(s,'a');s.setItem('checkoutState_v1','private');
+  const logout=createCanonicalLogout({auth,legacyAuth,storage:s,cleanupTimeoutMs:15,
+    onCleanupError:code=>warnings.push(code),beforeSignOut:(_uid,_token,abort)=>{signal=abort;return new Promise(()=>{});},
+    signOut:async current=>{current.currentUser=null;}});
+  await logout();assert.equal(signal.aborted,true);assert.equal(auth.currentUser,null);
+  assert.equal(legacyAuth.currentUser,null);assert.equal(s.getItem('checkoutState_v1'),null);
+  assert.ok(warnings.includes('cleanup-incomplete'));
 });
 
 test('live cart same UID/initial observation never erases a restored public or Customer cart',async()=>{

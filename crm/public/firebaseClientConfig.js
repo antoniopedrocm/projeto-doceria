@@ -1,4 +1,5 @@
-import {retireLegacySession,createCanonicalLogout,syncPrivateCart,staffDevice} from './canonical-session.mjs?v=20261014-single-session';
+import {retireLegacySession,createCanonicalLogout,syncPrivateCart} from './canonical-session.mjs?v=20261014-auth-logout-fix';
+import {cleanupStaffDevice,existingBrowserPushToken} from './staff-push-cleanup.mjs?v=20261014-logout';
 import {localCheckout, getCheckoutFirebaseConfig} from './checkout-environment.js';
 // Firebase configuration and setup for the public/cardápio pages.
 // CRM and authenticated public pages share DEFAULT. The named legacy app is
@@ -7,7 +8,7 @@ import {localCheckout, getCheckoutFirebaseConfig} from './checkout-environment.j
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import {
   getFirestore,
-  deleteDoc,
+  runTransaction,
   connectFirestoreEmulator,
   collection,
   getDocs,
@@ -59,11 +60,28 @@ if (localCheckout) {
 const legacyApp=getApps().find(a=>a.name==='cardapioPublic') || initializeApp(firebaseConfig,'cardapioPublic');
 const legacyAuth=getAuth(legacyApp);
 if(localCheckout) connectAuthEmulator(legacyAuth,'http://127.0.0.1:9099',{disableWarnings:true});
-const retirePublicLegacy=()=>retireLegacySession({auth,legacyAuth,signOut,beforeConflict:async uid=>{
-  window.localStorage.removeItem('auth-profile-cache-v1:'+uid);
-  const token=staffDevice(window.sessionStorage,uid);
-  if(token) {try {await deleteDoc(doc(db,'notificationTokens',token));} catch {}}
-}});
+const logout=createCanonicalLogout({auth,legacyAuth,signOut,storage:window.sessionStorage,
+  onCleanupError:code=>console.warn('[Auth] Logout cleanup incomplete:',code),
+  beforeSignOut:async(uid,token,signal)=>{
+    try {window.localStorage.removeItem('auth-profile-cache-v1:'+uid);} catch {}
+    await cleanupStaffDevice({auth,uid,fallbackToken:token,signal,
+      warn:code=>console.warn('[Auth] Push cleanup incomplete:',code),
+      resolveToken:()=>existingBrowserPushToken({app,isCurrent:()=>!signal?.aborted && auth.currentUser?.uid===uid,loadMessaging:async()=>{
+        const sdk=await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js');
+        return await sdk.isSupported()?{instance:sdk.getMessaging(app),getToken:sdk.getToken}:null;
+      }}),
+      removeAssociation:(currentToken,current)=>runTransaction(db,async transaction=>{
+        const ref=doc(db,'notificationTokens',currentToken);
+        const snapshot=await transaction.get(ref);
+        if(!current()) return 'uid-changed';
+        if(!snapshot.exists()) return 'missing';
+        if(snapshot.data().uid!==uid) return 'different-owner';
+        transaction.delete(ref);
+        return 'removed';
+      }),
+    });
+  }});
+const retirePublicLegacy=()=>retireLegacySession({auth,legacyAuth,signOut,beforeConflict:()=>logout()});
 const sessionTransition=await retirePublicLegacy();
 if(sessionTransition!=='READY') syncPrivateCart(window.sessionStorage,null,{force:true});
 onAuthStateChanged(auth,user=>syncPrivateCart(window.sessionStorage,user && !user.isAnonymous ? user.uid : null));
@@ -74,14 +92,6 @@ onAuthStateChanged(legacyAuth,user=>{
     if(status!=='READY') syncPrivateCart(window.sessionStorage,null,{force:true});
   }).finally(()=>{retirement=null;});
 });
-const logout=createCanonicalLogout({auth,legacyAuth,signOut,storage:window.sessionStorage,
-  beforeSignOut:async(uid,token)=>{
-    window.localStorage.removeItem('auth-profile-cache-v1:'+uid);
-    if(token && auth.currentUser?.uid===uid) {
-      try {await deleteDoc(doc(db,'notificationTokens',token));}
-      catch(error){console.warn('[Auth] Push cleanup unavailable:',error?.code || 'cleanup-failed');}
-    }
-  }});
 
 const normalizeCallableError = (error) => {
   const rawCode = typeof error?.code === 'string' ? error.code : '';
@@ -172,6 +182,8 @@ export {
   app,
   db,
   auth,
+  logout,
+  sessionTransition,
   functions,
   httpsCallable,
   lookupClientByPhone,

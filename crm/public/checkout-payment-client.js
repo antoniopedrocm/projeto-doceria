@@ -1,4 +1,4 @@
-import {auth} from './firebaseClientConfig.js?v=20261014-single-session';
+import {auth} from './firebaseClientConfig.js?v=20261014-auth-logout-fix';
 import {apiBaseUrl} from './checkout-environment.js';
 import {isLinkedCustomer} from './customer-session.mjs';
 const key='doceria-payment-pending';

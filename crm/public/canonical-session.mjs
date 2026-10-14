@@ -1,3 +1,4 @@
+import {markStaffPushLogout} from './staff-push-cleanup.mjs?v=20261014-logout';
 // Identity transition only. Neither the route nor this state grants authorization.
 export const CART_OWNER_KEY = 'doceria-auth-cart-owner';
 export const STAFF_PUSH_KEY = 'doceria-staff-push-device';
@@ -34,17 +35,29 @@ export async function retireLegacySession({auth, legacyAuth, signOut, beforeConf
   await signOut(legacyAuth);
   return current ? 'READY' : 'REENTRY_REQUIRED';
 }
-export function createCanonicalLogout({auth, legacyAuth, signOut, storage, beforeSignOut = async () => {}}) {
+export function createCanonicalLogout({auth, legacyAuth, signOut, storage, beforeSignOut = async () => {},
+  cleanupTimeoutMs = 5000, onCleanupError = () => {}}) {
   let flight = null;
   return () => {
     if (flight) return flight;
     flight = (async () => {
       const uid = auth.currentUser?.uid;
+      try { if (uid && !markStaffPushLogout(auth.currentUser)) onCleanupError('coordination-unavailable'); }
+      catch { onCleanupError('coordination-unavailable'); }
+      const cleanup = new AbortController();
+      let timer;
       // Cleanup is attempted before ending Auth, while the existing Rules apply.
-      try { if (uid) await beforeSignOut(uid, staffDevice(storage, uid)); }
+      try {
+        if (uid) await Promise.race([
+          Promise.resolve().then(() => beforeSignOut(uid, staffDevice(storage, uid), cleanup.signal)),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('cleanup-timeout')), cleanupTimeoutMs); }),
+        ]);
+      } catch { onCleanupError('cleanup-incomplete'); }
       finally {
-        syncPrivateCart(storage, null);
-        storage?.removeItem(STAFF_PUSH_KEY);
+        clearTimeout(timer);
+        cleanup.abort();
+        try { syncPrivateCart(storage, null); storage?.removeItem(STAFF_PUSH_KEY); }
+        catch { onCleanupError('storage-unavailable'); }
         await Promise.all([...new Set([auth, legacyAuth].filter(Boolean))].map(signOut));
       }
     })().finally(() => { flight = null; });
