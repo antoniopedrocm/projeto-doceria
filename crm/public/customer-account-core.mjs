@@ -7,7 +7,7 @@ import {createCustomerReorderView} from './customer-reorder-view.mjs';
 import {createStoredCartBridge} from './reorder-cart.mjs';
 
 export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onLogout=()=>{}, notify=()=>{}, createAccountButton=true, showCheckoutAddressAction=true,reorderCart=null,host=null,onRoute=()=>{},navigateToMenu=url=>window.location.assign(url),runtime}) {
-  const {auth,functions,httpsCallable,GoogleAuthProvider,createUserWithEmailAndPassword,sendEmailVerification,sendPasswordResetEmail,signInWithEmailAndPassword,signInWithPopup,onAuthStateChanged,signOut,updateProfile,setPersistence,browserLocalPersistence,EmailAuthProvider,reauthenticateWithCredential,verifyBeforeUpdateEmail,updatePassword,reload,logout=()=>signOut(auth)}=runtime;
+  const {auth,functions,httpsCallable,GoogleAuthProvider,createUserWithEmailAndPassword,sendEmailVerification,sendPasswordResetEmail,signInWithEmailAndPassword,signInWithPopup,onAuthStateChanged,signOut,updateProfile,EmailAuthProvider,reauthenticateWithCredential,verifyBeforeUpdateEmail,updatePassword,reload,logout=()=>signOut(auth)}=runtime;
   let disposed=false;
   const closeAccount=()=>{if(host) onRoute('home');else dialog.close();};
   const showAccount=()=>{if(!host && !dialog.open) dialog.showModal();};
@@ -122,7 +122,6 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const busy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {message(customerAuthErrorMessage(e));} finally {button.disabled=false;}};
   const emailButtonBusy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
   const emailBusy = (form, fn) => async event => {event.preventDefault();const button=form.querySelector('button:not([type])');button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
-  const ensurePersistence = () => setPersistence(auth,browserLocalPersistence);
   function showEmail(mode='login') {const registering=mode==='register';emailEl('login-form').hidden=registering;emailEl('register-form').hidden=!registering;emailEl('email-title').textContent=registering?'Criar conta':'Entrar com e-mail';emailMessage('');if(!emailDialog.open) emailDialog.showModal();}
   async function refresh() {
     if(disposed) return;
@@ -155,7 +154,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     el('address').hidden=!showCheckoutAddressAction;renderAddresses();
     if(!checkoutIntent && navigation.getRoute()==='orders') await loadOrders();if(checkoutIntent){checkoutIntent=false;closeAccount();onCustomer(current);}
   }
-  async function googleSignIn(){if(!auth.currentUser?.providerData.some(p=>p.providerId==='google.com')){await ensurePersistence();await signInWithPopup(auth,new GoogleAuthProvider());}showAccount();await refresh();}
+  async function googleSignIn(){if(!auth.currentUser?.providerData.some(p=>p.providerId==='google.com')){await signInWithPopup(auth,new GoogleAuthProvider());}showAccount();await refresh();}
   async function finishEmailAuth(){emailDialog.close();showAccount();await refresh();}
   const google=document.getElementById('continue-google-button');const googleHandler=google?busy(google,async()=>{checkoutIntent=true;await googleSignIn();}):null;if(google)google.addEventListener('click',googleHandler);
   const emailButton=document.getElementById('continue-email-button');const emailHandler=()=>{checkoutIntent=true;showEmail();};if(emailButton)emailButton.addEventListener('click',emailHandler);
@@ -225,8 +224,8 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   el('area-logout').onclick = el('logout').onclick;
   emailEl('show-register').onclick=()=>showEmail('register');emailEl('show-login').onclick=()=>showEmail('login');
   emailEl('forgot').onclick=emailButtonBusy(emailEl('forgot'),async()=>{const email=emailEl('login-email').value.trim();if(!email)throw new Error('Informe seu e-mail.');await sendPasswordResetEmail(auth,email);emailMessage('Enviamos as instruções para redefinir sua senha.');});
-  emailEl('login-form').onsubmit=emailBusy(emailEl('login-form'),async()=>{await ensurePersistence();await signInWithEmailAndPassword(auth,emailEl('login-email').value.trim(),emailEl('login-password').value);await finishEmailAuth();});
-  emailEl('register-form').onsubmit=emailBusy(emailEl('register-form'),async()=>{const name=emailEl('register-name').value.trim();const phone=emailEl('register-phone').value;const password=emailEl('register-password').value;if(password!==emailEl('register-confirm').value)throw new Error('As senhas não conferem.');await ensurePersistence();const credential=await createUserWithEmailAndPassword(auth,emailEl('register-email').value.trim(),password);await updateProfile(credential.user,{displayName:name});sendEmailVerification(credential.user).catch(()=>{});await call('customerCompleteProfile',{nome:name,phone});await finishEmailAuth();});
+  emailEl('login-form').onsubmit=emailBusy(emailEl('login-form'),async()=>{await signInWithEmailAndPassword(auth,emailEl('login-email').value.trim(),emailEl('login-password').value);await finishEmailAuth();});
+  emailEl('register-form').onsubmit=emailBusy(emailEl('register-form'),async()=>{const name=emailEl('register-name').value.trim();const phone=emailEl('register-phone').value;const password=emailEl('register-password').value;if(password!==emailEl('register-confirm').value)throw new Error('As senhas não conferem.');const credential=await createUserWithEmailAndPassword(auth,emailEl('register-email').value.trim(),password);await updateProfile(credential.user,{displayName:name});sendEmailVerification(credential.user).catch(()=>{});await call('customerCompleteProfile',{nome:name,phone});await finishEmailAuth();});
   const unsubscribe=onAuthStateChanged(auth,user=>{const customerUser=isCustomerUser(user);authState.observe(customerUser?user.uid:null);if(!customerUser){current=null;renderSignedOut();markReady();return;}refresh().catch(()=>{}).finally(markReady);});
   return {getCustomer:()=>current,openAccount,ready,
     openOrder:async({storeId,orderId})=>{await openAccount('orders');if(navigation.isAllowed()) await orderHistory.openDetail({storeId,id:orderId});},

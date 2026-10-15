@@ -26,7 +26,7 @@ test('entry binds Staff through the gate; the observer rejects a different UID',
   let callback;
   const apply = jest.fn(), signedOut = jest.fn();
   await actualHandler('initializeAuthObserver', {
-    setAuthLoading:()=>{}, setPreferredAuthPersistence:async()=>{}, isMounted:true,
+    setAuthLoading:()=>{}, isMounted:true,
     unsubscribe:null, auth:{}, staffUid:'staff',
     onIdTokenChanged:(_, listener)=>{callback=listener;return ()=>{};},
     applyAuthenticatedUser:apply, applySignedOutState:signedOut,

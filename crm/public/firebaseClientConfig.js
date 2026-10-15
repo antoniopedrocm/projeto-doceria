@@ -1,6 +1,7 @@
 import {retireLegacySession,createCanonicalLogout,syncPrivateCart} from './canonical-session.mjs?v=20261015-fcm-delete';
 import {cleanupStaffDevice,existingBrowserPushToken,removeStaffTokenAssociation} from './staff-push-cleanup.mjs?v=20261015-fcm-delete';
 import {localCheckout, getCheckoutFirebaseConfig} from './checkout-environment.js';
+import {getCanonicalAuth} from './canonical-auth.mjs?v=20261015-persistence';
 // Firebase configuration and setup for the public/cardápio pages.
 // CRM and authenticated public pages share DEFAULT. The named legacy app is
 // initialized only to retire its old persistence without copying credentials.
@@ -26,11 +27,13 @@ import {
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js';
 import {
   getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserPopupRedirectResolver,
   signOut,
   connectAuthEmulator,
   signInAnonymously,
   onAuthStateChanged,
-  setPersistence,
   browserLocalPersistence,
 } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
 
@@ -48,7 +51,8 @@ const app = getApps().find((a) => a.name === appName) || initializeApp(firebaseC
 const db = getFirestore(app);
 
 // Authentication service.
-const auth = getAuth(app);
+const auth = getCanonicalAuth(app, {initializeAuth, indexedDBLocalPersistence,
+  browserLocalPersistence, browserPopupRedirectResolver});
 const functions = getFunctions(app, 'us-central1');
 if (localCheckout) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', {disableWarnings: true});
@@ -146,9 +150,7 @@ if (!ANONYMOUS_AUTH_ENABLED) {
   // Persist anonymous login so that returning visitors keep the same
   // anonymous user ID.  This prevents duplication of carts or orders
   // across reloads.
-  setPersistence(auth, browserLocalPersistence)
-    .then(() => {
-      onAuthStateChanged(auth, (user) => {
+  onAuthStateChanged(auth, (user) => {
         // If no user is signed in yet, sign in anonymously.  This should
         // only happen once per browser session.
         if (!user && !window.firebaseAnonAuthUnavailable) {
@@ -158,12 +160,7 @@ if (!ANONYMOUS_AUTH_ENABLED) {
         } else {
           console.log('Sessão anônima ativa:', user.uid);
         }
-      });
-    })
-    .catch((error) => {
-      console.error('Erro ao definir persistência de autenticação:', error);
-      handleAnonAuthError(error);
-    });
+  }, handleAnonAuthError);
 }
 
 // --- Exports ---

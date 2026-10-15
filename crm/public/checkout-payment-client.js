@@ -1,4 +1,4 @@
-import {auth} from './firebaseClientConfig.js?v=20261015-fcm-delete';
+import {auth} from './firebaseClientConfig.js?v=20261015-persistence';
 import {apiBaseUrl} from './checkout-environment.js';
 import {isLinkedCustomer} from './customer-session.mjs';
 const key='doceria-payment-pending';

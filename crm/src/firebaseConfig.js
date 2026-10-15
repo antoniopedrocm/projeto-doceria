@@ -12,7 +12,8 @@ import {
   getDocs as firestoreGetDocs,
   deleteDoc as firestoreDeleteDoc,
 } from 'firebase/firestore';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, connectAuthEmulator } from 'firebase/auth';
+import { getCanonicalAuth } from './canonicalAuth.mjs';
 import { getStorage } from 'firebase/storage';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { Capacitor } from '@capacitor/core';
@@ -95,7 +96,8 @@ if (typeof window !== 'undefined' && !isLocalPreview) {
 // Firestore for data storage, Auth for authentication, Storage for
 // file uploads.
 export const db = getFirestore(app);
-export const auth = getAuth(app);
+export const auth = getCanonicalAuth(app, {initializeAuth, indexedDBLocalPersistence,
+  browserLocalPersistence, browserPopupRedirectResolver});
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
 export const apiBaseUrl = isLocalPreview

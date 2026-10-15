@@ -37,7 +37,7 @@ import {
   setFirestoreTelemetryContext
 } from './firebaseConfig.js';
 import { httpsCallable } from "firebase/functions";
-import { onIdTokenChanged, indexedDBLocalPersistence, signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence, getIdToken } from "firebase/auth";
+import { onIdTokenChanged, signInWithEmailAndPassword, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, sendPasswordResetEmail, getIdToken } from "firebase/auth";
 import { collection, query, doc, setDoc, addDoc, updateDoc, where, limit, orderBy, Timestamp, serverTimestamp, arrayUnion, writeBatch, waitForPendingWrites, runTransaction, deleteField, getDocFromServer } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { audioManager, isIOSWebBrowser } from './utils/AudioManager.js';
@@ -225,26 +225,6 @@ const isStoreOpenNow = (storeConfig = {}, now = new Date()) => {
 const getOrderItemQuantity = (item) => {
   const parsed = Number(item?.quantity ?? item?.quantidade ?? 0);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-};
-const setPreferredAuthPersistence = async (contextLabel) => {
-  const localPersistenceStrategies = [
-    ['localStorage', browserLocalPersistence],
-    ['indexedDB', indexedDBLocalPersistence],
-  ];
-  let localPersistenceError = null;
-
-  for (const [storageLabel, persistence] of localPersistenceStrategies) {
-    try {
-      await setPersistence(auth, persistence);
-      return;
-    } catch (persistError) {
-      localPersistenceError = persistError;
-      console.warn(`[Auth][${contextLabel}] ${storageLabel} local persistence failed:`, persistError?.code || persistError);
-    }
-  }
-
-  console.warn(`[Auth][${contextLabel}] persistent login unavailable, falling back to session:`, localPersistenceError?.code || localPersistenceError);
-  await setPersistence(auth, browserSessionPersistence);
 };
 const clearGoogleAuthFlow = () => {
   ['sessionStorage', 'localStorage'].forEach((storageName) => {
@@ -5180,11 +5160,6 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
     const initializeAuthObserver = async () => {
       setAuthLoading(true);
 
-      try {
-        await setPreferredAuthPersistence('SessionRestore');
-      } catch (persistenceError) {
-        console.warn('[Auth][SessionRestore] persistence setup failed:', persistenceError?.code || persistenceError);
-      }
 
       if (!isMounted) return;
 
@@ -5376,12 +5351,6 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
     const handleLogin = async () => {
         setLoginError('');
         try {
-            try {
-                await setPersistence(auth, browserLocalPersistence);
-            } catch (persistError) {
-                console.warn('[Auth][Email] local persistence failed, falling back to session:', persistError?.code || persistError);
-                await setPersistence(auth, browserSessionPersistence);
-            }
             await signInWithEmailAndPassword(auth, email, password);
             setShowLogin(false);
             setEmail('');
@@ -5408,12 +5377,6 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
         console.log('[Auth][Google] Browser detect:', isSafari ? 'Safari' : 'Non-Safari');
 
         try {
-            try {
-                await setPersistence(auth, browserLocalPersistence);
-            } catch (persistError) {
-                console.warn('[Auth][Google] local persistence failed, falling back to session:', persistError?.code || persistError);
-                await setPersistence(auth, browserSessionPersistence);
-            }
 
             if (isSafari) {
                 console.log('[Auth][Google] Method: redirect');

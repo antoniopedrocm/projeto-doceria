@@ -38,7 +38,7 @@ if (!process.env.PUBLIC_AUTH_ESM_WORKER) {
     const overrides = {
       getApps: () => apps,
       initializeApp: (options, name = '[DEFAULT]') => {const app = {options, name};apps.push(app);return app;},
-      getAuth: authFor, getFirestore: () => ({}), getFunctions: () => ({}),
+      getAuth: authFor, initializeAuth: authFor, getFirestore: () => ({}), getFunctions: () => ({}),
       httpsCallable: () => async () => {throw Error('Unexpected callable execution');},
       onAuthStateChanged: () => () => {},
       connectAuthEmulator: () => {}, connectFirestoreEmulator: () => {}, connectFunctionsEmulator: () => {},

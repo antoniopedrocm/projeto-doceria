@@ -73,6 +73,7 @@ if (!process.env.STAFF_PUSH_VM_WORKER) {
         env.rows.delete(ref.id);env.events.push(['delete', ref.id]);
       },
     };
+    sdk.initializeAuth = sdk.getAuth;
     function synthetic(id, values) {
       if (!cache.has(id)) cache.set(id, new vm.SyntheticModule(Object.keys(values), function () {
         for (const [key, value] of Object.entries(values)) this.setExport(key, value);

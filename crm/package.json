@@ -24,10 +24,13 @@
     "tailwindcss": "^3.4.17"
   },
   "scripts": {
+    "prebuild": "node ../scripts/sync-canonical-auth.cjs",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "test:public-auth": "node --test tests/public-auth-esm.test.mjs tests/staff-push-cross-tab.test.mjs ../functions/canonical-session.test.mjs",
+    "test:auth-persistence": "node --test tests/canonical-auth.test.mjs tests/hosting-cache.test.cjs",
+    "test:auth-persistence:browser": "node tests/auth-persistence-browser.cjs",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

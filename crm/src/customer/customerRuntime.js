@@ -27,4 +27,4 @@ export const logoutCanonicalSession=async()=>{
   return logout();
 };
 export const runtimeFor = () => ({auth,functions,httpsCallable,...sdk,logout:logoutCanonicalSession});
-export const loadCustomerController = () => import(/* webpackIgnore: true */ '/customer-account-core.mjs?v=20261015-fcm-delete');
+export const loadCustomerController = () => import(/* webpackIgnore: true */ '/customer-account-core.mjs?v=20261015-persistence');
