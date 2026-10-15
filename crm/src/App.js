@@ -1,3 +1,4 @@
+import StorefrontLinks from './storefront/StorefrontLinks';
 import {normalizeRole, isActiveStaffProfile} from './customer/staffRole';
 import {createCapabilityResolver} from './customer/userCapabilities';
 import {logoutCanonicalSession} from './customer/customerRuntime';
@@ -5560,32 +5561,7 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
             <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Página Inicial</h1>
             <p className="text-gray-600 mt-1">Seja bem-vindo à Ana Guimarães Doceria!</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
-                <a
-                    href={`${process.env.PUBLIC_URL}/cardapio-matriz`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium rounded-xl transition-all flex items-center gap-2 justify-center bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 px-6 py-3 w-full"
-              >
-                  <BookOpen className="w-4 h-4" /> Cardápio Delivery Loja Matriz
-              </a>
-                <a
-                    href={`${process.env.PUBLIC_URL}/cardapio-garavelo`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium rounded-xl transition-all flex items-center gap-2 justify-center bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 px-6 py-3 w-full"
-              >
-                  <Store className="w-4 h-4" /> Cardápio Delivery Loja Garavelo
-              </a>
-                <a
-                    href={`${process.env.PUBLIC_URL}/cardapio-festa`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium rounded-xl transition-all flex items-center gap-2 justify-center bg-gradient-to-r from-pink-500 to-rose-600 text-white hover:from-pink-600 hover:to-rose-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 px-6 py-3 w-full"
-              >
-                  <Gift className="w-4 h-4" /> Cardápio de Festas
-              </a>
-          </div>
+          <StorefrontLinks />
         </div>
         <ImageSlider images={slideImages} onImageClick={setLightboxImage} />
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">

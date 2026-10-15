@@ -59,7 +59,7 @@ test('checkout real usa a loja, grava snapshot e responde o total salvo (63,92)'
   assert.equal(saved.total, result.body.total);
   assert.equal(saved.freteConfiguracao.lojaId, 'matriz');
   assert.equal(saved.distanciaFreteKm, 2);
-  assert.ok(result.reads.every((p) => p.startsWith('lojas/matriz/')));
+  assert.ok(result.reads.every((p) => (p === 'lojas/matriz' || p.startsWith('lojas/matriz/'))));
 });
 
 test('a combinar mantém 59,40 e snapshot após mudança da configuração', async () => {
@@ -74,7 +74,7 @@ test('a combinar mantém 59,40 e snapshot após mudança da configuração', asy
   local['lojas/garavelo/configuracoes/config'].frete.freteACombinar = false;
   assert.equal(saved.freteACombinar, true);
   assert.equal(result.body.total, saved.total);
-  assert.ok(result.reads.every((p) => p.startsWith('lojas/garavelo/')));
+  assert.ok(result.reads.every((p) => (p === 'lojas/garavelo' || p.startsWith('lojas/garavelo/'))));
 });
 
 test('origem inválida impede salvar pedido e movimentar estoque', async () => {
@@ -115,7 +115,7 @@ test('configuração de outra loja não permite confirmar frete sem configuraç�
   const result = await checkout({storeId: 'matriz', configs: {'lojas/garavelo/configuracoes/config': configs['lojas/garavelo/configuracoes/config']}});
   assert.equal(result.status, 400);
   assert.equal(result.writes.length, 0);
-  assert.ok(result.reads.every(p => p.startsWith('lojas/matriz/')));
+  assert.ok(result.reads.every(p => (p === 'lojas/matriz' || p.startsWith('lojas/matriz/'))));
 });
 
 test('zero legítimo é calculado pela configuração da própria loja', async () => {
@@ -126,3 +126,15 @@ test('zero legítimo é calculado pela configuração da própria loja', async (
   assert.equal(result.body.valorFrete, 0);
   assert.equal(result.body.total, 59.4);
 });
+
+ test('loja V1 não herda mínimo legado dentro da transação de checkout', async () => {
+  const storeId='loja-futura-teste';
+  const local={
+    ['lojas/'+storeId]:{storeConfigVersion:1,ativo:true},
+    ['lojas/'+storeId+'/configuracoes/config']:{frete:{lat:-16,lng:-49,valorPorKm:2}},
+    ['lojas/'+storeId+'/configuracoes/storefront']:{schemaVersion:1},
+  };
+  const result=await checkout({storeId,configs:local});
+  assert.equal(result.status,400);assert.equal(result.writes.length,0);
+  assert.ok(result.reads.every(p=>p==='lojas/'+storeId || p.startsWith('lojas/'+storeId+'/')));
+ });

@@ -1,10 +1,13 @@
 const {HttpsError}=require('firebase-functions/v2/https');
 const validId=value=>typeof value==='string' && /^[a-zA-Z0-9_-]{1,150}$/.test(value);
 // Read-only preview: the normal checkout remains the financial authority.
-function createCustomerReorder({db,readOrder,getStoreAvailability}) {
+function createCustomerReorder({db,readOrder,getStoreAvailability,resolveStore}) {
   return async request=>{
     const {order}=await readOrder(request); // Resolves UID/Customer and checks order ownership first.
     const storeId=order.storeId;
+    const readiness=resolveStore ? (await resolveStore(storeId)).publicConfig : null;
+    if(readiness && (!readiness.active || readiness.readiness.catalog!=='READY' || readiness.readiness.schedule!=='READY'))
+      throw new HttpsError('failed-precondition','Esta loja não está disponível para comprar novamente.');
     const [store,config]=await db.getAll(db.doc(`lojas/${storeId}`),db.doc(`lojas/${storeId}/configuracoes/config`));
     const data=store.data() || {};
     if(!store.exists || data.ativo===false || data.ativa===false || String(data.status || '').toLowerCase()==='inativo')
@@ -22,7 +25,7 @@ function createCustomerReorder({db,readOrder,getStoreAvailability}) {
       const stock=p.estoque===null || p.estoque===undefined || p.estoque===''?null:Number(p.estoque);
       return {id:s.id,nome:String(p.nome || s.id).slice(0,160),preco:Number.isFinite(price)?price:null,
         estoque:stock===null?null:Number.isFinite(stock)?stock:0,
-        available:p.ativo!==false && (p.status || 'Ativo')==='Ativo' && p.categoria==='Delivery' && Number.isFinite(price) && price>=0 &&
+        available:p.ativo!==false && (p.status || 'Ativo')==='Ativo' && p.categoria===(readiness?.catalog.category || 'Delivery') && Number.isFinite(price) && price>=0 &&
           (!p.lojaId || p.lojaId===storeId) && (!p.storeId || p.storeId===storeId)};
     });
     return {order:{id:order.id,storeId,storeName:order.storeName,itens:order.itens},products};

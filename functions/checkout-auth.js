@@ -65,7 +65,7 @@ function normalizeBirthdate(value) {
   if(year<1900 || date.getUTCFullYear()!==year || date.getUTCMonth()!==month-1 || date.getUTCDate()!==day || date.getTime()>todayUtc) fail('invalid-argument','Informe uma data de nascimento válida.');
   return text;
 }
-function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNAVAILABLE'}) {
+function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNAVAILABLE', resolveStore}) {
   const stamp = () => FieldValue.serverTimestamp();
   const identities = db.collection('customerAuthIdentities');
   async function identity(request) {
@@ -180,7 +180,7 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
     return account(request);
   }
   const history=createCustomerOrders({db,resolve});
-  const reorderPreview=createCustomerReorder({db,readOrder:history.detail,getStoreAvailability});
+  const reorderPreview=createCustomerReorder({db,readOrder:history.detail,getStoreAvailability,resolveStore});
   return {account, completeProfile, update, orders:history.list, orderDetail:history.detail, reorderPreview, addAddress, resolve, deleteAddress,
     updateAddress: request=>mutateAddress(request,false), setDefaultAddress: request=>mutateAddress(request,true)};
 }

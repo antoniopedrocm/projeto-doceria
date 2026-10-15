@@ -59,8 +59,8 @@ test('transferência guarda contrato existente e só navega ao cardápio canôni
   const {createStoredCartBridge,CHECKOUT_STATE_KEY}=await modules(),dom=new JSDOM('',{url:'https://example.test'}),storage=dom.window.sessionStorage;
   storage.setItem('doceria-payment-pending','old-payment');let url;
   const bridge=createStoredCartBridge({storage,navigate:u=>{url=u;}});bridge.apply({storeId:other,items:[{id:'p',nome:'p',preco:16,quantity:1}],uid:'a'});
-  assert.equal(url,'/cardapio-garavelo');assert.equal(JSON.parse(storage.getItem(CHECKOUT_STATE_KEY)).storeId,other);assert.equal(storage.getItem('doceria-payment-pending'),null);
-  assert.throws(()=>bridge.apply({storeId:'unknown',items:[],uid:'a'}),/Não há cardápio/);dom.window.close();
+  assert.equal(url,'/cardapio?store=ana-guimaraes-doceria-garavelo');assert.equal(JSON.parse(storage.getItem(CHECKOUT_STATE_KEY)).storeId,other);assert.equal(storage.getItem('doceria-payment-pending'),null);
+  assert.throws(()=>bridge.apply({storeId:'../invalid',items:[],uid:'a'}),/Não há cardápio/);dom.window.close();
 });
 test('falha na transferência restaura storage e tentativa de pagamento anterior',async()=>{
   const {createStoredCartBridge,CHECKOUT_STATE_KEY}=await modules(),dom=new JSDOM('',{url:'https://example.test'}),storage=dom.window.sessionStorage;

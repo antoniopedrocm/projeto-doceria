@@ -752,46 +752,14 @@
 
     <!-- SCRIPTS -->
         <script type="module">
-          import { db, doc, getDoc } from "./firebaseClientConfig.js?v=20261015-persistence";
-
-          const DEFAULT_STORE_ID = 'ana-guimaraes-doceria-garavelo';
-          const STORE_ID = new URLSearchParams(window.location.search).get('store') || DEFAULT_STORE_ID;
-          window.STORE_ID = STORE_ID;
-          const CONFIG_DOC_ID = 'config';
-          const storeConfigDocPath = (...segments) => ['lojas', STORE_ID, 'configuracoes', CONFIG_DOC_ID, ...segments];
-          const legacyConfigPath = (...segments) => ['lojas', STORE_ID, 'configuracoes', ...segments];
-          // A configuração é carregada exclusivamente dentro da loja selecionada.
-
-          // Variável global para armazenar os dados de frete
-          window.dadosFrete = null;
-          window.freteACombinar = false;
-          window.distanciaFreteKm = null;
-
-          async function carregarConfiguracoesFrete() {
-              window.dadosFrete = null;
-              window.freteACombinar = false;
-              try {
-                  for (const suffix of [['configuracoes', 'config'], ['configuracoes', 'frete'], ['info', 'dados']]) {
-                      const snapshot = await getDoc(doc(db, 'lojas', STORE_ID, ...suffix));
-                      if (!snapshot.exists()) continue;
-                      const data = snapshot.data() || {};
-                      const config = data.frete || (suffix[0] === 'info' ? {} : data);
-                      if (!['lat', 'lng', 'valorPorKm', 'freteACombinar'].some(key => Object.prototype.hasOwnProperty.call(config, key))) continue;
-                      window.dadosFrete = config;
-                      window.freteACombinar = config.freteACombinar === true;
-                      if (window.freteACombinar) window.valorFrete = 0;
-                      window.updateAllSummaries?.();
-                      return;
-                  }
-                  throw new Error('Configuração de frete não encontrada para esta loja.');
-              } catch (error) {
-                  console.error('Erro ao carregar frete:', error);
-                  window.showToast?.(error.message || 'Não foi possível carregar o frete desta loja.', true);
-              }
-          }
-
-	  document.addEventListener("DOMContentLoaded", carregarConfiguracoesFrete);
-	</script>
+          import {bootstrapPublicStore} from './store-public-config.mjs';
+          window.dadosFrete = null; window.freteACombinar = false; window.distanciaFreteKm = null;
+          window.publicStoreReady = bootstrapPublicStore().then(config => {
+            window.publicStoreConfig = config; window.STORE_ID = config?.storeId || null;
+            if(!config) {document.getElementById('checkout-button')?.setAttribute('disabled','');document.getElementById('cart-button')?.setAttribute('disabled','');}
+            return config;
+          });
+        </script>
 
 	<script>
     // --- LÓGICA DO GOOGLE MAPS (CLIENTE CADASTRADO) ---
@@ -1224,7 +1192,10 @@
         import {installCustomerAccount} from './customer-account.js?v=20261015-persistence';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
-        import {STORE_AVAILABILITY, getStoreAvailability, getStoreAvailabilityMessage} from './store-availability.mjs';
+        import {fetchPublicStore} from './store-public-config.mjs';
+        import {STORE_AVAILABILITY, getStoreAvailabilityMessage} from './store-availability.mjs';
+        let publicStore = await window.publicStoreReady;
+        if (publicStore) {
         function resetWhatsAppConsent() {
             ['platform-whatsapp-consent', 'guest-whatsapp-consent'].forEach((id) => {
                 const checkbox = document.getElementById(id);
@@ -1239,7 +1210,7 @@
         const API_BASE_URL = apiBaseUrl;
         window.API_BASE_URL = API_BASE_URL;
         const escapeCheckoutText = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-        const STORE_ID = window.STORE_ID || 'ana-guimaraes-doceria-garavelo';
+        const STORE_ID = publicStore.storeId;
         const CONFIG_DOC_ID = 'config';
         const CONFIG_COLLECTIONS = new Set(['cupons', 'logs']);
         const storeConfigDocPath = (...segments) => ['lojas', STORE_ID, 'configuracoes', CONFIG_DOC_ID, ...segments];
@@ -1574,20 +1545,9 @@
 
         // Funções de Produtos
         async function fetchStoreConfig() {
-            try {
-                const { db, doc, getDoc } = await import('./firebaseClientConfig.js?v=20261015-persistence');
-                const configDoc = await getDoc(doc(db, ...storeConfigDocPath()));
-                if (configDoc.exists()) {
-                    storeConfig = configDoc.data() || {};
-                    console.info("✅ Configuração operacional da loja carregada.");
-                } else {
-                    storeConfig = null;
-                }
-            } catch (error) {
-                console.error("Erro ao carregar configurações:", error);
-                storeConfig = null;
-            }
-            syncStoreAvailabilityStatus();
+            const config = await fetchPublicStore({storeId:STORE_ID,channelId:publicStore.channel?.id || null});
+            publicStore = config; window.publicStoreConfig = config;
+            storeConfig = config.schedule; syncStoreAvailabilityStatus();
         }
 
         function normalizeActiveProducts(products = []) {
@@ -1699,17 +1659,13 @@
         }
 
         async function listenToStoreConfig() {
-            const { db, doc, onSnapshot } = await import('./firebaseClientConfig.js?v=20261015-persistence');
             if (storeConfigListenerUnsubscribe) storeConfigListenerUnsubscribe();
-
-            storeConfigListenerUnsubscribe = onSnapshot(doc(db, ...storeConfigDocPath()), (snap) => {
-                storeConfig = snap.exists() ? (snap.data() || {}) : null;
-                syncStoreAvailabilityStatus();
-            }, (error) => {
-                console.error('Erro ao sincronizar configurações da loja:', error);
-                storeConfig = null;
-                syncStoreAvailabilityStatus();
+            const refresh=()=>fetchStoreConfig().catch(()=>{
+                storeIsOpenNow=false;storeAvailability=STORE_AVAILABILITY.CONFIG_UNAVAILABLE;updateStoreAvailabilityUI();
             });
+            const timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);
+            storeConfigListenerUnsubscribe=()=>{clearInterval(timer);window.removeEventListener('focus',refresh);};
+            window.addEventListener('pagehide',storeConfigListenerUnsubscribe,{once:true});
         }
 
         async function listenToProducts() {
@@ -1778,7 +1734,7 @@
         }
 
         function renderMenu() {
-            const deliveryProducts = allProducts.filter(p => p.categoria === 'Delivery');
+            const deliveryProducts = allProducts.filter(p => p.categoria === publicStore.catalog.category);
 
             if (deliveryProducts.length === 0) {
                 productList.innerHTML = `
@@ -2030,23 +1986,25 @@
         window.showToast = showToast;
 
         function updateStoreAvailabilityUI() {
-            const isUnavailable = !storeIsOpenNow;
+            const noFulfillment = !publicStore.pickup.enabled && !publicStore.delivery.available;
+            const isUnavailable = !storeIsOpenNow || noFulfillment;
             if (checkoutButton) checkoutButton.disabled = isUnavailable;
             if (checkoutButton) checkoutButton.classList.toggle('opacity-60', isUnavailable);
             if (checkoutButton) checkoutButton.classList.toggle('cursor-not-allowed', isUnavailable);
 
             if (storeStatusBanner) {
                 if (isUnavailable) {
-                    storeStatusBanner.textContent = getStoreAvailabilityMessage(storeAvailability);
+                    storeStatusBanner.textContent = noFulfillment ? 'Nenhuma modalidade de atendimento disponível nesta loja.' : getStoreAvailabilityMessage(storeAvailability);
                     storeStatusBanner.classList.remove('hidden');
                 } else {
-                    storeStatusBanner.classList.add('hidden');
+                    storeStatusBanner.textContent = publicStore.delivery.available ? '' : 'Entrega indisponível. Retirada disponível.';
+                    storeStatusBanner.classList.toggle('hidden', publicStore.delivery.available);
                 }
             }
         }
 
         function syncStoreAvailabilityStatus() {
-            storeAvailability = getStoreAvailability(storeConfig);
+            storeAvailability = publicStore.active && publicStore.catalog.enabled ? storeConfig?.effectiveAvailability || STORE_AVAILABILITY.CONFIG_UNAVAILABLE : STORE_AVAILABILITY.CONFIG_UNAVAILABLE;
             storeIsOpenNow = storeAvailability === STORE_AVAILABILITY.OPEN;
             updateStoreAvailabilityUI();
         }
@@ -2395,10 +2353,13 @@
 			`;
             // Atribui o novo handler
 			pickupCard.querySelector('.use-pickup-btn').onclick = usePickupAddress;
-			addressList.appendChild(pickupCard);
+			pickupCard.hidden=!publicStore.pickup.enabled;
+            addressList.appendChild(pickupCard);
+            document.getElementById('show-new-address-wrapper').hidden=!publicStore.delivery.available;
+            if(!publicStore.delivery.available) {const notice=document.createElement('p');notice.textContent='Entrega indisponível para esta loja.';addressList.append(notice);}
             /* === FIM DA MODIFICAÇÃO === */
 
-			if (client.enderecos && client.enderecos.length > 0) {
+			if (publicStore.delivery.available && client.enderecos && client.enderecos.length > 0) {
 				client.enderecos.forEach((address, index) => {
 					const { enderecoCompleto, nickname } = (typeof address === 'string')
                         ? { enderecoCompleto: address, nickname: `Endereço ${index + 1}` }
@@ -2474,6 +2435,7 @@
         /* === INÍCIO DA MODIFICAÇÃO === */
 		/* Nova função para lidar com a opção "Retirar na Loja" */
 		function usePickupAddress() {
+            if(!publicStore.pickup.enabled) {showToast('Retirada indisponível nesta loja.',true);return;}
 			window.valorFrete = 0; // Retirada não cobra frete
             window.distanciaFreteKm = null;
             window.freteACombinar = false;
@@ -2498,6 +2460,7 @@
         /* === FIM DA MODIFICAÇÃO === */
 
 		async function useExistingAddress(addressText, addressData) {
+            if(!publicStore.delivery.available) {showToast('Entrega indisponível nesta loja.',true);return;}
             window.distanciaFreteKm = null;
             window.valorFrete = 0;
             window.checkoutDeliveryAddress=addressData || null;
@@ -3318,6 +3281,7 @@
         };
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startCheckout, {once:true});
         else startCheckout();
+        }
     </script>
 
 	<script type="module">
@@ -3724,6 +3688,7 @@
 
 	// Função para calcular frete usando Google Distance Matrix API
 	async function calcularFreteParaEndereco(destinoLatLng) {
+        if(window.publicStoreConfig && !window.publicStoreConfig.delivery.available) throw new Error('Entrega indisponível nesta loja.');
         if (window.dadosFrete && window.freteACombinar) {
             return {valorFrete: 0, freteACombinar: true, distanciaKm: null};
         }

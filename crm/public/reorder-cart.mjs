@@ -1,3 +1,5 @@
+import {storeMenuUrl} from './store-links.mjs';
+export {storeMenuUrl};
 export const CHECKOUT_STATE_KEY='checkoutState_v1';
 export function stockLimit(product) {
   const value=product?.estoque;
@@ -61,9 +63,7 @@ export function createPageCartBridge({storeId,storage,navigate,readCart,applyCar
       }
     }};
 }
-export function storeMenuUrl(storeId) {
-  return {'ana-guimaraes-doceria-matriz':'/cardapio-matriz','ana-guimaraes-doceria-garavelo':'/cardapio-garavelo'}[storeId] || null;
-}
+
 // The existing checkout storage contract, containing only a fresh cart and no historical checkout state.
 export function freshCheckoutState(storeId,items,uid) {
   return {storeId,cart:items.map(i=>({id:i.id,produtoId:i.id,nome:i.nome,preco:i.preco,quantity:i.quantity})),

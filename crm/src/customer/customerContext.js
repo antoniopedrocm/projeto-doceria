@@ -1,3 +1,4 @@
+import {storeMenuUrl} from '../storefront/storeRoutes.mjs';
 import {isActiveStaffProfile} from './staffRole';
 export const CUSTOMER_LINKS = [
   {path:'/area-cliente', label:'Página Inicial'},
@@ -16,9 +17,8 @@ export function customerRoute(path, search='') {
   return {path:'/area-cliente',screen:'home'};
 }
 export const isCustomerPath = path => path==='/area-cliente' || path==='/minha-conta' || path==='/meus-pedidos' || path.startsWith('/meus-pedidos/');
-export function menuDestination(storage, mainSession=false) {
+export function menuDestination(storage) {
   let storeId=null;
   try {storeId=JSON.parse(storage.getItem('checkoutState_v1')||'{}').storeId;} catch {}
-  const path=storeId==='ana-guimaraes-doceria-garavelo'?'/cardapio-garavelo':'/cardapio-matriz';
-  return path;
+  return storeMenuUrl(storeId) || '/cardapio';
 }

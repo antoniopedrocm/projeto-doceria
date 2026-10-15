@@ -23,6 +23,7 @@ const {createWhatsAppWebhook} = require('./whatsapp-webhook');
 const {quoteFreight, totalWithFreight, validateFreightCoordinates,
   loadStoreFreightConfig, orderFreightSnapshot, assertFreightClaims} = require('./freight-core');
 const {resolveFreightDistance} = require('./freight-distance');
+const {createStoreResolver,mountStoreRoutes} = require('./store-config');
 const {createFiscalFunctions} = require('./fiscal');
 const {createCaixaFunctions} = require('./caixa');
 const {createEntreLojasFunctions} = require('./entre-lojas');
@@ -50,7 +51,7 @@ exports.whatsappWebhook = onRequest({region: 'southamerica-east1', timeoutSecond
     createWhatsAppWebhook({db, logger}));
 const auth = admin.auth();
 const {createCustomerAccount} = require('./checkout-auth');
-const customerAccounts = createCustomerAccount({admin, db,getStoreAvailability:config=>getStoreAvailability(config)});
+const customerAccounts = createCustomerAccount({admin, db,getStoreAvailability:config=>getStoreAvailability(config), resolveStore:(...args)=>storeResolver.resolve(...args)});
 const {createPaymentService, cents, paymentError} = require('./checkout-payment');
 const checkoutPayments = createPaymentService({db, admin});
 const {paymentPrefill}=require('./payment-prefill');
@@ -1238,6 +1239,8 @@ const getStoreAvailability = (storeConfig, now = new Date()) => {
 const app = express();
 app.use(cors({origin: true})); // Habilita CORS para a API do cardápio
 app.use(express.json());
+const storeResolver = createStoreResolver({db,getAvailability:getStoreAvailability,loadPaymentConfig:store=>checkoutPayments.config(store)});
+mountStoreRoutes(app,storeResolver);
 app.get('/checkout/config', async (req,res) => {
   const store=String(req.query.lojaId || '');
   if(!/^[\w-]+$/.test(store)) return res.status(400).json({enabled:false});
@@ -1620,6 +1623,17 @@ const quoteOrderFreight = async (transaction, storeId, primaryData, payload, pic
     const config = pickup ? {} : await loadStoreFreightConfig({
       db, storeId, primaryData, read: (ref) => transaction.get(ref),
     });
+    // A concurrent configuration edit cannot make V1 inherit the legacy R$2 minimum.
+    if (!pickup && config.freteACombinar !== true) {
+      const [store, contract] = await Promise.all([
+        transaction.get(db.doc(`lojas/${storeId}`)),
+        transaction.get(db.doc(`lojas/${storeId}/configuracoes/storefront`)),
+      ]);
+      if ((store.data()?.storeConfigVersion === 1 || contract.exists) &&
+          (typeof config.valorMinimoFrete !== 'number' || !Number.isFinite(config.valorMinimoFrete) || config.valorMinimoFrete < 0)) {
+        throw new Error('Configure explicitamente o mínimo de frete desta loja.');
+      }
+    }
     if (!pickup && config.freteACombinar !== true) validateFreightCoordinates(config);
     const distanceKm = pickup || config.freteACombinar === true ? null : await resolveFreightDistance({
       config, address,
@@ -2706,6 +2720,9 @@ exports.createStore = onCall(async (request) => {
 
         const storePayload = {
             nome: rawName,
+            storeConfigVersion: 1,
+            ativo: false,
+            status: 'DRAFT',
             criadoEm: timestamp,
             criadoPor: uid,
         };
@@ -2737,15 +2754,12 @@ exports.createStore = onCall(async (request) => {
 
         const configuracoesDoc = storeDocRef.collection('configuracoes').doc(CONFIG_DOC_ID);
 
+        transaction.set(storeDocRef.collection('configuracoes').doc('storefront'), {
+            schemaVersion: 1, catalog: {enabled: false, category: ''},
+            pickup: {enabled: false}, delivery: {enabled: false}, onlinePayment: {enabled: false},
+        });
         transaction.set(configuracoesDoc, {
-            frete: {
-                ativo: false,
-                tipo: 'fixo',
-                valor: 0,
-                valorMinimo: 0,
-                atualizadoEm: timestamp,
-                criadoPor: uid,
-            },
+            manualOverride: {mode: 'force_closed'},
             iniciadoEm: timestamp,
             criadoPor: uid,
         }, {merge: true});

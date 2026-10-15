@@ -14,7 +14,7 @@ if (!process.env.PUBLIC_AUTH_ESM_WORKER) {
       env: {...process.env, PUBLIC_AUTH_ESM_WORKER: '1'}, encoding: 'utf8', timeout: 30000,
     });
     assert.equal(child.status, 0, child.stdout + child.stderr);
-    assert.match(child.stdout, /PUBLIC_AUTH_ESM_PASS entries=5 negativeControls=2/);
+    assert.match(child.stdout, /PUBLIC_AUTH_ESM_PASS entries=6 negativeControls=2/);
   });
 } else {
   const vm = await import('node:vm');
@@ -96,10 +96,10 @@ if (!process.env.PUBLIC_AUTH_ESM_WORKER) {
   }
   await graph('firebaseClientConfig.js');
   await graph('customer-account.js');
-  for (const entry of ['cardapio-matriz.html', 'cardapio-garavelo.html', 'cardapio-festa.html']) await graph(entry, {html: true});
+  for (const entry of ['cardapio.html', 'cardapio-matriz.html', 'cardapio-garavelo.html', 'cardapio-festa.html']) await graph(entry, {html: true});
   for (const missing of ['logout', 'sessionTransition']) {
     await assert.rejects(() => graph('customer-account.js', {missing}), error =>
       error.name === 'SyntaxError' && error.message.includes("does not provide an export named '" + missing + "'"));
   }
-  console.log('PUBLIC_AUTH_ESM_PASS entries=5 negativeControls=2');
+  console.log('PUBLIC_AUTH_ESM_PASS entries=6 negativeControls=2');
 }

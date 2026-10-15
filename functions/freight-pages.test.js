@@ -39,6 +39,7 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
     const calls = [];
     const config = {lat: -16.6, lng: -49.3, valorPorKm: 2, valorMinimoFrete: 8};
     const context = {
+      publicStore: {pickup:{enabled:true},delivery:{available:true}},
       window: {
         dadosFrete: config, freteACombinar: false,
         API_BASE_URL: 'https://example.invalid', STORE_ID: `${page}-store`,
@@ -73,6 +74,7 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
     const end = html.indexOf('window.calcularFreteParaEndereco = calcularFreteParaEndereco;', start);
     const calls = [];
     const context = {
+      publicStore: {pickup:{enabled:true},delivery:{available:true}},
       window: {
         dadosFrete: null,
         freteACombinar: false,
@@ -101,6 +103,7 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
     const start = html.indexOf('async function calcularFreteParaEndereco(destinoLatLng)');
     const end = html.indexOf('window.calcularFreteParaEndereco = calcularFreteParaEndereco;', start);
     const context = {
+      publicStore: {pickup:{enabled:true},delivery:{available:true}},
       window: {dadosFrete: {lat: '-16.64464130924753', lng: '-4932489499913069'}, freteACombinar: false},
       google: {maps: {}},
     };
@@ -125,6 +128,7 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
       clearCheckoutBlockingIssue: () => undefined,
     };
     const context = {
+      publicStore: {pickup:{enabled:true},delivery:{available:true}},
       window,
       normalizeGuestLatLng: (value) => value,
       document: {getElementById: () => ({textContent: ''})},
@@ -159,7 +163,7 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
       calcularFreteParaEndereco: async () => ({valorFrete: 8, distanciaKm: 2.5, freteACombinar: false}),
     };
     const modal = {classList: {add() {}, remove() {}}};
-    const ctx = {window, currentClient: {id: 'test', nome: 'Teste', telefone: '62999999999'},
+    const ctx = {publicStore:{delivery:{available:true}},window, currentClient: {id: 'test', nome: 'Teste', telefone: '62999999999'},
       selectedAddressText: {}, addressManagementModal: modal, paymentModal: modal,
       updateAllSummaries() {}, persistCheckoutState() {}, clearCheckoutBlockingIssue() {},
       showToast: (m) => messages.push(m), freightDisplayValue: () => 'R$ 8,00', console,
@@ -186,6 +190,7 @@ for (const page of ['matriz', 'garavelo', 'festa']) {
     };
     const modal = {classList: {add() {}, remove() {}}};
     const pickupContext = {
+      publicStore:{pickup:{enabled:true}},
       window,
       currentClient: {id: 'cliente', nome: 'Cliente', telefone: '62999999999'},
       pendingOrderDetails: {},

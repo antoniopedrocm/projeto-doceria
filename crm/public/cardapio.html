@@ -1,0 +1,3743 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cardápio - Ana Guimarães Doceria</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+	<link rel="icon" type="image/png" href="/logo.png" />
+
+	<style>
+		@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+
+		body { font-family: 'Poppins', sans-serif; }
+		html { scroll-behavior: smooth; scroll-padding-top: 140px; }
+
+		.loader {
+			border: 4px solid #f3f3f3;
+			border-top: 4px solid #db2777;
+			border-radius: 50%;
+			width: 40px;
+			height: 40px;
+			animation: spin 1s linear infinite;
+		}
+
+		@keyframes spin {
+			0% { transform: rotate(0deg); }
+			100% { transform: rotate(360deg); }
+		}
+
+		#toast { transition: opacity 0.5s, transform 0.5s; }
+		#subcategory-nav a.active {
+			color: #db2777;
+			border-bottom-color: #db2777;
+		}
+		#subcategory-nav::-webkit-scrollbar { display: none; }
+		#subcategory-nav { -ms-overflow-style: none; scrollbar-width: none; }
+		.map-placeholder { height: 300px; width: 100%; border-radius: 0.5rem; background-color: #f9fafb; display: flex; align-items: center; justify-content: center; color: #6b7280; }
+
+		/* ===== CORREÇÃO FOCADA APENAS NA BARRA PRINCIPAL ===== */
+		@media (max-width: 768px) {
+			/* HEADER PRINCIPAL - MAIS AMIGÁVEL (APENAS ISSO) */
+			header {
+				position: fixed !important;
+				top: 0 !important;
+				left: 0 !important;
+				right: 0 !important;
+				z-index: 25 !important;
+				background: white;
+				height: 72px !important; /* Altura mais amigável */
+				padding: 0.75rem 1rem !important; /* Mais padding */
+				box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+			}
+
+			header .container {
+				height: 100% !important;
+				display: flex !important;
+				align-items: center !important;
+				justify-content: space-between !important;
+			}
+
+			/* Logo e título um pouco maiores */
+			header img {
+				max-height: 40px !important; /* Logo um pouco maior */
+			}
+
+			header h1 {
+				font-size: 1.3rem !important; /* Título um pouco maior */
+				margin: 0 !important;
+			}
+
+			/* Botão do carrinho mais amigável */
+			#cart-button {
+				padding: 0.625rem !important; /* Um pouco mais de padding */
+			}
+
+			/* BARRA DE NAVEGAÇÃO - APENAS COMPENSAÇÃO DA ALTURA DO HEADER */
+			#subcategory-nav-container {
+				position: fixed !important;
+				top: 72px !important; /* Ajustado para nova altura do header */
+				left: 0 !important;
+				right: 0 !important;
+				z-index: 20 !important;
+				background: white;
+				padding: 0 !important;
+				box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+				height: 48px !important;
+				touch-action: pan-x !important;
+				overflow: hidden !important;
+			}
+
+			#subcategory-nav {
+				padding: 0.75rem 1rem !important;
+				gap: 1rem !important;
+				overflow-x: auto !important;
+				overflow-y: hidden !important;
+				-webkit-overflow-scrolling: touch;
+				width: 100%;
+				height: 100% !important;
+				display: flex !important;
+				align-items: center !important;
+				touch-action: pan-x !important;
+				scrollbar-width: none !important;
+				-ms-overflow-style: none !important;
+				white-space: nowrap !important;
+			}
+
+			#subcategory-nav a {
+				font-size: 0.875rem !important;
+				padding: 0.5rem 0 !important;
+				white-space: nowrap;
+				flex-shrink: 0;
+				height: fit-content !important;
+				touch-action: pan-x !important;
+			}
+
+			/* COMPENSAÇÃO PARA AS BARRAS FIXAS */
+			/* Header (72px) + Barra Navegação (48px) = 120px total */
+			main {
+				padding-top: 120px !important; /* Ajustado para nova altura */
+				min-height: calc(100vh - 120px) !important;
+			}
+
+			/* Ajustar o scroll padding para a navegação suave */
+			html {
+				scroll-padding-top: 120px !important;
+			}
+
+			/* O RESTO PERMANECE EXATAMENTE COMO ESTAVA ANTES */
+			/* Ajuste do container principal */
+			#product-list {
+				padding: 0 1rem;
+				margin-top: 0 !important;
+			}
+
+			/* Layout dos cards de produto em lista vertical */
+			#product-list > div > div[class*="grid"] {
+				display: flex !important;
+				flex-direction: column !important;
+				gap: 1rem !important;
+			}
+
+			/* Card individual do produto - layout horizontal */
+			#product-list div[class*="grid"] > div {
+				display: flex !important;
+				flex-direction: row !important;
+				align-items: flex-start !important;
+				background: white;
+				border-radius: 8px;
+				padding: 0.75rem;
+				box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+				gap: 0.75rem;
+				min-height: 120px;
+			}
+
+			/* Imagem do produto - tamanho fixo à esquerda */
+			#product-list div[class*="grid"] > div img {
+				width: 100px !important;
+				min-width: 100px !important;
+				height: 100px !important;
+				object-fit: cover !important;
+				border-radius: 8px !important;
+				flex-shrink: 0;
+			}
+
+			/* Container de informações do produto */
+			#product-list div[class*="grid"] > div > div {
+				display: flex !important;
+				flex-direction: column !important;
+				justify-content: space-between !important;
+				flex: 1;
+				min-height: 100px;
+			}
+
+			/* Título do produto */
+			#product-list div[class*="grid"] > div h3,
+			#product-list div[class*="grid"] > div h2 {
+				font-size: 1rem !important;
+				line-height: 1.3 !important;
+				font-weight: 600 !important;
+				margin: 0 0 0.35rem 0 !important;
+				color: #1f2937;
+			}
+
+			/* Descrição do produto */
+			#product-list div[class*="grid"] > div p {
+				font-size: 0.813rem !important;
+				line-height: 1.4 !important;
+				color: #6b7280 !important;
+				margin: 0 0 0.5rem 0 !important;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				display: -webkit-box;
+				-webkit-line-clamp: 2;
+				-webkit-box-orient: vertical;
+			}
+
+			/* Preço do produto */
+			#product-list div[class*="grid"] > div span[class*="text"],
+			#product-list div[class*="grid"] > div div[class*="text"] {
+				font-size: 1.125rem !important;
+				font-weight: 700 !important;
+				color: #db2777 !important;
+				margin-top: auto;
+			}
+
+			/* Botão de adicionar ao carrinho */
+			#product-list div[class*="grid"] > div button {
+				margin-top: 0.5rem !important;
+				padding: 0.5rem 1rem !important;
+				font-size: 0.875rem !important;
+				width: 100% !important;
+			}
+
+			/* Espaçamento entre seções */
+			#product-list > div {
+				margin-bottom: 1.5rem !important;
+			}
+
+			/* Título das categorias */
+			#product-list h2 {
+				font-size: 1.25rem !important;
+				padding: 0 0 0.75rem 0 !important;
+				margin-bottom: 0.75rem !important;
+			}
+
+			/* Modal do carrinho em mobile */
+			#cart-modal > div {
+				max-width: 95% !important;
+				margin: 1rem !important;
+			}
+		}
+
+		/* Ajustes extras para telas muito pequenas */
+		@media (max-width: 380px) {
+			header {
+				height: 68px !important;
+				padding: 0.5rem 0.75rem !important;
+			}
+
+			header h1 {
+				font-size: 1.2rem !important;
+			}
+
+			header img {
+				max-height: 36px !important;
+			}
+
+			#subcategory-nav-container {
+				top: 68px !important;
+				height: 44px !important;
+			}
+
+			#subcategory-nav {
+				padding: 0.5rem 0.75rem !important;
+			}
+
+			#subcategory-nav a {
+				font-size: 0.813rem !important;
+				padding: 0.375rem 0 !important;
+			}
+
+			main {
+				padding-top: 112px !important;
+				min-height: calc(100vh - 112px) !important;
+			}
+
+			html {
+				scroll-padding-top: 112px !important;
+			}
+
+			#product-list div[class*="grid"] > div img {
+				width: 85px !important;
+				min-width: 85px !important;
+				height: 85px !important;
+			}
+		}
+
+		/* PARA DESKTOP - manter comportamento original */
+		@media (min-width: 769px) {
+			#subcategory-nav-container {
+				position: sticky;
+				top: 72px;
+				z-index: 10;
+			}
+
+			header {
+				position: sticky;
+				top: 0;
+				z-index: 20;
+				height: auto !important;
+				padding: 1rem 1.5rem !important;
+			}
+
+			main {
+				padding-top: 2rem !important;
+				min-height: auto !important;
+			}
+
+			html {
+				scroll-padding-top: 140px !important;
+			}
+		}
+	</style>
+
+        <!-- Google Maps API -->
+        <script>
+                const GOOGLE_MAPS_API_KEY = 'AIzaSyC-ncxbNcdStOezroupas_4HZvkfooRBEA';
+                const googleMapsScript = document.createElement('script');
+                googleMapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker&v=weekly`;
+                googleMapsScript.async = true;
+                googleMapsScript.defer = true;
+                document.head.appendChild(googleMapsScript);
+        </script>
+
+</head>
+<body class="bg-pink-50">
+    <!-- CABEÇALHO -->
+    <header class="bg-white shadow-md sticky top-0 z-20">
+        <div class="container mx-auto px-3 py-4 flex justify-between items-center">
+            <a href="https://www.anaguimaraesdoceria.com.br" class="flex items-center space-x-4">
+                <img src="/logotipo.png" alt="Logotipo" class="h-10">
+                <h1 class="text-2xl font-bold text-pink-600">Nosso Cardápio</h1>
+            </a>
+            <button id="cart-button" class="relative">
+                <i class="fa-solid fa-shopping-cart text-2xl text-gray-600"></i>
+                <span id="cart-count" class="absolute -top-2 -right-2 bg-pink-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">0</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- NAVEGAÇÃO DE SUBCATEGORIAS -->
+    <nav id="subcategory-nav-container" class="bg-white sticky top-[64px] md:top-[72px] z-10 shadow-sm">
+        <div id="subcategory-nav" class="container mx-auto px-6 flex items-center space-x-6 overflow-x-auto whitespace-nowrap"></div>
+    </nav>
+
+    <!-- CONTEÚDO PRINCIPAL -->
+    <main class="container mx-auto px-6 py-8">
+        <div id="store-status-banner" class="hidden mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"></div>
+        <div id="product-list" class="space-y-12">
+            <div id="loading-message" class="col-span-full flex flex-col items-center justify-center py-16">
+                <div class="loader"></div>
+                <p class="text-pink-600 mt-4">Carregando nosso cardápio...</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAIS -->
+
+    <!-- Modal do Carrinho -->
+    <div id="cart-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-30">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-pink-600">Seu Pedido</h2>
+                <button id="close-cart" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+            </div>
+            <div id="cart-items" class="p-6 max-h-80 overflow-y-auto"></div>
+            <div class="p-6 border-t space-y-4">
+                <div id="cart-summary" class="space-y-1 text-gray-700">
+                    <div class="flex justify-between"><span>Subtotal:</span><span id="cart-subtotal">R$ 0,00</span></div>
+                    <div id="discount-line" class="flex justify-between text-green-600 hidden"><span>Desconto:</span><span id="cart-discount"></span></div>
+                    <div id="shipping-line" class="flex justify-between hidden"><span>Frete:</span><span id="cart-shipping">R$ 0,00</span></div>
+                    <div class="flex justify-between items-center font-bold text-xl"><span>Total:</span><span id="cart-total">R$ 0,00</span></div>
+                </div>
+                <button id="checkout-button" class="w-full bg-pink-600 text-white py-3 rounded-lg mt-2 font-bold hover:bg-pink-700 transition-colors">Finalizar Pedido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Identificação -->
+    <div id="identification-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
+        <div class="bg-white rounded-lg shadow-xl p-8 text-center max-w-sm mx-4">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Como deseja continuar?</h2>
+            <p class="text-gray-600 mb-6">Você pode buscar seu cadastro ou continuar como visitante.</p>
+            <div class="space-y-4">
+                <button id="use-phone-button" class="w-full bg-blue-500 text-white py-3 rounded-lg font-bold hover:bg-blue-600 transition-colors flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-mobile-screen-button"></i> Continuar com celular
+                </button>
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="continue-google-button" class="w-full min-w-0 border border-gray-300 bg-white text-gray-800 px-1 sm:px-2 py-3 rounded-lg text-xs sm:text-sm font-bold hover:bg-gray-50 transition-colors flex items-center justify-center gap-1 sm:gap-2 whitespace-nowrap">
+                        <svg aria-hidden="true" class="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.91h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.32 2.98-7.4Z"/><path fill="#34A853" d="M12 22c2.7 0 4.98-.9 6.63-2.37l-3.24-2.54c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z"/><path fill="#FBBC05" d="M6.39 13.92A6.02 6.02 0 0 1 6.08 12c0-.67.11-1.32.31-1.92V7.46H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.54l3.35-2.62Z"/><path fill="#EA4335" d="M12 5.95c1.47 0 2.79.51 3.83 1.5l2.87-2.87A9.62 9.62 0 0 0 12 2a10 10 0 0 0-8.96 5.46l3.35 2.62C7.18 7.71 9.39 5.95 12 5.95Z"/></svg>
+                        <span>Entrar com Google</span>
+                    </button>
+                    <button id="continue-email-button" class="w-full min-w-0 border border-pink-600 bg-pink-600 text-white px-1 sm:px-2 py-3 rounded-lg text-xs sm:text-sm font-bold hover:bg-pink-700 transition-colors flex items-center justify-center whitespace-nowrap">Entrar com e-mail</button>
+                </div>
+                <div class="flex items-center gap-3 text-gray-500"><hr class="flex-1">ou<hr class="flex-1"></div>
+                <button id="continue-guest-button" class="w-full bg-gray-600 text-white py-3 rounded-lg font-bold hover:bg-gray-700 transition-colors">Continuar como visitante</button>
+                <button id="close-identification-modal" class="text-sm text-gray-500 mt-4 hover:underline">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Login com Telefone -->
+    <div id="phone-login-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-pink-600">Identificar Cliente</h2>
+                <button id="close-phone-login-modal" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+            </div>
+            <div class="p-6">
+                <p class="text-gray-600 mb-4">Digite seu número de celular para buscar seu cadastro.</p>
+                <input id="phone-input" type="tel" placeholder="(00) 00000-0000" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500">
+                <p id="phone-error" class="text-red-500 text-sm mt-2 hidden"></p>
+            </div>
+            <div class="p-6 border-t">
+                <button id="search-phone-button" class="w-full bg-pink-600 text-white py-3 rounded-lg font-bold hover:bg-pink-700 transition-colors">Buscar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Dados do Cliente (Novo/Edição) -->
+    <div id="customer-details-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 id="customer-modal-title" class="text-2xl font-bold text-pink-600"></h2>
+                <button id="close-customer-modal" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+            </div>
+            <div class="p-6">
+                <form id="customer-form" class="space-y-4">
+                    <p class="text-gray-600">Telefone: <strong id="customer-modal-phone"></strong></p>
+                    <div>
+                        <label for="customer-modal-name" class="block text-sm font-medium text-gray-700">Nome Completo *</label>
+                        <input id="customer-modal-name" type="text" required class="mt-1 w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500">
+                    </div>
+                    <div>
+                        <label for="customer-modal-birthdate" class="block text-sm font-medium text-gray-700">Data de Nascimento *</label>
+                        <div class="relative mt-1">
+                            <input id="customer-modal-birthdate" type="text" inputmode="numeric" autocomplete="bday" maxlength="10" placeholder="dia/mês/ano" required class="w-full px-4 py-2 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500">
+                            <button id="customer-modal-birthdate-button" type="button" aria-label="Abrir calendario da data de nascimento" title="Abrir calendario" class="absolute inset-y-0 right-0 w-12 flex items-center justify-center text-gray-600 border-l hover:text-pink-600 focus:outline-none focus:ring-2 focus:ring-pink-500 rounded-r-lg">
+                                <i class="fa-regular fa-calendar"></i>
+                            </button>
+                            <input id="customer-modal-birthdate-picker" type="date" aria-label="Selecionar data de nascimento no calendario" tabindex="-1" class="absolute right-0 bottom-0 h-px w-px opacity-0 pointer-events-none">
+                        </div>
+                    </div>
+                    <p id="customer-modal-error" class="text-red-500 text-sm hidden"></p>
+                </form>
+            </div>
+            <div id="customer-modal-footer" class="p-6 border-t flex gap-3">
+                <!-- Buttons will be injected here by JS -->
+            </div>
+        </div>
+    </div>
+
+	<!-- Modal de Gerenciamento de Endereço -->
+	<div id="address-management-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
+		<div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+			<div class="p-6 border-b bg-white flex justify-between items-center">
+                <div>
+                    <h2 class="text-2xl font-bold text-pink-600">Seus Endereços</h2>
+                    <p class="text-gray-600 mt-1">Olá, <strong id="confirm-customer-name"></strong>!</p>
+                </div>
+                <button id="edit-profile-btn" class="bg-blue-500 text-white py-2 px-4 rounded-lg font-bold hover:bg-blue-600 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-user-pen"></i> Editar Perfil
+                </button>
+            </div>
+
+			<div class="p-6 overflow-y-auto flex-grow">
+				<!-- Lista de Endereços Existentes -->
+				<div id="address-list" class="space-y-4 mb-6">
+					<!-- Endereços serão carregados aqui dinamicamente -->
+				</div>
+
+				<!-- Botão para Adicionar Novo Endereço -->
+				<div id="show-new-address-wrapper" class="border-t pt-6">
+					<button id="show-new-address-btn" class="w-full bg-blue-500 text-white py-3 rounded-lg font-bold hover:bg-blue-600 transition-colors flex items-center justify-center gap-2">
+						<i class="fa-solid fa-plus-circle"></i>
+						Adicionar Novo Endereço
+					</button>
+				</div>
+
+				<!-- Seção de Novo Endereço (inicialmente oculta) -->
+				<div id="new-address-section" class="hidden mt-6 border-t pt-6">
+					<h3 class="text-xl font-bold text-gray-800 mb-4">Novo Endereço</h3>
+
+					<div id="new-address-step1" class="space-y-4">
+						<div id="address-search-container" class="space-y-2"></div>
+						<div class="flex gap-3 pt-2">
+							<button id="address-step1-location-btn" type="button" class="flex-1 bg-pink-600 text-white px-3 py-2 rounded-lg font-bold hover:bg-pink-700 transition-colors">
+								<i class="fa-solid fa-location-crosshairs mr-2"></i> Minha localização
+							</button>
+							<button id="address-step1-back-btn" type="button" class="bg-gray-500 text-white py-2 px-6 rounded-lg font-bold hover:bg-gray-600 transition-colors">Voltar</button>
+						</div>
+					</div>
+
+					<div id="new-address-step2" class="hidden space-y-4">
+						<div id="address-map-container" class="relative"></div>
+                        <div id="manual-address-map-warning" class="hidden rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800" role="alert" aria-live="assertive">
+                            <div class="flex items-start gap-3">
+                                <i class="fa-solid fa-triangle-exclamation mt-0.5 text-amber-600"></i>
+                                <p class="text-sm font-medium" data-message>É preciso mover o mapa para ajustar o pino no local da entrega.</p>
+                            </div>
+                        </div>
+						<div class="flex gap-3 pt-2">
+							<button id="address-step2-confirm-btn" type="button" class="flex-1 bg-green-500 text-white py-3 rounded-lg font-bold hover:bg-green-600 transition-colors">Confirmar local</button>
+							<button id="address-step2-back-btn" type="button" class="bg-gray-500 text-white py-3 px-6 rounded-lg font-bold hover:bg-gray-600 transition-colors">Voltar</button>
+						</div>
+					</div>
+
+
+                    <input id="manual-address-street" type="hidden">
+                    <input id="manual-address-neighborhood" type="hidden">
+                    <input id="manual-address-city" type="hidden" value="Goiânia">
+                    <input id="manual-address-zip" type="hidden">
+					<div id="new-address-step3" class="hidden space-y-4">
+						<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Número/Quadra, Lote *</label>
+								<input id="manual-address-number" type="text" placeholder="Número/Quadra, Lote" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+							</div>
+							<div>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Complemento</label>
+								<input id="manual-address-complement" type="text" placeholder="Apto, Bloco, etc." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+							</div>
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-2">Referência</label>
+							<input id="manual-address-reference" type="text" placeholder="Ponto de referência" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-2">Nome do endereço *</label>
+							<input id="manual-address-nickname" type="text" placeholder="Ex: Casa, Trabalho" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+						</div>
+						<div class="space-y-2">
+							<label class="flex items-center gap-2 text-sm text-gray-700">
+								<input id="manual-address-no-number" type="checkbox" class="rounded border-gray-300 text-pink-600 focus:ring-pink-500">
+								Sem número
+							</label>
+							<label class="flex items-center gap-2 text-sm text-gray-700">
+								<input id="manual-address-frequent-location" type="checkbox" class="rounded border-gray-300 text-pink-600 focus:ring-pink-500">
+								Localização frequente
+							</label>
+						</div>
+						<div class="flex gap-3 pt-2">
+							<button id="save-manual-address-button" class="flex-1 bg-green-500 text-white py-3 rounded-lg font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2">
+								<i class="fa-solid fa-save"></i>
+								Salvar Endereço
+							</button>
+							<button id="address-step3-back-btn" type="button" class="bg-gray-500 text-white py-3 px-6 rounded-lg font-bold hover:bg-gray-600 transition-colors">Voltar</button>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Rodapé do Modal -->
+			<div class="p-6 border-t bg-gray-50">
+				<button id="close-address-management-modal" class="w-full bg-gray-500 text-white py-3 rounded-lg font-bold hover:bg-gray-600 transition-colors">
+					Fechar
+				</button>
+			</div>
+		</div>
+	</div>
+
+    <!-- Modal de Pagamento -->
+    <div id="payment-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
+            <div class="p-6 border-b flex justify-between items-center">
+                <button id="back-to-address" class="text-gray-500 hover:text-gray-800"><i class="fa-solid fa-arrow-left"></i></button>
+                <h2 class="text-xl font-bold text-pink-600 text-center flex-grow">Forma de Pagamento</h2>
+                <button id="close-payment-modal" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+            </div>
+            <div class="p-6">
+                <div class="mb-4 p-3 bg-gray-50 rounded-lg text-sm">
+                    <p class="text-gray-500">Entregar em:</p>
+                    <p id="selected-address-text" class="font-semibold text-gray-800"></p>
+                </div>
+                <div class="space-y-2 mb-4">
+                    <div class="flex gap-2">
+                        <input id="payment-cupom-input" type="text" placeholder="Tem um cupom?" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 uppercase">
+                        <button id="payment-verify-cupom-button" class="bg-gray-600 text-white py-2 px-4 rounded-lg font-bold hover:bg-gray-700 transition-colors flex-shrink-0">Aplicar</button>
+                    </div>
+                    <p id="payment-cupom-message" class="text-sm"></p>
+                </div>
+                <div id="payment-summary" class="mb-4 p-4 border rounded-lg space-y-2">
+                    <h3 class="font-bold text-gray-700">Resumo do Pedido</h3>
+                    <div class="flex justify-between text-sm"><span>Subtotal Produtos:</span><span id="payment-subtotal" class="font-medium text-gray-800">R$ 0,00</span></div>
+                    <div id="payment-discount-row" class="flex justify-between text-sm text-green-600 hidden"><span>Desconto:</span><span id="payment-discount" class="font-medium">- R$ 0,00</span></div>
+                    <div id="payment-shipping-row" class="flex justify-between text-sm"><span>Frete:</span><span id="payment-shipping" class="font-medium text-gray-800">R$ 0,00</span></div>
+                    <div class="flex justify-between text-lg font-bold border-t pt-2 mt-2"><span>Total a pagar:</span><span id="payment-total" class="text-pink-600">R$ 0,00</span></div>
+                </div>
+                <p class="text-gray-600 mb-4">Selecione como você prefere pagar.</p>
+                <select id="payment-method-select" class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white">
+                    <option value="" disabled selected>Escolha uma opção...</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                    <option value="Cartão de Débito">Cartão de Débito</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="Pix">Pix</option>
+                    <option value="Link de Pagamento">Link de Pagamento</option>
+                </select>
+                <p id="payment-error" class="text-red-500 text-sm mt-2 hidden"></p>
+                <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
+                    <input id="platform-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="platform-whatsapp-consent-help">
+                    <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
+                </label>
+                <p id="platform-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD.</p>
+            </div>
+            <div class="p-6 border-t">
+                <button id="confirm-order-button" class="w-full bg-pink-600 text-white py-3 rounded-lg font-bold hover:bg-pink-700 transition-colors">Confirmar Pedido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Checkout do Visitante -->
+    <div id="guest-checkout-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-pink-600">Informações para Entrega</h2>
+                <button id="close-guest-checkout-modal" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-grow space-y-6">
+                <!-- Dados Pessoais -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Seus Dados</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input id="guest-name" type="text" placeholder="Seu nome completo *" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500">
+                        <input id="guest-phone" type="tel" placeholder="Seu telefone (WhatsApp) *" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500">
+                    </div>
+                </div>
+
+                <!-- Endereço de Entrega com Mapa -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Endereço de Entrega</h3>
+                    <div id="guest-address-flow">
+                        <div id="guest-address-step1" class="space-y-3">
+                            <p class="text-sm text-gray-600">Busque seu endereço ou use sua localização atual para começar.</p>
+                            <div id="guest-address-search-container"></div>
+                            <button id="guest-address-location-btn" type="button" class="w-full bg-pink-600 text-white px-3 py-2 rounded-lg font-bold hover:bg-pink-700 transition-colors">
+                                <i class="fa-solid fa-location-crosshairs mr-2"></i> Minha localização
+                            </button>
+                        </div>
+
+                        <div id="guest-address-step2" class="space-y-3 hidden">
+                            <p class="text-sm text-gray-600">Mova o mapa para ajustar o pino no local da entrega.</p>
+                            <div id="guest-address-map-container" class="relative"></div>
+                            <p id="guest-map-warning" class="hidden text-sm text-red-600 font-medium">Confirme o local para calcular o frete.</p>
+                            <div class="flex gap-2">
+                                <button id="guest-address-step2-confirm-btn" type="button" class="flex-1 bg-green-500 text-white py-2 rounded-lg font-bold hover:bg-green-600 transition-colors">Confirmar local</button>
+                                <button id="guest-address-step2-back-btn" type="button" class="bg-gray-500 text-white py-2 px-4 rounded-lg font-bold hover:bg-gray-600 transition-colors">Voltar</button>
+                            </div>
+                        </div>
+
+                        <div id="guest-address-step3" class="space-y-4 mt-4 hidden">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="guest-address-street" class="block text-sm font-medium text-gray-700 mb-2">Rua *</label>
+                                    <input id="guest-address-street" type="text" placeholder="Rua" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+                                </div>
+                                <div>
+                                    <label for="guest-address-number" class="block text-sm font-medium text-gray-700 mb-2">Número/Quadra, Lote *</label>
+                                    <input id="guest-address-number" type="text" placeholder="Número/Quadra, Lote" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label for="guest-address-complement" class="block text-sm font-medium text-gray-700 mb-2">Complemento</label>
+                                    <input id="guest-address-complement" type="text" placeholder="Apto, Bloco, etc." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label for="guest-address-reference" class="block text-sm font-medium text-gray-700 mb-2">Referência</label>
+                                    <input id="guest-address-reference" type="text" placeholder="Ponto de referência" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label for="guest-address-neighborhood" class="block text-sm font-medium text-gray-700 mb-2">Bairro *</label>
+                                    <input id="guest-address-neighborhood" type="text" placeholder="Bairro" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+                                </div>
+                                <div>
+                                    <label for="guest-address-city" class="block text-sm font-medium text-gray-700 mb-2">Cidade *</label>
+                                    <input id="guest-address-city" type="text" placeholder="Cidade" value="Goiânia" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+                                </div>
+                                <div>
+                                    <label for="guest-address-zip" class="block text-sm font-medium text-gray-700 mb-2">CEP</label>
+                                    <input id="guest-address-zip" type="text" placeholder="CEP" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="guest-address-nickname" class="block text-sm font-medium text-gray-700 mb-2">Apelido do endereço *</label>
+                                <input id="guest-address-nickname" type="text" placeholder="Ex: Casa, Trabalho" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors">
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center gap-2 text-sm text-gray-700">
+                                    <input id="guest-address-no-number" type="checkbox" class="rounded border-gray-300 text-pink-600 focus:ring-pink-500">
+                                    Sem número
+                                </label>
+                                <label class="flex items-center gap-2 text-sm text-gray-700">
+                                    <input id="guest-address-frequent-location" type="checkbox" class="rounded border-gray-300 text-pink-600 focus:ring-pink-500">
+                                    Localização frequente
+                                </label>
+                            </div>
+                            <button id="guest-address-step3-back-btn" type="button" class="bg-gray-500 text-white py-2 px-4 rounded-lg font-bold hover:bg-gray-600 transition-colors">Voltar ao mapa</button>
+                        </div>
+                    </div>
+                    <input id="guest-address-full" type="hidden"> <!-- Campo oculto para endereço completo -->
+                </div>
+
+
+                <!-- Resumo e Pagamento -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">Resumo e Pagamento</h3>
+                    <div id="guest-summary" class="mb-4 p-4 border rounded-lg space-y-2">
+                        <div class="flex justify-between text-sm"><span>Subtotal Produtos:</span><span id="guest-subtotal" class="font-medium text-gray-800">R$ 0,00</span></div>
+                        <div id="guest-discount-row" class="flex justify-between text-sm text-green-600 hidden"><span>Desconto:</span><span id="guest-discount" class="font-medium">- R$ 0,00</span></div>
+                        <div id="guest-shipping-row" class="flex justify-between text-sm"><span>Frete:</span><span id="guest-shipping" class="font-medium text-gray-800">Aguardando endereço...</span></div>
+                        <div class="flex justify-between text-lg font-bold border-t pt-2 mt-2"><span>Total a pagar:</span><span id="guest-total" class="text-pink-600">R$ 0,00</span></div>
+                    </div>
+                    <select id="guest-payment-method" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white">
+                        <option value="" disabled selected>Forma de Pagamento *</option>
+                        <option value="Cartão de Crédito">Cartão de Crédito</option>
+                        <option value="Cartão de Débito">Cartão de Débito</option>
+                        <option value="Dinheiro">Dinheiro</option>
+                        <option value="Pix">Pix</option>
+                        <option value="Link de Pagamento">Link de Pagamento</option>
+                    </select>
+                    <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
+                    <input id="guest-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="guest-whatsapp-consent-help">
+                    <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
+                </label>
+                <p id="guest-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD. O botão abaixo continua abrindo sua mensagem para a loja.</p>
+                    <button id="send-whatsapp-button" class="w-full bg-green-500 text-white py-3 px-4 rounded-lg font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mt-4">
+                        <i class="fa-brands fa-whatsapp"></i> Finalizar e Enviar via WhatsApp
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação de Pedido (WhatsApp) -->
+    <div id="confirmation-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl p-8 text-center max-w-sm mx-4">
+            <i class="fas fa-check-circle text-5xl text-green-500 mb-4"></i>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Pedido Enviado!</h2>
+            <p class="text-gray-600">Obrigado! Seu pedido foi registrado e a mensagem está pronta para ser enviada.</p>
+            <button id="close-confirmation" class="bg-pink-600 text-white py-2 px-6 rounded-lg mt-6 font-bold hover:bg-pink-700 transition-colors">Fechar</button>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação de Pedido (Plataforma) -->
+    <div id="platform-confirmation-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl p-8 text-center max-w-sm mx-4">
+            <i class="fas fa-check-circle text-5xl text-green-500 mb-4"></i>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Pedido Registrado!</h2>
+            <p class="text-gray-600">Obrigado! Seu pedido foi enviado diretamente para a nossa plataforma.</p>
+            <button id="close-platform-confirmation" class="bg-pink-600 text-white py-2 px-6 rounded-lg mt-6 font-bold hover:bg-pink-700 transition-colors">Fechar</button>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-red-500 text-white py-2 px-4 rounded-lg shadow-lg hidden opacity-0 transform translate-y-2">
+        <p id="toast-message"></p>
+    </div>
+
+    <!-- SCRIPTS -->
+        <script type="module">
+          import {bootstrapPublicStore} from './store-public-config.mjs';
+          window.dadosFrete = null; window.freteACombinar = false; window.distanciaFreteKm = null;
+          window.publicStoreReady = bootstrapPublicStore().then(config => {
+            window.publicStoreConfig = config; window.STORE_ID = config?.storeId || null;
+            if(!config) {document.getElementById('checkout-button')?.setAttribute('disabled','');document.getElementById('cart-button')?.setAttribute('disabled','');}
+            return config;
+          });
+        </script>
+
+	<script>
+    // --- LÓGICA DO GOOGLE MAPS (CLIENTE CADASTRADO) ---
+	let map, geocoder, placeAutocomplete, mapIdleListener;
+    window.currentLatLng = null;
+    window.pendingAddressLatLng = null;
+    window.manualAddressLocationConfirmed = false;
+
+    const createInitialAddressFlowState = () => ({
+        currentStep: 1,
+        autocompleteSelection: '',
+        locationConfirmed: false,
+        currentLatLng: null,
+        pendingAddressLatLng: null,
+        formData: {}
+    });
+    window.addressFlowState = window.addressFlowState || createInitialAddressFlowState();
+    const addressFlowState = window.addressFlowState;
+
+    const saveAddressBtn = document.getElementById('save-manual-address-button');
+    const addressStep2ConfirmBtn = document.getElementById('address-step2-confirm-btn');
+    const manualAddressMapWarning = document.getElementById('manual-address-map-warning');
+    const manualAddressMapWarningMessage = manualAddressMapWarning?.querySelector('[data-message]');
+    if(saveAddressBtn) {
+        saveAddressBtn.disabled = true;
+        saveAddressBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    const showManualAddressMapWarning = () => {
+        if (!manualAddressMapWarning) return;
+        manualAddressMapWarning.classList.remove('hidden');
+        if (manualAddressMapWarningMessage) {
+            manualAddressMapWarningMessage.textContent = 'É preciso mover o mapa para ajustar o pino no local da entrega.';
+        }
+        manualAddressMapWarning.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    const clearManualAddressMapWarning = () => {
+        if (!manualAddressMapWarning) return;
+        manualAddressMapWarning.classList.add('hidden');
+    };
+    window.showManualAddressMapWarning = showManualAddressMapWarning;
+    window.clearManualAddressMapWarning = clearManualAddressMapWarning;
+
+	function getManualAddressNickname() {
+      const fallbackNickname = document.getElementById('manual-address-nickname')?.value.trim() || '';
+      const selectedOption = document.querySelector('input[name="manual-address-name-option"]:checked')?.value
+          || document.querySelector('input[name="manual-address-type"]:checked')?.value
+          || document.querySelector('input[name="manual-address-label"]:checked')?.value
+          || '';
+      const customName = document.getElementById('manual-address-custom-name')?.value.trim()
+          || document.getElementById('manual-address-other-name')?.value.trim()
+          || document.getElementById('manual-address-nickname-other')?.value.trim()
+          || '';
+
+      if (!selectedOption) return fallbackNickname;
+
+      if (['outro', 'other'].includes(selectedOption.toLowerCase())) {
+          return customName;
+      }
+
+      return selectedOption.trim();
+    }
+
+	function isValidLatLng(coords) {
+      return Number.isFinite(coords?.lat) && Number.isFinite(coords?.lng);
+    }
+
+    function snapshotManualAddressFormData() {
+      return {
+        street: document.getElementById('manual-address-street')?.value || '',
+        number: document.getElementById('manual-address-number')?.value || '',
+        neighborhood: document.getElementById('manual-address-neighborhood')?.value || '',
+        city: document.getElementById('manual-address-city')?.value || '',
+        zip: document.getElementById('manual-address-zip')?.value || '',
+        complement: document.getElementById('manual-address-complement')?.value || '',
+        reference: document.getElementById('manual-address-reference')?.value || '',
+        nickname: document.getElementById('manual-address-nickname')?.value || '',
+        noNumber: document.getElementById('manual-address-no-number')?.checked || false,
+        frequentLocation: document.getElementById('manual-address-frequent-location')?.checked || false
+      };
+    }
+
+    function applyManualAddressFormData(data = {}) {
+      const valueMap = {
+        'manual-address-street': data.street,
+        'manual-address-number': data.number,
+        'manual-address-neighborhood': data.neighborhood,
+        'manual-address-city': data.city,
+        'manual-address-zip': data.zip,
+        'manual-address-complement': data.complement,
+        'manual-address-reference': data.reference,
+        'manual-address-nickname': data.nickname
+      };
+
+      Object.entries(valueMap).forEach(([id, value]) => {
+        const input = document.getElementById(id);
+        if (input && typeof value === 'string') {
+            input.value = value;
+        }
+      });
+
+      const noNumberCheckbox = document.getElementById('manual-address-no-number');
+      if (noNumberCheckbox) {
+        noNumberCheckbox.checked = !!data.noNumber;
+        const numberInput = document.getElementById('manual-address-number');
+        if (numberInput) {
+            if (noNumberCheckbox.checked) {
+                numberInput.value = 'S/N';
+                numberInput.setAttribute('readonly', 'readonly');
+            } else {
+                numberInput.removeAttribute('readonly');
+                if (numberInput.value === 'S/N' && !data.number) numberInput.value = '';
+            }
+        }
+      }
+
+      const frequentLocationCheckbox = document.getElementById('manual-address-frequent-location');
+      if (frequentLocationCheckbox) {
+        frequentLocationCheckbox.checked = !!data.frequentLocation;
+      }
+    }
+
+    function syncAddressFlowState(nextState = {}) {
+      Object.assign(addressFlowState, nextState);
+      addressFlowState.formData = snapshotManualAddressFormData();
+      addressFlowState.currentLatLng = isValidLatLng(window.currentLatLng) ? { ...window.currentLatLng } : null;
+      addressFlowState.pendingAddressLatLng = isValidLatLng(window.pendingAddressLatLng) ? { ...window.pendingAddressLatLng } : null;
+      addressFlowState.locationConfirmed = !!window.manualAddressLocationConfirmed;
+      if (placeAutocomplete?.value) {
+        addressFlowState.autocompleteSelection = placeAutocomplete.value;
+      }
+    }
+
+    function resetAddressFlowState() {
+      Object.assign(addressFlowState, createInitialAddressFlowState());
+      window.currentLatLng = null;
+      window.pendingAddressLatLng = null;
+      window.manualAddressLocationConfirmed = false;
+      map = null;
+      mapIdleListener = null;
+      const addressMapContainer = document.getElementById('address-map-container');
+      if (addressMapContainer) {
+        addressMapContainer.innerHTML = '';
+      }
+      if (placeAutocomplete && addressFlowState.autocompleteSelection === '') {
+        placeAutocomplete.value = '';
+      }
+      applyManualAddressFormData({ city: 'Goiânia' });
+      validateAddressForm();
+    }
+
+	function validateAddressForm() {
+      syncAddressFlowState();
+	  const rua = document.getElementById('manual-address-street')?.value.trim() || '';
+	  const numero = document.getElementById('manual-address-number')?.value.trim() || '';
+      const semNumero = document.getElementById('manual-address-no-number')?.checked || false;
+	  const bairro = document.getElementById('manual-address-neighborhood')?.value.trim() || '';
+	  const cidade = document.getElementById('manual-address-city')?.value.trim() || '';
+	  const apelido = getManualAddressNickname();
+	  const hasCoords = isValidLatLng(window.currentLatLng);
+	  const hasNumero = semNumero || numero.length > 0;
+	  const hasBasicInfo = rua.length > 0 && hasNumero && bairro.length > 0 && cidade.length > 0 && apelido.length > 0;
+
+      if (addressStep2ConfirmBtn) {
+        addressStep2ConfirmBtn.disabled = !hasCoords;
+        addressStep2ConfirmBtn.classList.toggle('opacity-50', !hasCoords);
+        addressStep2ConfirmBtn.classList.toggle('cursor-not-allowed', !hasCoords);
+      }
+
+	  if (saveAddressBtn) {
+        saveAddressBtn.disabled = !hasBasicInfo;
+        saveAddressBtn.classList.toggle('opacity-50', !hasBasicInfo);
+        saveAddressBtn.classList.toggle('cursor-not-allowed', !hasBasicInfo);
+        saveAddressBtn.setAttribute('aria-disabled', hasBasicInfo ? 'false' : 'true');
+      }
+	}
+
+    function showAddressStep(step) {
+        const normalizedStep = Number.isInteger(step) ? step : 1;
+        syncAddressFlowState({ currentStep: normalizedStep });
+        const step1 = document.getElementById('new-address-step1');
+        const step2 = document.getElementById('new-address-step2');
+        const step3 = document.getElementById('new-address-step3');
+        [step1, step2, step3].forEach((el, idx) => {
+            if (!el) return;
+            el.classList.toggle('hidden', idx !== normalizedStep - 1);
+        });
+        applyManualAddressFormData(addressFlowState.formData);
+        validateAddressForm();
+        window.addressStep = normalizedStep;
+        window.persistCheckoutState?.();
+    }
+    window.showAddressStep = showAddressStep;
+    window.resetAddressFlowState = resetAddressFlowState;
+
+    function fillManualAddressFields(place) {
+        const rawComponents = place?.addressComponents || place?.address_components || [];
+        const normalizeComponent = (component) => {
+            if (!component) return null;
+            const name = component.long_name || component.longName || component.name || component.short_name || component.shortName;
+            return {
+                value: name || '',
+                types: component.types || [],
+            };
+        };
+
+        const components = rawComponents.map(normalizeComponent).filter(Boolean);
+        const get = (type) => components.find((c) => c.types.includes(type))?.value?.trim() || '';
+
+        const formattedAddress = place?.formattedAddress || place?.formatted_address || '';
+        const streetFromPlace = get('route') || formattedAddress.split(',')[0]?.trim();
+        const neighborhoodFromPlace = get('sublocality_level_1') || get('neighborhood') || get('political');
+        const cityFromPlace = get('administrative_area_level_2');
+        const zipFromPlace = get('postal_code');
+
+        const streetInput = document.getElementById('manual-address-street');
+        const neighborhoodInput = document.getElementById('manual-address-neighborhood');
+        const cityInput = document.getElementById('manual-address-city');
+        const zipInput = document.getElementById('manual-address-zip');
+
+        if (streetFromPlace && streetInput) streetInput.value = streetFromPlace;
+        if (neighborhoodFromPlace && neighborhoodInput) neighborhoodInput.value = neighborhoodFromPlace;
+        if (cityInput) {
+            cityInput.value = cityFromPlace || cityInput.value || 'Goiânia';
+        }
+        if (zipFromPlace && zipInput) zipInput.value = zipFromPlace;
+
+        validateAddressForm();
+    }
+
+    function reverseGeocode(latlng) {
+        const normalizedLatLng = {
+            lat: Number(latlng?.lat ?? latlng?.lat()),
+            lng: Number(latlng?.lng ?? latlng?.lng())
+        };
+
+        if (!isValidLatLng(normalizedLatLng)) {
+            showToast('Erro ao obter coordenadas do endereço. Tente novamente.', true);
+            return;
+        }
+
+        geocoder = geocoder || new google.maps.Geocoder();
+        geocoder.geocode({ location: normalizedLatLng }, (results, status) => {
+            if (status === 'OK' && results[0]) {
+                fillManualAddressFields(results[0]);
+                window.currentLatLng = normalizedLatLng;
+                window.pendingAddressLatLng = normalizedLatLng;
+                window.manualAddressLocationConfirmed = false;
+                syncAddressFlowState();
+                return;
+            }
+
+            console.warn('Não foi possível obter dados do endereço no mapa:', status);
+            showToast('Não foi possível identificar o endereço neste ponto do mapa.', true);
+        });
+    }
+
+    async function initAddressStep1Search() {
+        const searchContainer = document.getElementById('address-search-container');
+        const locationBtn = document.getElementById('address-step1-location-btn');
+        if (!searchContainer) return;
+
+        if (!placeAutocomplete) {
+            try {
+                await google.maps.importLibrary("places");
+                placeAutocomplete = new google.maps.places.PlaceAutocompleteElement();
+                placeAutocomplete.className = 'w-full border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500';
+                placeAutocomplete.setAttribute('placeholder', 'Digite o endereço...');
+
+                placeAutocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
+                    try {
+                        const place = placePrediction.toPlace();
+                        await place.fetchFields({ fields: ['location', 'formattedAddress', 'addressComponents'] });
+                        if (place.location) {
+                            const coords = { lat: place.location.lat(), lng: place.location.lng() };
+                            window.pendingAddressLatLng = coords;
+                            window.currentLatLng = coords;
+                            window.manualAddressLocationConfirmed = false;
+                            fillManualAddressFields(place);
+                            addressFlowState.autocompleteSelection = place.formattedAddress || '';
+                            syncAddressFlowState({ currentStep: 2 });
+                            showAddressStep(2);
+                            await initAddressMap(coords);
+                        }
+                    } catch (error) {
+                        console.error('Erro ao buscar detalhes do local:', error);
+                    }
+                });
+            } catch (error) {
+                console.error('Erro ao inicializar autocomplete de endereço:', error);
+            }
+        }
+
+        if (placeAutocomplete && !searchContainer.contains(placeAutocomplete)) {
+            searchContainer.append(placeAutocomplete);
+        }
+
+        if (placeAutocomplete && addressFlowState.autocompleteSelection && !placeAutocomplete.value) {
+            placeAutocomplete.value = addressFlowState.autocompleteSelection;
+        }
+
+        if (locationBtn && !locationBtn.dataset.boundStep1Location) {
+            locationBtn.dataset.boundStep1Location = 'true';
+            locationBtn.addEventListener('click', useCurrentLocationForAddress);
+        }
+    }
+
+    async function initAddressMap(initialCoords) {
+        const addressMapContainer = document.getElementById('address-map-container');
+        if (!addressMapContainer || !initialCoords) return;
+
+        try {
+            geocoder = geocoder || new google.maps.Geocoder();
+            const { Map } = await google.maps.importLibrary("maps");
+
+            let mapShell = addressMapContainer.querySelector('div[data-address-map-shell="true"]');
+            let mapDiv = addressMapContainer.querySelector('div[data-address-map="true"]');
+            if (!mapShell || !mapDiv) {
+                mapShell = document.createElement('div');
+                mapShell.dataset.addressMapShell = 'true';
+                mapShell.style.cssText = 'position:relative; height:300px; width:100%; border-radius:0.5rem; margin-top:0.75rem; overflow:hidden;';
+
+                mapDiv = document.createElement('div');
+                mapDiv.dataset.addressMap = 'true';
+                mapDiv.style.cssText = 'height:100%; width:100%;';
+                mapDiv.style.touchAction = 'none';
+
+                const centerPin = document.createElement('div');
+                centerPin.dataset.addressCenterPin = 'true';
+                centerPin.style.cssText = 'position:absolute; left:50%; top:50%; transform:translate(-50%, -100%); z-index:9999; pointer-events:none; width:28px; height:28px;';
+                centerPin.innerHTML = '<div style="width:26px;height:26px;background:#ef4444;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 8px rgba(0,0,0,.4);position:relative;"><div style="width:9px;height:9px;background:#fff;border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(45deg);"></div></div>';
+
+                mapShell.append(mapDiv, centerPin);
+                addressMapContainer.innerHTML = '';
+                addressMapContainer.append(mapShell);
+            }
+
+            if (!map) {
+                map = new Map(mapDiv, { center: initialCoords, zoom: 17, mapId: 'DEMO_MAP_ID', gestureHandling: 'greedy' });
+
+                if (mapIdleListener) {
+                    google.maps.event.removeListener(mapIdleListener);
+                }
+                mapIdleListener = map.addListener('idle', () => {
+                    const center = map.getCenter();
+                    if (!center) return;
+                    const centerCoords = { lat: center.lat(), lng: center.lng() };
+                    reverseGeocode(centerCoords);
+                });
+            } else {
+                map.setCenter(initialCoords);
+                map.setZoom(17);
+            }
+
+            window.manualAddressLocationConfirmed = false;
+            reverseGeocode(initialCoords);
+            validateAddressForm();
+        } catch (error) {
+            console.error("Erro ao inicializar o mapa:", error);
+            addressMapContainer.innerHTML = `<div class="bg-red-50 p-4 rounded-lg text-red-700">Erro ao carregar o mapa.</div>`;
+        }
+    }
+
+    async function useCurrentLocationForAddress() {
+        if (!navigator.geolocation) {
+            showToast('Geolocalização não suportada.', true);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                window.pendingAddressLatLng = coords;
+                window.currentLatLng = coords;
+                window.manualAddressLocationConfirmed = false;
+                syncAddressFlowState({ currentStep: 2 });
+                showAddressStep(2);
+                await initAddressMap(coords);
+            },
+            (err) => showToast('Não foi possível obter localização: ' + err.message, true)
+        );
+    }
+
+    ['manual-address-number','manual-address-nickname','manual-address-custom-name','manual-address-other-name','manual-address-nickname-other']
+    .forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.addEventListener('input', validateAddressForm);
+    });
+
+    ['manual-address-name-option', 'manual-address-type', 'manual-address-label'].forEach((groupName) => {
+        document.querySelectorAll(`input[name="${groupName}"]`).forEach((el) => {
+            el.addEventListener('change', validateAddressForm);
+        });
+    });
+
+    const noNumberCheckbox = document.getElementById('manual-address-no-number');
+    if (noNumberCheckbox) {
+        noNumberCheckbox.addEventListener('change', () => {
+            const numberInput = document.getElementById('manual-address-number');
+            if (!numberInput) return;
+            if (noNumberCheckbox.checked) {
+                numberInput.value = 'S/N';
+                numberInput.setAttribute('readonly', 'readonly');
+            } else {
+                numberInput.removeAttribute('readonly');
+                if (numberInput.value === 'S/N') numberInput.value = '';
+            }
+            validateAddressForm();
+        });
+    }
+	</script>
+
+    <script type="module">
+        import {
+            getAuth,
+            signInAnonymously,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import {
+            getFunctions,
+            httpsCallable
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js";
+        import {
+            app
+        } from "./firebaseClientConfig.js?v=20261015-persistence";
+
+        import {createCartOwnerObserver} from './canonical-session.mjs?v=20261015-fcm-delete';
+        import {apiBaseUrl} from './checkout-environment.js';
+        import {createPageCartBridge,stockLimit} from './reorder-cart.mjs';
+        import {installCustomerAccount} from './customer-account.js?v=20261015-persistence';
+        import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
+        import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
+        import {fetchPublicStore} from './store-public-config.mjs';
+        import {STORE_AVAILABILITY, getStoreAvailabilityMessage} from './store-availability.mjs';
+        let publicStore = await window.publicStoreReady;
+        if (publicStore) {
+        function resetWhatsAppConsent() {
+            ['platform-whatsapp-consent', 'guest-whatsapp-consent'].forEach((id) => {
+                const checkbox = document.getElementById(id);
+                if (checkbox) checkbox.checked = false;
+            });
+        }
+        resetWhatsAppConsent();
+        window.addEventListener('pageshow', resetWhatsAppConsent);
+
+        // --- VARIÁVEIS GLOBAIS ---
+        const WHATSAPP_NUMBER = '5562991056075';
+        const API_BASE_URL = apiBaseUrl;
+        window.API_BASE_URL = API_BASE_URL;
+        const escapeCheckoutText = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const STORE_ID = publicStore.storeId;
+        const CONFIG_DOC_ID = 'config';
+        const CONFIG_COLLECTIONS = new Set(['cupons', 'logs']);
+        const storeConfigDocPath = (...segments) => ['lojas', STORE_ID, 'configuracoes', CONFIG_DOC_ID, ...segments];
+        const storePath = (...segments) => {
+            if (!segments.length) return ['lojas', STORE_ID];
+
+            const [first, ...rest] = segments;
+            if (CONFIG_COLLECTIONS.has(first)) {
+                return storeConfigDocPath(first, ...rest);
+            }
+
+            if (first === 'clientes') {
+                return ['clientes', ...rest];
+            }
+
+            return ["lojas", STORE_ID, first, ...rest];
+        };
+        let allProducts = [], cart = [], currentClient = null, pendingOrderDetails = {}, appliedCupom = null;
+        const CHECKOUT_STORAGE_KEY = 'checkoutState_v1';
+        let addressStep = Number.isInteger(window.addressFlowState?.currentStep) ? window.addressFlowState.currentStep : 1;
+        const createInitialGuestAddressFlowState = () => ({
+            currentStep: 1,
+            locationConfirmed: false,
+            formData: {},
+            autocompleteSelection: ''
+        });
+        window.guestAddressFlowState = window.guestAddressFlowState || createInitialGuestAddressFlowState();
+        window.guestAddressStep = Number.isInteger(window.guestAddressFlowState?.currentStep) ? window.guestAddressFlowState.currentStep : 1;
+        window.guestManualAddressLocationConfirmed = !!window.guestAddressFlowState?.locationConfirmed;
+        const subcategoryOrder = ['Queridinhos', 'Bolo no pote', 'Copo da felicidade', 'Bombom aberto', 'Pipoca', 'Cone recheado', 'Bolo gelado', 'Bombom recheado'];
+        window.valorFrete = 0;
+                window.guestCurrentLatLng = null;
+        let storeConfig = null;
+        let storeConfigListenerUnsubscribe = null;
+        let productListenerUnsubscribe = null;
+        let storeAvailability = STORE_AVAILABILITY.CONFIG_UNAVAILABLE;
+        let storeIsOpenNow = false;
+        let checkoutBlockingIssue = null;
+        let reorderOwnerUid = null;
+
+        // --- SELEÇÃO DE ELEMENTOS DOM ---
+        const productList = document.getElementById('product-list'),
+              subcategoryNav = document.getElementById('subcategory-nav'),
+              loadingMessage = document.getElementById('loading-message'),
+              storeStatusBanner = document.getElementById('store-status-banner'),
+              cartButton = document.getElementById('cart-button'),
+              cartModal = document.getElementById('cart-modal'),
+              closeCartButton = document.getElementById('close-cart'),
+              cartItemsContainer = document.getElementById('cart-items'),
+              cartCount = document.getElementById('cart-count'),
+              cartSubtotal = document.getElementById('cart-subtotal'),
+              cartDiscountLine = document.getElementById('discount-line'),
+              cartDiscount = document.getElementById('cart-discount'),
+              cartShippingLine = document.getElementById('shipping-line'),
+              cartShipping = document.getElementById('cart-shipping'),
+              cartTotal = document.getElementById('cart-total'),
+              checkoutButton = document.getElementById('checkout-button'),
+              identificationModal = document.getElementById('identification-modal'),
+              usePhoneButton = document.getElementById('use-phone-button'),
+              continueGuestButton = document.getElementById('continue-guest-button'),
+              closeIdentificationModal = document.getElementById('close-identification-modal'),
+
+              guestCheckoutModal = document.getElementById('guest-checkout-modal'),
+              closeGuestCheckoutModal = document.getElementById('close-guest-checkout-modal'),
+              sendWhatsappButton = document.getElementById('send-whatsapp-button'),
+              guestNameInput = document.getElementById('guest-name'),
+              guestPhoneInput = document.getElementById('guest-phone'),
+              guestAddressFullInput = document.getElementById('guest-address-full'),
+              guestAddressNumberInput = document.getElementById('guest-address-number'),
+              guestAddressComplementInput = document.getElementById('guest-address-complement'),
+              guestPaymentMethodSelect = document.getElementById('guest-payment-method'),
+
+              phoneLoginModal = document.getElementById('phone-login-modal'),
+              closePhoneLoginModal = document.getElementById('close-phone-login-modal'),
+              phoneInput = document.getElementById('phone-input'),
+              phoneError = document.getElementById('phone-error'),
+              searchPhoneButton = document.getElementById('search-phone-button'),
+              addressManagementModal = document.getElementById('address-management-modal'),
+              addressModalTitle = document.getElementById('address-modal-title'),
+              confirmCustomerName = document.getElementById('confirm-customer-name'),
+              addressList = document.getElementById('address-list'),
+              closeAddressManagementModal = document.getElementById('close-address-management-modal'),
+              paymentModal = document.getElementById('payment-modal'),
+              closePaymentModal = document.getElementById('close-payment-modal'),
+              backToAddressButton = document.getElementById('back-to-address'),
+              selectedAddressText = document.getElementById('selected-address-text'),
+              paymentMethodSelect = document.getElementById('payment-method-select'),
+              confirmOrderButton = document.getElementById('confirm-order-button'),
+              paymentError = document.getElementById('payment-error'),
+              confirmationModal = document.getElementById('confirmation-modal'),
+              closeConfirmationButton = document.getElementById('close-confirmation'),
+              platformConfirmationModal = document.getElementById('platform-confirmation-modal'),
+              closePlatformConfirmationButton = document.getElementById('close-platform-confirmation'),
+              toast = document.getElementById('toast'),
+              toastMessage = document.getElementById('toast-message'),
+              paymentCupomInput = document.getElementById('payment-cupom-input'),
+              paymentVerifyCupomButton = document.getElementById('payment-verify-cupom-button'),
+              paymentCupomMessage = document.getElementById('payment-cupom-message');
+
+        // --- INICIALIZAÇÃO DA APLICAÇÃO ---
+        window.appInitialized = false;
+
+        async function startAppFlow(reason = 'sessão anônima') {
+            if (window.appInitialized) return;
+            window.appInitialized = true;
+            try {
+                console.log(`🚀 Inicializando aplicação (${reason})...`);
+                await fetchStoreConfig();
+                await listenToStoreConfig();
+                await listenToProducts();
+                setupEventListeners();
+                renderCart();
+                console.log("✅ Aplicação inicializada com sucesso!");
+            } catch (error) {
+                console.error('❌ Erro ao carregar a aplicação:', error);
+                showToast('Erro ao carregar a aplicação.', true);
+            }
+        }
+
+        async function initApp() {
+            // Auth is resolved independently by firebaseClientConfig/customerAccount.
+            // Public store configuration and products must not wait for that session.
+            await startAppFlow('catálogo público');
+        }
+
+
+        function mapCriticalCheckoutError(error, fallbackMessage = 'Não foi possível concluir a operação agora.') {
+            const rawCode = String(error?.code || '').toLowerCase();
+            const rawMessage = String(error?.message || '').toLowerCase();
+
+            if (rawCode.includes('permission-denied') || rawCode.includes('unauthenticated') || rawMessage.includes('permission') || rawMessage.includes('insufficient permissions')) {
+                return 'Sua sessão expirou ou não tem permissão para continuar. Faça login novamente e tente de novo.';
+            }
+
+            if (rawCode.includes('unavailable') || rawCode.includes('network') || rawMessage.includes('failed to fetch') || rawMessage.includes('networkerror')) {
+                return 'Sem conexão com o servidor no momento. Verifique sua internet e tente novamente.';
+            }
+
+            return error?.message || fallbackMessage;
+        }
+
+        function setCheckoutBlockingIssue(type, message) {
+            checkoutBlockingIssue = { type, message };
+            if (paymentError) {
+                paymentError.textContent = message;
+                paymentError.classList.remove('hidden');
+            }
+        }
+
+        function clearCheckoutBlockingIssue(type = null) {
+            if (!checkoutBlockingIssue) return;
+            if (type && checkoutBlockingIssue.type !== type) return;
+            checkoutBlockingIssue = null;
+            if (paymentError) {
+                paymentError.textContent = '';
+                paymentError.classList.add('hidden');
+            }
+        }
+
+        window.mapCriticalCheckoutError = mapCriticalCheckoutError;
+        window.setCheckoutBlockingIssue = setCheckoutBlockingIssue;
+        window.clearCheckoutBlockingIssue = clearCheckoutBlockingIssue;
+
+        function ensureCheckoutNotBlocked(clientInfo = pendingOrderDetails) {
+            if (!checkoutBlockingIssue) return;
+            if (checkoutBlockingIssue.type === 'frete' && clientInfo?.clienteEndereco === 'Retirar na Loja') {
+                clearCheckoutBlockingIssue('frete');
+                return;
+            }
+            const message = checkoutBlockingIssue.message || 'Há uma pendência de conexão/sessão. Tente novamente.';
+            showToast(message, true);
+            if (paymentError) {
+                paymentError.textContent = message;
+                paymentError.classList.remove('hidden');
+            }
+            throw new Error(message);
+        }
+
+        async function revalidateCheckoutBeforeFinalSubmit(clientInfo) {
+            ensureCheckoutNotBlocked(clientInfo);
+
+            if (clientInfo?.clienteEndereco !== 'Retirar na Loja') {
+                const response = await fetch(`${API_BASE_URL}/frete/calcular?lojaId=${encodeURIComponent(STORE_ID)}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({clienteEndereco: clientInfo.clienteEndereco})
+                });
+                const currentQuote = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const message = currentQuote.message || 'Confirme novamente o endereço de entrega.';
+                    setCheckoutBlockingIssue('frete', message);
+                    throw new Error(message);
+                }
+                window.valorFrete = Number(currentQuote.valorFrete);
+                window.distanciaFreteKm = currentQuote.distanciaKm == null ? null : Number(currentQuote.distanciaKm);
+                window.freteACombinar = currentQuote.freteACombinar === true;
+                updateAllSummaries();
+            }
+
+            if (clientInfo?.clienteEndereco !== 'Retirar na Loja' && !Number.isFinite(window.valorFrete)) {
+                const message = 'Não foi possível validar o frete deste pedido. Confirme o endereço novamente.';
+                setCheckoutBlockingIssue('frete', message);
+                throw new Error(message);
+            }
+
+            await revalidateCartProductsBeforeSubmit();
+
+            if (appliedCupom) {
+                const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
+                try {
+                    const response = await fetch(`${API_BASE_URL}/cupons/verificar?lojaId=${encodeURIComponent(STORE_ID)}`, {
+                        method: 'POST',
+                        cache: 'no-store',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Cache-Control': 'no-cache'
+                        },
+                        body: JSON.stringify({ codigo: appliedCupom.codigo, totalCarrinho: subtotal })
+                    });
+                    const responseData = await response.json().catch(() => ({}));
+                    if (!response.ok || !responseData?.valido || !responseData?.cupom) {
+                        throw new Error(responseData?.mensagem || 'Cupom inválido ou indisponível no momento.');
+                    }
+                    clearCheckoutBlockingIssue('cupom');
+                } catch (error) {
+                    const message = mapCriticalCheckoutError(error, 'Não foi possível revalidar o cupom agora.');
+                    setCheckoutBlockingIssue('cupom', message);
+                    throw new Error(message);
+                }
+            }
+        }
+
+        function persistCheckoutState() {
+            try {
+                const checkoutState = {
+                    storeId: STORE_ID,
+                    savedAt: Date.now(),
+                    ...(reorderOwnerUid ? {reorderOwnerUid} : {}),
+                    cart: cart.map(item => ({
+                        id: item.id || item.produtoId,
+                        produtoId: item.produtoId || item.id,
+                        nome: item.nome,
+                        preco: Number(item.preco || 0),
+                        quantity: Number(item.quantity || 0),
+                        updatedFromFirestoreAt: item.updatedFromFirestoreAt || null
+                    })),
+                    pendingOrderDetails,
+                    guestCurrentLatLng: window.guestCurrentLatLng || null,
+                    guestAddressFlowState: window.guestAddressFlowState || createInitialGuestAddressFlowState(),
+                    guestManualAddressLocationConfirmed: !!window.guestManualAddressLocationConfirmed,
+                    valorFrete: Number.isFinite(window.valorFrete) ? window.valorFrete : 0,
+                    distanciaFreteKm: window.distanciaFreteKm,
+                    addressStep: Number.isInteger(window.addressFlowState?.currentStep)
+                        ? window.addressFlowState.currentStep
+                        : (Number.isInteger(addressStep) ? addressStep : 1)
+                };
+                sessionStorage.setItem(CHECKOUT_STORAGE_KEY, JSON.stringify(checkoutState));
+            } catch (error) {
+                console.warn('Não foi possível persistir o checkout:', error);
+            }
+        }
+
+        function restoreCheckoutState() {
+            try {
+                const rawState = sessionStorage.getItem(CHECKOUT_STORAGE_KEY);
+                if (!rawState) return;
+
+                const savedState = JSON.parse(rawState);
+                if (savedState.reorderOwnerUid && savedState.reorderOwnerUid !== getAuth(app).currentUser?.uid) {
+                    clearCheckoutState(); return;
+                }
+                reorderOwnerUid = savedState.reorderOwnerUid || null;
+                if (savedState?.storeId && savedState.storeId !== STORE_ID) {
+                    clearCheckoutState();
+                    return;
+                }
+
+                cart = Array.isArray(savedState?.cart)
+                    ? savedState.cart
+                        .map(item => ({
+                            id: item.id || item.produtoId,
+                            produtoId: item.produtoId || item.id,
+                            nome: item.nome,
+                            preco: Number(item.preco || 0),
+                            quantity: Number(item.quantity || 0),
+                            updatedFromFirestoreAt: item.updatedFromFirestoreAt || null
+                        }))
+                        .filter(item => item.id && item.quantity > 0)
+                    : [];
+                pendingOrderDetails = (savedState?.pendingOrderDetails && typeof savedState.pendingOrderDetails === 'object')
+                    ? savedState.pendingOrderDetails
+                    : {};
+                window.guestCurrentLatLng = savedState?.guestCurrentLatLng || null;
+                window.guestAddressFlowState = (savedState?.guestAddressFlowState && typeof savedState.guestAddressFlowState === 'object')
+                    ? { ...createInitialGuestAddressFlowState(), ...savedState.guestAddressFlowState }
+                    : createInitialGuestAddressFlowState();
+                window.guestManualAddressLocationConfirmed = !!savedState?.guestManualAddressLocationConfirmed || !!window.guestAddressFlowState?.locationConfirmed;
+                window.guestAddressStep = Number.isInteger(window.guestAddressFlowState?.currentStep) ? window.guestAddressFlowState.currentStep : 1;
+                window.valorFrete = Number.isFinite(savedState?.valorFrete) ? savedState.valorFrete : 0;
+                window.distanciaFreteKm = Number.isFinite(savedState?.distanciaFreteKm) ? savedState.distanciaFreteKm : null;
+                if (window.freteACombinar) window.valorFrete = 0;
+                addressStep = Number.isInteger(savedState?.addressStep) ? savedState.addressStep : 1;
+                if (window.addressFlowState) {
+                    window.addressFlowState.currentStep = addressStep;
+                }
+
+
+                if (selectedAddressText && pendingOrderDetails?.clienteEndereco) {
+                    selectedAddressText.textContent = pendingOrderDetails.clienteEndereco;
+                }
+
+                renderCart();
+                updateAllSummaries();
+                if (typeof window.showAddressStep === 'function') {
+                    window.showAddressStep(addressStep);
+                }
+            } catch (error) {
+                console.warn('Não foi possível restaurar o checkout salvo:', error);
+                clearCheckoutState();
+            }
+        }
+
+        function clearCheckoutState() {
+            sessionStorage.removeItem(CHECKOUT_STORAGE_KEY);
+        }
+
+        window.persistCheckoutState = persistCheckoutState;
+        window.restoreCheckoutState = restoreCheckoutState;
+        window.clearCheckoutState = clearCheckoutState;
+
+        // --- FUNÇÕES PRINCIPAIS ---
+
+        // Funções de Produtos
+        async function fetchStoreConfig() {
+            const config = await fetchPublicStore({storeId:STORE_ID,channelId:publicStore.channel?.id || null});
+            publicStore = config; window.publicStoreConfig = config;
+            storeConfig = config.schedule; syncStoreAvailabilityStatus();
+        }
+
+        function normalizeActiveProducts(products = []) {
+            return products.filter((product) => {
+                const status = product.status || 'Ativo';
+                const isExplicitlyInactive = product.ativo === false || status === 'Inativo';
+
+                return !isExplicitlyInactive && status === 'Ativo';
+            });
+        }
+
+        function findLatestProductForCartItem(item) {
+            const productId = item?.id || item?.produtoId;
+            return allProducts.find(product => product.id === productId) || null;
+        }
+
+        function reconcileCartWithLatestProducts({ notify = false } = {}) {
+            if (!cart.length) return false;
+
+            let changed = false;
+            const messages = [];
+            const nextCart = [];
+
+            cart.forEach((item) => {
+                const latestProduct = findLatestProductForCartItem(item);
+                const productLabel = item.nome || item.id || 'produto';
+
+                if (!latestProduct) {
+                    changed = true;
+                    messages.push(`${productLabel} saiu do cardápio e foi removido do carrinho.`);
+                    return;
+                }
+
+                const requestedQuantity = Number(item.quantity || 0);
+                const currentStock = stockLimit(latestProduct);
+                if (Number.isFinite(currentStock) && currentStock <= 0) {
+                    changed = true;
+                    messages.push(`${latestProduct.nome || productLabel} está sem estoque e foi removido do carrinho.`);
+                    return;
+                }
+
+                let nextQuantity = requestedQuantity;
+                if (Number.isFinite(currentStock) && requestedQuantity > currentStock) {
+                    nextQuantity = currentStock;
+                    changed = true;
+                    messages.push(`${latestProduct.nome || productLabel} teve a quantidade ajustada ao estoque atual (${currentStock}).`);
+                }
+
+                if (!Number.isFinite(nextQuantity) || nextQuantity <= 0) {
+                    changed = true;
+                    return;
+                }
+
+                const latestPrice = Number(latestProduct.preco || 0);
+                const previousPrice = Number(item.preco || 0);
+                if (Math.abs(latestPrice - previousPrice) > 0.009) {
+                    changed = true;
+                    messages.push(`${latestProduct.nome || productLabel} teve o preço atualizado para R$ ${latestPrice.toFixed(2)}.`);
+                }
+
+                if ((latestProduct.nome || '') && latestProduct.nome !== item.nome) {
+                    changed = true;
+                    messages.push(`${productLabel} foi atualizado para ${latestProduct.nome}.`);
+                }
+
+                nextCart.push({
+                    id: latestProduct.id,
+                    produtoId: latestProduct.id,
+                    nome: latestProduct.nome || item.nome,
+                    preco: latestPrice,
+                    quantity: nextQuantity,
+                    updatedFromFirestoreAt: Date.now()
+                });
+            });
+
+            if (!changed) return false;
+
+            cart = nextCart;
+            if (appliedCupom) {
+                appliedCupom = null;
+                messages.push('Cupom removido para revalidar o desconto com o carrinho atualizado.');
+                [paymentCupomInput].filter(Boolean).forEach(input => { input.value = ''; input.disabled = false; });
+                [paymentVerifyCupomButton].filter(Boolean).forEach(btn => { btn.textContent = 'Aplicar'; btn.classList.replace('bg-red-600', 'bg-gray-600'); });
+                [paymentCupomMessage].filter(Boolean).forEach(msg => { msg.textContent = ''; });
+                clearCheckoutBlockingIssue('cupom');
+            }
+
+            renderCart();
+            updateAllSummaries();
+            persistCheckoutState();
+
+            if (notify && messages.length) {
+                showToast(messages.slice(0, 2).join(' '), true);
+            }
+
+            return true;
+        }
+
+        function applyLatestProducts(products, { notifyCartChanges = false } = {}) {
+            allProducts = normalizeActiveProducts(products);
+            console.log(`✅ ${allProducts.length} produtos sincronizados`);
+            const cartChanged = reconcileCartWithLatestProducts({ notify: notifyCartChanges });
+            renderMenu();
+            if (!cartChanged) {
+                renderCart();
+            }
+            loadingMessage.style.display = 'none';
+            return cartChanged;
+        }
+
+        async function listenToStoreConfig() {
+            if (storeConfigListenerUnsubscribe) storeConfigListenerUnsubscribe();
+            const refresh=()=>fetchStoreConfig().catch(()=>{
+                storeIsOpenNow=false;storeAvailability=STORE_AVAILABILITY.CONFIG_UNAVAILABLE;updateStoreAvailabilityUI();
+            });
+            const timer=setInterval(refresh,60000);window.addEventListener('focus',refresh);
+            storeConfigListenerUnsubscribe=()=>{clearInterval(timer);window.removeEventListener('focus',refresh);};
+            window.addEventListener('pagehide',storeConfigListenerUnsubscribe,{once:true});
+        }
+
+        async function listenToProducts() {
+            const { db, collection, onSnapshot } = await import('./firebaseClientConfig.js?v=20261015-persistence');
+            if (productListenerUnsubscribe) productListenerUnsubscribe();
+
+            return new Promise((resolve, reject) => {
+                let initialResolved = false;
+                productListenerUnsubscribe = onSnapshot(collection(db, ...storePath("produtos")), (snapshot) => {
+                    const products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    applyLatestProducts(products, { notifyCartChanges: initialResolved });
+
+                    if (!initialResolved) {
+                        initialResolved = true;
+                        resolve();
+                    }
+                }, (error) => {
+                    console.error("❌ Erro ao sincronizar produtos:", error);
+                    loadingMessage.innerHTML = `
+                        <div class="text-center">
+                            <p class="text-red-500 text-lg font-bold mb-2">Erro ao carregar o cardápio</p>
+                            <p class="text-gray-600 text-sm">${error.message}</p>
+                            <button onclick="location.reload()" class="mt-4 bg-pink-600 text-white px-4 py-2 rounded-lg hover:bg-pink-700">
+                                Tentar Novamente
+                            </button>
+                        </div>
+                    `;
+                    showToast("Erro ao sincronizar produtos: " + error.message, true);
+                    if (!initialResolved) {
+                        initialResolved = true;
+                        reject(error);
+                    }
+                });
+            });
+        }
+
+        async function fetchProducts() {
+            try {
+                console.log("🔄 Revalidando produtos do Firebase...");
+                const { db, collection, getDocs } = await import('./firebaseClientConfig.js?v=20261015-persistence');
+                const productsSnapshot = await getDocs(collection(db, ...storePath("produtos")));
+                const products = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                return applyLatestProducts(products, { notifyCartChanges: false });
+            } catch (error) {
+                console.error("❌ Erro ao revalidar produtos:", error);
+                throw error;
+            }
+        }
+
+        async function revalidateCartProductsBeforeSubmit() {
+            const changed = await fetchProducts();
+            if (cart.length === 0) {
+                const message = 'Seu carrinho ficou vazio após atualizar o cardápio. Adicione os produtos novamente.';
+                setCheckoutBlockingIssue('produtos', message);
+                throw new Error(message);
+            }
+
+            if (changed) {
+                const message = 'Atualizamos preço, estoque ou disponibilidade do carrinho. Revise os itens e confirme novamente.';
+                setCheckoutBlockingIssue('produtos', message);
+                showToast(message, true);
+                throw new Error(message);
+            }
+
+            clearCheckoutBlockingIssue('produtos');
+        }
+
+        function renderMenu() {
+            const deliveryProducts = allProducts.filter(p => p.categoria === publicStore.catalog.category);
+
+            if (deliveryProducts.length === 0) {
+                productList.innerHTML = `
+                    <div class="text-center py-16">
+                        <i class="fas fa-exclamation-triangle text-4xl text-yellow-500 mb-4"></i>
+                        <p class="text-gray-600 text-lg">Nenhum produto disponível para delivery no momento.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const productsBySubcategory = deliveryProducts.reduce((acc, product) => {
+                const sub = product.subcategoria || 'Outros';
+                if (!acc[sub]) acc[sub] = [];
+                acc[sub].push(product);
+                return acc;
+            }, {});
+
+            const availableSubcategories = subcategoryOrder.filter(sub => productsBySubcategory[sub]?.length > 0);
+            const otherSubcategories = Object.keys(productsBySubcategory)
+                .filter(sub => !subcategoryOrder.includes(sub) && productsBySubcategory[sub]?.length > 0);
+
+            const allSubcategories = [...availableSubcategories, ...otherSubcategories];
+
+            productList.innerHTML = '';
+            subcategoryNav.innerHTML = '';
+
+            allSubcategories.forEach(sub => {
+                const slug = sub.toLowerCase().replace(/\s+/g, '-');
+                const link = document.createElement('a');
+                link.href = `#${slug}`;
+                link.textContent = sub;
+                link.className = 'py-4 text-sm font-semibold text-gray-500 border-b-2 border-transparent hover:text-pink-600 transition-colors';
+                subcategoryNav.appendChild(link);
+            });
+
+            allSubcategories.forEach(sub => {
+                const slug = sub.toLowerCase().replace(/\s+/g, '-');
+                const section = document.createElement('section');
+                section.id = slug;
+                section.className = 'mb-12';
+
+                section.innerHTML = `
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6 border-b border-gray-200 pb-2">${sub}</h2>
+                `;
+
+                const grid = document.createElement('div');
+                grid.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6';
+
+                productsBySubcategory[sub].forEach(product => {
+                    grid.innerHTML += createProductCard(product);
+                });
+
+                section.appendChild(grid);
+                productList.appendChild(section);
+            });
+
+            setupScrollSpy();
+        }
+
+        function createProductCard(product) {
+            const isOutOfStock = product.estoque !== null && product.estoque <= 0;
+            const imageUrl = product.imageUrl || 'https://placehold.co/600x400/FFC0CB/FFFFFF?text=Doce+Ana+Guimarães';
+
+            return `
+                <div class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col h-full transform hover:scale-105 transition-transform duration-300 ${isOutOfStock ? 'opacity-50 grayscale' : ''}">
+                    <img src="${imageUrl}" alt="${product.nome}"
+                         class="w-full h-48 object-cover"
+                         onerror="this.src='https://placehold.co/600x400/FFC0CB/FFFFFF?text=Doce+Ana+Guimarães'">
+                    <div class="p-4 flex flex-col flex-grow justify-between">
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800 leading-tight mb-2">${product.nome}</h3>
+                            <p class="text-gray-600 text-sm mb-3">${product.descricao || 'Delicioso produto da Ana Guimarães Doceria'}</p>
+                        </div>
+                        <div class="flex justify-between items-center mt-auto">
+                            <span class="text-lg font-bold text-pink-600">R$ ${product.preco?.toFixed(2) || '0,00'}</span>
+                            <button class="bg-pink-600 text-white font-bold py-2 px-4 rounded-md hover:bg-pink-700 transition-colors ${isOutOfStock ? 'cursor-not-allowed bg-gray-300' : ''}"
+                                    onclick="addToCart('${product.id}')"
+                                    ${isOutOfStock ? 'disabled' : ''}>
+                                ${isOutOfStock ? 'Esgotado' : 'Adicionar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Funções do Carrinho
+        window.addToCart = (productId) => {
+            const product = allProducts.find(p => p.id === productId);
+            if (!product) {
+                showToast('Produto não encontrado!', true);
+                return;
+            }
+
+            const existingItem = cart.find(item => item.id === productId);
+            if (product.estoque !== null && (existingItem?.quantity || 0) >= product.estoque) {
+                showToast('Quantidade máxima em estoque atingida!', true);
+                return;
+            }
+
+            if (existingItem) {
+                existingItem.quantity++;
+            } else {
+                cart.push({
+                    id: product.id,
+                    nome: product.nome,
+                    preco: product.preco,
+                    quantity: 1
+                });
+            }
+
+            renderCart();
+            persistCheckoutState();
+            showToast(`${product.nome} adicionado ao carrinho!`);
+        };
+
+        window.removeFromCart = (productId) => {
+            cart = cart.filter(item => item.id !== productId);
+            renderCart();
+            persistCheckoutState();
+            showToast('Item removido do carrinho', true);
+        };
+
+        window.updateQuantity = (productId, change) => {
+            const item = cart.find(item => item.id === productId);
+            if (!item) return;
+
+            if (change > 0) {
+                const product = allProducts.find(p => p.id === productId);
+                if (product.estoque !== null && item.quantity >= product.estoque) {
+                    showToast('Quantidade máxima em estoque atingida!', true);
+                    return;
+                }
+            }
+
+            item.quantity += change;
+            if (item.quantity <= 0) {
+                removeFromCart(productId);
+            } else {
+                renderCart();
+                persistCheckoutState();
+            }
+        };
+
+        function renderCart() {
+            cartItemsContainer.innerHTML = cart.length === 0
+                ? '<p class="text-gray-500 text-center py-8">Seu carrinho está vazio.</p>'
+                : cart.map(item => `
+                    <div class="flex justify-between items-center mb-4 p-3 bg-gray-50 rounded-lg">
+                        <div class="flex-1">
+                            <p class="font-bold text-gray-800">${escapeCheckoutText(item.nome)}</p>
+                            <p class="text-sm text-gray-500">R$ ${item.preco.toFixed(2)}</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button class="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                                    onclick="updateQuantity('${item.id}', -1)">-</button>
+                            <span class="font-semibold min-w-8 text-center">${item.quantity}</span>
+                            <button class="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center"
+                                    onclick="updateQuantity('${item.id}', 1)">+</button>
+                            <button onclick="removeFromCart('${item.id}')" class="text-red-500 hover:text-red-700 ml-2">
+                                <i class="fa-solid fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+
+            updateCartInfo();
+        }
+
+		function updateCartInfo() {
+			const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+			const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
+			const desconto = appliedCupom?.valorDesconto || 0;
+			const total = checkoutTotal(subtotal, desconto, pendingOrderDetails?.clienteEndereco === "Retirar na Loja");
+
+			cartCount.textContent = totalItems;
+			cartSubtotal.textContent = `R$ ${subtotal.toFixed(2)}`;
+			cartTotal.textContent = `R$ ${total.toFixed(2)}`;
+
+			if (desconto > 0) {
+				cartDiscount.textContent = `- R$ ${desconto.toFixed(2)}`;
+				cartDiscountLine.classList.remove('hidden');
+			} else {
+				cartDiscountLine.classList.add('hidden');
+			}
+
+			if (window.freteACombinar && pendingOrderDetails?.clienteEndereco !== 'Retirar na Loja') {
+                cartShipping.textContent = 'A Combinar';
+                cartShippingLine.classList.remove('hidden');
+            } else if (window.valorFrete > 0 && pendingOrderDetails?.clienteEndereco !== 'Retirar na Loja') {
+				cartShipping.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
+				cartShippingLine.classList.remove('hidden');
+			} else {
+                // Modificação para mostrar R$ 0,00 se o frete for zero, mesmo se a linha não estiver oculta (caso de retirada)
+				cartShipping.textContent = `R$ 0,00`;
+                // A linha só fica oculta se não for retirada na loja E o frete for zero.
+                // Se for retirada na loja, a linha aparece, mas com valor R$ 0,00.
+                if (pendingOrderDetails?.clienteEndereco !== "Retirar na Loja") {
+				    cartShippingLine.classList.add('hidden');
+                } else {
+                    cartShippingLine.classList.remove('hidden'); // Garante que a linha apareça para Retirada
+                }
+			}
+		}
+
+
+        // Funções de Navegação
+        function setupScrollSpy() {
+            const sections = document.querySelectorAll('#product-list section');
+            const navLinks = document.querySelectorAll('#subcategory-nav a');
+
+            if (sections.length === 0 || navLinks.length === 0) return;
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting && entry.target.id) {
+                        navLinks.forEach(link => {
+                            const targetId = (link.getAttribute('href') || '').substring(1);
+                            link.classList.toggle('active', targetId === entry.target.id);
+                            if (targetId === entry.target.id) {
+                                link.style.color = '#db2777';
+                                link.style.borderBottomColor = '#db2777';
+                            } else {
+                                link.style.color = '';
+                                link.style.borderBottomColor = '';
+                            }
+                        });
+                    }
+                });
+            }, { rootMargin: '-150px 0px -50% 0px', threshold: 0.1 });
+
+            sections.forEach(section => observer.observe(section));
+        }
+
+        // Toast Notifications
+        function showToast(message, isError = false) {
+            toastMessage.textContent = message;
+            toast.className = `fixed bottom-5 right-5 text-white py-2 px-4 rounded-lg shadow-lg opacity-0 transform translate-y-2 ${isError ? 'bg-red-500' : 'bg-green-500'}`;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.remove('opacity-0', 'translate-y-2');
+            }, 10);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.classList.add('hidden'), 500);
+            }, 3000);
+        }
+        window.showToast = showToast;
+
+        function updateStoreAvailabilityUI() {
+            const noFulfillment = !publicStore.pickup.enabled && !publicStore.delivery.available;
+            const isUnavailable = !storeIsOpenNow || noFulfillment;
+            if (checkoutButton) checkoutButton.disabled = isUnavailable;
+            if (checkoutButton) checkoutButton.classList.toggle('opacity-60', isUnavailable);
+            if (checkoutButton) checkoutButton.classList.toggle('cursor-not-allowed', isUnavailable);
+
+            if (storeStatusBanner) {
+                if (isUnavailable) {
+                    storeStatusBanner.textContent = noFulfillment ? 'Nenhuma modalidade de atendimento disponível nesta loja.' : getStoreAvailabilityMessage(storeAvailability);
+                    storeStatusBanner.classList.remove('hidden');
+                } else {
+                    storeStatusBanner.textContent = publicStore.delivery.available ? '' : 'Entrega indisponível. Retirada disponível.';
+                    storeStatusBanner.classList.toggle('hidden', publicStore.delivery.available);
+                }
+            }
+        }
+
+        function syncStoreAvailabilityStatus() {
+            storeAvailability = publicStore.active && publicStore.catalog.enabled ? storeConfig?.effectiveAvailability || STORE_AVAILABILITY.CONFIG_UNAVAILABLE : STORE_AVAILABILITY.CONFIG_UNAVAILABLE;
+            storeIsOpenNow = storeAvailability === STORE_AVAILABILITY.OPEN;
+            updateStoreAvailabilityUI();
+        }
+
+        // Event Listeners
+        function setupEventListeners() {
+            cartButton.addEventListener('click', () => cartModal.classList.remove('hidden'));
+            closeCartButton.addEventListener('click', () => cartModal.classList.add('hidden'));
+
+            checkoutButton.addEventListener('click', async () => {
+                resetWhatsAppConsent();
+                if (!storeIsOpenNow) {
+                    showToast(getStoreAvailabilityMessage(storeAvailability), true);
+                    return;
+                }
+                if (cart.length === 0) {
+                    showToast('Seu carrinho está vazio!', true);
+                    return;
+                }
+                cartModal.classList.add('hidden');
+                persistCheckoutState();
+                await customerAccount.ready;
+                if (isLinkedCustomer(currentClient)) {
+                    openAddressManagementModal(currentClient);
+                    return;
+                }
+                identificationModal.classList.remove('hidden');
+            });
+
+            closeIdentificationModal.addEventListener('click', () => identificationModal.classList.add('hidden'));
+
+            usePhoneButton.addEventListener('click', () => {
+                identificationModal.classList.add('hidden');
+                phoneLoginModal.classList.remove('hidden');
+                phoneInput.value = '';
+                phoneError.classList.add('hidden');
+            });
+
+            closePhoneLoginModal.addEventListener('click', () => {
+                phoneLoginModal.classList.add('hidden');
+                currentClient = null;
+            });
+
+            continueGuestButton.addEventListener('click', () => {
+                identificationModal.classList.add('hidden');
+                guestCheckoutModal.classList.remove('hidden');
+                window.initGuestAddressFlow?.();
+                window.showGuestAddressStep?.(window.guestAddressFlowState?.currentStep || 1);
+                updateGuestSummary();
+                setTimeout(() => window.initGuestAddressMap?.(window.guestCurrentLatLng), 300);
+            });
+
+            closeGuestCheckoutModal.addEventListener('click', () => {
+                guestCheckoutModal.classList.add('hidden');
+                persistCheckoutState();
+            });
+
+            searchPhoneButton.addEventListener('click', handlePhoneSearch);
+            setupCustomerBirthdateInputs();
+
+            document.getElementById('close-customer-modal').addEventListener('click', () => {
+                document.getElementById('customer-details-modal').classList.add('hidden');
+            });
+
+            document.getElementById('edit-profile-btn').addEventListener('click', () => {
+                if (currentClient) {
+                    addressManagementModal.classList.add('hidden');
+                    openCustomerModalForEdit(currentClient);
+                }
+            });
+
+            document.getElementById('show-new-address-btn').addEventListener('click', showNewAddressSection);
+            document.getElementById('address-step1-back-btn').addEventListener('click', goBackAddressFlowStep);
+            document.getElementById('address-step2-confirm-btn').addEventListener('click', () => {
+                if (!isValidLatLng(window.currentLatLng)) {
+                    showToast('Confirme uma localização válida no mapa antes de continuar.', true);
+                    window.showManualAddressMapWarning?.();
+                    validateAddressForm();
+                    return;
+                }
+                window.manualAddressLocationConfirmed = true;
+                syncAddressFlowState({ locationConfirmed: true, currentStep: 3 });
+                showAddressStep(3);
+            });
+            document.getElementById('address-step2-back-btn').addEventListener('click', goBackAddressFlowStep);
+            document.getElementById('address-step3-back-btn').addEventListener('click', goBackAddressFlowStep);
+            document.getElementById('save-manual-address-button').addEventListener('click', saveManualAddress);
+            ['manual-address-street', 'manual-address-number', 'manual-address-neighborhood', 'manual-address-city', 'manual-address-nickname'].forEach((id) => {
+                const input = document.getElementById(id);
+                if (input) {
+                    input.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            saveManualAddress();
+                        }
+                    });
+                }
+            });
+
+            closeAddressManagementModal.addEventListener('click', () => {
+                addressManagementModal.classList.add('hidden');
+                currentClient = null;
+                window.clearManualAddressMapWarning?.();
+            });
+
+            closePaymentModal.addEventListener('click', () => paymentModal.classList.add('hidden'));
+            backToAddressButton.addEventListener('click', () => {
+                paymentModal.classList.add('hidden');
+                addressManagementModal.classList.remove('hidden');
+            });
+
+            sendWhatsappButton.addEventListener('click', handleGuestOrder);
+            confirmOrderButton.addEventListener('click', handlePlatformOrder);
+            document.getElementById('guest-address-step2-confirm-btn')?.addEventListener('click', async () => {
+                const normalizedLatLng = window.normalizeGuestLatLng?.(window.guestCurrentLatLng);
+                if (!normalizedLatLng) {
+                    showToast('Confirme uma localização válida no mapa antes de continuar.', true);
+                    window.showGuestMapWarning?.('Confirme o local para calcular o frete.');
+                    return;
+                }
+                window.guestManualAddressLocationConfirmed = true;
+                window.clearGuestMapWarning?.();
+                window.guestAddressFlowState = window.guestAddressFlowState || {};
+                window.guestAddressFlowState.locationConfirmed = true;
+                window.syncGuestAddressFlowState?.({ locationConfirmed: true, currentStep: 2 });
+                try {
+                    await window.updateGuestShippingAndSummary(normalizedLatLng);
+                } finally {
+                    window.showGuestAddressStep?.(3);
+                    window.syncGuestAddressFlowState?.({ locationConfirmed: true, currentStep: 3 });
+                    window.persistCheckoutState?.();
+                }
+            });
+            document.getElementById('guest-address-step2-back-btn')?.addEventListener('click', () => window.showGuestAddressStep?.(1));
+            document.getElementById('guest-address-step3-back-btn')?.addEventListener('click', () => window.showGuestAddressStep?.(2));
+
+            closeConfirmationButton.addEventListener('click', () => {
+                confirmationModal.classList.add('hidden');
+                location.reload();
+            });
+            closePlatformConfirmationButton.addEventListener('click', () => {
+                platformConfirmationModal.classList.add('hidden');
+                location.reload();
+            });
+
+            if (paymentVerifyCupomButton) paymentVerifyCupomButton.addEventListener('click', () => handleVerifyCupom('payment'));
+
+        }
+
+        async function showNewAddressSection() {
+            document.getElementById('new-address-section').classList.remove('hidden');
+            document.getElementById('address-list').classList.add('hidden');
+            document.getElementById('show-new-address-wrapper').classList.add('hidden');
+            document.getElementById('show-new-address-btn').classList.add('hidden');
+            applyManualAddressFormData(addressFlowState.formData);
+            window.currentLatLng = addressFlowState.currentLatLng ? { ...addressFlowState.currentLatLng } : null;
+            window.pendingAddressLatLng = addressFlowState.pendingAddressLatLng ? { ...addressFlowState.pendingAddressLatLng } : null;
+            window.manualAddressLocationConfirmed = !!addressFlowState.locationConfirmed;
+
+            const hasRestorableCoords = isValidLatLng(window.currentLatLng);
+            const hasRestorableStep = Number.isInteger(addressFlowState.currentStep) && addressFlowState.currentStep >= 1 && addressFlowState.currentStep <= 3;
+            const targetStep = hasRestorableCoords
+                ? (hasRestorableStep ? addressFlowState.currentStep : 1)
+                : 1;
+
+            if (!hasRestorableCoords) {
+                addressFlowState.currentStep = 1;
+                window.manualAddressLocationConfirmed = false;
+            }
+
+            await initAddressStep1Search();
+            showAddressStep(targetStep);
+            if (targetStep >= 2 && hasRestorableCoords) {
+                await initAddressMap(window.currentLatLng);
+            }
+            window.clearManualAddressMapWarning?.();
+            validateAddressForm();
+        }
+
+        function cancelNewAddress(resetFlow = false) {
+            if (resetFlow) {
+                window.resetAddressFlowState?.();
+            } else {
+                syncAddressFlowState();
+            }
+            document.getElementById('new-address-section').classList.add('hidden');
+            document.getElementById('address-list').classList.remove('hidden');
+            document.getElementById('show-new-address-wrapper').classList.remove('hidden');
+            document.getElementById('show-new-address-btn').classList.remove('hidden');
+            window.clearManualAddressMapWarning?.();
+        }
+
+        function goBackAddressFlowStep() {
+            const currentStep = addressFlowState.currentStep || 1;
+            if (currentStep === 3) {
+                showAddressStep(2);
+                return;
+            }
+            if (currentStep === 2) {
+                showAddressStep(1);
+                return;
+            }
+            cancelNewAddress();
+        }
+
+        async function saveManualAddress() {
+            const street = document.getElementById('manual-address-street').value.trim();
+            const numberInputValue = document.getElementById('manual-address-number').value.trim();
+            const noNumber = document.getElementById('manual-address-no-number')?.checked || false;
+            const number = noNumber ? 'S/N' : numberInputValue;
+            const complement = document.getElementById('manual-address-complement')?.value.trim() || '';
+            const neighborhood = document.getElementById('manual-address-neighborhood').value.trim();
+            const city = document.getElementById('manual-address-city').value.trim();
+            const zip = document.getElementById('manual-address-zip').value.trim();
+            const reference = document.getElementById('manual-address-reference')?.value.trim() || '';
+            const nickname = getManualAddressNickname();
+            const frequentLocation = document.getElementById('manual-address-frequent-location')?.checked || false;
+
+			if (!window.currentLatLng || typeof window.currentLatLng.lat === 'undefined' || typeof window.currentLatLng.lng === 'undefined') {
+				window.showManualAddressMapWarning?.();
+				showToast('Confirme o local no mapa para salvar o endereço.', true);
+				return;
+			}
+
+			if (!window.manualAddressLocationConfirmed) {
+				window.showManualAddressMapWarning?.();
+				showToast('Confirme o local no mapa (passo 2) antes de salvar.', true);
+				return;
+			}
+
+			if (!street) {
+				showToast('Informe a rua do endereço.', true);
+				return;
+			}
+
+			if (!noNumber && !numberInputValue) {
+				showToast('Informe o número, quadra ou lote ou marque "Sem número".', true);
+				return;
+			}
+
+			if (!nickname) {
+				showToast('Informe um nome válido para o endereço (Casa, Trabalho ou Outro).', true);
+				return;
+			}
+
+            const addressParts = [
+                street,
+                number,
+                complement,
+                neighborhood,
+                city,
+                zip ? `CEP: ${zip}` : ''
+            ].filter(Boolean);
+            const addressText = addressParts.join(', ');
+
+            try {
+                if (!currentClient?.id) {
+                    throw new Error('Cliente não identificado para atualizar endereço.');
+                }
+
+                const lat = parseFloat(window.currentLatLng.lat);
+                const lng = parseFloat(window.currentLatLng.lng);
+
+                if (isNaN(lat) || isNaN(lng)) {
+                    showToast('Localização inválida. Tente selecionar novamente no mapa.', true);
+                    return;
+                }
+
+                const newAddress = {
+                    enderecoCompleto: addressText,
+                    cep:zip,street,number,neighborhood,complement,
+                    nickname,
+                    lat,
+                    lng,
+                    referencia: reference,
+                    complemento: complement,
+                    semNumero: noNumber,
+                    isDefault: frequentLocation,
+                    localizacaoFrequente: frequentLocation,
+                    criadoEm: new Date().toISOString()
+                };
+
+                const functions = getFunctions(app, 'us-central1');
+                if (currentClient.accountLinked) {
+                    const result = await httpsCallable(functions, 'customerAddAddress')({address: newAddress});
+                    currentClient = result.data.customer;
+                    showToast('✅ Endereço salvo com sucesso!');
+                    cancelNewAddress(true);
+                    openAddressManagementModal(currentClient);
+                    await useExistingAddress(addressText, newAddress);
+                    return;
+                }
+                const addClientAddress = httpsCallable(functions, 'addClientAddress');
+                await addClientAddress({
+                    clientId: currentClient.id,
+                    lojaId: STORE_ID,
+                    address: newAddress
+                });
+
+                currentClient.enderecos = Array.isArray(currentClient.enderecos)
+                    ? [...currentClient.enderecos, newAddress]
+                    : [newAddress];
+
+                showToast('✅ Endereço salvo com sucesso!');
+                cancelNewAddress(true);
+                openAddressManagementModal(currentClient);
+                await useExistingAddress(addressText, newAddress);
+
+            } catch (error) {
+                console.error('Erro ao salvar endereço:', error);
+                const isPermissionDenied = error?.code === 'permission-denied'
+                    || /Missing or insufficient permissions/i.test(error?.message || '');
+                if (isPermissionDenied) {
+                    showToast('Sem permissão para salvar endereço agora. Tente novamente em instantes.', true);
+                    return;
+                }
+                showToast('❌ Erro ao salvar o endereço. Tente novamente.', true);
+            }
+        }
+
+		function openAddressManagementModal(client) {
+			currentClient = client;
+			addressList.innerHTML = '';
+			confirmCustomerName.textContent = client.nome || 'Cliente';
+            window.clearManualAddressMapWarning?.();
+
+			document.getElementById('new-address-section').classList.add('hidden');
+			document.getElementById('address-list').classList.remove('hidden');
+			document.getElementById('show-new-address-wrapper').classList.remove('hidden');
+			document.getElementById('show-new-address-btn').classList.remove('hidden');
+
+            /* === INÍCIO DA MODIFICAÇÃO === */
+			/* Adiciona a opção "Retirar na Loja" primeiro */
+			const pickupCard = document.createElement('div');
+			pickupCard.className = 'bg-white border border-blue-300 rounded-lg p-4 hover:shadow-md transition-shadow mb-4';
+			pickupCard.innerHTML = `
+				<div class="flex items-center justify-between gap-2 mb-2">
+					<span class="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">Opção Padrão</span>
+				</div>
+				<p class="text-gray-800 font-medium text-base leading-tight flex items-center gap-2">
+					<i class="fa-solid fa-store text-blue-600"></i>
+					<strong>Retirar na Loja</strong>
+				</p>
+				<p class="text-xs text-gray-500 mt-1">Nenhuma taxa de frete será aplicada.</p>
+				<button class="w-full mt-3 bg-blue-600 text-white py-2 px-4 rounded-lg font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 use-pickup-btn"><i class="fa-solid fa-person-walking"></i> Selecionar Retirada</button>
+			`;
+            // Atribui o novo handler
+			pickupCard.querySelector('.use-pickup-btn').onclick = usePickupAddress;
+			pickupCard.hidden=!publicStore.pickup.enabled;
+            addressList.appendChild(pickupCard);
+            document.getElementById('show-new-address-wrapper').hidden=!publicStore.delivery.available;
+            if(!publicStore.delivery.available) {const notice=document.createElement('p');notice.textContent='Entrega indisponível para esta loja.';addressList.append(notice);}
+            /* === FIM DA MODIFICAÇÃO === */
+
+			if (publicStore.delivery.available && client.enderecos && client.enderecos.length > 0) {
+				client.enderecos.forEach((address, index) => {
+					const { enderecoCompleto, nickname } = (typeof address === 'string')
+                        ? { enderecoCompleto: address, nickname: `Endereço ${index + 1}` }
+                        : { enderecoCompleto: address.enderecoCompleto, nickname: address.nickname || `Endereço ${index + 1}`};
+
+					const addressDiv = document.createElement('div');
+					addressDiv.className = 'bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow mb-4';
+					addressDiv.innerHTML = `
+						<div class="flex items-center justify-between gap-2 mb-2">
+							<span class="bg-pink-100 text-pink-800 text-xs font-medium px-2 py-1 rounded">${escapeCheckoutText(nickname)}</span>
+							<button class="text-red-500 hover:text-red-700 transition-colors delete-address-btn" title="Excluir endereço"><i class="fa-solid fa-trash-alt text-lg"></i></button>
+						</div>
+						<p class="text-gray-800 font-medium text-sm leading-tight">${escapeCheckoutText(enderecoCompleto)}</p>
+						<button class="w-full mt-3 bg-pink-600 text-white py-2 px-4 rounded-lg font-bold hover:bg-pink-700 transition-colors flex items-center justify-center gap-2 use-address-btn"><i class="fa-solid fa-truck"></i> Usar este Endereço</button>
+					`;
+
+					addressDiv.querySelector('.use-address-btn').onclick = () => useExistingAddress(enderecoCompleto, address);
+					addressDiv.querySelector('.delete-address-btn').onclick = (e) => { e.stopPropagation(); deleteAddress(index); };
+					addressList.appendChild(addressDiv);
+				});
+			}
+            // O 'else' block que exibia "Nenhum endereço cadastrado" foi removido
+            // para não apagar a opção "Retirar na Loja".
+			addressManagementModal.classList.remove('hidden');
+		}
+
+		async function deleteAddress(addressIndex) {
+			if (!confirm('Tem certeza que deseja excluir este endereço?')) return;
+
+			try {
+                if (!currentClient?.id) {
+                    throw new Error('Cliente não identificado.');
+                }
+
+                const existingAddresses = Array.isArray(currentClient.enderecos)
+                    ? [...currentClient.enderecos]
+                    : [];
+                if (!existingAddresses[addressIndex]) {
+                    throw new Error('Endereço não encontrado.');
+                }
+                if(currentClient.accountLinked) {
+                    const address=existingAddresses[addressIndex];
+                    const result=await httpsCallable(getFunctions(app,'us-central1'),'customerDeleteAddress')({index:addressIndex,expectedAddress:typeof address==='string'?address:address.enderecoCompleto});
+                    currentClient=result.data.customer;openAddressManagementModal(currentClient);showToast('Endereço excluído!');return;
+                }
+                existingAddresses.splice(addressIndex, 1);
+
+                const response = await fetch(`${API_BASE_URL}/clientes/${encodeURIComponent(currentClient.id)}?lojaId=${encodeURIComponent(STORE_ID)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enderecos: existingAddresses })
+                });
+                const updatedClient = await response.json().catch(() => ({}));
+                if (!response.ok || !updatedClient?.id) {
+                    throw new Error(updatedClient?.message || 'Não foi possível excluir o endereço.');
+                }
+
+                currentClient = {
+                    ...currentClient,
+                    ...updatedClient,
+                    enderecos: Array.isArray(updatedClient.enderecos) ? updatedClient.enderecos : existingAddresses
+                };
+
+                showToast('Endereço excluído!');
+				openAddressManagementModal(currentClient);
+
+			} catch (error) {
+				console.error('Erro ao deletar endereço:', error);
+				showToast('Erro ao excluir endereço.', true);
+			}
+		}
+
+        /* === INÍCIO DA MODIFICAÇÃO === */
+		/* Nova função para lidar com a opção "Retirar na Loja" */
+		function usePickupAddress() {
+            if(!publicStore.pickup.enabled) {showToast('Retirada indisponível nesta loja.',true);return;}
+			window.valorFrete = 0; // Retirada não cobra frete
+            window.distanciaFreteKm = null;
+            window.freteACombinar = false;
+            window.checkoutDeliveryAddress = null;
+            window.currentLatLng = null;
+            clearCheckoutBlockingIssue('frete');
+
+			pendingOrderDetails = {
+				clienteId: currentClient.id,
+				clienteNome: currentClient.nome,
+				clienteEndereco: "Retirar na Loja", // Endereço especial
+				telefone: currentClient.telefone
+			};
+
+			selectedAddressText.textContent = "Retirar na Loja";
+			addressManagementModal.classList.add('hidden');
+
+			updateAllSummaries(); // Atualiza todos os resumos (carrinho, pagamento)
+			persistCheckoutState();
+			paymentModal.classList.remove('hidden');
+		}
+        /* === FIM DA MODIFICAÇÃO === */
+
+		async function useExistingAddress(addressText, addressData) {
+            if(!publicStore.delivery.available) {showToast('Entrega indisponível nesta loja.',true);return;}
+            window.distanciaFreteKm = null;
+            window.valorFrete = 0;
+            window.checkoutDeliveryAddress=addressData || null;
+            window.currentLatLng = addressData?.lat != null ? {lat:Number(addressData.lat),lng:Number(addressData.lng)} : null;
+			pendingOrderDetails = {
+				clienteId: currentClient.id,
+				clienteNome: currentClient.nome,
+				clienteEndereco: addressText,
+                address: addressData || null,
+				telefone: currentClient.telefone
+			};
+			selectedAddressText.textContent = addressText;
+			addressManagementModal.classList.add('hidden');
+
+			if (window.freteACombinar || (addressData?.lat != null && addressData?.lng != null)) {
+				try {
+					const resultado = await window.calcularFreteParaEndereco({ lat: Number(addressData?.lat), lng: Number(addressData?.lng) });
+					window.valorFrete = Number(resultado.valorFrete);
+                    window.freteACombinar = resultado.freteACombinar === true;
+                    window.distanciaFreteKm = resultado.distanciaKm == null ? null : Number(resultado.distanciaKm);
+                    showToast(`Frete: ${freightDisplayValue()}`);
+					clearCheckoutBlockingIssue('frete');
+				} catch (error) {
+					console.error('Erro ao calcular frete:', error);
+					const friendlyMessage = mapCriticalCheckoutError(error, 'Não foi possível calcular o frete para este endereço.');
+					setCheckoutBlockingIssue('frete', friendlyMessage);
+					showToast(friendlyMessage, true);
+					window.valorFrete = 0;
+				}
+			} else {
+				window.valorFrete = 0;
+			}
+            updateAllSummaries();
+			persistCheckoutState();
+			paymentModal.classList.remove('hidden');
+		}
+
+        function getTodayIsoDate() {
+            const today = new Date();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            return `${today.getFullYear()}-${month}-${day}`;
+        }
+
+        function isValidIsoDate(value) {
+            const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (!match) return false;
+
+            const [, year, month, day] = match;
+            const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+            return parsed.getUTCFullYear() === Number(year)
+                && parsed.getUTCMonth() === Number(month) - 1
+                && parsed.getUTCDate() === Number(day);
+        }
+
+        function formatBirthdateForDisplay(value) {
+            if (!isValidIsoDate(value)) return '';
+            const [year, month, day] = value.split('-');
+            return `${day}/${month}/${year}`;
+        }
+
+        function sanitizeBirthdateDayOrMonth(value, maxValue) {
+            return String(value || '')
+                .replace(/\D/g, '')
+                .slice(0, 2)
+                .split('')
+                .reduce((segment, digit) => {
+                    if (segment.length >= 2) return segment;
+
+                    const candidate = `${segment}${digit}`;
+                    const numericValue = Number(candidate);
+                    if (candidate.length === 1) {
+                        const maxFirstDigit = Math.floor(maxValue / 10);
+                        return numericValue === 0 || numericValue <= maxFirstDigit ? candidate : segment;
+                    }
+
+                    return numericValue >= 1 && numericValue <= maxValue ? candidate : segment;
+                }, '');
+        }
+
+        function getBirthdateTypingParts(value) {
+            const rawValue = String(value || '').replace(/[^\d/]/g, '');
+            const typedParts = rawValue.split('/');
+            if (typedParts.length > 1) {
+                const rawMonth = typedParts[1] || '';
+                return [
+                    typedParts[0].slice(0, 2),
+                    rawMonth.slice(0, 2),
+                    `${rawMonth.slice(2)}${typedParts.slice(2).join('')}`.slice(0, 4)
+                ];
+            }
+
+            const digits = rawValue.replace(/\D/g, '').slice(0, 8);
+            return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)];
+        }
+
+        function formatBirthdateTyping(value) {
+            const [rawDay, rawMonth, rawYear] = getBirthdateTypingParts(value);
+            const day = sanitizeBirthdateDayOrMonth(rawDay, 31);
+            if (!day || day.length < 2) return day;
+
+            const month = sanitizeBirthdateDayOrMonth(rawMonth, 12);
+            if (!month) return day;
+            if (month.length < 2) return `${day}/${month}`;
+
+            const year = String(rawYear || '').replace(/\D/g, '').slice(0, 4);
+            return year ? `${day}/${month}/${year}` : `${day}/${month}`;
+        }
+
+        function parseBirthdateInput(value) {
+            const rawValue = String(value || '').trim();
+            if (isValidIsoDate(rawValue)) return rawValue;
+
+            const match = rawValue.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (!match) return '';
+
+            const [, day, month, year] = match;
+            const isoDate = `${year}-${month}-${day}`;
+            return isValidIsoDate(isoDate) ? isoDate : '';
+        }
+
+        function setCustomerBirthdateValue(value = '') {
+            const birthdateInput = document.getElementById('customer-modal-birthdate');
+            const birthdatePicker = document.getElementById('customer-modal-birthdate-picker');
+            const isoDate = parseBirthdateInput(value);
+
+            if (birthdateInput) {
+                birthdateInput.value = isoDate ? formatBirthdateForDisplay(isoDate) : '';
+            }
+
+            if (birthdatePicker) {
+                birthdatePicker.value = isoDate || getTodayIsoDate();
+            }
+        }
+
+        function getCustomerBirthdateValue() {
+            return parseBirthdateInput(document.getElementById('customer-modal-birthdate')?.value);
+        }
+
+        function setupCustomerBirthdateInputs() {
+            const birthdateInput = document.getElementById('customer-modal-birthdate');
+            const birthdateButton = document.getElementById('customer-modal-birthdate-button');
+            const birthdatePicker = document.getElementById('customer-modal-birthdate-picker');
+            if (!birthdateInput || !birthdateButton || !birthdatePicker || birthdateInput.dataset.syncReady === 'true') return;
+
+            birthdateInput.dataset.syncReady = 'true';
+            birthdatePicker.value = getTodayIsoDate();
+
+            birthdateInput.addEventListener('input', () => {
+                const pastedIsoDate = parseBirthdateInput(birthdateInput.value);
+                if (pastedIsoDate) {
+                    birthdateInput.value = formatBirthdateForDisplay(pastedIsoDate);
+                    birthdatePicker.value = pastedIsoDate;
+                    return;
+                }
+
+                birthdateInput.value = formatBirthdateTyping(birthdateInput.value);
+                const isoDate = parseBirthdateInput(birthdateInput.value);
+                if (isoDate) {
+                    birthdatePicker.value = isoDate;
+                }
+            });
+
+            birthdatePicker.addEventListener('change', () => {
+                if (isValidIsoDate(birthdatePicker.value)) {
+                    birthdateInput.value = formatBirthdateForDisplay(birthdatePicker.value);
+                }
+            });
+
+            birthdateButton.addEventListener('click', () => {
+                birthdatePicker.value = birthdatePicker.value || getTodayIsoDate();
+                birthdatePicker.focus();
+
+                try {
+                    if (typeof birthdatePicker.showPicker === 'function') {
+                        birthdatePicker.showPicker();
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('Não foi possível abrir o seletor nativo de data.', error);
+                }
+
+                birthdatePicker.click();
+            });
+        }
+
+        function openCustomerModalForEdit(client) {
+            const modal = document.getElementById('customer-details-modal');
+            document.getElementById('customer-modal-title').textContent = 'Editar Perfil';
+            document.getElementById('customer-modal-phone').textContent = client.telefone;
+            const nameInput = document.getElementById('customer-modal-name');
+            const birthdateInput = document.getElementById('customer-modal-birthdate');
+
+            nameInput.value = client.nome || '';
+            setCustomerBirthdateValue(client.aniversario || '');
+
+            nameInput.readOnly = false;
+            birthdateInput.readOnly = false;
+            nameInput.classList.remove('bg-gray-100');
+            birthdateInput.classList.remove('bg-gray-100');
+
+            const footer = document.getElementById('customer-modal-footer');
+            footer.innerHTML = `
+                <button id="cancel-edit-btn" type="button" class="bg-gray-500 text-white py-2 px-4 rounded-lg font-bold hover:bg-gray-600">Cancelar</button>
+                <button id="save-customer-btn" type="button" class="flex-1 bg-green-500 text-white py-2 px-4 rounded-lg font-bold hover:bg-green-600">Salvar Alterações</button>
+            `;
+
+            document.getElementById('cancel-edit-btn').onclick = () => {
+                modal.classList.add('hidden');
+                openAddressManagementModal(currentClient); // Go back
+            };
+
+            document.getElementById('save-customer-btn').onclick = async () => {
+                const newName = nameInput.value.trim();
+                const newBirthdate = getCustomerBirthdateValue();
+                if (!newName || !newBirthdate) {
+                    document.getElementById('customer-modal-error').textContent = birthdateInput.value.trim()
+                        ? 'Informe uma data de nascimento válida no formato dia/mês/ano.'
+                        : 'Nome e data de nascimento são obrigatórios.';
+                    document.getElementById('customer-modal-error').classList.remove('hidden');
+                    return;
+                }
+                document.getElementById('customer-modal-error').classList.add('hidden');
+
+                try {
+                    const { updateClientProfile, normalizeCallableError } = await import('./firebaseClientConfig.js?v=20261015-persistence');
+                    const response = await updateClientProfile({
+                        lojaId: STORE_ID,
+                        clientId: client.id,
+                        nome: newName,
+                        aniversario: newBirthdate,
+                    });
+
+                    const payload = response?.data || {};
+                    const updatedClient = payload?.client || {};
+
+                    currentClient = {
+                        ...currentClient,
+                        ...updatedClient,
+                        id: payload?.clientId || client.id,
+                    };
+
+                    showToast('Dados atualizados com sucesso!');
+                    modal.classList.add('hidden');
+                    openAddressManagementModal(currentClient); // Reopen address modal with updated name
+                } catch (error) {
+                    const callableError = normalizeCallableError?.(error) || error;
+                    console.error("Erro ao atualizar cliente:", callableError);
+                    showToast('Erro ao atualizar dados.', true);
+                }
+            };
+
+            modal.classList.remove('hidden');
+        }
+
+        function openCustomerModalForCreate(phone) {
+            const modal = document.getElementById('customer-details-modal');
+            document.getElementById('customer-modal-title').textContent = 'Novo Cadastro';
+            document.getElementById('customer-modal-phone').textContent = phone;
+            const nameInput = document.getElementById('customer-modal-name');
+            const birthdateInput = document.getElementById('customer-modal-birthdate');
+            nameInput.value = '';
+            setCustomerBirthdateValue();
+            nameInput.readOnly = false;
+            birthdateInput.readOnly = false;
+            nameInput.classList.remove('bg-gray-100');
+            birthdateInput.classList.remove('bg-gray-100');
+
+            const footer = document.getElementById('customer-modal-footer');
+            footer.innerHTML = `
+                <button id="create-customer-btn" class="w-full bg-pink-600 text-white py-3 rounded-lg font-bold hover:bg-pink-700">Criar Cadastro e Continuar</button>
+            `;
+
+            document.getElementById('create-customer-btn').onclick = async () => {
+                const newName = nameInput.value.trim();
+                const newBirthdate = getCustomerBirthdateValue();
+                if (!newName || !newBirthdate) {
+                    document.getElementById('customer-modal-error').textContent = birthdateInput.value.trim()
+                        ? 'Informe uma data de nascimento válida no formato dia/mês/ano.'
+                        : 'Nome e data de nascimento são obrigatórios.';
+                    document.getElementById('customer-modal-error').classList.remove('hidden');
+                    return;
+                }
+                document.getElementById('customer-modal-error').classList.add('hidden');
+
+                const button = document.getElementById('create-customer-btn');
+                button.disabled = true;
+                button.textContent = 'Criando...';
+
+                try {
+                    const newClientData = {
+                        nome: newName,
+                        aniversario: newBirthdate,
+                        telefone: phone.replace(/\D/g, ''),
+                        enderecos: [],
+                        lojasVisitadas: [STORE_ID],
+                        numeroDeCompras: 0,
+                        valorEmCompras: 0,
+                        lojaId: STORE_ID
+                    };
+                    const response = await fetch(`${API_BASE_URL}/clientes?lojaId=${encodeURIComponent(STORE_ID)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newClientData)
+                    });
+                    const savedClient = await response.json().catch(() => ({}));
+                    if (!response.ok || !savedClient?.id) {
+                        throw new Error(savedClient?.message || 'Não foi possível criar o cadastro.');
+                    }
+
+                    currentClient = savedClient;
+                    showToast("Novo cliente criado com sucesso!");
+                    modal.classList.add('hidden');
+                    openAddressManagementModal(currentClient);
+
+                } catch (error) {
+                    console.error("Erro ao criar cliente:", error);
+                    showToast("Erro ao criar cadastro. Tente novamente.", true);
+                } finally {
+                    button.disabled = false;
+                    button.textContent = 'Criar Cadastro e Continuar';
+                }
+            };
+
+            modal.classList.remove('hidden');
+            nameInput.focus();
+        }
+
+        async function handlePhoneSearch() {
+            const phone = phoneInput.value.trim();
+            const phoneDigits = phone.replace(/\D/g, '');
+
+            if (phoneDigits.length < 10) {
+                phoneError.textContent = 'Digite um número válido com DDD';
+                phoneError.classList.remove('hidden');
+                return;
+            }
+
+            phoneError.classList.add('hidden');
+            searchPhoneButton.disabled = true;
+            searchPhoneButton.innerHTML = '<div class="loader !w-5 !h-5 !border-2 !border-t-white mx-auto"></div> Buscando...';
+
+            try {
+                const functions = getFunctions(app, 'us-central1');
+                const lookupClientByPhone = httpsCallable(functions, 'lookupClientByPhone');
+                const lookupResult = await lookupClientByPhone({ telefone: phoneDigits, lojaId: STORE_ID });
+
+                phoneLoginModal.classList.add('hidden');
+
+                const { clientId, client } = lookupResult.data || {};
+                if (!clientId) {
+                    throw new Error('Resposta inválida da busca de cliente.');
+                }
+
+                if (!client || typeof client !== 'object') {
+                    throw new Error('Dados do cliente não retornados pela função.');
+                }
+
+                currentClient = { id: clientId, ...client };
+                console.log('✅ Cliente identificado:', {
+                    id: clientId,
+                    nomeAbreviado: client?.nomeAbreviado || currentClient.nome,
+                    statusCadastro: client?.statusCadastro || 'indefinido'
+                });
+                openAddressManagementModal(currentClient);
+            } catch (error) {
+                const rawCode = typeof error?.code === 'string' ? error.code : '';
+                const errorCode = rawCode.replace(/^functions\//, '') || 'unknown';
+                console.error('Error searching client:', error);
+                console.error('Phone search Firebase error details:', {
+                    code: errorCode || 'unknown',
+                    message: error?.message || 'Sem mensagem disponível.'
+                });
+
+                if (errorCode === 'not-found') {
+                    phoneLoginModal.classList.add('hidden');
+                    openCustomerModalForCreate(phone);
+                    return;
+                }
+
+                if (errorCode === 'permission-denied') {
+                    phoneError.textContent = 'Acesso não autorizado para busca de cadastro.';
+                } else if (errorCode === 'unauthenticated') {
+                    phoneError.textContent = 'Faça login para continuar.';
+                } else if (errorCode === 'unavailable') {
+                    phoneError.textContent = 'Instabilidade de conexão, tente novamente.';
+                } else {
+                    phoneError.textContent = 'Erro ao buscar cliente. Tente novamente.';
+                }
+
+                phoneError.classList.remove('hidden');
+                phoneLoginModal.classList.remove('hidden');
+            } finally {
+                searchPhoneButton.disabled = false;
+                searchPhoneButton.textContent = 'Buscar';
+            }
+        }
+
+        function chargedFreight(pickup = false) {
+            return pickup || window.freteACombinar ? 0 : Number(window.valorFrete || 0);
+        }
+        function checkoutTotal(subtotal, discount, pickup = false) {
+            return Math.round((subtotal - discount + chargedFreight(pickup) + Number.EPSILON) * 100) / 100;
+        }
+        function freightDisplayValue() {
+            return window.freteACombinar ? 'A Combinar' : 'R$ ' + Number(window.valorFrete || 0).toFixed(2).replace('.', ',');
+        }
+        window.freightDisplayValue = freightDisplayValue;
+        window.updateAllSummaries = updateAllSummaries;
+
+        function updateAllSummaries() {
+            updateCartInfo();
+            updatePaymentSummary();
+            updateGuestSummary();
+        }
+
+		function updatePaymentSummary() {
+			const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
+			let discount = appliedCupom?.valorDesconto || 0;
+			let total = checkoutTotal(subtotal, discount, pendingOrderDetails?.clienteEndereco === "Retirar na Loja");
+
+			document.getElementById('payment-subtotal').textContent = `R$ ${subtotal.toFixed(2)}`;
+			document.getElementById('payment-total').textContent = `R$ ${total.toFixed(2)}`;
+			document.getElementById('payment-discount-row').classList.toggle('hidden', discount === 0);
+			if (discount > 0) document.getElementById('payment-discount').textContent = `- R$ ${discount.toFixed(2)}`;
+
+			// Atualiza a linha de frete no modal de pagamento
+			const shippingRowPayment = document.getElementById('payment-shipping-row');
+			const shippingValuePayment = document.getElementById('payment-shipping');
+			if (pendingOrderDetails?.clienteEndereco === "Retirar na Loja") {
+				shippingValuePayment.textContent = 'R$ 0,00';
+				shippingRowPayment.classList.remove('hidden'); // Mostra a linha com R$ 0,00
+			} else if (window.freteACombinar) {
+                shippingValuePayment.textContent = 'A Combinar';
+                shippingRowPayment.classList.remove('hidden');
+            } else if (window.valorFrete > 0) {
+				shippingValuePayment.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
+				shippingRowPayment.classList.remove('hidden'); // Mostra a linha com o valor
+			} else {
+				shippingRowPayment.classList.add('hidden'); // Oculta se não for retirada e frete for 0
+			}
+		}
+
+
+		function updateGuestSummary() {
+			const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
+			let discount = appliedCupom?.valorDesconto || 0;
+			let total = checkoutTotal(subtotal, discount);
+
+			document.getElementById('guest-subtotal').textContent = `R$ ${subtotal.toFixed(2)}`;
+			document.getElementById('guest-total').textContent = `R$ ${total.toFixed(2)}`;
+			document.getElementById('guest-discount-row').classList.toggle('hidden', discount === 0);
+			if (discount > 0) document.getElementById('guest-discount').textContent = `- R$ ${discount.toFixed(2)}`;
+
+                        const shippingRow = document.getElementById('guest-shipping-row');
+                        const shippingValue = document.getElementById('guest-shipping');
+                        if (window.freteACombinar) {
+                            shippingValue.textContent = 'A Combinar';
+                            shippingRow.classList.remove('hidden');
+                        } else if (window.valorFrete > 0) {
+                                shippingValue.textContent = `R$ ${window.valorFrete.toFixed(2)}`;
+                                shippingRow.classList.remove('hidden');
+                        } else if (window.guestCurrentLatLng && !window.guestManualAddressLocationConfirmed) {
+                                shippingValue.textContent = 'Confirme o local para calcular o frete.';
+                                shippingRow.classList.remove('hidden');
+                        } else if (window.guestCurrentLatLng) {
+                                shippingValue.textContent = 'R$ 0,00';
+                                shippingRow.classList.remove('hidden');
+                        } else {
+                                shippingRow.classList.remove('hidden');
+                                shippingValue.textContent = 'Aguardando endereço...';
+                        }
+                }
+        window.updateGuestSummary = updateGuestSummary;
+
+        async function handleVerifyCupom(type) {
+            const isGuest = type === 'guest';
+            if (isGuest) return;
+            const cupomInput = paymentCupomInput;
+            const cupomMessage = paymentCupomMessage;
+            const verifyButton = paymentVerifyCupomButton;
+
+            if (appliedCupom) { removeCupom(); return; }
+
+            const codigo = cupomInput.value.trim().toUpperCase();
+            if (!codigo) { showToast('Digite um cupom.', true); return; }
+
+            if (!storeIsOpenNow) {
+                showToast(getStoreAvailabilityMessage(storeAvailability), true);
+                throw new Error(storeAvailability);
+            }
+            const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
+            if (subtotal <= 0) { showToast('Adicione itens ao carrinho.', true); return; }
+
+            verifyButton.disabled = true;
+            verifyButton.innerHTML = '<div class="loader !w-5 !h-5 !border-2 !border-t-white mx-auto"></div>';
+
+            try {
+                if (!isGuest && currentClient?.cuponsUsados?.includes(codigo)) {
+                    throw new Error('Você já utilizou este cupom.');
+                }
+
+                const response = await fetch(`${API_BASE_URL}/cupons/verificar?lojaId=${encodeURIComponent(STORE_ID)}`, {
+                    method: 'POST',
+                    cache: 'no-store',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    },
+                    body: JSON.stringify({ codigo, totalCarrinho: subtotal })
+                });
+
+                const responseData = await response.json().catch(() => ({}));
+                if (!response.ok || !responseData?.valido || !responseData?.cupom) {
+                    throw new Error(responseData?.mensagem || 'Cupom inválido ou indisponível.');
+                }
+
+                const cupom = { ...responseData.cupom, codigo: (responseData.cupom?.codigo || codigo).toUpperCase() };
+
+                if (typeof cupom.valorDesconto !== 'number') {
+                    cupom.valorDesconto = cupom.tipoDesconto === 'percentual' ? (subtotal * cupom.valor) / 100 : cupom.valor;
+                }
+
+                appliedCupom = cupom;
+
+                cupomMessage.textContent = `Cupom "${appliedCupom.codigo}" aplicado!`;
+                cupomMessage.className = 'text-sm text-green-600';
+                cupomInput.value = appliedCupom.codigo;
+                cupomInput.disabled = true;
+                verifyButton.textContent = 'Remover';
+                verifyButton.classList.replace('bg-gray-600', 'bg-red-600');
+                showToast('Cupom aplicado!');
+                clearCheckoutBlockingIssue('cupom');
+                updateAllSummaries();
+                persistCheckoutState();
+
+            } catch (error) {
+                console.error('Erro ao aplicar cupom:', error);
+                const technicalMessage = String(error?.message || '');
+                const friendlyMessage = mapCriticalCheckoutError(error, technicalMessage || 'Cupom inválido ou indisponível.');
+
+                cupomMessage.textContent = friendlyMessage;
+                cupomMessage.className = 'text-sm text-red-500';
+                appliedCupom = null;
+                setCheckoutBlockingIssue('cupom', friendlyMessage);
+            } finally {
+                verifyButton.disabled = false;
+                verifyButton.innerHTML = appliedCupom ? 'Remover' : 'Aplicar';
+            }
+        }
+
+        function removeCupom() {
+            if (appliedCupom) { showToast('Cupom removido.'); appliedCupom = null; }
+            clearCheckoutBlockingIssue('cupom');
+            [paymentCupomInput].filter(Boolean).forEach(input => { input.value = ''; input.disabled = false; });
+            [paymentVerifyCupomButton].filter(Boolean).forEach(btn => { btn.textContent = 'Aplicar'; btn.classList.replace('bg-red-600', 'bg-gray-600'); });
+            [paymentCupomMessage].filter(Boolean).forEach(msg => { msg.textContent = ''; });
+            updateAllSummaries();
+            persistCheckoutState();
+        }
+
+        async function handleGuestOrder() {
+            const name = guestNameInput.value.trim();
+            const phone = guestPhoneInput.value.trim();
+            const paymentMethod = guestPaymentMethodSelect.value;
+            const street = document.getElementById('guest-address-street').value.trim();
+            const numberInputValue = document.getElementById('guest-address-number').value.trim();
+            const noNumber = document.getElementById('guest-address-no-number')?.checked || false;
+            const number = noNumber ? 'S/N' : numberInputValue;
+            const complement = document.getElementById('guest-address-complement').value.trim();
+            const reference = document.getElementById('guest-address-reference')?.value.trim() || '';
+            const neighborhood = document.getElementById('guest-address-neighborhood').value.trim();
+            const city = document.getElementById('guest-address-city').value.trim();
+            const zip = document.getElementById('guest-address-zip').value.trim();
+            const nickname = document.getElementById('guest-address-nickname').value.trim();
+            const guestStep3Visible = !document.getElementById('guest-address-step3')?.classList.contains('hidden');
+
+            if (!guestStep3Visible) {
+                showToast('Confirme o local para avançar ao preenchimento do endereço.', true);
+                window.showGuestAddressStep?.(2);
+                window.showGuestMapWarning?.('Confirme o local para calcular o frete.');
+                return;
+            }
+
+            if (!name || !phone || !paymentMethod || !street || (!noNumber && !numberInputValue) || !neighborhood || !city || !nickname) {
+                showToast('Preencha todos os campos obrigatórios (*).', true);
+                return;
+            }
+
+            if (!window.guestManualAddressLocationConfirmed) {
+                showToast('É preciso confirmar o local no mapa antes de finalizar.', true);
+                window.showGuestMapWarning?.('É preciso confirmar o local no mapa antes de finalizar.');
+                window.showGuestAddressStep?.(2);
+                return;
+            }
+
+            if (!window.guestCurrentLatLng || typeof window.guestCurrentLatLng.lat === 'undefined' || typeof window.guestCurrentLatLng.lng === 'undefined') {
+                showToast('Confirme a localização no mapa antes de finalizar.', true);
+                window.showGuestMapWarning?.('Confirme o local para calcular o frete.');
+                window.showGuestAddressStep?.(2);
+                return;
+            }
+
+            let fullAddress = `${street}${number ? ', ' + number : ''}${complement ? ' - ' + complement : ''}${reference ? ' - Ref: ' + reference : ''}${neighborhood ? ', ' + neighborhood : ''}${city ? ', ' + city : ''}${zip ? ' - CEP: ' + zip : ''}`;
+            if (nickname) fullAddress += ` (${nickname})`;
+
+            document.getElementById('guest-address-full').value = fullAddress;
+
+			sendWhatsappButton.disabled = true;
+			sendWhatsappButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processando...';
+
+			try {
+				ensureCheckoutNotBlocked();
+				await finalizeOrder({
+					clienteNome: name,
+					clienteEndereco: fullAddress,
+					telefone: phone,
+					formaPagamento: paymentMethod
+				}, null, false);
+
+			} catch (error) {
+				console.error('Erro ao processar pedido do visitante:', error);
+				showToast(error?.message || 'Erro ao processar o pedido.', true);
+				sendWhatsappButton.disabled = false;
+				sendWhatsappButton.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Finalizar e Enviar via WhatsApp';
+			}
+		}
+
+        async function handlePlatformOrder() {
+            if (!paymentMethodSelect.value) {
+                paymentError.textContent = 'Selecione uma forma de pagamento.';
+                paymentError.classList.remove('hidden');
+                return;
+            }
+            paymentError.classList.add('hidden');
+            confirmOrderButton.disabled = true;
+            confirmOrderButton.innerHTML = '<div class="loader !w-5 !h-5 !border-2 !border-t-white mx-auto"></div> Confirmando...';
+
+            try {
+                ensureCheckoutNotBlocked(pendingOrderDetails);
+                const finalOrderDetails = { ...pendingOrderDetails, formaPagamento: paymentMethodSelect.value };
+                await finalizeOrder(finalOrderDetails, finalOrderDetails.clienteId, true);
+            } catch (error) {
+                console.error('Erro ao confirmar pedido:', error);
+                showToast(error?.message || 'Erro ao confirmar o pedido.', true);
+            } finally {
+                confirmOrderButton.disabled = false;
+                confirmOrderButton.textContent = 'Confirmar Pedido';
+            }
+        }
+
+        async function finalizeOrder(clientInfo, clientId, isPlatform) {
+            const whatsappConsent = {
+                accepted: document.getElementById(isPlatform ? 'platform-whatsapp-consent' : 'guest-whatsapp-consent')?.checked === true,
+                version: 'order-confirmation-v1',
+            };
+            await revalidateCheckoutBeforeFinalSubmit(clientInfo);
+            const online = clientInfo.formaPagamento === 'Online';
+            if (online && !isLinkedCustomer(currentClient)) throw new Error('Entre com Google ou e-mail em Minha Conta para pagar online.');
+            if (!storeIsOpenNow) {
+                showToast(getStoreAvailabilityMessage(storeAvailability), true);
+                throw new Error(storeAvailability);
+            }
+            const subtotal = cart.reduce((sum, item) => sum + (item.preco * item.quantity), 0);
+            let cupomData = null;
+            if(appliedCupom) {
+                cupomData = { codigo: appliedCupom.codigo, valorDesconto: appliedCupom.valorDesconto };
+            }
+            const desconto = cupomData?.valorDesconto || 0;
+            // O total e o frete finais vêm do pedido salvo pelo servidor.
+
+            const orderData = {
+                lojaId: STORE_ID,
+                whatsappConsent,
+                cliente: {
+                    id: clientId || null,
+                    nome: clientInfo.clienteNome,
+                    endereco: clientInfo.clienteEndereco,
+                    telefone: clientInfo.telefone,
+                },
+                ...(online ? {idempotencyKey:paymentAttempt(),delivery:{pickup:clientInfo.clienteEndereco==='Retirar na Loja',address:isPlatform ? pendingOrderDetails?.address : {cep:document.getElementById('guest-address-zip')?.value,street:document.getElementById('guest-address-street')?.value,number:document.getElementById('guest-address-no-number')?.checked ? 'S/N' : document.getElementById('guest-address-number')?.value,neighborhood:document.getElementById('guest-address-neighborhood')?.value,complement:document.getElementById('guest-address-complement')?.value},lat:(isPlatform ? window.currentLatLng : window.guestCurrentLatLng)?.lat,lng:(isPlatform ? window.currentLatLng : window.guestCurrentLatLng)?.lng}} : {}),
+                pagamento: {
+                    forma: clientInfo.formaPagamento,
+                },
+                itens: cart.map(item => ({ produtoId: item.id, nome: item.nome, quantity: item.quantity, preco: item.preco })),
+                subtotal,
+                desconto,
+                valorFrete: chargedFreight(clientInfo.clienteEndereco === "Retirar na Loja"),
+                distanciaFreteKm: window.distanciaFreteKm,
+                cupom: cupomData,
+                origem: isPlatform ? 'Plataforma' : 'Cardapio Online',
+                status: 'Pendente',
+            };
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/checkout/confirmar?lojaId=${encodeURIComponent(STORE_ID)}`, {
+                    method: 'POST',
+                    headers: await checkoutHeaders(online),
+                    body: JSON.stringify(orderData)
+                });
+
+                const responseData = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    if (responseData?.code === 'STORE_CLOSED') {
+                        showToast('A loja está fechada no momento. Volte em nosso horário de atendimento.', true);
+                        throw new Error('STORE_CLOSED');
+                    }
+                    const backendMessage = responseData?.message || 'Não foi possível confirmar o pedido no servidor.';
+                    throw new Error(backendMessage);
+                }
+
+                if (!responseData?.ok || !responseData?.id) {
+                    throw new Error('Pedido não confirmado. Tente novamente.');
+                }
+
+                if (online) {resetWhatsAppConsent();redirectToPayment(responseData);return;}
+                clearCheckoutBlockingIssue();
+
+                const docRef = { id: responseData.id };
+                const savedFreightLabel = responseData.freteACombinar || responseData.tipoFrete === 'a_combinar'
+                    ? 'A Combinar' : 'R$ ' + Number(responseData.valorFrete).toFixed(2).replace('.', ',');
+                const savedTotalLabel = 'R$ ' + Number(responseData.total).toFixed(2).replace('.', ',');
+                document.querySelectorAll('.confirmed-freight').forEach(el => { el.textContent = 'Frete: ' + savedFreightLabel; });
+                document.querySelectorAll('.confirmed-total').forEach(el => { el.textContent = 'Total: ' + savedTotalLabel; });
+
+                if (!isPlatform) {
+                    let message = `*Novo Pedido* 🎂 (Nº ${docRef.id.substring(0, 5)})\n\n*Itens:*\n${cart.map(item => `• ${item.quantity}x ${item.nome}`).join('\n')}\n\n*Resumo:*\nSubtotal: R$ ${subtotal.toFixed(2)}\n`;
+                    if (cupomData) message += `Desconto (${cupomData.codigo}): -R$ ${Number(responseData.desconto).toFixed(2)}\n`;
+                    // Modificação: Não incluir linha de frete se for retirada na loja
+                    if (clientInfo.clienteEndereco !== 'Retirar na Loja' && responseData.freteACombinar) {
+                         message += `Frete: A Combinar\n`;
+                    } else if (clientInfo.clienteEndereco !== 'Retirar na Loja') {
+                         message += `Frete: R$ ${Number(responseData.valorFrete).toFixed(2)}\n`;
+                    } else if (clientInfo.clienteEndereco === "Retirar na Loja") {
+                         message += `*RETIRAR NA LOJA*\n`; // Indica que é para retirada
+                    }
+                    message += `*Total: R$ ${Number(responseData.total).toFixed(2)}*\n\n*Dados:*\nNome: ${clientInfo.clienteNome}\nTelefone: ${clientInfo.telefone}\nEndereço: ${clientInfo.clienteEndereco}\nPagamento: ${clientInfo.formaPagamento}\n\n_Pedido via Cardápio Online_`;
+                    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`, '_blank');
+                    confirmationModal.classList.remove('hidden');
+                } else {
+                    platformConfirmationModal.classList.remove('hidden');
+                }
+
+                cart = [];
+                currentClient = retainAuthenticatedCustomer(currentClient);
+                pendingOrderDetails = {};
+                removeCupom();
+                clearCheckoutState();
+                renderCart();
+                resetWhatsAppConsent();
+                if (whatsappConsent.accepted && responseData.whatsappPhoneStatus === 'invalid') {
+                    showToast('Pedido confirmado. O telefone não é válido para receber a confirmação por WhatsApp.', true);
+                }
+
+            } catch (error) {
+                console.error("Erro ao salvar pedido:", error);
+                const friendlyMessage = mapCriticalCheckoutError(error, 'Erro ao confirmar o pedido.');
+                setCheckoutBlockingIssue('pedido', friendlyMessage);
+                showToast(friendlyMessage, true);
+                throw error;
+            }
+        }
+        function applyReorderCart({items,products,uid}) {
+            const keys=['valorFrete','distanciaFreteKm','guestCurrentLatLng','guestAddressFlowState','guestManualAddressLocationConfirmed','guestAddressStep','currentLatLng','pendingAddressLatLng','manualAddressLocationConfirmed'];
+            const oldWindow=Object.fromEntries(keys.map(key=>[key,window[key]]));
+            const old={cart,allProducts,pendingOrderDetails,appliedCupom,addressStep,checkoutBlockingIssue,reorderOwnerUid,addressFlow:{...window.addressFlowState}};
+            try {
+                cart=items.map(item=>({...item}));
+                const catalog=new Map(allProducts.map(product=>[product.id,product]));
+                products.filter(product=>product.available).forEach(product=>catalog.set(product.id,{...catalog.get(product.id),...product,status:'Ativo',ativo:true,categoria:'Delivery'}));
+                allProducts=[...catalog.values()];
+                pendingOrderDetails={};appliedCupom=null;reorderOwnerUid=uid;checkoutBlockingIssue=null;addressStep=1;
+                window.valorFrete=0;window.distanciaFreteKm=null;window.guestCurrentLatLng=null;
+                window.guestAddressFlowState=createInitialGuestAddressFlowState();window.guestManualAddressLocationConfirmed=false;window.guestAddressStep=1;
+                window.currentLatLng=null;window.pendingAddressLatLng=null;window.manualAddressLocationConfirmed=false;
+                Object.assign(window.addressFlowState,{currentStep:1,autocompleteSelection:'',locationConfirmed:false,currentLatLng:null,pendingAddressLatLng:null,formData:{}});
+                renderCart();updateAllSummaries();
+            } catch(error) {
+                ({cart,allProducts,pendingOrderDetails,appliedCupom,addressStep,checkoutBlockingIssue,reorderOwnerUid}=old);
+                Object.assign(window,oldWindow);Object.assign(window.addressFlowState,old.addressFlow);
+                renderCart();updateAllSummaries();throw error;
+            }
+            resetWhatsAppConsent();
+            if(selectedAddressText) selectedAddressText.textContent='';
+            [paymentMethodSelect,guestPaymentMethodSelect,paymentCupomInput].filter(Boolean).forEach(input=>{input.value='';input.disabled=false;});
+            if(paymentCupomMessage) paymentCupomMessage.textContent='';
+            if(paymentError) paymentError.textContent='';
+            if(paymentVerifyCupomButton) {paymentVerifyCupomButton.textContent='Aplicar';paymentVerifyCupomButton.classList.replace('bg-red-600','bg-gray-600');}
+        }
+        const reorderCart=createPageCartBridge({storeId:STORE_ID,storage:sessionStorage,navigate:url=>window.location.assign(url),readCart:()=>cart,applyCart:applyReorderCart,open:()=>cartModal.classList.remove('hidden')});
+        onAuthStateChanged(getAuth(app),createCartOwnerObserver({
+            initialUid:getAuth(app).currentUser && !getAuth(app).currentUser.isAnonymous ? getAuth(app).currentUser.uid : null,
+            onClear:()=>{applyReorderCart({items:[],products:[],uid:null});currentClient=null;syncOnlinePaymentOption(null);},
+            onOwner:uid=>{reorderOwnerUid=uid;persistCheckoutState();}
+        }));
+        const customerAccount=installCustomerAccount({reorderCart,onCustomer: client => {currentClient=client;syncOnlinePaymentOption(client);identificationModal.classList.add('hidden');openAddressManagementModal(client);},onSession:client=>{if(reorderOwnerUid && reorderOwnerUid!==getAuth(app).currentUser?.uid) {cart=[];pendingOrderDetails={};reorderOwnerUid=null;persistCheckoutState();renderCart();}if(client && getAuth(app).currentUser?.uid) {reorderOwnerUid=getAuth(app).currentUser.uid;persistCheckoutState();}currentClient=client;syncOnlinePaymentOption(client);},onLogout:()=>{if(reorderOwnerUid) {cart=[];reorderOwnerUid=null;renderCart();}currentClient=null;syncOnlinePaymentOption(null);pendingOrderDetails={};persistCheckoutState();},notify:showToast});
+        const startCheckout = () => {
+            let transferredState = null;
+            try {
+                const rawState = sessionStorage.getItem(CHECKOUT_STORAGE_KEY);
+                if (JSON.parse(rawState || 'null')?.reorderOwnerUid) transferredState = rawState;
+            } catch {clearCheckoutState();}
+            if (!transferredState) restoreCheckoutState();
+            initApp();
+            enableOnlinePayment(STORE_ID,()=>currentClient);
+            if (transferredState) {
+                // Restore private transfers only after the session is known, without blocking products.
+                customerAccount.ready.then(() => {
+                    // A public cart edited while the account was loading takes precedence.
+                    if (sessionStorage.getItem(CHECKOUT_STORAGE_KEY) !== transferredState) return;
+                    restoreCheckoutState();
+                    if (allProducts.length) reconcileCartWithLatestProducts();
+                }).catch(error => {
+                    console.warn('Não foi possível restaurar o carrinho transferido:', error);
+                    if (sessionStorage.getItem(CHECKOUT_STORAGE_KEY) === transferredState) clearCheckoutState();
+                });
+            }
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startCheckout, {once:true});
+        else startCheckout();
+        }
+    </script>
+
+	<script type="module">
+		import { db, doc, getDoc } from './firebaseClientConfig.js?v=20261015-persistence';
+	</script>
+
+	<script>
+	// ==================== CÁLCULO DE FRETE E MAPA PARA VISITANTES ====================
+    let guestMap, guestGeocoder, guestPlaceAutocomplete, guestMapIdleListener;
+
+    function createInitialGuestAddressFlowState() {
+        return {
+            currentStep: 1,
+            locationConfirmed: false,
+            formData: {},
+            autocompleteSelection: ''
+        };
+    }
+
+    function snapshotGuestAddressFormData() {
+        return {
+            street: document.getElementById('guest-address-street')?.value || '',
+            number: document.getElementById('guest-address-number')?.value || '',
+            complement: document.getElementById('guest-address-complement')?.value || '',
+            reference: document.getElementById('guest-address-reference')?.value || '',
+            neighborhood: document.getElementById('guest-address-neighborhood')?.value || '',
+            city: document.getElementById('guest-address-city')?.value || 'Goiânia',
+            zip: document.getElementById('guest-address-zip')?.value || '',
+            nickname: document.getElementById('guest-address-nickname')?.value || '',
+            noNumber: document.getElementById('guest-address-no-number')?.checked || false,
+            frequentLocation: document.getElementById('guest-address-frequent-location')?.checked || false
+        };
+    }
+
+    function applyGuestAddressFormData(data = {}) {
+        const city = data.city || 'Goiânia';
+        const mapping = {
+            'guest-address-street': data.street || '',
+            'guest-address-number': data.number || '',
+            'guest-address-complement': data.complement || '',
+            'guest-address-reference': data.reference || '',
+            'guest-address-neighborhood': data.neighborhood || '',
+            'guest-address-city': city,
+            'guest-address-zip': data.zip || '',
+            'guest-address-nickname': data.nickname || ''
+        };
+        Object.entries(mapping).forEach(([id, value]) => {
+            const input = document.getElementById(id);
+            if (input && input.value !== value) input.value = value;
+        });
+        const noNumberCheckbox = document.getElementById('guest-address-no-number');
+        const numberInput = document.getElementById('guest-address-number');
+        if (noNumberCheckbox) {
+            noNumberCheckbox.checked = !!data.noNumber;
+        }
+        if (numberInput) {
+            const shouldDisableNumber = !!noNumberCheckbox?.checked;
+            numberInput.disabled = shouldDisableNumber;
+            if (shouldDisableNumber && !numberInput.value) numberInput.value = 'S/N';
+        }
+        const frequentLocationCheckbox = document.getElementById('guest-address-frequent-location');
+        if (frequentLocationCheckbox) {
+            frequentLocationCheckbox.checked = !!data.frequentLocation;
+        }
+    }
+
+    function syncGuestAddressFlowState(nextState = {}) {
+        window.guestAddressFlowState = window.guestAddressFlowState || createInitialGuestAddressFlowState();
+        Object.assign(window.guestAddressFlowState, nextState);
+        window.guestAddressFlowState.formData = snapshotGuestAddressFormData();
+        window.guestAddressFlowState.locationConfirmed = !!window.guestManualAddressLocationConfirmed;
+        if (guestPlaceAutocomplete?.value) {
+            window.guestAddressFlowState.autocompleteSelection = guestPlaceAutocomplete.value;
+        }
+        window.guestAddressStep = window.guestAddressFlowState.currentStep || 1;
+        window.persistCheckoutState?.();
+    }
+    window.syncGuestAddressFlowState = syncGuestAddressFlowState;
+
+    function showGuestMapWarning(message = 'Confirme o local para calcular o frete.') {
+        const warning = document.getElementById('guest-map-warning');
+        if (!warning) return;
+        warning.textContent = message;
+        warning.classList.remove('hidden');
+    }
+
+    function clearGuestMapWarning() {
+        const warning = document.getElementById('guest-map-warning');
+        if (!warning) return;
+        warning.classList.add('hidden');
+    }
+
+    function showGuestAddressStep(step = 1) {
+        const normalized = Number.isInteger(step) ? step : 1;
+        ['guest-address-step1', 'guest-address-step2', 'guest-address-step3'].forEach((id, index) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.toggle('hidden', index !== normalized - 1);
+        });
+        window.guestAddressStep = normalized;
+        syncGuestAddressFlowState({ currentStep: normalized });
+    }
+    window.showGuestAddressStep = showGuestAddressStep;
+    window.showGuestMapWarning = showGuestMapWarning;
+    window.clearGuestMapWarning = clearGuestMapWarning;
+
+    function normalizeGuestLatLng(latlng) {
+        try {
+            if (!latlng) return null;
+            if (typeof latlng.lat === 'function' && typeof latlng.lng === 'function') {
+                return { lat: latlng.lat(), lng: latlng.lng() };
+            }
+            if (typeof latlng.lat === 'number' && typeof latlng.lng === 'number') {
+                return { lat: latlng.lat, lng: latlng.lng };
+            }
+            if (latlng.toJSON) {
+                const json = latlng.toJSON();
+                if (typeof json.lat === 'number' && typeof json.lng === 'number') {
+                    return { lat: json.lat, lng: json.lng };
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao normalizar coordenadas de visitante:', error, latlng);
+        }
+        return null;
+    }
+    window.normalizeGuestLatLng = normalizeGuestLatLng;
+
+    async function updateGuestShippingAndSummary(latlng) {
+        window.distanciaFreteKm = null;
+        const normalizedLatLng = normalizeGuestLatLng(latlng);
+        if (!normalizedLatLng) {
+            console.warn('Coordenadas inválidas para cálculo de frete do visitante:', latlng);
+            window.guestCurrentLatLng = null;
+            window.valorFrete = 0;
+            window.persistCheckoutState?.();
+            window.updateGuestSummary();
+            return;
+        }
+
+        window.guestCurrentLatLng = normalizedLatLng;
+        window.persistCheckoutState?.();
+        document.getElementById('guest-shipping').textContent = 'Calculando...';
+        window.valorFrete = 0;
+        window.updateGuestSummary();
+
+        try {
+            const resultado = await window.calcularFreteParaEndereco(normalizedLatLng);
+            const valorCalculado = parseFloat(resultado.valorFrete);
+            window.valorFrete = Number.isFinite(valorCalculado) ? valorCalculado : 0;
+            window.freteACombinar = resultado.freteACombinar === true;
+            window.distanciaFreteKm = resultado.distanciaKm == null ? null : Number(resultado.distanciaKm);
+            window.persistCheckoutState?.();
+            window.showToast(`Frete: ${window.freightDisplayValue()}`);
+            window.clearCheckoutBlockingIssue?.('frete');
+        } catch (error) {
+            console.error('Falha ao calcular frete para visitante:', error);
+            const fallbackMessage = 'Não foi possível calcular o frete para este endereço.';
+            const friendlyMessage = window.mapCriticalCheckoutError?.(error, fallbackMessage) || error?.message || fallbackMessage;
+            window.setCheckoutBlockingIssue?.('frete', friendlyMessage);
+            window.showToast(friendlyMessage, true);
+            window.valorFrete = 0;
+            window.persistCheckoutState?.();
+        } finally {
+            window.updateGuestSummary();
+        }
+    }
+    window.updateGuestShippingAndSummary = updateGuestShippingAndSummary;
+
+    function fillGuestAddressFields(place) {
+        const rawComponents = place?.addressComponents || place?.address_components || [];
+        const normalizeComponent = (component) => {
+            if (!component) return null;
+            const name = component.long_name || component.longName || component.name || component.short_name || component.shortName;
+            return {
+                value: name || '',
+                types: component.types || [],
+            };
+        };
+
+        const components = rawComponents.map(normalizeComponent).filter(Boolean);
+        const get = (type) => components.find((c) => c.types.includes(type))?.value?.trim() || '';
+
+        const formattedAddress = place?.formattedAddress || place?.formatted_address || '';
+        const streetFromPlace = get('route') || formattedAddress.split(',')[0]?.trim();
+        const numberFromPlace = get('street_number');
+        const neighborhoodFromPlace = get('sublocality_level_1') || get('neighborhood') || get('political');
+        const cityFromPlace = get('administrative_area_level_2');
+        const zipFromPlace = get('postal_code');
+
+        const streetInput = document.getElementById('guest-address-street');
+        const numberInput = document.getElementById('guest-address-number');
+        const neighborhoodInput = document.getElementById('guest-address-neighborhood');
+        const cityInput = document.getElementById('guest-address-city');
+        const zipInput = document.getElementById('guest-address-zip');
+
+        if (streetFromPlace && streetInput) streetInput.value = streetFromPlace;
+        if (numberFromPlace && numberInput && !numberInput.value) numberInput.value = numberFromPlace;
+        if (neighborhoodFromPlace && neighborhoodInput) neighborhoodInput.value = neighborhoodFromPlace;
+        if (cityInput) {
+            cityInput.value = cityFromPlace || cityInput.value || 'Goiânia';
+        }
+        if (zipFromPlace && zipInput && !zipInput.value) zipInput.value = zipFromPlace;
+
+        const fullInput = document.getElementById('guest-address-full');
+        if (fullInput) fullInput.value = formattedAddress || fullInput.value || '';
+        syncGuestAddressFlowState();
+    }
+
+    function reverseGeocodeGuest(latlng) {
+        const normalizedLatLng = normalizeGuestLatLng(latlng);
+        if (!normalizedLatLng) {
+            showToast('Erro ao obter coordenadas do endereço. Tente novamente.', true);
+            return;
+        }
+
+        if (!guestGeocoder) {
+            guestGeocoder = new google.maps.Geocoder();
+        }
+
+        guestGeocoder.geocode({ location: normalizedLatLng }, (results, status) => {
+		    if (status === 'OK' && results[0]) {
+                fillGuestAddressFields(results[0]);
+                window.guestCurrentLatLng = normalizedLatLng;
+                window.guestManualAddressLocationConfirmed = false;
+                showGuestMapWarning('Mova o mapa para ajustar o pino no local da entrega.');
+                syncGuestAddressFlowState({ locationConfirmed: false });
+            }
+        });
+    }
+
+    async function initGuestAddressStep1Search() {
+        const searchContainer = document.getElementById('guest-address-search-container');
+        const locationBtn = document.getElementById('guest-address-location-btn');
+        if (!searchContainer) return;
+        await window.aguardarGoogleMaps?.();
+
+        if (!guestPlaceAutocomplete) {
+            await google.maps.importLibrary("places");
+            guestPlaceAutocomplete = new google.maps.places.PlaceAutocompleteElement();
+            guestPlaceAutocomplete.className = 'w-full border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500';
+            guestPlaceAutocomplete.setAttribute('placeholder', 'Digite o endereço para entrega...');
+            guestPlaceAutocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
+                const place = placePrediction.toPlace();
+                await place.fetchFields({ fields: ['location', 'formattedAddress', 'addressComponents'] });
+                if (!place.location) return;
+                const coords = { lat: place.location.lat(), lng: place.location.lng() };
+                fillGuestAddressFields(place);
+                window.guestCurrentLatLng = coords;
+                window.guestManualAddressLocationConfirmed = false;
+                syncGuestAddressFlowState({ currentStep: 2, locationConfirmed: false });
+                showGuestAddressStep(2);
+                await window.initGuestAddressMap(coords);
+                showGuestMapWarning('Mova o mapa para ajustar o pino no local da entrega.');
+            });
+        }
+
+        if (guestPlaceAutocomplete && !searchContainer.contains(guestPlaceAutocomplete)) {
+            searchContainer.append(guestPlaceAutocomplete);
+        }
+        if (guestPlaceAutocomplete && window.guestAddressFlowState?.autocompleteSelection && !guestPlaceAutocomplete.value) {
+            guestPlaceAutocomplete.value = window.guestAddressFlowState.autocompleteSelection;
+        }
+        if (locationBtn && !locationBtn.dataset.boundGuestLocation) {
+            locationBtn.dataset.boundGuestLocation = 'true';
+            locationBtn.addEventListener('click', useCurrentLocationForGuestAddress);
+        }
+    }
+
+    async function useCurrentLocationForGuestAddress() {
+        if (!navigator.geolocation) {
+            showToast('Geolocalização não suportada.', true);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            window.guestCurrentLatLng = coords;
+            window.guestManualAddressLocationConfirmed = false;
+            syncGuestAddressFlowState({ currentStep: 2, locationConfirmed: false });
+            showGuestAddressStep(2);
+            await window.initGuestAddressMap(coords);
+            reverseGeocodeGuest(coords);
+            showGuestMapWarning('Mova o mapa para ajustar o pino no local da entrega.');
+        }, (err) => showToast(`Não foi possível obter localização: ${err.message}`, true));
+    }
+
+    window.initGuestAddressMap = async function(initialCoords) {
+        const addressMapContainer = document.getElementById('guest-address-map-container');
+        if (!addressMapContainer) return;
+
+        try {
+            const defaultCenter = normalizeGuestLatLng(initialCoords) || window.guestCurrentLatLng || { lat: -16.644661430463806, lng: -49.324890665224544 };
+            guestGeocoder = new google.maps.Geocoder();
+
+            const { Map } = await google.maps.importLibrary("maps");
+            let mapShell = addressMapContainer.querySelector('div[data-guest-map-shell="true"]');
+            let mapDiv = addressMapContainer.querySelector('div[data-guest-map="true"]');
+            if (!mapShell || !mapDiv) {
+                mapShell = document.createElement('div');
+                mapShell.dataset.guestMapShell = 'true';
+                mapShell.style.cssText = 'position:relative; height:300px; width:100%; border-radius:0.5rem; margin-top:0.75rem; overflow:hidden;';
+
+                mapDiv = document.createElement('div');
+                mapDiv.dataset.guestMap = 'true';
+                mapDiv.style.cssText = 'height:100%; width:100%;';
+                mapDiv.style.touchAction = 'none';
+
+                const centerPin = document.createElement('div');
+                centerPin.style.cssText = 'position:absolute; left:50%; top:50%; transform:translate(-50%, -100%); z-index:9999; pointer-events:none; width:28px; height:28px;';
+                centerPin.innerHTML = '<div style="width:26px;height:26px;background:#ef4444;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 8px rgba(0,0,0,.4);position:relative;"><div style="width:9px;height:9px;background:#fff;border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(45deg);"></div></div>';
+
+                mapShell.append(mapDiv, centerPin);
+                addressMapContainer.innerHTML = '';
+                addressMapContainer.append(mapShell);
+            }
+
+            if (!guestMap) {
+                guestMap = new Map(mapDiv, { center: defaultCenter, zoom: 17, mapId: 'DEMO_MAP_ID', gestureHandling: 'greedy' });
+                if (guestMapIdleListener) google.maps.event.removeListener(guestMapIdleListener);
+                guestMapIdleListener = guestMap.addListener('idle', () => {
+                    const center = guestMap.getCenter();
+                    if (!center) return;
+                    reverseGeocodeGuest({ lat: center.lat(), lng: center.lng() });
+                });
+            } else {
+                guestMap.setCenter(defaultCenter);
+                guestMap.setZoom(17);
+            }
+
+            reverseGeocodeGuest(defaultCenter);
+        } catch (error) {
+            console.error("Erro ao inicializar mapa do visitante:", error);
+            addressMapContainer.innerHTML = `<div class="bg-red-50 p-4 text-red-700 rounded-lg">Erro ao carregar o mapa.</div>`;
+        }
+    }
+
+    window.initGuestAddressFlow = async function() {
+        window.guestAddressFlowState = window.guestAddressFlowState || createInitialGuestAddressFlowState();
+        applyGuestAddressFormData(window.guestAddressFlowState.formData || {});
+        window.guestManualAddressLocationConfirmed = !!window.guestAddressFlowState.locationConfirmed;
+        try {
+            await initGuestAddressStep1Search();
+        } catch (error) {
+            console.error('Falha ao iniciar busca de endereço do visitante:', error);
+        }
+        const step = window.guestAddressFlowState.currentStep || 1;
+        showGuestAddressStep(step);
+        if (step >= 2 && normalizeGuestLatLng(window.guestCurrentLatLng)) {
+            await window.initGuestAddressMap(window.guestCurrentLatLng);
+        }
+        if (!window.guestManualAddressLocationConfirmed) {
+            showGuestMapWarning('Confirme o local para calcular o frete.');
+        } else {
+            clearGuestMapWarning();
+        }
+    };
+
+    ['guest-address-street', 'guest-address-number', 'guest-address-complement', 'guest-address-reference', 'guest-address-neighborhood', 'guest-address-city', 'guest-address-zip', 'guest-address-nickname', 'guest-address-no-number', 'guest-address-frequent-location', 'guest-name', 'guest-phone', 'guest-payment-method']
+        .forEach((id) => {
+            const input = document.getElementById(id);
+            if (!input || input.dataset.boundGuestState) return;
+            input.dataset.boundGuestState = 'true';
+            input.addEventListener('input', () => syncGuestAddressFlowState());
+            input.addEventListener('change', () => syncGuestAddressFlowState());
+        });
+
+    const guestNoNumberCheckbox = document.getElementById('guest-address-no-number');
+    const guestNumberInput = document.getElementById('guest-address-number');
+    if (guestNoNumberCheckbox && guestNumberInput && !guestNoNumberCheckbox.dataset.boundGuestNoNumber) {
+        guestNoNumberCheckbox.dataset.boundGuestNoNumber = 'true';
+        guestNoNumberCheckbox.addEventListener('change', () => {
+            const checked = guestNoNumberCheckbox.checked;
+            guestNumberInput.disabled = checked;
+            if (checked) {
+                guestNumberInput.value = 'S/N';
+            } else if (guestNumberInput.value === 'S/N') {
+                guestNumberInput.value = '';
+            }
+            syncGuestAddressFlowState();
+        });
+    }
+	// ==================== CÁLCULO DE FRETE - VERSÃO ÚNICA ====================
+
+	// Função auxiliar para aguardar o Google Maps carregar
+	function aguardarGoogleMaps() {
+		return new Promise((resolve, reject) => {
+			if (window.google && window.google.maps) {
+				return resolve();
+			}
+            let attempt = 0;
+			const checkInterval = setInterval(() => {
+                attempt++;
+				if (window.google && window.google.maps) {
+					clearInterval(checkInterval);
+					resolve();
+				} else if (attempt > 50) { // Timeout after 10 seconds
+                    clearInterval(checkInterval);
+                    reject('Timeout: Google Maps não carregou.');
+                }
+			}, 200);
+		});
+	}
+    window.aguardarGoogleMaps = aguardarGoogleMaps;
+
+	// Função para calcular frete usando Google Distance Matrix API
+	async function calcularFreteParaEndereco(destinoLatLng) {
+        if(window.publicStoreConfig && !window.publicStoreConfig.delivery.available) throw new Error('Entrega indisponível nesta loja.');
+        if (window.dadosFrete && window.freteACombinar) {
+            return {valorFrete: 0, freteACombinar: true, distanciaKm: null};
+        }
+        if (!destinoLatLng || !Number.isFinite(destinoLatLng.lat) || Math.abs(destinoLatLng.lat) > 90 ||
+            !Number.isFinite(destinoLatLng.lng) || Math.abs(destinoLatLng.lng) > 180) {
+            throw new Error('Coordenadas do endereço de entrega inválidas.');
+        }
+        let requestBody = {clienteLat: destinoLatLng.lat, clienteLng: destinoLatLng.lng};
+        if (window.dadosFrete) {
+            const loja = {lat: Number(window.dadosFrete.lat), lng: Number(window.dadosFrete.lng)};
+            if (window.dadosFrete.lat == null || window.dadosFrete.lng == null ||
+                String(window.dadosFrete.lat).trim() === '' || String(window.dadosFrete.lng).trim() === '' ||
+                !Number.isFinite(loja.lat) || Math.abs(loja.lat) > 90 ||
+                !Number.isFinite(loja.lng) || Math.abs(loja.lng) > 180) {
+                throw new Error('Coordenadas da loja inválidas. Corrija latitude e longitude em Configurações → Frete.');
+            }
+            await window.aguardarGoogleMaps();
+            const distanceKm = await new Promise((resolve, reject) => {
+                const service = new google.maps.DistanceMatrixService();
+                service.getDistanceMatrix({
+                    origins: [loja], destinations: [destinoLatLng],
+                    travelMode: google.maps.TravelMode.DRIVING,
+                    unitSystem: google.maps.UnitSystem.METRIC
+                }, (response, status) => {
+                    if (status !== 'OK' || response?.rows?.[0]?.elements?.[0]?.status !== 'OK') {
+                        console.error('Erro no Google Distance Matrix:', status, response);
+                        return reject(new Error('Não foi possível calcular a distância de entrega.'));
+                    }
+                    resolve(response.rows[0].elements[0].distance.value / 1000);
+                });
+            });
+            requestBody = {distanciaKm: distanceKm};
+        }
+        const response = await fetch(`${window.API_BASE_URL}/frete/calcular?lojaId=${encodeURIComponent(window.STORE_ID)}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(requestBody)
+        });
+        const quote = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(quote.message || 'Não foi possível calcular o frete.');
+        return quote;
+    }
+    window.calcularFreteParaEndereco = calcularFreteParaEndereco;
+
+	console.log('✅ Módulos de frete e mapa carregados');
+
+
+	</script>
+
+
+</body>
+</html>
