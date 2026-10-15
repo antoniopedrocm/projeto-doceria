@@ -25,8 +25,11 @@ const mount=()=>act(async()=>root.render(<ApplicationGate StaffApplication={staf
 async function emit(u){auth.currentUser=u;await act(async()=>{for(const fn of listeners.get(auth)||[])fn(u);});}
 async function click(label){await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent===label).click());}
 test('dual-role enters CRM and switches both ways with same Auth and fresh resolution',async()=>{
+  const cart=JSON.stringify({storeId:'loja-futura-teste',reorderOwnerUid:'a',cart:[{id:'p',quantity:2,preco:7}],pendingOrderDetails:{context:'keep'}});sessionStorage.setItem('checkoutState_v1',cart);
   await mount();await emit(identity('a'));expect(host.textContent).toContain('CRM:a');await click('Área do Cliente');expect(host.textContent).toContain('Customer:a');expect(window.location.pathname).toBe('/area-cliente');
+  expect(sessionStorage.getItem('checkoutState_v1')).toBe(cart);
   await click('Ir para o CRM');expect(host.textContent).toContain('CRM:a');expect(auth.currentUser.uid).toBe('a');expect(resolver).toHaveBeenCalledTimes(3);expect(logoutCanonicalSession).not.toHaveBeenCalled();
+  expect(sessionStorage.getItem('checkoutState_v1')).toBe(cart);
 });
 test('Staff only cannot enter Customer or create a Customer',async()=>{
   window.history.replaceState(null,'','/minha-conta');resolver.mockImplementation(async u=>caps(u.uid,true,false));await mount();await emit(identity('staff'));expect(host.textContent).toContain('CRM:staff');expect(host.textContent).not.toContain('Área do Cliente');expect(window.location.pathname).toBe('/');
