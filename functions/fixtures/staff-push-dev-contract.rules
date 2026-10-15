@@ -1,0 +1,28 @@
+// Test-only excerpt of the published crmdoceria-9959e contract read 2026-10-15.
+// Published full source SHA256: 04ab0b091fe0d172c31f152711cc9c9d23fe5adbe0e8058d2343c2fe26f47c59.
+// Not a deployment Rules file. Other collections are deliberately excluded.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    match /notificationTokens/{tokenId} {
+      allow read: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.platform in ['android', 'web']
+        && request.resource.data.get('devicePlatform', '') is string
+        && request.resource.data.get('userAgent', '') is string
+        && request.resource.data.get('userAgent', '').size() <= 1024
+        && request.resource.data.updatedAt is timestamp;
+      allow update: if isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.platform in ['android', 'web']
+        && request.resource.data.get('devicePlatform', '') is string
+        && request.resource.data.get('userAgent', '') is string
+        && request.resource.data.get('userAgent', '').size() <= 1024
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+  }
+}

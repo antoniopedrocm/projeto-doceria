@@ -58,8 +58,17 @@ export async function cleanupStaffDevice({auth, uid, fallbackToken, pendingRegis
     if (!current()) return 'uid-changed';
     token ||= fallbackToken;
     if (!token) { warn('device-unresolved'); return 'unresolved'; }
-    // The adapter must atomically verify document.uid before deleting this exact
-    // token. It must not query/delete all tokens for a UID.
+    // Deployed Rules forbid token reads and enforce resource.uid == request.auth.uid
+    // on this exact delete. Never query tokens or delete other devices as fallback.
     return removeAssociation(token, current);
   }, {signal});
+}
+
+export async function removeStaffTokenAssociation({db, token, current, doc, deleteDoc}) {
+  if (!current()) return 'uid-changed';
+  // Ownership is checked atomically by the deployed delete Rule, not by a read
+  // transaction. Missing/foreign documents may both be denied: do not report
+  // permission-denied as successful cleanup or try a broader deletion.
+  await deleteDoc(doc(db, 'notificationTokens', token));
+  return 'removed';
 }

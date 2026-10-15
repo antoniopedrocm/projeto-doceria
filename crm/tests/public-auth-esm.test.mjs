@@ -78,6 +78,7 @@ if (!process.env.PUBLIC_AUTH_ESM_WORKER) {
     const source = fs.readFileSync(filename, 'utf8');
     // A valid export alone is insufficient when the old URL is immutable.
     assert.equal(source.includes('20261014-single-session'), false, entry + ' retains a cached broken entry URL');
+    assert.equal(source.includes('20261014-auth-logout-fix'), false, entry + ' retains the cached read-before-delete entry URL');
     if (!html) {
       const module = compile(source, new URL('file:///' + filename.replace(/\\/g, '/')).href);
       cache.set(filename, module);

@@ -1,5 +1,5 @@
-import {retireLegacySession,createCanonicalLogout,syncPrivateCart} from './canonical-session.mjs?v=20261014-auth-logout-fix';
-import {cleanupStaffDevice,existingBrowserPushToken} from './staff-push-cleanup.mjs?v=20261014-logout';
+import {retireLegacySession,createCanonicalLogout,syncPrivateCart} from './canonical-session.mjs?v=20261015-fcm-delete';
+import {cleanupStaffDevice,existingBrowserPushToken,removeStaffTokenAssociation} from './staff-push-cleanup.mjs?v=20261015-fcm-delete';
 import {localCheckout, getCheckoutFirebaseConfig} from './checkout-environment.js';
 // Firebase configuration and setup for the public/cardápio pages.
 // CRM and authenticated public pages share DEFAULT. The named legacy app is
@@ -8,7 +8,7 @@ import {localCheckout, getCheckoutFirebaseConfig} from './checkout-environment.j
 import { initializeApp, getApps } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import {
   getFirestore,
-  runTransaction,
+  deleteDoc,
   connectFirestoreEmulator,
   collection,
   getDocs,
@@ -70,15 +70,7 @@ const logout=createCanonicalLogout({auth,legacyAuth,signOut,storage:window.sessi
         const sdk=await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js');
         return await sdk.isSupported()?{instance:sdk.getMessaging(app),getToken:sdk.getToken}:null;
       }}),
-      removeAssociation:(currentToken,current)=>runTransaction(db,async transaction=>{
-        const ref=doc(db,'notificationTokens',currentToken);
-        const snapshot=await transaction.get(ref);
-        if(!current()) return 'uid-changed';
-        if(!snapshot.exists()) return 'missing';
-        if(snapshot.data().uid!==uid) return 'different-owner';
-        transaction.delete(ref);
-        return 'removed';
-      }),
+      removeAssociation:(currentToken,current)=>removeStaffTokenAssociation({db,token:currentToken,current,doc,deleteDoc}),
     });
   }});
 const retirePublicLegacy=()=>retireLegacySession({auth,legacyAuth,signOut,beforeConflict:()=>logout()});

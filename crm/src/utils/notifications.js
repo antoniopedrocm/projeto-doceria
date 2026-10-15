@@ -1,6 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { getToken, onMessage } from 'firebase/messaging';
-import { doc, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, messagingPromise, VAPID_KEY } from '../firebaseConfig.js';
 import { claimOrderAlert } from './orderAlertDeduper.js';
 
@@ -8,7 +8,7 @@ const isBrowser = typeof window !== 'undefined';
 const OrderPush = registerPlugin('OrderPush');
 const registrationFlights = new Map();
 let webTokenFlight = null;
-const pushCleanupModule = () => import(/* webpackIgnore: true */ '/staff-push-cleanup.mjs?v=20261014-logout');
+const pushCleanupModule = () => import(/* webpackIgnore: true */ '/staff-push-cleanup.mjs?v=20261015-fcm-delete');
 
 export const PUSH_PERMISSION_STATUS = Object.freeze({
   GRANTED: 'granted',
@@ -226,7 +226,7 @@ async function registerStaffDevice(uid, { requestPermission = false } = {}) {
 
 export async function unregisterDeviceForPush(uid, fallbackToken = null, signal) {
   if (!uid || auth.currentUser?.uid !== uid || signal?.aborted) return 'uid-changed';
-  const {cleanupStaffDevice, existingBrowserPushToken} = await pushCleanupModule();
+  const {cleanupStaffDevice, existingBrowserPushToken, removeStaffTokenAssociation} = await pushCleanupModule();
   return cleanupStaffDevice({auth, uid, fallbackToken, signal,
     pendingRegistration: registrationFlights.get(uid),
     warn: code => console.warn('[Auth] Push cleanup incomplete:', code),
@@ -240,15 +240,7 @@ export async function unregisterDeviceForPush(uid, fallbackToken = null, signal)
         return instance ? {instance, getToken} : null;
       }});
     },
-    removeAssociation: (token, current) => runTransaction(db, async transaction => {
-      const ref = doc(db, 'notificationTokens', token);
-      const snapshot = await transaction.get(ref);
-      if (!current()) return 'uid-changed';
-      if (!snapshot.exists()) return 'missing';
-      if (snapshot.data().uid !== uid) return 'different-owner';
-      transaction.delete(ref);
-      return 'removed';
-    }),
+    removeAssociation: (token, current) => removeStaffTokenAssociation({db, token, current, doc, deleteDoc}),
   });
 }
 

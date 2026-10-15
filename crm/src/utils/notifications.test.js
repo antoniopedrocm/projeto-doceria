@@ -13,7 +13,7 @@ jest.mock('firebase/firestore', () => ({
   deleteDoc: jest.fn(), runTransaction: jest.fn(), setDoc: jest.fn(), serverTimestamp: () => 'server-time',
   doc: (_db, collection, id) => ({ collection, id }),
 }));
-jest.mock('/staff-push-cleanup.mjs?v=20261014-logout', () => jest.requireActual('../../public/staff-push-cleanup.mjs'), {virtual: true});
+jest.mock('/staff-push-cleanup.mjs?v=20261015-fcm-delete', () => jest.requireActual('../../public/staff-push-cleanup.mjs'), {virtual: true});
 jest.mock('../firebaseConfig', () => ({
   auth: { currentUser: { uid: 'staff-a' }, app: { options: { projectId: 'crmdoceria-9959e' } } }, db: {}, VAPID_KEY: '',
   // Messaging is opaque and has no public .app property in Firebase 10.14.1.
@@ -64,11 +64,15 @@ beforeEach(() => {
   }});
   getToken.mockResolvedValue('fixture-token');
   setDoc.mockResolvedValue(undefined);
-  deleteDoc.mockResolvedValue(undefined);
-  runTransaction.mockImplementation(async (_db, callback) => callback({
-    get: async ref => ({exists: () => associations.has(ref.id), data: () => associations.get(ref.id)}),
-    delete: ref => {associations.delete(ref.id);deleteDoc(ref);},
-  }));
+  // Match the published DEV contract: no token reads; delete requires persisted
+  // resource.uid == request.auth.uid. A missing resource is not assumed deleted.
+  runTransaction.mockImplementation(() => {throw Error('Token reads are forbidden by deployed DEV Rules');});
+  deleteDoc.mockImplementation(async ref => {
+    if (associations.get(ref.id)?.uid !== auth.currentUser?.uid) {
+      throw Object.assign(new Error('fixture-denied'), {code:'permission-denied'});
+    }
+    associations.delete(ref.id);
+  });
   jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());
@@ -205,14 +209,17 @@ test('markerless Customer tab finds this browser token; another device survives;
   });
   expect(associations.has('fixture-token')).toBe(false);
   expect(associations.has('another-device')).toBe(true);
-  await unregisterDeviceForPush('staff-a');
-  expect(deleteDoc).toHaveBeenCalledTimes(1);
+  await expect(unregisterDeviceForPush('staff-a')).rejects.toMatchObject({code:'permission-denied'});
+  expect(deleteDoc).toHaveBeenCalledTimes(2);
+  expect(associations.has('another-device')).toBe(true);
+  expect(runTransaction).not.toHaveBeenCalled();
 });
 
 test('browser token owned by a different UID is never deleted', async () => {
   associations.set('fixture-token', {uid: 'staff-b'});
-  expect(await unregisterDeviceForPush('staff-a')).toBe('different-owner');
-  expect(deleteDoc).not.toHaveBeenCalled();
+  await expect(unregisterDeviceForPush('staff-a')).rejects.toMatchObject({code:'permission-denied'});
+  expect(associations.get('fixture-token').uid).toBe('staff-b');
+  expect(runTransaction).not.toHaveBeenCalled();
 });
 
 test.each(['default', 'denied'])('logout never requests permission when %s', async permission => {
@@ -249,6 +256,7 @@ test('an aborted cleanup cannot remove a token after a late resolution', async (
   const cleanup = unregisterDeviceForPush('staff-a', null, controller.signal);await flush();
   controller.abort();pending.resolve('fixture-token');await cleanup;
   expect(runTransaction).not.toHaveBeenCalled();
+  expect(deleteDoc).not.toHaveBeenCalled();
 });
 
 test('fresh explicit sign-in can register after logout; same session/context cannot', async () => {

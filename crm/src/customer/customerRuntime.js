@@ -8,7 +8,7 @@ const legacyApp=getApps().find(a=>a.name==='cardapioPublic') || initializeApp(ap
 export const legacyAuth=sdk.getAuth(legacyApp);
 if(app.options.projectId==='demo-doceria-checkout') sdk.connectAuthEmulator(legacyAuth,'http://127.0.0.1:9099',{disableWarnings:true});
 export const customerAuth=auth;
-const sessionModule=()=>import(/* webpackIgnore: true */ '/canonical-session.mjs?v=20261014-auth-logout-fix');
+const sessionModule=()=>import(/* webpackIgnore: true */ '/canonical-session.mjs?v=20261015-fcm-delete');
 let preparation;
 export const prepareCanonicalSession=()=>{
   if(!preparation) preparation=sessionModule().then(module=>module.retireLegacySession({auth,legacyAuth,signOut:sdk.signOut,
@@ -27,4 +27,4 @@ export const logoutCanonicalSession=async()=>{
   return logout();
 };
 export const runtimeFor = () => ({auth,functions,httpsCallable,...sdk,logout:logoutCanonicalSession});
-export const loadCustomerController = () => import(/* webpackIgnore: true */ '/customer-account-core.mjs?v=20261014-auth-logout-fix');
+export const loadCustomerController = () => import(/* webpackIgnore: true */ '/customer-account-core.mjs?v=20261015-fcm-delete');

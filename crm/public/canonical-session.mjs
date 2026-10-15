@@ -1,4 +1,4 @@
-import {markStaffPushLogout} from './staff-push-cleanup.mjs?v=20261014-logout';
+import {markStaffPushLogout} from './staff-push-cleanup.mjs?v=20261015-fcm-delete';
 // Identity transition only. Neither the route nor this state grants authorization.
 export const CART_OWNER_KEY = 'doceria-auth-cart-owner';
 export const STAFF_PUSH_KEY = 'doceria-staff-push-device';

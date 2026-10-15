@@ -2,7 +2,7 @@ import {customerAuthErrorMessage} from './customer-auth-errors.mjs';
 import {createCustomerAuthState} from './customer-session.mjs';
 import {isCustomerIdentity as isCustomerUser, createCustomerAreaNavigation} from './customer-area.mjs';
 import {createCustomerProfileSecurity} from './customer-profile.mjs';
-import {createCustomerOrderHistory} from './customer-orders-view.mjs?v=20261014-auth-logout-fix';
+import {createCustomerOrderHistory} from './customer-orders-view.mjs?v=20261015-fcm-delete';
 import {createCustomerReorderView} from './customer-reorder-view.mjs';
 import {createStoredCartBridge} from './reorder-cart.mjs';
 

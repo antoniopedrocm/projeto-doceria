@@ -65,14 +65,12 @@ if (!process.env.STAFF_PUSH_VM_WORKER) {
         if (env.writeGate) await env.writeGate.promise;
         env.rows.set(ref.id, data);env.events.push(['write-end', ref.id]);
       },
-      runTransaction: async (_db, callback) => {
-        const deleted = [];
-        const result = await callback({
-          get: async ref => ({exists: () => env.rows.has(ref.id), data: () => env.rows.get(ref.id)}),
-          delete: ref => deleted.push(ref.id),
-        });
-        for (const id of deleted) {env.rows.delete(id);env.events.push(['delete', id]);}
-        return result;
+      runTransaction: async () => {throw Error('Published DEV Rules deny token reads');},
+      deleteDoc: async ref => {
+        if (env.rows.get(ref.id)?.uid !== env.user?.uid) {
+          throw Object.assign(new Error('fixture-permission-denied'), {code:'permission-denied'});
+        }
+        env.rows.delete(ref.id);env.events.push(['delete', ref.id]);
       },
     };
     function synthetic(id, values) {
