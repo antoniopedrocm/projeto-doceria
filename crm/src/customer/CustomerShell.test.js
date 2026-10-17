@@ -7,7 +7,7 @@ jest.mock('../firebaseConfig',()=>({auth:{app:{name:'[DEFAULT]'}}}));
 jest.mock('./customerRuntime',()=>({logoutCanonicalSession:jest.fn(async()=>{}),runtimeFor:jest.fn(a=>({auth:a})),loadCustomerController:jest.fn()}));
 jest.mock('firebase/auth',()=>({signOut:jest.fn(async()=>{})}));
 let host,root,controller,install,session;
-beforeEach(()=>{global.IS_REACT_ACT_ENVIRONMENT=true;host=document.createElement('div');document.body.append(host);root=createRoot(host);window.history.replaceState(null,'','/area-cliente');sessionStorage.clear();session={app:{name:'[DEFAULT]'},currentUser:{uid:'a'}};controller={ready:Promise.resolve(),openAccount:jest.fn(async()=>{}),openOrder:jest.fn(async()=>{}),dispose:jest.fn()};install=jest.fn(()=>controller);});
+beforeEach(()=>{global.IS_REACT_ACT_ENVIRONMENT=true;Object.defineProperty(window,'innerWidth',{configurable:true,writable:true,value:320});host=document.createElement('div');document.body.append(host);root=createRoot(host);window.history.replaceState(null,'','/area-cliente');sessionStorage.clear();session={app:{name:'[DEFAULT]'},currentUser:{uid:'a'}};controller={ready:Promise.resolve(),openAccount:jest.fn(async()=>{}),openOrder:jest.fn(async()=>{}),dispose:jest.fn()};install=jest.fn(()=>controller);});
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();jest.clearAllMocks();});
 // Direct ReactDOM rendering needs act; this helper does not use Testing Library.
 // eslint-disable-next-line testing-library/no-unnecessary-act
@@ -24,3 +24,111 @@ test('desempate de rotas recusa URLs arbitrárias e retorno respeita loja/sessã
 test('erro tardio da rota anterior não altera a sessão Customer seguinte',async()=>{let reject;controller.openAccount.mockImplementation(()=>new Promise((_,no)=>{reject=no;}));await mount();await click('Meus Pedidos');const rejectA=reject;await mount({uid:'b',sessionAuth:{app:{name:'[DEFAULT]'},currentUser:{uid:'b'}}});await act(async()=>rejectA(Error('private-a')));expect(host.textContent).not.toContain('Não foi possível carregar esta página.');expect(host.textContent).not.toContain('private-a');});
 
 test('dual-role gets CRM action in drawer and account menu; Customer-only never does',async()=>{const open=jest.fn();await mount({canOpenStaff:true,onStaffContext:open});await click('☰');expect(host.querySelector('aside').textContent).toContain('Ir para o CRM');await click('Minha conta ▾');expect(host.querySelector('[aria-label="Menu do usuário Customer"]').textContent).toContain('Ir para o CRM');await click('Ir para o CRM');expect(open).toHaveBeenCalledTimes(1);await mount({canOpenStaff:false});expect(host.textContent).not.toContain('Ir para o CRM');});
+
+test('mobile hamburger toggles drawer with accurate aria state and controls',async()=>{
+  await mount();const toggle=host.querySelector('[aria-label="Abrir menu do cliente"]');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(document.getElementById(toggle.getAttribute('aria-controls'))).toBe(host.querySelector('aside'));
+  await click('☰');expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(host.querySelector('aside')).toHaveProperty('className','is-open');
+  await click('☰');expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(host.querySelector('aside')).toHaveProperty('className','');
+  expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
+});
+
+test('outside click is intercepted by a separate backdrop without activating content behind it',async()=>{
+  await mount();await click('☰');
+  const backdrop=host.querySelector('.customer-drawer-backdrop');expect(backdrop).not.toBeNull();
+  expect(backdrop.closest('main')).toBeNull();expect(backdrop.closest('aside')).toBeNull();
+  await act(async()=>backdrop.click());
+  expect(host.querySelector('aside').className).toBe('');
+  expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
+  expect(window.location.pathname).toBe('/area-cliente');
+  expect(controller.openAccount).not.toHaveBeenCalled();expect(controller.openOrder).not.toHaveBeenCalled();
+  expect(logoutCanonicalSession).not.toHaveBeenCalled();
+});
+
+test('clicking panel space keeps drawer open',async()=>{
+  await mount();await click('☰');await act(async()=>host.querySelector('aside').click());
+  expect(host.querySelector('aside').className).toBe('is-open');
+});
+
+test('Escape closes open drawer, restores toggle focus and is inert when closed',async()=>{
+  await mount();await click('☰');
+  await act(async()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',cancelable:true})));
+  expect(host.querySelector('aside').className).toBe('');
+  expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
+  expect(document.activeElement).toBe(host.querySelector('[aria-label="Abrir menu do cliente"]'));
+  await act(async()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})));
+  expect(window.location.pathname).toBe('/area-cliente');
+  expect(host.querySelector('aside').className).toBe('');
+});
+
+test('selecting Customer page navigates and removes drawer and backdrop',async()=>{
+  await mount();await click('☰');await click('Meus Pedidos');
+  expect(window.location.pathname).toBe('/meus-pedidos');
+  expect(controller.openAccount).toHaveBeenCalledWith('orders');
+  expect(host.querySelector('aside').className).toBe('');
+  expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
+});
+
+test('dual-role CRM action closes drawer without logout',async()=>{
+  const staff=jest.fn();await mount({canOpenStaff:true,onStaffContext:staff});await click('☰');await click('Ir para o CRM');
+  expect(staff).toHaveBeenCalledTimes(1);expect(host.querySelector('aside').className).toBe('');
+  expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();expect(logoutCanonicalSession).not.toHaveBeenCalled();
+});
+
+test('logout action closes the drawer while retaining the canonical logout contract',async()=>{
+  await mount();await click('☰');await click('Sair');
+  expect(host.querySelector('aside').className).toBe('');expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
+  expect(logoutCanonicalSession).toHaveBeenCalledTimes(1);expect(controller.dispose).toHaveBeenCalled();
+});
+
+test('repeated open and close removes Escape and resize listeners, including unmount',async()=>{
+  const add=jest.spyOn(window,'addEventListener'),remove=jest.spyOn(window,'removeEventListener');
+  try {
+    await mount();
+    for(let i=0;i<3;i++){await click('☰');await click('☰');}
+    for(const event of ['keydown','resize']) {
+      const listeners=add.mock.calls.filter(([name])=>name===event).map(([,listener])=>listener);
+      expect(listeners).toHaveLength(3);
+      for(const listener of listeners) expect(remove.mock.calls.filter(([name,fn])=>name===event && fn===listener)).toHaveLength(1);
+    }
+    await click('☰');
+    // Direct ReactDOM unmount must flush effect cleanup before assertions.
+    // eslint-disable-next-line testing-library/no-unnecessary-act
+    await act(async()=>root.render(null));
+    for(const event of ['keydown','resize']) {
+      const listeners=add.mock.calls.filter(([name])=>name===event).map(([,listener])=>listener);
+      expect(listeners).toHaveLength(4);
+      for(const listener of listeners) expect(remove.mock.calls.filter(([name,fn])=>name===event && fn===listener)).toHaveLength(1);
+    }
+  } finally {add.mockRestore();remove.mockRestore();}
+});
+
+test('Customer-only drawer never receives Staff action after outside or Escape dismissals',async()=>{
+  await mount();await click('☰');expect(host.querySelector('aside').textContent).not.toContain('Ir para o CRM');
+  await act(async()=>host.querySelector('.customer-drawer-backdrop').click());
+  await click('☰');expect(host.textContent).not.toMatch(/Ir para o CRM|Dashboard|Configurações/);
+  await act(async()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})));
+  expect(logoutCanonicalSession).not.toHaveBeenCalled();
+});
+
+test('desktop sidebar is retained without mobile backdrop or Escape subscription',async()=>{
+  window.innerWidth=768;const add=jest.spyOn(window,'addEventListener');
+  try {await mount();await click('☰');expect(host.querySelector('aside nav').textContent).toContain('Meus Pedidos');
+    expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
+    expect(host.querySelector('aside').className).toBe('');
+    expect(add.mock.calls.filter(([name])=>name==='keydown')).toHaveLength(0);
+    await click('Meus Pedidos');expect(controller.openAccount).toHaveBeenCalledWith('orders');
+  } finally {add.mockRestore();}
+});
+
+test('resizing from mobile to desktop dismisses transient drawer without touching body scroll',async()=>{
+  const overflow=document.body.style.overflow,position=document.body.style.position;
+  await mount();await click('☰');window.innerWidth=768;
+  await act(async()=>window.dispatchEvent(new Event('resize')));
+  expect(host.querySelector('aside nav')).not.toBeNull();expect(host.querySelector('aside').className).toBe('');
+  expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
+  expect(document.body.style.overflow).toBe(overflow);expect(document.body.style.position).toBe(position);
+});
