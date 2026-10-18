@@ -40,6 +40,20 @@ test.each(['/','/configuracoes','/financeiro','/clientes','/produtos','/pedidos'
 test.each(['/meus-pedidos','/minha-conta','/area-cliente'])('dual refresh restores Customer route %s',async path=>{
   window.history.replaceState(null,'',path);await mount();await emit(identity('a'));expect(host.textContent).toContain('Customer:a');
 });
+test.each([false,true])('explicit /area-cliente entry preserves Customer context when isStaff=%s',async isStaff=>{
+  window.history.replaceState(null,'','/area-cliente');resolver.mockImplementation(async u=>caps(u.uid,isStaff,true));
+  const user=identity('a'),cart='{"storeId":"loja-futura-teste","cart":[{"id":"p","quantity":2}]}';sessionStorage.setItem('checkoutState_v1',cart);
+  await mount();await emit(user);expect(host.textContent).toContain('Customer:a');expect(staff).not.toHaveBeenCalled();
+  expect(window.location.pathname).toBe('/area-cliente');expect(auth.currentUser).toBe(user);
+  expect(host.textContent.includes('Ir para o CRM')).toBe(isStaff);expect(sessionStorage.getItem('checkoutState_v1')).toBe(cart);
+  expect(logoutCanonicalSession).not.toHaveBeenCalled();
+});
+test('signed-out /area-cliente shows login and stays in Customer context after authentication',async()=>{
+  window.history.replaceState(null,'','/area-cliente');await mount();await emit(null);
+  expect(host.textContent).toContain('Customer:login');expect(staff).not.toHaveBeenCalled();expect(resolver).not.toHaveBeenCalled();
+  await emit(identity('a'));expect(host.textContent).toContain('Customer:a');expect(staff).not.toHaveBeenCalled();
+  expect(window.location.pathname).toBe('/area-cliente');
+});
 test('inactive Staff cannot be restored from cache; Customer stays valid',async()=>{
   await mount();await emit(identity('a'));await click('Área do Cliente');resolver.mockResolvedValue(caps('a',false,true));await click('Ir para o CRM');expect(host.textContent).toContain('Customer:a');expect(host.textContent).not.toContain('CRM:a');expect(host.textContent).not.toContain('Ir para o CRM');
 });

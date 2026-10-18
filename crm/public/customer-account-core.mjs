@@ -158,7 +158,22 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   async function finishEmailAuth(){emailDialog.close();showAccount();await refresh();}
   const google=document.getElementById('continue-google-button');const googleHandler=google?busy(google,async()=>{checkoutIntent=true;await googleSignIn();}):null;if(google)google.addEventListener('click',googleHandler);
   const emailButton=document.getElementById('continue-email-button');const emailHandler=()=>{checkoutIntent=true;showEmail();};if(emailButton)emailButton.addEventListener('click',emailHandler);
-  let accountButton=document.getElementById('customer-account-button');const cartButton=document.getElementById('cart-button');if(!accountButton && createAccountButton && cartButton){accountButton=document.createElement('button');accountButton.type='button';accountButton.textContent='Minha Conta';accountButton.className='text-pink-700 border border-pink-200 rounded-lg px-3 py-2';cartButton.before(accountButton);}const openAccount=async(route='profile')=>{checkoutIntent=false;requestedRoute=route;showAccount();message('Carregando sua conta…');await refresh();};const accountHandler=accountButton?busy(accountButton,openAccount):null;if(accountButton)accountButton.addEventListener('click',accountHandler);
+  let accountEntry=document.getElementById('customer-account-button');
+  const cartButton=document.getElementById('cart-button');
+  if(createAccountButton && (accountEntry || cartButton)) {
+    if(accountEntry?.tagName!=='A') {
+      const link=document.createElement('a');
+      link.id='customer-account-button';link.textContent='Minha Conta';
+      link.className=accountEntry?.className || 'text-pink-700 border border-pink-200 rounded-lg px-3 py-2';
+      if(accountEntry) accountEntry.replaceWith(link);else cartButton.before(link);
+      accountEntry=link;
+    }
+    // Header entry is navigation. Auth/onboarding stay with the canonical gate.
+    accountEntry.href='/area-cliente';
+    accountEntry.removeAttribute('aria-haspopup');accountEntry.removeAttribute('aria-expanded');
+  }
+  // Embedded profile/history and checkout authentication still use this API.
+  const openAccount=async(route='profile')=>{checkoutIntent=false;requestedRoute=route;showAccount();message('Carregando sua conta…');await refresh();};
   el('account-google').onclick=busy(el('account-google'),googleSignIn);el('account-email').onclick=()=>showEmail();
   el('complete').onclick=busy(el('complete'),async()=>{let digits=el('number').value.replace(/\D/g,'');if(digits.length<=11)digits='55'+digits;if(!/^55\d{10,11}$/.test(digits))throw new Error('Informe o celular com DDD.');await call('customerCompleteProfile',{phone:'+'+digits,nome:el('new-name').value});await refresh();});
   async function profileCall(name,data) {
@@ -229,5 +244,5 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   const unsubscribe=onAuthStateChanged(auth,user=>{const customerUser=isCustomerUser(user);authState.observe(customerUser?user.uid:null);if(!customerUser){current=null;renderSignedOut();markReady();return;}refresh().catch(()=>{}).finally(markReady);});
   return {getCustomer:()=>current,openAccount,ready,
     openOrder:async({storeId,orderId})=>{await openAccount('orders');if(navigation.isAllowed()) await orderHistory.openDetail({storeId,id:orderId});},
-    dispose:()=>{disposed=true;navigation.invalidate();authState.observe(null);if(typeof unsubscribe==='function')unsubscribe();authState.invalidate();orderHistory.clear();google?.removeEventListener('click',googleHandler);emailButton?.removeEventListener('click',emailHandler);accountButton?.removeEventListener('click',accountHandler);dialog.remove();emailDialog.remove();}};
+    dispose:()=>{disposed=true;navigation.invalidate();authState.observe(null);if(typeof unsubscribe==='function')unsubscribe();authState.invalidate();orderHistory.clear();google?.removeEventListener('click',googleHandler);emailButton?.removeEventListener('click',emailHandler);dialog.remove();emailDialog.remove();}};
 }
