@@ -11,6 +11,8 @@ const {digest}=require('./checkout-auth');
 const originalFetch=global.fetch;
 let links=0;
 let nextLinkError=null;
+let nextCheckResult=null;
+const checkBodies=[];
 const linkBodies=[];
 // Only this test process substitutes the external provider. Production has no mock endpoint.
 global.fetch=async(url,options)=>{
@@ -25,6 +27,10 @@ global.fetch=async(url,options)=>{
     links++;linkBodies.push(JSON.parse(options.body));
     if(nextLinkError) {const error=nextLinkError;nextLinkError=null;return new Response(JSON.stringify(error),{status:400,headers:{'Content-Type':'application/json'}});}
     return {ok:true,json:async()=>({url:'https://buy.infinitepay.io/test-only'})};
+  }
+  if(String(url)==='https://api.checkout.infinitepay.io/payment_check' && nextCheckResult) {
+    checkBodies.push(JSON.parse(options.body));
+    return {ok:true,json:async()=>nextCheckResult};
   }
   if(String(url).startsWith('https://api.checkout.infinitepay.io/')) throw new Error('Unexpected provider call in test');
   return originalFetch(url,options);
@@ -91,6 +97,47 @@ test('falha temporária na consulta do provedor retorna 5xx ao webhook para perm
   const response=await originalFetch(base+'/checkout/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_nsu:created.data.paymentId,transaction_nsu:'unavailable',invoice_slug:'unavailable'})});
   assert.equal(response.status,500);
   assert.equal((await db.doc(`checkoutPayments/${created.data.paymentId}`).get()).data().payment_status,'PENDING');
+});
+
+test('HTTP webhook e payment-status confirmam uma vez nas duas ordens e ignoram evento não pago antigo',async()=>{
+  try {
+    for(const first of ['webhook','payment-status']) {
+      const b=body(),productId='events-'+first;
+      b.idempotencyKey='financial-events-'+first;
+      b.itens=[{produtoId:productId,quantity:1,preco:10}];
+      const product=db.doc(`lojas/${store}/produtos/${productId}`);
+      await product.set({nome:'Produto de eventos',ativo:true,status:'Ativo',preco:10,estoque:3});
+      const created=await send(b);
+      assert.equal(created.status,200);
+      const paymentId=created.data.paymentId;
+      const reference={paymentId,order_nsu:paymentId,transaction_nsu:'events-'+first,slug:'invoice-'+first,
+        handle:'untrusted-merchant',amount:1};
+      const event=async(type)=>{
+        const response=await originalFetch(base+'/checkout/'+type,{method:'POST',
+          headers:{'Content-Type':'application/json',...(type==='payment-status'?{Authorization:'Bearer '+token}:{})},
+          body:JSON.stringify(reference)});
+        assert.equal(response.status,200);
+        return response.json();
+      };
+      nextCheckResult={success:true,paid:true,amount:1000,paid_amount:1000,capture_method:'pix'};
+      await event(first);
+      await event(first==='webhook'?'payment-status':'webhook');
+      await event(first);
+      const payment=await db.doc('checkoutPayments/'+paymentId).get();
+      assert.equal(payment.data().payment_status,'PAID');
+      assert.equal(payment.data().reservation.state,'CONSUMED');
+      assert.equal((await db.doc(payment.data().orderPath).get()).data().order_status,'CONFIRMED');
+      assert.equal((await product.get()).data().estoque,2);
+      assert.equal((await db.collection('checkoutReceipts').where('paymentId','==',paymentId).get()).size,1);
+      const inputs=checkBodies.filter(input=>input.order_nsu===paymentId);
+      assert.equal(inputs.length,3);
+      for(const input of inputs) assert.deepEqual(input,{handle:'merchant-test',order_nsu:paymentId,
+        transaction_nsu:reference.transaction_nsu,slug:reference.slug});
+      nextCheckResult={success:true,paid:false};
+      assert.equal((await event('payment-status')).payment_status,'PAID');
+      assert.equal((await product.get()).data().estoque,2);
+    }
+  } finally {nextCheckResult=null;}
 });
 test('HTTP oculta erro upstream e mantém tentativa ambígua sem novo link ou reserva duplicada',async()=>{
   const b=body();

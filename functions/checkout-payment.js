@@ -10,6 +10,15 @@ function assertPaid(result, expectedAmount) {
   if (!Number.isSafeInteger(result.amount) || result.amount !== expectedAmount || !Number.isSafeInteger(result.paid_amount) || result.paid_amount < expectedAmount) throw paymentError('Valor recebido não corresponde ao pedido.');
   if (!['pix','credit_card'].includes(result.capture_method)) throw paymentError('Forma de pagamento não reconhecida.');
 }
+function orderIdentity(payment) {
+  const path = /^lojas\/([^/]+)\/pedidos\/([^/]+)$/.exec(payment.orderPath || '');
+  // Older records can derive identity from their canonical path, never another store.
+  if (!path || (payment.storeId != null && payment.storeId !== path[1]) ||
+      (payment.orderId != null && payment.orderId !== path[2])) {
+    throw paymentError('Pedido requer conciliação manual.');
+  }
+  return {storeId: path[1], orderId: path[2]};
+}
 class InfinitePayProvider {
   constructor({fetchImpl = fetch, logError = entry => logger.error('InfinitePay request failed', entry)} = {}) {
     this.fetch = fetchImpl;
@@ -89,6 +98,7 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     if(!/^[a-f0-9]{64}$/.test(id) || !/^[\w-]{1,160}$/.test(input.transaction_nsu || '') || !/^[\w-]{1,160}$/.test(input.invoice_slug || input.slug || '')) throw paymentError('Notificação inválida.',400);
     const ref=payments.doc(id);const snap=await ref.get();const payment=snap.data();
     if(!payment) throw paymentError('Pedido não encontrado.',404);
+    const identity=orderIdentity(payment);
     // Webhook and browser parameters are hints only. Re-query the provider with stored merchant/order.
     const result=await provider.check({handle:payment.handle,order_nsu:id,transaction_nsu:input.transaction_nsu,slug:input.invoice_slug || input.slug});
     if(result?.success !== true || result?.paid !== true) throw paymentError('Pagamento ainda não confirmado.');
@@ -102,16 +112,25 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     return db.runTransaction(async tx=>{
         const [latest,receipt,order]=await Promise.all([tx.get(ref),tx.get(receiptRef),tx.get(orderRef)]);
         const current=latest.data();
-        if(!current || current.handle!==payment.handle || current.amount!==payment.amount || current.orderPath!==payment.orderPath) throw paymentError('Pedido requer conciliação manual.');
+        if(!current || current.handle!==payment.handle || current.amount!==payment.amount || current.orderPath!==payment.orderPath ||
+          current.storeId!==payment.storeId || current.orderId!==payment.orderId || current.ownerUid!==payment.ownerUid) throw paymentError('Pedido requer conciliação manual.');
         if(receipt.exists && receipt.data().paymentId!==id) throw paymentError('Transação já associada a outro pedido.');
         if(receipt.exists) return {ok:true,payment_status:current.payment_status,requiresReview:!!current.requiresReview};
         const duplicate=current.payment_status==='PAID' && current.transactionNsu!==input.transaction_nsu;
+        const linkedOrder=order.exists &&
+          (order.data().paymentId == null || order.data().paymentId === id) &&
+          (order.data().lojaId == null || order.data().lojaId === identity.storeId) &&
+          (order.data().storeId == null || order.data().storeId === identity.storeId) &&
+          (order.data().ownerUid == null || order.data().ownerUid === current.ownerUid);
         const invalidOrder=!order.exists || !Number.isFinite(Number(order.data().total)) || Math.round(Number(order.data().total)*100)!==payment.amount;
-        const reviewReason=!paidMatches?'PROVIDER_PAYMENT_MISMATCH':duplicate?'DUPLICATE_PROVIDER_TRANSACTION':invalidOrder?'ORDER_MISSING_OR_AMOUNT_CHANGED':null;
+        const reviewReason=!paidMatches?'PROVIDER_PAYMENT_MISMATCH':duplicate?'DUPLICATE_PROVIDER_TRANSACTION':
+          !linkedOrder?'ORDER_PAYMENT_LINK_MISMATCH':invalidOrder?'ORDER_MISSING_OR_AMOUNT_CHANGED':
+          current.payment_status==='REFUNDED'?'PAYMENT_ALREADY_REFUNDED':null;
         if(reviewReason) {
           tx.create(receiptRef,{paymentId:id,...evidence,outcome:'REVIEW',reason:reviewReason,createdAt:timestamp()});
           tx.update(ref,{requiresReview:true,reviewReason,linkState:'RECONCILIATION_REQUIRED',updatedAt:timestamp()});
-          if(order.exists) tx.update(orderRef,{requiresReview:true});
+          // Never mutate an order belonging to another payment, owner or store.
+          if(linkedOrder) tx.update(orderRef,{requiresReview:true});
           return {ok:true,payment_status:current.payment_status,requiresReview:true};
         }
         if(current.payment_status==='PAID') return {ok:true,payment_status:'PAID',requiresReview:!!current.requiresReview};
