@@ -100,6 +100,7 @@ test('falha temporária na consulta do provedor retorna 5xx ao webhook para perm
 });
 
 test('HTTP webhook e payment-status confirmam uma vez nas duas ordens e ignoram evento não pago antigo',async()=>{
+  const eventBase=base,eventToken=token;
   try {
     for(const first of ['webhook','payment-status']) {
       const b=body(),productId='events-'+first;
@@ -113,8 +114,8 @@ test('HTTP webhook e payment-status confirmam uma vez nas duas ordens e ignoram 
       const reference={paymentId,order_nsu:paymentId,transaction_nsu:'events-'+first,slug:'invoice-'+first,
         handle:'untrusted-merchant',amount:1};
       const event=async(type)=>{
-        const response=await originalFetch(base+'/checkout/'+type,{method:'POST',
-          headers:{'Content-Type':'application/json',...(type==='payment-status'?{Authorization:'Bearer '+token}:{})},
+        const response=await originalFetch(eventBase+'/checkout/'+type,{method:'POST',
+          headers:{'Content-Type':'application/json',...(type==='payment-status'?{Authorization:'Bearer '+eventToken}:{})},
           body:JSON.stringify(reference)});
         assert.equal(response.status,200);
         return response.json();
