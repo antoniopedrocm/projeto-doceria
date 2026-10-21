@@ -14,6 +14,12 @@ Runtime financeiro corrigido em `af9311f2`; ajuste final do harness HTTP em `722
 - Fase 13: **0% / NÃO INICIADA**. Produção intacta.
 - Global: **93,75% → 95,00%**. Fechar a Fase 9 acrescentaria outros 2,00 p.p., atingindo 97,00%.
 
+Reavaliação posterior do contrato, ainda em 2026-10-20: a existência dos seis eventos
+foi confirmada no artigo oficial10766888. A lacuna restante é autenticação/schema e
+confirmação verificável dos eventos não pagos, não inexistência desses eventos.
+Ver [INFINITEPAY_WEBHOOK_REASSESSMENT.md](INFINITEPAY_WEBHOOK_REASSESSMENT.md).
+Testes adicionais sem alteração runtime não mudam os percentuais deste relatório.
+
 ## Fase 9: critérios e evidência
 
 Verificação/correlação, idempotência/conferência e recuperação/registro de tentativas

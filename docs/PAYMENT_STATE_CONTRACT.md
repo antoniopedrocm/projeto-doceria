@@ -3,6 +3,13 @@
 Auditoria local em 2026-10-20, base `c518597c`, branch DEV `feature/infinitepay-customer-auth`.
 Este documento não autoriza transações, estornos, escritas financeiras remotas ou publicação.
 
+**Reavaliação documental em 2026-10-20:** o artigo oficial10766888 atual confirma
+os eventos created, paid, settled, canceled, refunded e payment_failed. Portanto a
+ausência anterior da definição desses eventos não é mais a pendência. Continua
+faltando prova verificável de origem e contrato de confirmação dos eventos não pagos.
+Matriz, fontes atuais, diferenças do modo legado e testes em
+[INFINITEPAY_WEBHOOK_REASSESSMENT.md](INFINITEPAY_WEBHOOK_REASSESSMENT.md).
+
 ## Critério oficial e fontes
 
 A Fase 9 tem quatro marcos iguais: verificação/correlação; idempotência/conferência;
@@ -17,10 +24,10 @@ Fontes primárias consultadas nesta auditoria:
 - [Cancelamento no app InfinitePay](https://ajuda.infinitepay.io/pt-BR/articles/6088742-como-cancelar-uma-venda-no-app-infinitepay):
   procedimento financeiro externo e irreversível. Não é contrato de evento/API de estorno do Checkout.
 
-As páginas consultadas não especificam um payload verificável de falha definitiva,
-estorno ou cancelamento remoto de link para esta integração. Isso não prova que
-o provider nunca ofereça outro contrato; significa que essa base não foi obtida.
-Mocks não podem suprir essa ausência como se fossem comportamento documentado do provider.
+Na consulta anterior não havia sido obtida a definição dos novos eventos. A fonte
+adicional agora os define; ainda não foi localizado schema/autenticação verificável
+nem consulta específica para estados não pagos. Não afirmar inexistência de contrato
+privado. Mocks não substituem esses elementos externos.
 
 ## Autoridade e transições
 
@@ -40,11 +47,11 @@ Mocks não podem suprir essa ausência como se fossem comportamento documentado 
 
 ### FAILED
 
-O conjunto de respostas atualmente documentado não permite inferir falha financeira
-definitiva. A aplicação não produz `FAILED` automaticamente a partir de `paid:false`
-ou de erro de transporte. Continua pendente obter a fonte autoritativa necessária
-antes de implementar uma transição definitiva adicional. Estados históricos podem
-ser apresentados sem afirmar que foram emitidos por essa API.
+`payment_failed` existe oficialmente como tentativa não aprovada. Isso não comprova
+falha definitiva de todo o pedido. A aplicação não produz `FAILED` automaticamente
+a partir de `paid:false`, erro de transporte ou nome de evento não autenticado.
+Antes de uma transição adicional faltam origem verificável/schema e semântica de
+tentativa/retry. Estados históricos não comprovam recebimento de eventos reais.
 
 ### REFUNDED
 
@@ -54,7 +61,8 @@ ou link fechado. Uma comprovação operacional precisaria identificar loja/conta
 pedido, transação, valor/moeda, conclusão do reembolso e referência auditável.
 Uma devolução parcial não comprova devolução integral.
 
-O código atual não contém endpoint de reembolso nem mecanismo operacional aprovado
+O evento `refunded` também é oficialmente definido. Seu recebimento sem prova de
+origem não autoriza a transição interna. O código atual não contém endpoint de reembolso nem mecanismo operacional aprovado
 para registrar essa comprovação na aplicação. Não foi criado um gravador financeiro
 baseado em declaração livre do navegador, e não foram abertas Rules para isso.
 A proteção de um registro interno histórico `REFUNDED` não certifica a origem desse
@@ -103,8 +111,9 @@ financeira emulada de contratos/reservas/configuração/Rules passou 27/27.
 As rotas HTTP exercitam webhook → consulta e consulta → webhook, com repetição e
 preservação de estoque/recibo. Todo provider financeiro é simulado explicitamente.
 
-**Fase 9 permanece 75%:** as correções e provas locais não substituem o contrato
-operacional ainda ausente de estados definitivos/reembolso/cancelamento remoto.
+**Fase 9 permanece 75%:** existência dos eventos agora documentada; as correções e
+provas locais não substituem autenticação verificável/consulta específica e o
+tratamento operacional ainda pendentes. Não presumir API de refund/cancelamento.
 Não exigir um novo Pix ou um estorno real apenas para repetir cenários homologados.
 Próxima dependência: obter contrato/evidência oficial suficiente e definir o mecanismo
 operacional autorizado de registro/conciliação, com testes, sem confiar em status

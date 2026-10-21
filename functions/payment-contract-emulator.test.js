@@ -113,3 +113,98 @@ test('a later unpaid response cannot regress PAID or release consumed stock', as
   assert.equal((await f.receipts()).size, 1);
   assert.equal((await data(f.product)).estoque, 8);
 });
+
+// The names are documented; their webhook envelope/signature is not. `event` below
+// is deliberately an untrusted extra field, NOT a claimed provider payload schema.
+const eventNames = ['created', 'paid', 'settled', 'canceled', 'refunded', 'payment_failed'];
+test('documented event names alone have no financial authority', async t => {
+  for (const event of eventNames) await t.test(event, async () => {
+    const f = await fixture('untrusted-' + event);
+    const before = await data(f.payment);
+    const orderBefore = await data(f.order);
+    const service = f.serviceFor({success: true, paid: false});
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await assert.rejects(() => service.reconcile({...f.payload, event,
+        paid: true, payment_status: 'REFUNDED', amount: 1000}));
+    }
+    assert.deepEqual(await data(f.payment), before);
+    assert.deepEqual(await data(f.order), orderBefore);
+    assert.equal((await data(f.product)).estoque, 8);
+    assert.equal((await f.receipts()).size, 0);
+  });
+});
+
+test('created then a failed attempt can later reconcile a verified approval once', async () => {
+  const f = await fixture('failed-then-retry');
+  const unconfirmed = f.serviceFor({success: true, paid: false});
+  for (const event of ['created', 'payment_failed', 'payment_failed']) {
+    await assert.rejects(() => unconfirmed.reconcile({...f.payload, event}));
+  }
+  assert.equal((await f.receipts()).size, 0);
+  assert.equal((await data(f.payment)).reservation.state, 'HELD');
+  const approved = f.serviceFor(f.paid);
+  await approved.reconcile({...f.payload, event: 'paid'});
+  await approved.reconcile({...f.payload, event: 'paid'});
+  assert.equal((await data(f.payment)).payment_status, 'PAID');
+  assert.equal((await data(f.payment)).reservation.state, 'CONSUMED');
+  assert.equal((await data(f.order)).order_status, 'CONFIRMED');
+  assert.equal((await data(f.product)).estoque, 8); // Already reduced by reservation.
+  assert.equal((await f.receipts()).size, 1);
+});
+
+test('settled, refund and older event hints neither settle twice nor invent a verified refund', async () => {
+  const f = await fixture('post-paid-events');
+  const approved = f.serviceFor(f.paid);
+  await approved.reconcile({...f.payload, event: 'paid'});
+  const before = await data(f.payment);
+  const orderBefore = await data(f.order);
+  for (const event of ['settled', 'refunded', 'refunded', 'canceled', 'created', 'payment_failed']) {
+    // A historical paid:true result is approval evidence, not proof of refund/settlement.
+    await approved.reconcile({...f.payload, event});
+    await assert.rejects(() => f.serviceFor({success: true, paid: false}).reconcile({...f.payload, event}));
+  }
+  assert.deepEqual(await data(f.payment), before);
+  assert.deepEqual(await data(f.order), orderBefore);
+  assert.equal((await data(f.product)).estoque, 8);
+  assert.equal((await f.receipts()).size, 1);
+});
+
+test('an internally recorded refund stays terminal under repeated old event hints without stock restoration', async () => {
+  const f = await fixture('refunded-event-repeats');
+  await f.payment.update({payment_status: 'REFUNDED', 'reservation.state': 'CONSUMED'});
+  await f.order.update({payment_status: 'REFUNDED', order_status: 'DELIVERED'});
+  const approved = f.serviceFor(f.paid);
+  for (const event of ['refunded', 'refunded', 'paid', 'settled', 'created', 'payment_failed']) {
+    assert.equal((await approved.reconcile({...f.payload, event})).payment_status, 'REFUNDED');
+  }
+  assert.equal((await data(f.order)).order_status, 'DELIVERED');
+  assert.equal((await data(f.order)).payment_status, 'REFUNDED');
+  assert.equal((await data(f.payment)).reservation.state, 'CONSUMED');
+  assert.equal((await data(f.product)).estoque, 8);
+  assert.equal((await f.receipts()).size, 1);
+});
+
+test('event labels do not replace missing references or identify an unknown order', async () => {
+  const f = await fixture('missing-event-refs');
+  const approved = f.serviceFor(f.paid);
+  for (const event of eventNames) {
+    await assert.rejects(() => approved.reconcile({order_nsu: f.id, event}), {httpStatus: 400});
+  }
+  await assert.rejects(() => approved.reconcile({...f.payload, order_nsu: '0'.repeat(64)}), {httpStatus: 404});
+  assert.equal(f.calls.length, 0);
+  assert.equal((await f.receipts()).size, 0);
+});
+
+test('a transaction receipt cannot be reused for another order despite a positive provider response', async () => {
+  const first = await fixture('receipt-original');
+  const second = await fixture('receipt-wrong-order');
+  await first.serviceFor(first.paid).reconcile(first.payload);
+  const before = await data(second.payment);
+  await assert.rejects(() => second.serviceFor(second.paid).reconcile({
+    ...second.payload, transaction_nsu: first.payload.transaction_nsu,
+  }), {httpStatus: 409});
+  assert.deepEqual(await data(second.payment), before);
+  assert.equal((await data(second.order)).order_status, 'PENDING');
+  assert.equal((await data(second.product)).estoque, 8);
+  assert.equal((await second.receipts()).size, 0);
+});
