@@ -140,6 +140,43 @@ test('HTTP webhook e payment-status confirmam uma vez nas duas ordens e ignoram 
     }
   } finally {nextCheckResult=null;}
 });
+test('HTTP holds unverified event hints before financial work for both pending and paid orders',async()=>{
+  try {
+    const b=body();
+    b.idempotencyKey='held-events-'+require('node:crypto').randomUUID();
+    const product=db.doc(`lojas/${store}/produtos/held-event-product`);
+    await product.set({nome:'Produto auditoria',ativo:true,status:'Ativo',preco:10,estoque:3});
+    b.itens=[{produtoId:'held-event-product',quantity:1,preco:10}];
+    const created=await send(b);assert.equal(created.status,200);
+    const ref=db.doc('checkoutPayments/'+created.data.paymentId);
+    const reference={order_nsu:ref.id,transaction_nsu:'held-event-transaction',slug:'held-event-invoice'};
+    const webhook=async value=>{
+      const r=await originalFetch(base+'/checkout/webhook',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
+      return {status:r.status,body:await r.json()};
+    };
+    nextCheckResult={success:true,paid:true,amount:1000,paid_amount:1000,capture_method:'pix'};
+    for(const state of ['PENDING','PAID']) {
+      if(state==='PAID')assert.equal((await webhook(reference)).status,200);
+      const payment=(await ref.get()).data(),orderRef=db.doc(payment.orderPath);
+      const order=(await orderRef.get()).data(),queries=checkBodies.length;
+      for(const event of ['created','refunded','refunded','canceled','payment_failed','settled','unknown']) {
+        assert.deepEqual(await webhook({...reference,event,paid:true}),
+          {status:200,body:{ok:true,eventDisposition:'UNVERIFIED'}});
+      }
+      for(const status of ['PENDING','FAILED','CANCELED']) {
+        assert.equal((await webhook({...reference,status})).body.eventDisposition,'UNVERIFIED');
+      }
+      assert.equal(checkBodies.length,queries);
+      assert.deepEqual((await ref.get()).data(),payment);
+      assert.deepEqual((await orderRef.get()).data(),order);
+      assert.equal((await product.get()).data().estoque,2);
+      assert.equal((await db.collection('checkoutReceipts').where('paymentId','==',ref.id).get()).size,state==='PAID'?1:0);
+    }
+    assert.equal((await webhook([])).status,400);
+  } finally {nextCheckResult=null;}
+});
+
 test('HTTP oculta erro upstream e mantém tentativa ambígua sem novo link ou reserva duplicada',async()=>{
   const b=body();
   const callsBefore=links;

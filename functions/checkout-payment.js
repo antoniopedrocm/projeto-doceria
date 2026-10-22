@@ -3,6 +3,7 @@ const {FieldValue} = require('firebase-admin/firestore');
 const {readReservation, settleReservation, operationalState} = require('./checkout-reservation');
 const logger = require('firebase-functions/logger');
 const {readErrorBody, diagnostic} = require('./infinitepay-diagnostics');
+const {inspectPaymentSignal} = require('./payment-signal-policy');
 function paymentError(message, httpStatus = 409) {return Object.assign(new Error(message), {httpStatus});}
 const cents = value => {const n = Math.round(Number(value)*100);if (!Number.isSafeInteger(n) || n <= 0) throw paymentError('Valor de pagamento inválido.',400);return n;};
 function assertPaid(result, expectedAmount) {
@@ -51,7 +52,8 @@ class InfinitePayProvider {
   create(payload) {return this.post('links', payload);}
   check(payload) {return this.post('payment_check',payload);}
 }
-function createPaymentService({db, admin, provider = new InfinitePayProvider(), now = Date.now}) {
+function createPaymentService({db, admin, provider = new InfinitePayProvider(), now = Date.now,
+  auditSignal = entry => logger.warn('Checkout payment signal held', entry)}) {
   const payments = db.collection('checkoutPayments');
   const timestamp = () => FieldValue.serverTimestamp();
   async function config(store) {
@@ -81,7 +83,8 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
         ...(payment.customer ? {customer:payment.customer} : {}), ...(payment.address ? {address:payment.address} : {}),
         redirect_url:payment.redirectUrl,webhook_url:payment.webhookUrl});
       const url=new URL(data.url);
-      if(url.protocol!=='https:' || !(url.hostname==='infinitepay.io' || url.hostname.endsWith('.infinitepay.io'))) throw paymentError('Link de pagamento inválido.',502);
+      if(url.protocol!=='https:' || url.username || url.password || (url.port && url.port!=='443') ||
+        !(url.hostname==='infinitepay.io' || url.hostname.endsWith('.infinitepay.io') || url.hostname==='checkout.infinitepay.com.br')) throw paymentError('Link de pagamento inválido.',502);
       await db.runTransaction(async tx => {
         const latest=(await tx.get(ref)).data();
         if(latest.payment_status!=='PENDING') throw paymentError('Reserva encerrada. Consulte a loja antes de pagar.');
@@ -94,19 +97,27 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     }
   }
   async function reconcile(input) {
-    const id=String(input.order_nsu || '');
-    if(!/^[a-f0-9]{64}$/.test(id) || !/^[\w-]{1,160}$/.test(input.transaction_nsu || '') || !/^[\w-]{1,160}$/.test(input.invoice_slug || input.slug || '')) throw paymentError('Notificação inválida.',400);
+    const signal=inspectPaymentSignal(input);
+    if(signal.action!=='VERIFY_APPROVAL') {
+      // Operational audit only: no raw body, IDs, PII, credentials or financial receipt.
+      try {await auditSignal({outcome:signal.action==='HOLD'?'UNVERIFIED_PROVIDER_EVENT':'REJECTED_PAYMENT_SIGNAL',
+        reason:signal.reason,eventHint:signal.eventHint,correlation:signal.correlation});}
+      catch {throw paymentError('Não foi possível registrar a notificação.',503);}
+      if(signal.action==='REJECT') throw paymentError('Notificação inválida.',400);
+      return {ok:true,eventDisposition:'UNVERIFIED'};
+    }
+    const {orderNsu:id,transactionNsu,slug}=signal.references;
     const ref=payments.doc(id);const snap=await ref.get();const payment=snap.data();
     if(!payment) throw paymentError('Pedido não encontrado.',404);
     const identity=orderIdentity(payment);
     // Webhook and browser parameters are hints only. Re-query the provider with stored merchant/order.
-    const result=await provider.check({handle:payment.handle,order_nsu:id,transaction_nsu:input.transaction_nsu,slug:input.invoice_slug || input.slug});
+    const result=await provider.check({handle:payment.handle,order_nsu:id,transaction_nsu:transactionNsu,slug});
     if(result?.success !== true || result?.paid !== true) throw paymentError('Pagamento ainda não confirmado.');
-    const receiptRef=db.collection('checkoutReceipts').doc(crypto.createHash('sha256').update(`${payment.handle}:${input.transaction_nsu}`).digest('hex'));
+    const receiptRef=db.collection('checkoutReceipts').doc(crypto.createHash('sha256').update(`${payment.handle}:${transactionNsu}`).digest('hex'));
     const paidMatches=(()=>{try {assertPaid(result,payment.amount);return true;} catch {return false;}})();
     const orderRef=db.doc(payment.orderPath);
-    const evidence={handle:payment.handle,orderPath:payment.orderPath,transactionNsu:input.transaction_nsu,
-      slug:input.invoice_slug || input.slug,amount:Number.isSafeInteger(result.amount)?result.amount:null,
+    const evidence={handle:payment.handle,orderPath:payment.orderPath,transactionNsu,
+      slug,amount:Number.isSafeInteger(result.amount)?result.amount:null,
       paidAmount:Number.isSafeInteger(result.paid_amount)?result.paid_amount:null,
       captureMethod:typeof result.capture_method==='string'?result.capture_method:null};
     return db.runTransaction(async tx=>{
@@ -116,7 +127,7 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
           current.storeId!==payment.storeId || current.orderId!==payment.orderId || current.ownerUid!==payment.ownerUid) throw paymentError('Pedido requer conciliação manual.');
         if(receipt.exists && receipt.data().paymentId!==id) throw paymentError('Transação já associada a outro pedido.');
         if(receipt.exists) return {ok:true,payment_status:current.payment_status,requiresReview:!!current.requiresReview};
-        const duplicate=current.payment_status==='PAID' && current.transactionNsu!==input.transaction_nsu;
+        const duplicate=current.payment_status==='PAID' && current.transactionNsu!==transactionNsu;
         const linkedOrder=order.exists &&
           (order.data().paymentId == null || order.data().paymentId === id) &&
           (order.data().lojaId == null || order.data().lojaId === identity.storeId) &&
@@ -146,7 +157,7 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
           !!(current.expiresAt && current.expiresAt.toMillis()<=now());
         settleReservation(tx,db,admin,held,!requiresReview);
         tx.create(receiptRef,{paymentId:id,...evidence,outcome:requiresReview?'REVIEW':'CONFIRMED',createdAt:timestamp()});
-        tx.update(ref,{payment_status:'PAID',requiresReview,transactionNsu:input.transaction_nsu,slug:input.invoice_slug || input.slug,paidAt:timestamp(),
+        tx.update(ref,{payment_status:'PAID',requiresReview,transactionNsu,slug,paidAt:timestamp(),
           ...(held ? {'reservation.state':requiresReview?'RELEASED':'CONSUMED'} : {})});
         tx.update(order.ref,{payment_status:'PAID',requiresReview,order_status:requiresReview?'CANCELLED':'CONFIRMED',status:requiresReview?'Pagamento em conferência':'Pendente',formaPagamento:result.capture_method==='pix'?'Pix online':'Cartão online',paidAt:timestamp()});
         return {ok:true,payment_status:'PAID',requiresReview};

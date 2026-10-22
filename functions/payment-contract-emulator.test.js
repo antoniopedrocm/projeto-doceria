@@ -124,8 +124,10 @@ test('documented event names alone have no financial authority', async t => {
     const orderBefore = await data(f.order);
     const service = f.serviceFor({success: true, paid: false});
     for (let attempt = 0; attempt < 2; attempt++) {
-      await assert.rejects(() => service.reconcile({...f.payload, event,
-        paid: true, payment_status: 'REFUNDED', amount: 1000}));
+      const run = () => service.reconcile({...f.payload, event,
+        paid: true, payment_status: 'REFUNDED', amount: 1000});
+      if (event === 'paid') await assert.rejects(run);
+      else assert.deepEqual(await run(), {ok: true, eventDisposition: 'UNVERIFIED'});
     }
     assert.deepEqual(await data(f.payment), before);
     assert.deepEqual(await data(f.order), orderBefore);
@@ -138,7 +140,7 @@ test('created then a failed attempt can later reconcile a verified approval once
   const f = await fixture('failed-then-retry');
   const unconfirmed = f.serviceFor({success: true, paid: false});
   for (const event of ['created', 'payment_failed', 'payment_failed']) {
-    await assert.rejects(() => unconfirmed.reconcile({...f.payload, event}));
+    assert.deepEqual(await unconfirmed.reconcile({...f.payload, event}), {ok: true, eventDisposition: 'UNVERIFIED'});
   }
   assert.equal((await f.receipts()).size, 0);
   assert.equal((await data(f.payment)).reservation.state, 'HELD');
@@ -161,7 +163,8 @@ test('settled, refund and older event hints neither settle twice nor invent a ve
   for (const event of ['settled', 'refunded', 'refunded', 'canceled', 'created', 'payment_failed']) {
     // A historical paid:true result is approval evidence, not proof of refund/settlement.
     await approved.reconcile({...f.payload, event});
-    await assert.rejects(() => f.serviceFor({success: true, paid: false}).reconcile({...f.payload, event}));
+    assert.deepEqual(await f.serviceFor({success: true, paid: false}).reconcile({...f.payload, event}),
+      {ok: true, eventDisposition: 'UNVERIFIED'});
   }
   assert.deepEqual(await data(f.payment), before);
   assert.deepEqual(await data(f.order), orderBefore);
@@ -175,7 +178,9 @@ test('an internally recorded refund stays terminal under repeated old event hint
   await f.order.update({payment_status: 'REFUNDED', order_status: 'DELIVERED'});
   const approved = f.serviceFor(f.paid);
   for (const event of ['refunded', 'refunded', 'paid', 'settled', 'created', 'payment_failed']) {
-    assert.equal((await approved.reconcile({...f.payload, event})).payment_status, 'REFUNDED');
+    const result = await approved.reconcile({...f.payload, event});
+    if (event === 'paid') assert.equal(result.payment_status, 'REFUNDED');
+    else assert.equal(result.eventDisposition, 'UNVERIFIED');
   }
   assert.equal((await data(f.order)).order_status, 'DELIVERED');
   assert.equal((await data(f.order)).payment_status, 'REFUNDED');
@@ -188,7 +193,8 @@ test('event labels do not replace missing references or identify an unknown orde
   const f = await fixture('missing-event-refs');
   const approved = f.serviceFor(f.paid);
   for (const event of eventNames) {
-    await assert.rejects(() => approved.reconcile({order_nsu: f.id, event}), {httpStatus: 400});
+    if (event === 'paid') await assert.rejects(() => approved.reconcile({order_nsu: f.id, event}), {httpStatus: 400});
+    else assert.equal((await approved.reconcile({order_nsu: f.id, event})).eventDisposition, 'UNVERIFIED');
   }
   await assert.rejects(() => approved.reconcile({...f.payload, order_nsu: '0'.repeat(64)}), {httpStatus: 404});
   assert.equal(f.calls.length, 0);
@@ -207,4 +213,45 @@ test('a transaction receipt cannot be reused for another order despite a positiv
   assert.equal((await data(second.order)).order_status, 'PENDING');
   assert.equal((await data(second.product)).estoque, 8);
   assert.equal((await second.receipts()).size, 0);
+});
+
+test('unverified and unknown hints cannot confirm even when the provider would report paid', async () => {
+  const f = await fixture('held-signal-positive-provider');
+  const before = await data(f.payment), orderBefore = await data(f.order);
+  const audit = [];
+  const service = createPaymentService({db, admin, provider: {check: async () => {
+    assert.fail('held signals must not query approval');
+  }}, auditSignal: entry => audit.push(entry)});
+  for (const event of ['refunded', 'canceled', 'payment_failed', 'settled', 'created', 'unknown', 'refunded']) {
+    assert.equal((await service.reconcile({...f.payload, event})).eventDisposition, 'UNVERIFIED');
+  }
+  assert.equal(audit.length, 7);
+  assert.deepEqual(await data(f.payment), before);
+  assert.deepEqual(await data(f.order), orderBefore);
+  assert.equal((await data(f.product)).estoque, 8);
+  assert.equal((await f.receipts()).size, 0);
+});
+
+test('checkout URL accepts the documented host and rejects lookalikes without a second creation', async () => {
+  const urls = ['https://checkout.infinitepay.com.br/link', 'https://buy.infinitepay.io/link',
+    'https://infinitepay.io/link', 'https://checkout.infinitepay.com.br.evil.test/link',
+    'https://evil.test/infinitepay.io', 'http://checkout.infinitepay.com.br/link',
+    'https://user:password@checkout.infinitepay.com.br/link', 'https://checkout.infinitepay.com.br:8443/link'];
+  for (let index = 0; index < urls.length; index++) {
+    const f = await fixture('checkout-url-' + index);
+    let calls = 0;
+    const service = createPaymentService({db, admin, provider: {create: async () => {
+      calls++; return {url: urls[index]};
+    }}});
+    if (index < 3) {
+      assert.equal((await service.start(f.id, 'contract-owner')).checkoutUrl, urls[index]);
+      await service.start(f.id, 'contract-owner');
+      assert.equal(calls, 1);
+    } else {
+      await assert.rejects(() => service.start(f.id, 'contract-owner'), {httpStatus: 502});
+      await assert.rejects(() => service.start(f.id, 'contract-owner'), {httpStatus: 409});
+      assert.equal(calls, 1);
+      assert.equal((await data(f.payment)).linkState, 'RECONCILIATION_REQUIRED');
+    }
+  }
 });
