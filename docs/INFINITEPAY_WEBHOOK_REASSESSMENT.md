@@ -1,7 +1,8 @@
 # Fase 9 — reavaliação documental dos eventos InfinitePay
 
-**Revisão vigente:** [auditoria documental profunda de 2026-10-21](#auditoria-documental-profunda--2026-10-21),
-base `9bda18bd`. A seção inicial preserva a investigação de 2026-10-20; a nova
+**Revisão vigente:** [fechamento interno de 2026-10-21](#fechamento-interno--2026-10-21),
+commit funcional `8ea926a8`, posterior à auditoria profunda da base `9bda18bd`.
+A seção inicial preserva a investigação de 2026-10-20; a nova
 rodada amplia fontes, distingue modos compatíveis de conflitos ainda não resolvidos
 e substitui a lista anterior de perguntas externas pela lista consolidada ao final.
 
@@ -529,3 +530,102 @@ para dúvida contratual comum. Nenhum e-mail, ticket, chat ou mensagem foi envia
 referências normativas; depois planejar implementação/testes mínimos. Preservar modo
 básico e PAID homologado. Somente após contrato + implementação + testes avaliar
 fechamento do quarto marco. Sem novo pagamento/refund, deploy DEV/PROD ou WhatsApp.
+
+## Fechamento interno — 2026-10-21
+
+Base f78fb9e7; correção funcional **8ea926a8**. A auditoria pública acima continua
+válida como evidência documental/histórica. Esta seção atualiza apenas a implementação
+local e a preparação interna, sem alegar novo contrato ou evento real.
+
+### Pendências resolvidas independentemente do provider
+
+1. Política defensiva `functions/payment-signal-policy.js`: enums conhecidos e
+   inspeção pura. Não declara envelope oficial. Hints event/type/status desconhecidos,
+   conflitantes, malformados ou diferentes de paid são retidos, não autorizadores.
+2. `checkout-payment.js`: retenção ocorre antes de consulta ou escrita; auditoria
+   operacional sanitizada e aguardada; resposta UNVERIFIED não é estado financeiro.
+   Falha de auditoria recebe503 sem efeitos. Corpo/referências inválidos recebem400,
+   sem coerção de objetos. Referências válidas copiadas antes de awaits.
+3. Fluxo básico sem hint, ou com indicação paid, continua dependendo da mesma consulta
+   server-side e transação de conciliação. Nenhum nome de evento confirma pagamento.
+   Não foi implementada transição automática FAILED/CANCELED/REFUNDED/SETTLED.
+4. Incompatibilidade histórica H (checkpoint de10/10) resolvida: permitir host exato
+   checkout.infinitepay.com.br documentado em F2/F5, sem liberar domínios similares,
+   HTTP, userinfo ou portas alternativas. Criação ambígua continua sem retry cego.
+5. Inventário do plano, matriz dos20 cenários, plano de promoção/retorno e perguntas
+   consolidados em [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
+
+Auditoria usa Cloud Logging/logger, não nova coleção Firestore nem recibo financeiro.
+Campos: outcome, reason, eventHint de allowlist e hash abreviado de referência válida;
+sem payload, credenciais, UID, handle ou NSU integral. Log não prova origem e não
+garante persistência remota exatamente uma vez. Retenção não implica replay automático
+posterior; payload bruto não é armazenado para esse propósito.
+
+### Resultado da bateria final
+
+| Coorte desta execução | Resultado | Limites |
+|---|---|---|
+| Financeiro/HTTP/reservas/config/Rules + Customer pedidos + multiloja |65/65 PASS |7 arquivos, Auth/Firestore demo; provider/Maps sintéticos |
+| Política/financeiro/diagnósticos/reservas/prefill/frete/auth unitários |31/31 PASS |Inclui a primeira rodada13/13; não somar novamente |
+| CRM ApplicationGate/InfinitePaySettings/OrderPaymentStatus |36/36 PASS |3 suítes focadas; não alegar411 testes repetidos |
+| Lint dos5 arquivos do delta |0 erros/0 avisos |Avisos externos de base de navegador antiga; não esconder lint ampliado preexistente |
+| Sintaxe Node e diff-check |PASS |Frontend, Rules e dependências inalterados |
+
+Build/ESM frontend e homologação remota das Fases11/12 aproveitados, sem repetir
+por mudança exclusivamente backend. Não há etapa de build de Functions no package;
+os módulos reais foram carregados pelos testes HTTP/Firestore. Nada publicado.
+Novos casos HTTP exercitam PENDING e PAID com provider configurado para responder
+positivo, mas comprovam que hints retidos não o consultam, não alteram snapshots e
+não criam recibos. Aprovação repetida produz um único CONFIRMED; uma transação
+adicional realmente confirmada continua exigindo REVIEW, não segundo consumo.
+
+### Inventário final de pendências obrigatórias atuais
+
+| Pendência | Interna/externa | Status | Bloqueia Fase9? | Ação |
+|---|---|---|---|---|
+| Política/parser/auditoria conservadora | Interna | CONCLUÍDA localmente | Não | Código/testes versionados |
+| Allowlist do checkout documentado | Interna | CONCLUÍDA localmente | Não | Casos positivos e negativos, sem nova cobrança |
+|20 cenários e regressão de ownership/multiloja/CRM | Interna | CONCLUÍDA | Não |65+31+36 testes atuais |
+| Inventário/readiness/rollback/smoke e plano condicional | Interna/documental | CONCLUÍDA como preparação | Não | Execução PROD pertence à Fase13 autorizada |
+| Triagem de histórico, opcionais e backlog aceito | Interna/documental | CONCLUÍDA como triagem | Não | Não confundir com correção das dívidas D/E |
+| CONTRATO EXTERNO INFINITEPAY | Externa | PENDENTE | SIM | Resposta oficial e posterior implementação/testes condicionais |
+
+**Todas as pendências internas pré-PROD obrigatórias e solucionáveis agora foram
+concluídas. A única dependência restante para a conclusão da Fase9 é resposta técnica
+oficial da InfinitePay sobre o contrato dos eventos não-PAID.** Isso não declara zero
+backlog, produto publicado com este delta ou prontidão real de PROD. Mantidos no
+readiness os itens D/E e tarefas futuras da Fase13, sem apagá-los ou marcá-los corrigidos.
+
+### PENDÊNCIA EXTERNA — INFINITEPAY
+
+Somente lacunas da seção18, agrupadas em uma dependência, sem contato enviado:
+
+- Mecanismo verificável de origem, incluindo proteção contra replay quando aplicável.
+- Endpoint/campo/enum de confirmação de payment_failed/canceled/refunded e relação
+  com o texto aprovado/recusado/processando; aprovação histórica versus refund posterior.
+- Schema/IDs/valores/timestamps e ciclo dos seis eventos, retry/ordenação/duplicidade.
+- Compatibilidade webhook_url versus objeto/events; quais recursos avançados exigem
+  API Key e quais campos ela substitui. **Não perguntar se a key é opcional no básico:**
+  isso já está documentado. Manter a parte não respondida sobre migração/idempotência.
+- API pública suportada de refund/cancelamento, ou evidência verificável das operações
+  App/Conta; confirmação de parcial/Pix/cartão na integração. **Não perguntar se App,
+  navegador ou devolução Pix parcial existem:** já documentados.
+
+### IMPLEMENTAÇÃO PENDENTE APÓS RESPOSTA DA INFINITEPAY
+
+| Resposta oficial | Implementação/teste condicionado, ainda não ativado |
+|---|---|
+| HMAC/assinatura oficialmente especificada | Validar bytes/headers/algoritmo/rotação/timestamp/replay conforme contrato; testar inválido/ausente/repetido. Não basta assinatura para ignorar ownership/valor/estado |
+| Consulta autenticada de estados | Webhook continua sinal; consultar conta/referências persistidas, validar resposta/correlação e só então aplicar transição permitida, com idempotência e auditabilidade |
+| Nenhuma autenticação nem consulta suficiente | Preservar retenção; definir procedimento manual com prova externa verificável, Staff autorizado/backend/auditoria e associação inequívoca. Não criar gravador financeiro pelo navegador |
+| API pública de refund existe | Documentar autorização, parcial/total, idempotência e evidência; não habilitar ou operar sem autorização financeira específica |
+| API pública de refund não existe | App/Conta continuam procedimento externo; definir como comprovar e conciliar, sem engenharia reversa |
+| Esclarecimento insuficiente/conflitante | Não ativar transições nem fechar Fase9; perguntar somente a lacuna remanescente |
+
+Receber resposta não aplica automaticamente estado financeiro nem muda percentual.
+Separar refund de fulfillment; não restaurar estoque sem regra de negócio autorizada.
+Provider pode exigir alteração ainda não conhecida; prontidão significa poder retomar
+imediatamente o trabalho, não prometer implementação antecipada de contrato desconhecido.
+
+Fase9 **75%**, Fase11 **100%**, Fase12 **100%**, Global **95,00%**, Fase13 **0%**.
+Sem deploy DEV/PROD, Rules, dados remotos, pagamento/refund/cancelamento real ou WhatsApp.
