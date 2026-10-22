@@ -37,7 +37,7 @@ global.fetch=async(url,options)=>{
 };
 const functions=require('./index');
 const server=http.createServer(functions.api);
-const store='http-test-store';let base,token,anonymousToken,customerId,db;
+const store='http-test-store';let base,token,anonymousToken,customerId,db,identityToken;
 before(async()=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base=`http://127.0.0.1:${server.address().port}`;
   db=admin.firestore();
@@ -53,14 +53,84 @@ before(async()=>{
   await db.doc(`lojas/${store}/configuracoes/config`).set({manualOverride:{mode:'force_open'},frete:{lat:-16,lng:-49,valorPorKm:2}});
   await db.doc(`lojas/${store}/configuracoesInternas/infinitepay`).set({enabled:true,handle:'merchant-test',redirectUrl:'https://example.com/return',webhookUrl:'https://example.com/webhook'});
   await db.doc(`lojas/${store}/produtos/product`).set({nome:'Produto fictício',ativo:true,status:'Ativo',preco:10,estoque:10});
+  const selection=await selectIdentity('strong_auth');
+  assert.equal(selection.status,200,JSON.stringify(selection));identityToken=selection.data.token;
 });
 after(async()=>{global.fetch=originalFetch;server.closeAllConnections();await new Promise(r=>server.close(r));await admin.app().delete();});
-const body=()=>({lojaId:store,cliente:{id:customerId,nome:'Cliente teste',telefone:'62999991234',endereco:'Retirar na Loja'},itens:[{produtoId:'product',quantity:1,preco:10}],pagamento:{forma:'Online'},subtotal:10,valorFrete:0,delivery:{pickup:true},idempotencyKey:'http-test-'+Date.now()});
-const send=async (b,bearer=token)=>{const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer},body:JSON.stringify(b)});return {status:r.status,data:await r.json()};};
+const body=()=>({lojaId:store,checkoutIdentityToken:identityToken,cliente:{id:customerId,nome:'Cliente teste',telefone:'62999991234',endereco:'Retirar na Loja'},itens:[{produtoId:'product',quantity:1,preco:10}],pagamento:{forma:'Online'},subtotal:10,valorFrete:0,delivery:{pickup:true},idempotencyKey:'http-test-'+Date.now()});
+let identityCalls=0;
+const selectIdentity=async(mode,context=null,bearer=token,storeId=store)=>{
+  const r=await originalFetch(base+'/checkout/identity',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer,'X-Forwarded-For':'fixture-'+(++identityCalls)},
+    body:JSON.stringify({storeId,mode,checkoutIdentityToken:context})});
+  return {status:r.status,data:await r.json()};
+};
+const send=async (b,bearer=token)=>{const value={...b};if(b.pagamento.forma!=='Online') delete value.checkoutIdentityToken;const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer},body:JSON.stringify(value)});return {status:r.status,data:await r.json()};};
 test('visitante e sessão anônima não iniciam pagamento online',async()=>{
   const b=body();
   assert.equal((await send(b,anonymousToken)).status,403);
   assert.equal((await send({...b,cliente:{...b.cliente,id:'demo-celular'}})).status,403);
+});
+
+test('seleção weak bloqueia token Firebase válido, modo forjado e omissão de contexto antes de cobrança/estoque',async()=>{
+  const priorLinks=links;
+  const stock=(await db.doc(`lojas/${store}/produtos/product`).get()).data().estoque;
+  for(const mode of ['legacy_phone','guest']) {
+    const selected=await selectIdentity(mode);assert.equal(selected.status,200);
+    for(const extra of [{},{identityMode:'strong_auth'},{checkoutIdentityToken:null}]) {
+      const denied=await send({...body(),checkoutIdentityToken:selected.data.token,...extra});
+      assert.equal(denied.status,403,JSON.stringify(denied));
+    }
+  }
+  assert.equal(links,priorLinks);
+  assert.equal((await db.doc(`lojas/${store}/produtos/product`).get()).data().estoque,stock);
+});
+
+test('promoção explícita valida Customer; demover novamente revoga checkout, sem merge',async()=>{
+  const selected=await selectIdentity('legacy_phone');
+  const promoted=await selectIdentity('strong_auth',selected.data.token);
+  assert.equal(promoted.status,200);
+  const {createCheckoutIdentity}=require('./checkout-identity');
+  const identities=createCheckoutIdentity({db});
+  const saved=await identities.read(selected.data.token,store);
+  assert.equal(saved.mode,'strong_auth');assert.equal(saved.customerId,customerId);
+  assert.throws(()=>identities.requireStrong(saved,'other-uid',customerId));
+  await assert.rejects(()=>identities.read(selected.data.token,'loja-futura-teste'));
+  const demoted=await selectIdentity('legacy_phone',selected.data.token);
+  assert.equal(demoted.status,200);
+  const denied=await send({...body(),checkoutIdentityToken:selected.data.token});
+  assert.equal(denied.status,403);
+  assert.equal((await db.doc(`clientes/${customerId}`).get()).data().authOwnerUid,saved.ownerUid);
+  assert.notEqual((await selectIdentity('strong_auth',null,anonymousToken)).status,200);
+});
+
+test('serviço de iniciação rejeita marcador weak e contexto strong posteriormente demovido',async()=>{
+  const {createPaymentService}=require('./checkout-payment');
+  const {createCheckoutIdentity}=require('./checkout-identity');
+  const selected=await selectIdentity('strong_auth');
+  const identities=createCheckoutIdentity({db});
+  const context=await identities.read(selected.data.token,store);
+  const service=createPaymentService({db,admin,provider:{create:()=>{throw new Error('PROVIDER MUST NOT BE CALLED');}}});
+  const ref=db.doc('checkoutPayments/identity-guard-fixture');
+  const basePayment={storeId:store,ownerUid:context.ownerUid,payment_status:'PENDING',reservation:{state:'NONE'}};
+  await ref.set({...basePayment,checkoutIdentity:{mode:'legacy_phone'}});
+  await assert.rejects(()=>service.start(ref.id,context.ownerUid),e=>e.httpStatus===403);
+  await ref.set({...basePayment,checkoutIdentity:{mode:'strong_auth',contextPath:identities.ref(selected.data.token).path,revision:context.revision,customerId}});
+  await selectIdentity('guest',selected.data.token);
+  await assert.rejects(()=>service.start(ref.id,context.ownerUid),e=>e.httpStatus===403);
+  await ref.delete();
+});
+
+test('pedido weak não herda ownership nem altera Customer mesmo com token válido',async()=>{
+  const customer=db.doc(`clientes/${customerId}`),before=(await customer.get()).data(),priorLinks=links;
+  await db.doc(`lojas/${store}/produtos/weak-offline`).set({nome:'Fixture offline',preco:10,estoque:2,ativo:true});
+  const lookup=await functions.lookupClientByPhone.run({auth:{uid:before.authOwnerUid},data:{lojaId:store,telefone:before.telefone},rawRequest:{headers:{},ip:'weak-offline-fixture'}});
+  const b={...body(),checkoutIdentityToken:lookup.checkoutIdentity.token,pagamento:{forma:'Dinheiro'},itens:[{produtoId:'weak-offline',quantity:1,preco:10}]};
+  const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(b)});
+  const data=await r.json();assert.equal(r.status,200,JSON.stringify(data));
+  const order=(await db.doc(`lojas/${store}/pedidos/${data.id}`).get()).data();
+  assert.equal(order.checkoutIdentity.mode,'legacy_phone');assert.equal(order.checkoutIdentity.legacyClientId,customerId);
+  assert.equal(order.clienteId,null);assert.equal(order.ownerUid,undefined);assert.equal(order.paymentId,undefined);
+  assert.deepEqual((await customer.get()).data(),before);assert.equal(links,priorLinks);
 });
 test('HTTP online reserva uma vez e devolve o mesmo checkout no retry',async()=>{
   const b=body();const a=await send(b);assert.equal(a.status,200,JSON.stringify(a.data));

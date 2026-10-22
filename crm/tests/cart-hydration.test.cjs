@@ -14,9 +14,12 @@ const saved=(storeId=matriz,uid='a')=>({storeId,reorderOwnerUid:uid,cart:[{id:'p
 async function page({storage=storageFor(saved()),storeId=matriz,uid='a'}={}){
   const {createPageCartBridge}=await import('../public/reorder-cart.mjs');
   const {createCartOwnerObserver}=await import('../public/canonical-session.mjs');
+  const {createCheckoutIdentity,CHECKOUT_MODES}=await import('../public/checkout-identity.mjs');
   let publish,finishProfile,finishAuth;const ready=new Promise(resolve=>{finishProfile=resolve;}),authReady=new Promise(resolve=>{finishAuth=resolve;});
   const auth={currentUser:uid?{uid,isAnonymous:false}:null,authStateReady:()=>authReady},trace=[];
-  const context=vm.createContext({sessionStorage:storage,STORE_ID:storeId,STORE_AVAILABILITY:{CONFIG_UNAVAILABLE:'CONFIG_UNAVAILABLE'},
+  const context=vm.createContext({sessionStorage:storage,STORE_ID:storeId,API_BASE_URL:'http://fixture',CHECKOUT_MODES,createCheckoutIdentity,STORE_AVAILABILITY:{CONFIG_UNAVAILABLE:'CONFIG_UNAVAILABLE'},
+    document:{getElementById:()=>null,querySelectorAll:()=>[]},
+    fetch:async(_url,options)=>({ok:true,json:async()=>({...JSON.parse(options.body),token:'a'.repeat(64),revision:1})}),
     window:{addressFlowState:{currentStep:1},addEventListener:()=>{},location:{assign:()=>{}}},app:{},getAuth:()=>auth,
     createPageCartBridge,createCartOwnerObserver,onAuthStateChanged:()=>{},
     installCustomerAccount:options=>{publish=options;return {ready};},
@@ -115,4 +118,16 @@ test('abrir outro cardápio sem confirmar/editar preserva snapshot da loja origi
 test('troca de UID durante espera de hydration nunca restaura o carrinho privado anterior',async()=>{
   const f=await page();const pending=f.start();f.publish();f.auth.currentUser={uid:'b',isAnonymous:false};f.finishAuth();f.finishProfile();await pending;
   assert.deepEqual(f.cart(),[]);assert.equal(f.storage.getItem(KEY),null);assert.equal(vm.runInContext('reorderOwnerUid',f.context),'b');
+});
+
+test('seleção celular e visitante no script real preservam carrinho; sessão passiva não eleva checkout',async()=>{
+  const f=await page();await f.mount();
+  const before=f.cart();
+  await vm.runInContext("selectWeakCheckout(CHECKOUT_MODES.PHONE)",f.context);
+  f.publish();assert.equal(vm.runInContext('currentClient',f.context),null);
+  assert.equal(vm.runInContext('checkoutIdentity.isStrong()',f.context),false);
+  assert.deepEqual(f.cart(),before);assert.equal(JSON.parse(f.storage.getItem(KEY)).storeId,matriz);
+  await vm.runInContext("selectWeakCheckout(CHECKOUT_MODES.GUEST)",f.context);
+  f.publish();assert.equal(vm.runInContext('currentClient',f.context),null);
+  assert.deepEqual(f.cart(),before);
 });

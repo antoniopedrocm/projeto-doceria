@@ -152,7 +152,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     el('password-security').hidden=!passwordAccount;
     el('verify-email').hidden=!current.email || current.emailVerified || !passwordAccount;
     el('address').hidden=!showCheckoutAddressAction;renderAddresses();
-    if(!checkoutIntent && navigation.getRoute()==='orders') await loadOrders();if(checkoutIntent){checkoutIntent=false;closeAccount();onCustomer(current);}
+    if(!checkoutIntent && navigation.getRoute()==='orders') await loadOrders();if(checkoutIntent){checkoutIntent=false;closeAccount();await onCustomer(current);}
   }
   async function googleSignIn(){if(!auth.currentUser?.providerData.some(p=>p.providerId==='google.com')){await signInWithPopup(auth,new GoogleAuthProvider());}showAccount();await refresh();}
   async function finishEmailAuth(){emailDialog.close();showAccount();await refresh();}

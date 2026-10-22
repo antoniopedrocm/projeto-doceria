@@ -1191,6 +1191,7 @@
         import {createPageCartBridge,stockLimit} from './reorder-cart.mjs';
         import {installCustomerAccount} from './customer-account.js?v=20261015-persistence';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
+        import {createCheckoutIdentity,CHECKOUT_MODES} from './checkout-identity.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
         import {fetchPublicStore} from './store-public-config.mjs';
         import {STORE_AVAILABILITY, getStoreAvailabilityMessage} from './store-availability.mjs';
@@ -1229,6 +1230,29 @@
             return ["lojas", STORE_ID, first, ...rest];
         };
         let allProducts = [], cart = [], currentClient = null, pendingOrderDetails = {}, appliedCupom = null;
+        const checkoutIdentity=createCheckoutIdentity({storage:sessionStorage,storeId:STORE_ID,getUid:()=>getAuth(app).currentUser?.uid,
+            request:async data=>{
+                const headers={'Content-Type':'application/json'};
+                if(data.mode===CHECKOUT_MODES.STRONG) {
+                    const user=getAuth(app).currentUser;
+                    if(!user || user.isAnonymous) throw new Error('Entre com Google ou e-mail para pagar online.');
+                    headers.Authorization=`Bearer ${await user.getIdToken()}`;
+                }
+                const response=await fetch(`${API_BASE_URL}/checkout/identity`,{method:'POST',headers,body:JSON.stringify(data)});
+                const result=await response.json();
+                if(!response.ok) throw new Error(result.message || 'Não foi possível selecionar a identificação. Tente novamente.');
+                return result;
+            }});
+        function syncCheckoutPayment() {
+            syncOnlinePaymentOption(currentClient,checkoutIdentity.isStrong());
+            document.querySelectorAll('[data-checkout-strong-invitation]').forEach(el=>{el.hidden=checkoutIdentity.isStrong();});
+        }
+        async function selectWeakCheckout(mode) {
+            currentClient=null;pendingOrderDetails={};syncCheckoutPayment();
+            const ready=checkoutIdentity.select(mode);syncCheckoutPayment();
+            persistCheckoutState();
+            try {await ready;return true;} catch(error) {showToast(error.message,true);return false;}
+        }
         const CHECKOUT_STORAGE_KEY = 'checkoutState_v1';
         let addressStep = Number.isInteger(window.addressFlowState?.currentStep) ? window.addressFlowState.currentStep : 1;
         const createInitialGuestAddressFlowState = () => ({
@@ -2040,16 +2064,13 @@
                 cartModal.classList.add('hidden');
                 persistCheckoutState();
                 await customerAccount.ready;
-                if (isLinkedCustomer(currentClient)) {
-                    openAddressManagementModal(currentClient);
-                    return;
-                }
                 identificationModal.classList.remove('hidden');
             });
 
             closeIdentificationModal.addEventListener('click', () => identificationModal.classList.add('hidden'));
 
-            usePhoneButton.addEventListener('click', () => {
+            usePhoneButton.addEventListener('click', async () => {
+                if(!await selectWeakCheckout(CHECKOUT_MODES.PHONE)) return;
                 identificationModal.classList.add('hidden');
                 phoneLoginModal.classList.remove('hidden');
                 phoneInput.value = '';
@@ -2061,7 +2082,8 @@
                 currentClient = null;
             });
 
-            continueGuestButton.addEventListener('click', () => {
+            continueGuestButton.addEventListener('click', async () => {
+                if(!await selectWeakCheckout(CHECKOUT_MODES.GUEST)) return;
                 identificationModal.classList.add('hidden');
                 guestCheckoutModal.classList.remove('hidden');
                 window.initGuestAddressFlow?.();
@@ -2301,6 +2323,11 @@
                 };
 
                 const functions = getFunctions(app, 'us-central1');
+                if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
+                    // This address belongs to this checkout, never to the found profile.
+                    currentClient.enderecos=[...(currentClient.enderecos || []),newAddress];
+                    cancelNewAddress(true);await useExistingAddress(addressText,newAddress);return;
+                }
                 if (currentClient.accountLinked) {
                     const result = await httpsCallable(functions, 'customerAddAddress')({address: newAddress});
                     currentClient = result.data.customer;
@@ -2340,6 +2367,8 @@
 
 		function openAddressManagementModal(client) {
 			currentClient = client;
+            document.getElementById('edit-profile-btn').hidden=checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE;
+            syncCheckoutPayment();
 			addressList.innerHTML = '';
 			confirmCustomerName.textContent = client.nome || 'Cliente';
             window.clearManualAddressMapWarning?.();
@@ -2412,6 +2441,10 @@
                     : [];
                 if (!existingAddresses[addressIndex]) {
                     throw new Error('Endereço não encontrado.');
+                }
+                if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
+                    existingAddresses.splice(addressIndex,1);currentClient.enderecos=existingAddresses;
+                    openAddressManagementModal(currentClient);return;
                 }
                 if(currentClient.accountLinked) {
                     const address=existingAddresses[addressIndex];
@@ -2819,7 +2852,14 @@
             try {
                 const functions = getFunctions(app, 'us-central1');
                 const lookupClientByPhone = httpsCallable(functions, 'lookupClientByPhone');
-                const lookupResult = await lookupClientByPhone({ telefone: phoneDigits, lojaId: STORE_ID });
+                await checkoutIdentity.ready();
+                const selectedIdentity=checkoutIdentity.get();
+                const lookupResult = await lookupClientByPhone({ telefone: phoneDigits, lojaId: STORE_ID,checkoutIdentityToken:selectedIdentity.token,checkoutIdentityRevision:selectedIdentity.revision });
+                if(checkoutIdentity.get().mode!==CHECKOUT_MODES.PHONE || checkoutIdentity.get().revision!==selectedIdentity.revision) return;
+                checkoutIdentity.acceptPhone(lookupResult.data.checkoutIdentity);
+                if(lookupResult.data.found===false) {
+                    phoneLoginModal.classList.add('hidden');openCustomerModalForCreate(phone);return;
+                }
 
                 phoneLoginModal.classList.add('hidden');
 
@@ -2832,12 +2872,7 @@
                     throw new Error('Dados do cliente não retornados pela função.');
                 }
 
-                currentClient = { id: clientId, ...client };
-                console.log('✅ Cliente identificado:', {
-                    id: clientId,
-                    nomeAbreviado: client?.nomeAbreviado || currentClient.nome,
-                    statusCadastro: client?.statusCadastro || 'indefinido'
-                });
+                currentClient = { id: clientId, ...client,telefone:phoneDigits,enderecos:[],accountLinked:false };
                 openAddressManagementModal(currentClient);
             } catch (error) {
                 const rawCode = typeof error?.code === 'string' ? error.code : '';
@@ -2855,7 +2890,7 @@
                 }
 
                 if (errorCode === 'permission-denied') {
-                    phoneError.textContent = 'Acesso não autorizado para busca de cadastro.';
+                    phoneError.textContent = /tentativas/i.test(error?.message || '') ? 'Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.' : 'Não foi possível identificar o cadastro nesta loja.';
                 } else if (errorCode === 'unauthenticated') {
                     phoneError.textContent = 'Faça login para continuar.';
                 } else if (errorCode === 'unavailable') {
@@ -3132,7 +3167,7 @@
             };
             await revalidateCheckoutBeforeFinalSubmit(clientInfo);
             const online = clientInfo.formaPagamento === 'Online';
-            if (online && !isLinkedCustomer(currentClient)) throw new Error('Entre com Google ou e-mail em Minha Conta para pagar online.');
+            if (online && (!checkoutIdentity.isStrong() || !isLinkedCustomer(currentClient))) throw new Error('Para pagar online, entre com Google ou e-mail.');
             if (!storeIsOpenNow) {
                 showToast(getStoreAvailabilityMessage(storeAvailability), true);
                 throw new Error(storeAvailability);
@@ -3147,6 +3182,7 @@
 
             const orderData = {
                 lojaId: STORE_ID,
+                checkoutIdentityToken:checkoutIdentity.get().token,
                 whatsappConsent,
                 cliente: {
                     id: clientId || null,
@@ -3171,7 +3207,7 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/checkout/confirmar?lojaId=${encodeURIComponent(STORE_ID)}`, {
                     method: 'POST',
-                    headers: await checkoutHeaders(online),
+                    headers: await checkoutHeaders(online,checkoutIdentity),
                     body: JSON.stringify(orderData)
                 });
 
@@ -3266,10 +3302,21 @@
         const reorderCart=createPageCartBridge({storeId:STORE_ID,storage:sessionStorage,navigate:url=>window.location.assign(url),readCart:()=>cart,applyCart:applyReorderCart,open:()=>cartModal.classList.remove('hidden')});
         onAuthStateChanged(getAuth(app),createCartOwnerObserver({
             initialUid:getAuth(app).currentUser && !getAuth(app).currentUser.isAnonymous ? getAuth(app).currentUser.uid : null,
-            onClear:()=>{applyReorderCart({items:[],products:[],uid:null});currentClient=null;syncOnlinePaymentOption(null);},
+            onClear:()=>{applyReorderCart({items:[],products:[],uid:null});currentClient=null;checkoutIdentity.invalidate();syncCheckoutPayment();},
             onOwner:uid=>{reorderOwnerUid=uid;persistCheckoutState();}
         }));
-        const customerAccount=installCustomerAccount({reorderCart,onCustomer: client => {currentClient=client;syncOnlinePaymentOption(client);identificationModal.classList.add('hidden');openAddressManagementModal(client);},onSession:client=>{if(reorderOwnerUid && reorderOwnerUid!==getAuth(app).currentUser?.uid) {cart=[];pendingOrderDetails={};reorderOwnerUid=null;persistCheckoutState();renderCart();}if(client && getAuth(app).currentUser?.uid) {reorderOwnerUid=getAuth(app).currentUser.uid;persistCheckoutState();}currentClient=client;syncOnlinePaymentOption(client);},onLogout:()=>{if(reorderOwnerUid) {cart=[];reorderOwnerUid=null;renderCart();}currentClient=null;syncOnlinePaymentOption(null);pendingOrderDetails={};persistCheckoutState();},notify:showToast});
+        const customerAccount=installCustomerAccount({reorderCart,onCustomer:async client=>{
+            await checkoutIdentity.select(CHECKOUT_MODES.STRONG);
+            currentClient=client;syncCheckoutPayment();
+            identificationModal.classList.add('hidden');paymentModal.classList.add('hidden');
+            openAddressManagementModal(client);
+        },onSession:client=>{
+            if(reorderOwnerUid && reorderOwnerUid!==getAuth(app).currentUser?.uid) {cart=[];pendingOrderDetails={};reorderOwnerUid=null;persistCheckoutState();renderCart();}
+            if(client && getAuth(app).currentUser?.uid) {reorderOwnerUid=getAuth(app).currentUser.uid;persistCheckoutState();}
+            // Passive session publication must not upgrade an explicit weak selection.
+            if(checkoutIdentity.isStrong()) currentClient=client;
+            syncCheckoutPayment();
+        },onLogout:()=>{if(reorderOwnerUid) {cart=[];reorderOwnerUid=null;renderCart();}currentClient=null;checkoutIdentity.invalidate();syncCheckoutPayment();pendingOrderDetails={};persistCheckoutState();},notify:showToast});
         const startCheckout = async () => {
             try {
                 // Auth is canonical and configured before this module is exposed.
@@ -3284,7 +3331,18 @@
                 return;
             }
             initApp();
-            enableOnlinePayment(STORE_ID,()=>currentClient);
+            enableOnlinePayment(STORE_ID,()=>currentClient,()=>checkoutIdentity.isStrong());
+            for(const container of [document.getElementById('payment-method-select'),document.getElementById('guest-payment-method')]) {
+                if(!container) continue;
+                const notice=document.createElement('section');notice.dataset.checkoutStrongInvitation='';
+                const text=document.createElement('p');text.textContent='Para pagar online, entre com Google ou e-mail.';notice.append(text);
+                for(const [label,id] of [['Entrar com Google','continue-google-button'],['Entrar com e-mail','continue-email-button']]) {
+                    const button=document.createElement('button');button.type='button';button.className='border rounded px-3 py-2 my-2';button.textContent=label;
+                    button.onclick=()=>{paymentModal.classList.add('hidden');guestCheckoutModal.classList.add('hidden');document.getElementById(id).click();};notice.append(button);
+                }
+                container.after(notice);
+            }
+            syncCheckoutPayment();
         };
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startCheckout, {once:true});
         else startCheckout();

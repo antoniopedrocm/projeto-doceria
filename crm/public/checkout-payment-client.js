@@ -1,15 +1,16 @@
 import {auth} from './firebaseClientConfig.js?v=20261015-persistence';
 import {apiBaseUrl} from './checkout-environment.js';
 import {isLinkedCustomer} from './customer-session.mjs';
+/* global location */
 const key='doceria-payment-pending';
-export async function checkoutHeaders(online=false) {
+export async function checkoutHeaders(online=false,identity=null) {
   await auth.authStateReady();
-  if(online && (!auth.currentUser || auth.currentUser.isAnonymous ||
+  if(online && (!identity?.isStrong() || !auth.currentUser || auth.currentUser.isAnonymous ||
     !auth.currentUser.providerData.some(p=>['google.com','password'].includes(p.providerId)))) {
     throw new Error('Entre com Google ou e-mail em Minha Conta para pagar online.');
   }
   const headers={'Content-Type':'application/json'};
-  if(auth.currentUser) headers.Authorization=`Bearer ${await auth.currentUser.getIdToken()}`;
+  if(identity?.isStrong() && auth.currentUser) headers.Authorization=`Bearer ${await auth.currentUser.getIdToken()}`;
   return headers;
 }
 export function paymentAttempt() {
@@ -27,22 +28,22 @@ export function redirectToPayment(data) {
   location.assign(url.href);
 }
 let onlineEnabled=false;
-export function syncOnlinePaymentOption(customer) {
+export function syncOnlinePaymentOption(customer,strong=false) {
   const select=document.getElementById('payment-method-select');
   const guest=document.getElementById('guest-payment-method');
   guest?.querySelector('option[value="Online"]')?.remove();
   if(!select) return;
   const option=select.querySelector('option[value="Online"]');
-  if(!onlineEnabled || !isLinkedCustomer(customer)) {
+  if(!onlineEnabled || !strong || !isLinkedCustomer(customer)) {
     if(select.value==='Online') select.value='';
     option?.remove();
   } else if(!option) select.add(new Option('Pagar online — Pix ou cartão','Online'));
 }
-export async function enableOnlinePayment(storeId,getCustomer=()=>null) {
+export async function enableOnlinePayment(storeId,getCustomer=()=>null,isStrong=()=>false) {
   try {
     const r=await fetch(`${apiBaseUrl}/checkout/config?lojaId=${encodeURIComponent(storeId)}`);
     const config=await r.json();
     onlineEnabled=r.ok && config.enabled===true;
-    syncOnlinePaymentOption(getCustomer());
+    syncOnlinePaymentOption(getCustomer(),isStrong());
   } catch { /* Store keeps its current payment methods until configured. */ }
 }

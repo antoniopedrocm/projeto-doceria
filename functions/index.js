@@ -52,6 +52,8 @@ exports.whatsappWebhook = onRequest({region: 'southamerica-east1', timeoutSecond
 const auth = admin.auth();
 const {createCustomerAccount} = require('./checkout-auth');
 const customerAccounts = createCustomerAccount({admin, db,getStoreAvailability:config=>getStoreAvailability(config), resolveStore:(...args)=>storeResolver.resolve(...args)});
+const {createCheckoutIdentity,MODES:CHECKOUT_MODES}=require('./checkout-identity');
+const checkoutIdentities=createCheckoutIdentity({db});
 const {createPaymentService, cents, paymentError} = require('./checkout-payment');
 const checkoutPayments = createPaymentService({db, admin});
 const {paymentPrefill}=require('./payment-prefill');
@@ -1241,6 +1243,23 @@ app.use(cors({origin: true})); // Habilita CORS para a API do cardápio
 app.use(express.json());
 const storeResolver = createStoreResolver({db,getAvailability:getStoreAvailability,loadPaymentConfig:store=>checkoutPayments.config(store)});
 mountStoreRoutes(app,storeResolver);
+// Selection is explicit and independent of the browser's ambient Firebase session.
+app.post('/checkout/identity',async(req,res)=>{
+  try {
+    const storeId=String(req.body?.storeId || '');
+    if(!/^[\w-]{1,150}$/.test(storeId) || !(await db.doc(`lojas/${storeId}`).get()).exists) return res.status(404).json({code:'STORE_NOT_FOUND'});
+    const mode=req.body?.mode;
+    let uid=null,customerId=null;
+    if(mode===CHECKOUT_MODES.STRONG) {
+      const token=await checkoutToken(req);uid=token.uid;
+      const account=await customerAccounts.account({auth:{uid,token}});
+      customerId=account.customer?.id;
+    }
+    const ip=String(req.headers['x-forwarded-for'] || req.ip || 'unknown').split(',')[0].trim();
+    await enforcePhoneLookupRateLimit({callerKeyHash:hashForPrivacy('checkout-identity:'+ip),phoneHash:null});
+    return res.json(await checkoutIdentities.select({token:req.body?.checkoutIdentityToken,storeId,mode,uid,customerId}));
+  } catch(e) {return res.status(e.httpStatus || (e.code==='permission-denied'?429:403)).json({code:e.code || 'CHECKOUT_IDENTITY_REQUIRED',message:e.code==='permission-denied'?'Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.':'Para pagar online, entre com Google ou e-mail.'});}
+});
 app.get('/checkout/config', async (req,res) => {
   const store=String(req.query.lojaId || '');
   if(!/^[\w-]+$/.test(store)) return res.status(400).json({enabled:false});
@@ -1780,9 +1799,21 @@ app.post("/checkout/confirmar", async (req, res) => {
     const whatsappConfirmation = buildCheckoutWhatsApp({phone: cliente.telefone,
       consent: req.body?.whatsappConsent, serverTimestamp: () => FieldValue.serverTimestamp()});
     let paymentConfig, paymentId, ownerUid, orderRef, fingerprint, buyerEmail, checkoutCustomerId;
-    if(req.headers.authorization) ownerUid=(await checkoutToken(req)).uid;
+    const identityToken=req.body?.checkoutIdentityToken;
+    let checkoutIdentity=identityToken ? await checkoutIdentities.read(identityToken,lojaId) : {mode:CHECKOUT_MODES.GUEST};
+    const checkoutIdentityRevision=checkoutIdentity.revision;
+    // A stale ID token is not a checkout selection, including for offline orders.
+    if(checkoutIdentity.mode===CHECKOUT_MODES.STRONG) {
+      ownerUid=(await checkoutToken(req)).uid;
+      checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
+    } else {
+      // Weak identification never attaches an order to a private Customer profile.
+      cliente.id=null;
+      if(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.phoneHash && hashForPrivacy(normalizePhoneNumber(cliente.telefone))!==checkoutIdentity.phoneHash) throw paymentError('Identifique novamente o celular deste checkout.',403);
+    }
     if(online) {
       const token=await checkoutToken(req);ownerUid=token.uid;buyerEmail=token.email;
+      checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
       let account;
       try {account=await customerAccounts.account({auth:{uid:ownerUid,token}});}
       catch(e) {
@@ -1798,6 +1829,12 @@ app.post("/checkout/confirmar", async (req, res) => {
       orderRef=db.collection('lojas').doc(lojaId).collection('pedidos').doc(paymentId);
     }
     const orderId = await db.runTransaction(async (transaction) => {
+      if(identityToken) {
+        checkoutIdentity=await checkoutIdentities.read(identityToken,lojaId,transaction);
+        if(checkoutIdentity.revision!==checkoutIdentityRevision) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
+        if(checkoutIdentity.mode===CHECKOUT_MODES.STRONG) checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
+        else if(online || ownerUid) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
+      }
       if(online) {
         const prior=await transaction.get(db.collection('checkoutPayments').doc(paymentId));
         if(prior.exists) {
@@ -1805,6 +1842,8 @@ app.post("/checkout/confirmar", async (req, res) => {
           const savedOrder = await transaction.get(orderRef);
           if (!savedOrder.exists) throw paymentError('Pedido indisponível. Consulte o pagamento pendente.');
           assertFreightClaims(req.body, savedOrder.data(), cliente.endereco === 'Retirar na Loja');
+          if(prior.data().ownerUid!==ownerUid || prior.data().storeId!==lojaId || savedOrder.data().clienteId!==checkoutCustomerId) throw paymentError('Pedido não autorizado.',403);
+          transaction.update(prior.ref,{checkoutIdentity:{mode:CHECKOUT_MODES.STRONG,contextPath:checkoutIdentities.ref(identityToken).path,revision:checkoutIdentity.revision,customerId:checkoutCustomerId}});
           return prior.data().orderId;
         }
       }
@@ -1965,6 +2004,7 @@ app.post("/checkout/confirmar", async (req, res) => {
       if(online) {
         transaction.set(db.collection('checkoutPayments').doc(paymentId),{
           orderId:orderRef.id,orderPath:orderRef.path,storeId:lojaId,ownerUid,fingerprint,
+          checkoutIdentity:{mode:CHECKOUT_MODES.STRONG,contextPath:checkoutIdentities.ref(identityToken).path,revision:checkoutIdentity.revision,customerId:checkoutCustomerId},
           payment_status:'PENDING',amount:cents(total),...paymentConfig,
           expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+RESERVATION_MS),
           reservation:{state:'HELD',stock:stockUpdates.map(s=>({path:s.ref.path,quantity:s.quantity})),
@@ -1976,6 +2016,7 @@ app.post("/checkout/confirmar", async (req, res) => {
       }
       transaction.set(orderRef, {
         lojaId,
+        checkoutIdentity:{mode:checkoutIdentity.mode,...(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.legacyCustomerId ? {legacyClientId:checkoutIdentity.legacyCustomerId} : {})},
         clienteId: cliente.id || null,
         clienteNome: cliente.nome,
         clienteEndereco: cliente.endereco || '',
@@ -2191,7 +2232,7 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
     }
 
     const rawIp = request.rawRequest?.headers?.['x-forwarded-for'] || request.rawRequest?.ip || 'unknown';
-    const callerIdentity = request.auth?.uid || `${rawIp}`.split(',')[0].trim() || 'anonymous';
+    const callerIdentity = `${rawIp}`.split(',')[0].trim() || 'anonymous';
     const callerKeyHash = hashForPrivacy(callerIdentity);
     const phoneHash = hashForPrivacy(normalizedPhone);
 
@@ -2208,21 +2249,15 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
       createdAt: FieldValue.serverTimestamp(),
     };
 
+    const checkoutIdentity=await checkoutIdentities.select({token:request.data?.checkoutIdentityToken,
+      storeId:lojaId,mode:CHECKOUT_MODES.PHONE,legacyCustomerId:found?.id || null,phone:normalizedPhone,expectedRevision:request.data?.checkoutIdentityRevision});
     if (!found) {
       await db.collection('auditLogs').add({
         ...auditPayload,
         outcome: 'not-found',
       });
-      throw new HttpsError('not-found', 'Cliente não encontrado.');
+      return {found:false,checkoutIdentity};
     }
-
-    if (found.data?.authOwnerUid) throw new HttpsError('permission-denied', 'Este cadastro usa Minha Conta. Continue com Google.');
-    await upsertClientDocument({
-      targetRef: getClientsCollection().doc(found.id),
-      data: found.data,
-      lojaId,
-      setCreatedIfMissing: true,
-    });
 
     await db.collection('auditLogs').add({
       ...auditPayload,
@@ -2231,9 +2266,10 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
     });
 
     return {
-      clientId: found.id,
-      phoneNormalized: normalizedPhone,
-      client: buildSafeClientPayload(found.data),
+      found:true,
+      checkoutIdentity,
+      clientId:'legacy_'+hashForPrivacy(checkoutIdentity.token),
+      client:{nome:abbreviateName(found.data?.nome),nomeAbreviado:abbreviateName(found.data?.nome)},
     };
   } catch (error) {
     logger.error('lookupClientByPhone failed', {

@@ -2,6 +2,25 @@
 
 ## Decisão e fronteira
 
+### Atualização — identificação por celular (2026-10-21)
+
+Regressão interna pré-PROD identificada após o fechamento anterior: o lookup
+legado rejeitava cadastro vinculado, e o checkout não separava escolha weak da
+sessão Firebase ambiente. **Correção local/testes concluídos; deploy e homologação
+DEV A/B/C/D ainda PENDENTES.** Não declarar esta regressão resolvida remotamente
+nem afirmar ausência de pendências internas enquanto esse gate não passar.
+
+Contrato e provas locais em [CHECKOUT_IDENTITY_CONTRACT.md](CHECKOUT_IDENTITY_CONTRACT.md).
+Modo servidor por contexto/loja/revisão, resposta mínima no lookup, ausência de
+merge e de privilégios herdados, pagamento weak negado mesmo com ID token válido.
+Guard Customer privado, sessão Firebase/Staff/FCM e carrinho preservados.
+Rules e contrato externo InfinitePay inalterados. Publicação necessária somente
+`api`, `lookupClientByPhone` e Hosting DEV; CLI exige reautenticação neste momento.
+As ferramentas de controle do navegador falharam na inicialização do runtime;
+evidência visual remota não foi fabricada. A dependência externa financeira segue
+separada: resposta técnica oficial da InfinitePay. Fase9=75%, Global=95,00%,
+Fase13=0%; produção intacta, sem transação financeira/WhatsApp.
+
 **Preparação interna disponível: READY após as verificações desta entrega.**
 **Liberação/publicação PROD: NÃO READY / NÃO AUTORIZADA.** Fase 13 não iniciada.
 Este documento é plano executável futuro, não evidência de inspeção ou validação

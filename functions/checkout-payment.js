@@ -71,6 +71,15 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     const payment = await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);const p=snap.data();
       if (!p || p.ownerUid !== ownerUid) throw paymentError('Pedido não encontrado.',404);
+      // Historical payments predate checkout selection. New records must carry
+      // the server-established assurance; a Firebase token alone cannot upgrade it.
+      if(p.checkoutIdentity) {
+        const identity=p.checkoutIdentity;
+        if(identity.mode!=='strong_auth' || !/^checkoutPayments\/_identity\/contexts\/[a-f0-9]{64}$/.test(identity.contextPath || '')) throw paymentError('Para pagar online, entre com Google ou e-mail.',403);
+        const context=(await tx.get(db.doc(identity.contextPath))).data();
+        if(!context || context.mode!=='strong_auth' || context.ownerUid!==ownerUid || context.customerId!==identity.customerId ||
+          context.storeId!==p.storeId || context.revision!==identity.revision || context.expiresAt<=now()) throw paymentError('Para pagar online, entre com Google ou e-mail.',403);
+      }
       if(p.requiresReview || (p.payment_status !== 'PENDING' && p.payment_status !== 'PAID')) throw paymentError('Pedido aguardando conciliação. Consulte a loja antes de pagar.');
       if(p.checkoutUrl || p.payment_status === 'PAID') return p;
       if(p.linkState) throw paymentError('Pedido aguardando conciliação. Não refaça a compra; consulte a loja.');

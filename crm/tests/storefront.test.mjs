@@ -38,8 +38,9 @@ test('template único e aliases de compatibilidade têm os mesmos bytes e nenhum
 test('sem frete mostra retirada e esconde seleção de entrega no modal real',()=>{
   const html=fs.readFileSync(new URL('../public/cardapio.html',import.meta.url),'utf8');
   const start=html.indexOf('function openAddressManagementModal(client)'),end=html.indexOf('async function deleteAddress',start);
-  const dom=new JSDOM('<div id="address-list"></div><div id="new-address-section"></div><div id="show-new-address-wrapper"></div><button id="show-new-address-btn"></button><div id="modal"></div>');
+  const dom=new JSDOM('<button id="edit-profile-btn"></button><div id="address-list"></div><div id="new-address-section"></div><div id="show-new-address-wrapper"></div><button id="show-new-address-btn"></button><div id="modal"></div>');
   const document=dom.window.document,context={document,window:{},publicStore:{pickup:{enabled:true},delivery:{available:false}},
+    checkoutIdentity:{get:()=>({mode:'guest'})},CHECKOUT_MODES:{PHONE:'legacy_phone'},syncCheckoutPayment:()=>{},
     addressList:document.getElementById('address-list'),confirmCustomerName:{},addressManagementModal:document.getElementById('modal'),usePickupAddress:()=>{}};
   vm.runInNewContext(html.slice(start,end),context);context.openAddressManagementModal({nome:'Fixture',enderecos:[]});
   assert.equal(document.querySelector('.use-pickup-btn').parentElement.hidden,false);

@@ -25,6 +25,7 @@ const checkout = async ({storeId, configs, distance = 2, serverDistance = 2, pic
     }),
   };
   const context = { ...core, resolveFreightDistance: async () => serverDistance,
+    CHECKOUT_MODES:require('./checkout-identity').MODES,
     buildCheckoutWhatsApp: require('./whatsapp-checkout').buildCheckoutWhatsApp, db, app: {post: (_url, fn) => { handler = fn; }},
     requireStoreId: () => storeId,
     getStoreConfigDoc: (id) => ref(`lojas/${id}/configuracoes/config`),
