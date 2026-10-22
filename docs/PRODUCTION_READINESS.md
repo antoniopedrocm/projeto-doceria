@@ -2,12 +2,12 @@
 
 ## Decisão e fronteira
 
-### Atualização — identificação por celular (2026-10-21)
+### Atualização — identificação por celular (2026-10-22)
 
 Regressão interna pré-PROD identificada após o fechamento anterior: o lookup
 legado rejeitava cadastro vinculado, e o checkout não separava escolha weak da
-sessão Firebase ambiente. **Correção local/testes concluídos; deploy e homologação
-DEV A/B/C/D ainda PENDENTES.** Não declarar esta regressão resolvida remotamente
+sessão Firebase ambiente. **Correção local/testes e deploy DEV concluídos;
+homologação pela interface A/B/C/D ainda PENDENTE.** Não declarar esta regressão resolvida remotamente
 nem afirmar ausência de pendências internas enquanto esse gate não passar.
 
 Contrato e provas locais em [CHECKOUT_IDENTITY_CONTRACT.md](CHECKOUT_IDENTITY_CONTRACT.md).
@@ -15,9 +15,17 @@ Modo servidor por contexto/loja/revisão, resposta mínima no lookup, ausência 
 merge e de privilégios herdados, pagamento weak negado mesmo com ID token válido.
 Guard Customer privado, sessão Firebase/Staff/FCM e carrinho preservados.
 Rules e contrato externo InfinitePay inalterados. Publicação necessária somente
-`api`, `lookupClientByPhone` e Hosting DEV; CLI exige reautenticação neste momento.
+`api`, `lookupClientByPhone` e Hosting DEV: publicados em `crmdoceria-9959e`,
+commit funcional `c97a2c4d`, após reautenticação da CLI. Ambas as Functions
+us-central1 tiveram update bem-sucedido. Lookup remoto sem Auth encontrou o
+cadastro, com somente nome abreviado e referência opaca; seleção forte sem
+Auth foi negada401. Nenhum endpoint de criação de pedido/pagamento foi chamado.
+Onze arquivos Hosting conferidos por SHA-256 contra o build, incluindo cardápio,
+aliases, helper de identidade, controlador e bundle. Cache de bootstrap/HTML/worker
+revalidável e bundle immutable preservados.
 As ferramentas de controle do navegador falharam na inicialização do runtime;
-evidência visual remota não foi fabricada. A dependência externa financeira segue
+evidência visual remota não foi fabricada. Execução manual A/B/C/D solicitada,
+sem finalizar pedido ou cobrança. A dependência externa financeira segue
 separada: resposta técnica oficial da InfinitePay. Fase9=75%, Global=95,00%,
 Fase13=0%; produção intacta, sem transação financeira/WhatsApp.
 
