@@ -2,6 +2,27 @@
 
 ## Decisão e fronteira
 
+### Extensão de endereços no checkout celular — 2026-10-23
+
+Implementada e validada localmente: reconhecimento de endereços persistidos por
+projeção mascarada e seleção por referência opaca, com resolução completa somente
+no backend. Fonte global `clientes/{customerId}.enderecos`, loja/contexto/revisão
+validados e cadastro ambíguo recusado. Nenhum merge, escrita de endereço privado,
+nova tarifa ou permissão; STRONG_AUTH, LEGACY_PHONE e GUEST continuam separados.
+Contrato e limites em [CHECKOUT_IDENTITY_CONTRACT.md](CHECKOUT_IDENTITY_CONTRACT.md).
+
+**Publicação/homologação remota desta extensão: PENDENTE.** O precheck da CLI
+retornou Authentication Error (credencial expirada). Nenhum deploy tentado,
+nenhum dado remoto alterado. Após reautenticação: atualizar somente `api` e
+`lookupClientByPhone` DEV, validar resposta allowlist e frete sem revelar destino,
+depois Hosting; confirmar hashes e UI com cadastro DEV autorizado, sem criar pedido
+ou modificar endereços reais só para teste. Rules/índices/Storage permanecem iguais.
+Essa dependência operacional não é a resposta externa InfinitePay; a homologação
+anterior de identificação por celular abaixo continua válida para sua versão.
+
+Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%/NÃO INICIADA.
+Nenhuma ação PROD ou operação financeira/WhatsApp autorizada por esta extensão.
+
 ### Atualização — identificação por celular (2026-10-22)
 
 Regressão interna pré-PROD identificada após o fechamento anterior: o lookup

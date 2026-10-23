@@ -45,8 +45,9 @@ Tokens completos não são auditados nem documentados.
 
 `lookupClientByPhone` continua global em `clientes`, com loja válida explícita e
 rate limit; não copia dados de outra loja nem usa Matriz como fallback. Retorna
-`found`, contexto, identificador opaco e nome abreviado. Não retorna UID, e-mail,
-aniversário, endereços, histórico, roles ou metadados de segurança. Não faz upsert,
+`found`, contexto, identificador opaco, nome abreviado e a projeção mascarada de
+endereços descrita abaixo. Não retorna UID, e-mail, aniversário, endereço completo,
+histórico, roles ou metadados de segurança. Não faz upsert,
 merge ou vínculo. Ausência retorna `found:false`, sem cadastro privado.
 
 Pedidos weak têm `clienteId:null`, sem ownerUid/paymentId herdados. A referência
@@ -54,6 +55,55 @@ legada permanece somente em `checkoutIdentity.legacyClientId`, para rastreio
 interno; não dá ownership nem insere o pedido no histórico privado por telefone.
 Endereços digitados nesse modo são locais ao checkout; não editam o cadastro
 encontrado. Perfil privado exige o fluxo forte já existente.
+
+### Seleção de endereços existentes por celular — 2026-10-23
+
+- Fonte canônica: array `clientes/{customerId}.enderecos`, global do cliente,
+  não duplicado por loja. O lookup resolve o cadastro uma vez e guarda seu ID
+  somente no contexto servidor existente. Telefone com múltiplos cadastros entre
+  os formatos aceitos falha fechado, convidando login forte; não escolhe registro
+  arbitrário nem faz merge. Não houve migração/escrita nos cadastros.
+- A resposta `client.enderecos` contém somente `id` opaco, `nickname`, `summary`,
+  `isDefault` e `saved:true`. Apelidos comuns seguros (Casa/Trabalho/Apartamento/
+  Outro) são preservados; texto livre potencialmente residencial vira Endereço N.
+  Resumo: tipo de logradouro + até duas letras iniciais + máscara, número sempre oculto e bairro estruturado
+  quando seguro. Não se tenta extrair complemento/bairro de texto legado livre.
+  CEP, número real, referência, complemento, coordenadas, ID privado e endereço
+  completo nunca são retornados, nem depois da seleção.
+- Referência HMAC vinculada ao token do contexto, Customer canônico e ID de
+  `addressRecords` (o helper existente gera IDs determinísticos para registros
+  antigos). Reordenar endereços com ID não muda a seleção; remover o registro
+  torna a referência inválida. Nenhum ID novo é persistido na leitura.
+- Selecionar envia `checkoutAddressId`, `checkoutAddressRevision` e contexto para
+  `/frete/calcular`. O backend valida loja, modo celular, revisão, expiração e
+  cadastro; relê o array e usa seu endereço completo exclusivamente no servidor.
+  Resposta contém somente a cotação existente. `/checkout/confirmar` repete essa
+  resolução dentro da transação e persiste o destino real no pedido interno.
+  Texto mascarado/coords enviados pelo browser não substituem o endereço salvo.
+  Algoritmo e autoridade de frete permanecem intactos.
+- UI: retirada independente primeiro; depois cards compactos, padrão primeiro,
+  demais na ordem original e nenhuma seleção automática de endereço existente.
+  Novo endereço atualiza a lista em memória sem reload; se marcado padrão, o
+  destaque anterior é removido somente da cópia local do checkout weak. O fluxo
+  já existente de seleção após cadastrar foi preservado. Isso NÃO autoriza
+  gravar/excluir endereços no perfil privado encontrado por telefone.
+- Strong mantém APIs privadas, descrição completa e IDs próprios. Guest não
+  renderiza endereços herdados. Nenhuma alteração Auth, Rules, FCM ou pagamento.
+- Referência/resumo selecionados persistem no snapshot por aba já existente.
+  Reabrir o modal mantém a lista; um novo lookup após refresh obtém a projeção
+  atual sem novo cadastro. Checkout restaurado revalida referência/revisão no
+  servidor, sem guardar o endereço privado completo no browser. Mudança de modo,
+  cliente/loja, expiração ou exclusão exige nova seleção. Respostas atrasadas não
+  substituem retirada ou uma identidade mais recente.
+- Rate limit/auditoria do lookup preservados. Reconhecimento de apelido/bairro,
+  quantidade de endereços e valor do frete ainda revelam informação mínima;
+  telefone continua sem prova de posse e sujeito a enumeração distribuída.
+
+Publicação desta extensão, quando possível: somente `api` e
+`lookupClientByPhone` em us-central1, depois Hosting DEV. Frontend não deve ser
+publicado antes do backend. Metadados remotos não puderam ser consultados nesta
+execução por credencial CLI expirada; nenhuma edição de banco, schema ou Rule.
+Validação atual local/emulada, sem afirmar homologação remota dessa extensão.
 
 `POST /checkout/confirmar` exige contexto servidor forte + UID + Customer + loja
 para Online. Ignorar contexto ou forjar `identityMode` não promove assurance.
