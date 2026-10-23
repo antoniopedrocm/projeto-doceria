@@ -54,6 +54,8 @@ const {createCustomerAccount} = require('./checkout-auth');
 const customerAccounts = createCustomerAccount({admin, db,getStoreAvailability:config=>getStoreAvailability(config), resolveStore:(...args)=>storeResolver.resolve(...args)});
 const {createCheckoutIdentity,MODES:CHECKOUT_MODES}=require('./checkout-identity');
 const checkoutIdentities=createCheckoutIdentity({db});
+const {addressOptions,createCheckoutAddresses}=require('./checkout-addresses');
+const checkoutAddresses=createCheckoutAddresses({db,identities:checkoutIdentities});
 const {createPaymentService, cents, paymentError} = require('./checkout-payment');
 const checkoutPayments = createPaymentService({db, admin});
 const {paymentPrefill}=require('./payment-prefill');
@@ -1391,18 +1393,13 @@ const buildSafeClientPayload = (clientData = {}) => ({
 
 const findClientByNormalizedPhone = async (normalizedPhone) => {
   const candidates = getPhoneLookupCandidates(normalizedPhone);
-
+  const matches=new Map();
   for (const candidate of candidates) {
-    const existing = await findClientByPhone(candidate);
-    if (existing) {
-      return {
-        ...existing,
-        matchedPhone: candidate,
-      };
-    }
+    const snapshot=await getClientsCollection().where('telefone','==',candidate).limit(2).get();
+    for(const doc of snapshot.docs) matches.set(doc.id,{id:doc.id,data:doc.data(),matchedPhone:candidate});
+    if(matches.size>1) throw new HttpsError('failed-precondition','Não foi possível identificar um cadastro único. Entre com Google ou e-mail.');
   }
-
-  return null;
+  return matches.values().next().value || null;
 };
 
 const hashForPrivacy = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -1851,6 +1848,11 @@ app.post("/checkout/confirmar", async (req, res) => {
       const storeConfigSnap = await transaction.get(storeConfigRef);
       const storeConfig = storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : null;
       assertStoreOpen(storeConfig);
+      if(req.body.checkoutAddressId) {
+        const savedAddress=await checkoutAddresses.resolve({token:identityToken,storeId:lojaId,
+          id:req.body.checkoutAddressId,revision:req.body.checkoutAddressRevision,transaction});
+        cliente.endereco=savedAddress.enderecoCompleto;
+      }
       const freight = await quoteOrderFreight(
         transaction,
         lojaId,
@@ -2074,12 +2076,16 @@ app.post("/frete/calcular", async (req, res) => {
     if (!lojaId) return;
     try {
         const { clienteLat, clienteLng } = req.body;
+        const savedAddress=req.body.checkoutAddressId ? await checkoutAddresses.resolve({
+            token:req.body.checkoutIdentityToken,storeId:lojaId,id:req.body.checkoutAddressId,
+            revision:req.body.checkoutAddressRevision,
+        }) : null;
         const freteConfig = await loadStoreFreightConfig({db, storeId: lojaId});
         if (freteConfig.freteACombinar === true) {
             return res.status(200).json({...quoteFreight({config: freteConfig}), distanciaKm: null});
         }
-        if (Object.prototype.hasOwnProperty.call(req.body, 'clienteEndereco')) {
-            const distanciaKm = await resolveFreightDistance({config: freteConfig, address: req.body.clienteEndereco});
+        if (savedAddress || Object.prototype.hasOwnProperty.call(req.body, 'clienteEndereco')) {
+            const distanciaKm = await resolveFreightDistance({config: freteConfig, address: savedAddress?.enderecoCompleto || req.body.clienteEndereco});
             return res.status(200).json({...quoteFreight({config: freteConfig, distanceKm: distanciaKm}), distanciaKm});
         }
         const {lat: lojaLat, lng: lojaLng} = validateFreightCoordinates(freteConfig);
@@ -2115,7 +2121,7 @@ app.post("/frete/calcular", async (req, res) => {
 
     } catch (error) {
         logger.error("Erro ao calcular frete:", error);
-        return res.status(error.httpStatus || 400).json({message: error.message || 'Erro ao calcular frete.'});
+        return res.status(error.httpStatus || 400).json({message: req.body.checkoutAddressId ? 'Não foi possível validar este endereço. Selecione-o novamente.' : error.message || 'Erro ao calcular frete.'});
     }
 });
 
@@ -2269,7 +2275,8 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
       found:true,
       checkoutIdentity,
       clientId:'legacy_'+hashForPrivacy(checkoutIdentity.token),
-      client:{nome:abbreviateName(found.data?.nome),nomeAbreviado:abbreviateName(found.data?.nome)},
+      client:{nome:abbreviateName(found.data?.nome),nomeAbreviado:abbreviateName(found.data?.nome),
+        enderecos:addressOptions(checkoutIdentity.token,found.id,found.data?.enderecos)},
     };
   } catch (error) {
     logger.error('lookupClientByPhone failed', {

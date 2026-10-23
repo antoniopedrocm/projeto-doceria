@@ -1192,6 +1192,7 @@
         import {installCustomerAccount} from './customer-account.js?v=20261015-persistence';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
         import {createCheckoutIdentity,CHECKOUT_MODES} from './checkout-identity.mjs';
+        import {renderCheckoutAddresses,savedAddressFields,appendCheckoutAddress} from './checkout-addresses.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
         import {fetchPublicStore} from './store-public-config.mjs';
         import {STORE_AVAILABILITY, getStoreAvailabilityMessage} from './store-availability.mjs';
@@ -1422,7 +1423,7 @@
                 const response = await fetch(`${API_BASE_URL}/frete/calcular?lojaId=${encodeURIComponent(STORE_ID)}`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({clienteEndereco: clientInfo.clienteEndereco})
+                    body: JSON.stringify({...savedAddressFields(clientInfo),checkoutIdentityToken:checkoutIdentity.get().token,clienteEndereco: clientInfo.clienteEndereco})
                 });
                 const currentQuote = await response.json().catch(() => ({}));
                 if (!response.ok) {
@@ -2326,8 +2327,9 @@
                 const functions = getFunctions(app, 'us-central1');
                 if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
                     // This address belongs to this checkout, never to the found profile.
-                    currentClient.enderecos=[...(currentClient.enderecos || []),newAddress];
-                    cancelNewAddress(true);await useExistingAddress(addressText,newAddress);return;
+                    currentClient.enderecos=appendCheckoutAddress(currentClient.enderecos,newAddress);
+                    cancelNewAddress(true);openAddressManagementModal(currentClient);
+                    await useExistingAddress(addressText,newAddress);return;
                 }
                 if (currentClient.accountLinked) {
                     const result = await httpsCallable(functions, 'customerAddAddress')({address: newAddress});
@@ -2403,28 +2405,12 @@
             if(!publicStore.delivery.available) {const notice=document.createElement('p');notice.textContent='Entrega indisponível para esta loja.';addressList.append(notice);}
             /* === FIM DA MODIFICAÇÃO === */
 
-			if (publicStore.delivery.available && client.enderecos && client.enderecos.length > 0) {
-				client.enderecos.forEach((address, index) => {
-					const { enderecoCompleto, nickname } = (typeof address === 'string')
-                        ? { enderecoCompleto: address, nickname: `Endereço ${index + 1}` }
-                        : { enderecoCompleto: address.enderecoCompleto, nickname: address.nickname || `Endereço ${index + 1}`};
-
-					const addressDiv = document.createElement('div');
-					addressDiv.className = 'bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow mb-4';
-					addressDiv.innerHTML = `
-						<div class="flex items-center justify-between gap-2 mb-2">
-							<span class="bg-pink-100 text-pink-800 text-xs font-medium px-2 py-1 rounded">${escapeCheckoutText(nickname)}</span>
-							<button class="text-red-500 hover:text-red-700 transition-colors delete-address-btn" title="Excluir endereço"><i class="fa-solid fa-trash-alt text-lg"></i></button>
-						</div>
-						<p class="text-gray-800 font-medium text-sm leading-tight">${escapeCheckoutText(enderecoCompleto)}</p>
-						<button class="w-full mt-3 bg-pink-600 text-white py-2 px-4 rounded-lg font-bold hover:bg-pink-700 transition-colors flex items-center justify-center gap-2 use-address-btn"><i class="fa-solid fa-truck"></i> Usar este Endereço</button>
-					`;
-
-					addressDiv.querySelector('.use-address-btn').onclick = () => useExistingAddress(enderecoCompleto, address);
-					addressDiv.querySelector('.delete-address-btn').onclick = (e) => { e.stopPropagation(); deleteAddress(index); };
-					addressList.appendChild(addressDiv);
-				});
-			}
+            if(publicStore.delivery.available && checkoutIdentity.get().mode!==CHECKOUT_MODES.GUEST) {
+                const cards=renderCheckoutAddresses({document,addresses:client.enderecos || [],
+                    weak:checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE,
+                    onSelect:useExistingAddress,onDelete:deleteAddress});
+                addressList.append(...cards);
+            }
             // O 'else' block que exibia "Nenhum endereço cadastrado" foi removido
             // para não apagar a opção "Retirar na Loja".
 			addressManagementModal.classList.remove('hidden');
@@ -2445,6 +2431,7 @@
                     throw new Error('Endereço não encontrado.');
                 }
                 if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
+                    if(existingAddresses[addressIndex]?.saved) return;
                     existingAddresses.splice(addressIndex,1);currentClient.enderecos=existingAddresses;
                     openAddressManagementModal(currentClient);return;
                 }
@@ -2484,6 +2471,7 @@
 		/* Nova função para lidar com a opção "Retirar na Loja" */
 		function usePickupAddress() {
             if(!publicStore.pickup.enabled) {showToast('Retirada indisponível nesta loja.',true);return;}
+            ++addressSelectionGeneration;
 			window.valorFrete = 0; // Retirada não cobra frete
             window.distanciaFreteKm = null;
             window.freteACombinar = false;
@@ -2507,8 +2495,37 @@
 		}
         /* === FIM DA MODIFICAÇÃO === */
 
+        let addressSelectionGeneration=0;
+        async function useSavedPhoneAddress(addressData) {
+            const generation=++addressSelectionGeneration;
+            const identity=checkoutIdentity.get();
+            if(identity.mode!==CHECKOUT_MODES.PHONE) return;
+            const fields={checkoutAddressId:addressData.id,checkoutAddressRevision:identity.revision};
+            try {
+                const response=await fetch(`${API_BASE_URL}/frete/calcular?lojaId=${encodeURIComponent(STORE_ID)}`,{
+                    method:'POST',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({...fields,checkoutIdentityToken:identity.token})});
+                const quote=await response.json();
+                if(generation!==addressSelectionGeneration || checkoutIdentity.get().token!==identity.token || checkoutIdentity.get().revision!==identity.revision) return;
+                if(!response.ok) throw new Error(quote.message || 'Selecione novamente o endereço.');
+                if(typeof quote.valorFrete!=='number' || !Number.isFinite(quote.valorFrete) || quote.valorFrete<0) throw new Error('Não foi possível validar o frete deste endereço.');
+                pendingOrderDetails={clienteId:currentClient.id,clienteNome:currentClient.nome,
+                    telefone:currentClient.telefone,clienteEndereco:addressData.summary,...fields};
+                window.checkoutDeliveryAddress=null;window.currentLatLng=null;
+                window.valorFrete=Number(quote.valorFrete);window.freteACombinar=quote.freteACombinar===true;
+                window.distanciaFreteKm=quote.distanciaKm==null?null:Number(quote.distanciaKm);
+                clearCheckoutBlockingIssue('frete');selectedAddressText.textContent=addressData.summary;
+                addressManagementModal.classList.add('hidden');updateAllSummaries();persistCheckoutState();
+                paymentModal.classList.remove('hidden');
+            } catch(error) {
+                if(generation!==addressSelectionGeneration || checkoutIdentity.get().revision!==identity.revision) return;
+                showToast(error.message || 'Não foi possível selecionar o endereço.',true);
+            }
+        }
 		async function useExistingAddress(addressText, addressData) {
             if(!publicStore.delivery.available) {showToast('Entrega indisponível nesta loja.',true);return;}
+            if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE && addressData?.saved) return useSavedPhoneAddress(addressData);
+            ++addressSelectionGeneration;
             window.distanciaFreteKm = null;
             window.valorFrete = 0;
             window.checkoutDeliveryAddress=addressData || null;
@@ -2874,7 +2891,7 @@
                     throw new Error('Dados do cliente não retornados pela função.');
                 }
 
-                currentClient = { id: clientId, ...client,telefone:phoneDigits,enderecos:[],accountLinked:false };
+                currentClient = { id: clientId, ...client,telefone:phoneDigits,enderecos:Array.isArray(client.enderecos)?client.enderecos:[],accountLinked:false };
                 openAddressManagementModal(currentClient);
             } catch (error) {
                 const rawCode = typeof error?.code === 'string' ? error.code : '';
@@ -3185,6 +3202,7 @@
             const orderData = {
                 lojaId: STORE_ID,
                 checkoutIdentityToken:checkoutIdentity.get().token,
+                ...savedAddressFields(clientInfo),
                 whatsappConsent,
                 cliente: {
                     id: clientId || null,

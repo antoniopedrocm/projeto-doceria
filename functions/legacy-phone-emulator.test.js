@@ -18,12 +18,15 @@ test('cadastro vinculado permite identificação mínima sem conceder perfil ou 
     rawRequest:{headers:{},ip:'fixture-no-auth'}});
   assert.equal(result.found,true);
   assert.notEqual(result.clientId,ref.id);
-  assert.deepEqual(Object.keys(result.client).sort(),['nome','nomeAbreviado']);
+  assert.deepEqual(Object.keys(result.client).sort(),['enderecos','nome','nomeAbreviado']);
+  assert.equal(result.client.enderecos.length,1);
+  assert.equal(result.client.enderecos[0].saved,true);
+  assert.equal(result.client.enderecos[0].summary.includes('Privado'),false);
   assert.deepEqual((await ref.get()).data(),original);
   for(const uid of ['private-owner','different-customer','staff-dual-role']) {
     const again=await functions.lookupClientByPhone.run({auth:{uid},data:{telefone:'62987654321',lojaId:'phone-fixture',checkoutIdentityToken:result.checkoutIdentity.token},rawRequest:{headers:{},ip:'fixture-'+uid}});
     assert.equal(again.checkoutIdentity.mode,'legacy_phone');
-    assert.deepEqual(Object.keys(again.client).sort(),['nome','nomeAbreviado']);
+    assert.deepEqual(Object.keys(again.client).sort(),['enderecos','nome','nomeAbreviado']);
     assert.deepEqual((await ref.get()).data(),original);
   }
 });

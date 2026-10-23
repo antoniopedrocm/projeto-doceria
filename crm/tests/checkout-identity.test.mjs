@@ -58,6 +58,6 @@ test('cardápio mantém convite strong e não promove publicação passiva; weak
   assert.match(page,/Para pagar online, entre com Google ou e-mail/);
   assert.match(page,/checkoutHeaders\(online,checkoutIdentity\)/);
   assert.match(page,/checkoutIdentityToken:checkoutIdentity\.get\(\)\.token/);
-  assert.match(page,/currentClient\.enderecos=\[.*newAddress\]/);
+  assert.match(page,/currentClient\.enderecos=appendCheckoutAddress\(currentClient.enderecos,newAddress\)/);
   assert.match(page,/edit-profile-btn'\)\.hidden=checkoutIdentity\.get\(\)\.mode===CHECKOUT_MODES.PHONE/);
 });
