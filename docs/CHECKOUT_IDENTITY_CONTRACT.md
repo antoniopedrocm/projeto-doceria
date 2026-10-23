@@ -86,6 +86,16 @@ Modo weak remove a opção de iniciação Online e mostra “Para pagar online, 
 com Google ou e-mail”, com as duas ações reais do controlador existente.
 O guard server-side permanece mesmo se o browser for adulterado.
 
+### Ajuste visual constatado em homologação (2026-10-22)
+
+O controle Editar Perfil tinha `hidden=true` no modo celular, mas a classe de
+display `flex` do Tailwind sobrepunha o estilo padrão do atributo e o mantinha
+visível. A homologação demonstrou `getComputedStyle(...).display=flex`; não houve
+acesso a perfil privado nem tentativa de edição. O template agora também aplica
+a classe `hidden` e o handler recusa execução nesse modo. Teste com CSS realista
+confere display `none` no modo celular e restauração em modo forte; controle
+negativo no checkpoint anterior reproduz display `flex`. Backend/Rules inalterados.
+
 ## Abuso e limites
 
 Rate limit existente: 8 buscas/10 minutos por hash do IP observado, independentemente

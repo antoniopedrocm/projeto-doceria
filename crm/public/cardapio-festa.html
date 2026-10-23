@@ -2105,6 +2105,7 @@
             });
 
             document.getElementById('edit-profile-btn').addEventListener('click', () => {
+                if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) return;
                 if (currentClient) {
                     addressManagementModal.classList.add('hidden');
                     openCustomerModalForEdit(currentClient);
@@ -2368,6 +2369,7 @@
 		function openAddressManagementModal(client) {
 			currentClient = client;
             document.getElementById('edit-profile-btn').hidden=checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE;
+            document.getElementById('edit-profile-btn').classList.toggle('hidden',checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE);
             syncCheckoutPayment();
 			addressList.innerHTML = '';
 			confirmCustomerName.textContent = client.nome || 'Cliente';
