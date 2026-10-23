@@ -6,9 +6,10 @@
 
 Regressão interna pré-PROD identificada após o fechamento anterior: o lookup
 legado rejeitava cadastro vinculado, e o checkout não separava escolha weak da
-sessão Firebase ambiente. **Correção local/testes e deploy DEV concluídos;
-homologação pela interface A/B/C/D ainda PENDENTE.** Não declarar esta regressão resolvida remotamente
-nem afirmar ausência de pendências internas enquanto esse gate não passar.
+sessão Firebase ambiente. **Correção local/testes, deploy DEV e homologação pela
+interface A/B/C/D concluídos em 2026-10-22. Regressão de identificação legada por
+telefone após strong auth — RESOLVIDA.** O gate abaixo substitui a pendência do
+checkpoint 0a6ac2aa, sem alterar o contrato externo ou percentuais.
 
 Contrato e provas locais em [CHECKOUT_IDENTITY_CONTRACT.md](CHECKOUT_IDENTITY_CONTRACT.md).
 Modo servidor por contexto/loja/revisão, resposta mínima no lookup, ausência de
@@ -23,9 +24,28 @@ Auth foi negada401. Nenhum endpoint de criação de pedido/pagamento foi chamado
 Onze arquivos Hosting conferidos por SHA-256 contra o build, incluindo cardápio,
 aliases, helper de identidade, controlador e bundle. Cache de bootstrap/HTML/worker
 revalidável e bundle immutable preservados.
-As ferramentas de controle do navegador falharam na inicialização do runtime;
-evidência visual remota não foi fabricada. Execução manual A/B/C/D solicitada,
-sem finalizar pedido ou cobrança. A dependência externa financeira segue
+As ferramentas de navegador voltaram a funcionar nesta retomada. A sem strong Auth
+em sessão isolada e B após login manual e-mail em conta DEV autorizada localizaram
+o cadastro com nome abreviado, sem perfil/endereços privados. Em C, Online ausente
+e convite Google/e-mail visível; sessão de e-mail continuava válida em Área do
+Cliente, sem CRM. Em D, login manual explícito da mesma conta restaurou elegibilidade
+Online e seu próprio Customer; carrinho idêntico de1 Docinho/R$1,00/Matriz.
+Nenhum botão de confirmar pedido foi acionado, nem endpoint de criação de
+pedido/pagamento ou reconciliação chamado.
+
+Na homologação foi constatado um defeito de interface: display:flex sobrepunha
+hidden=true em Editar Perfil weak. Corrigido por classe hidden e guarda no handler,
+commit 6b50d893, publicado somente Hosting DEV após64/64 testes focados, lint sem
+erros, build e diff-check PASS. Controle negativo do baseline reproduziu display:flex;
+correção/DOM remoto demonstram display:none. Nenhum acesso privado foi liberado.
+Onze hashes remotos correspondem ao build; HTML/aliases atuais SHA-256
+435135603e806949b5725ea93dd0e874dc728384d3fc2c827be10d5f677b2b02.
+Backend permanece c97a2c4d; Functions/Rules não foram republicadas nesta retomada.
+Testes gerais anteriores185/185,76/76 emulados e69/69 CRM continuam aproveitados;
+o delta posterior foi somente UI/guard e teste correspondente. Zero erros JS
+observados nas duas sessões. Evidências externas sanitizadas preservadas.
+
+A pendência interna de telefone foi encerrada. A dependência externa financeira segue
 separada: resposta técnica oficial da InfinitePay. Fase9=75%, Global=95,00%,
 Fase13=0%; produção intacta, sem transação financeira/WhatsApp.
 
