@@ -223,3 +223,37 @@ Preparação e testes internos não substituem a resposta nem concedem pontuaç�
 Quando chegar: conferir fonte/versão, escolher somente o ramo condicional documentado,
 implementar/testar o que for necessário e avaliar o quarto marco. Não executar refund
 ou iniciar Fase13 automaticamente. Nenhum contato enviado nesta entrega.
+
+### Tentativa de publicação DEV — 2026-10-23
+
+Preferência operacional do usuário: tentar sempre a publicação DEV autorizada;
+se rede/firewall/autenticação impedir, registrar resultado e deixar o comando
+para execução manual posterior. Não pedir códigos, tokens ou credenciais.
+
+Tentativa real executada com staging novo `.deploy-checkout-addresses-125f0dbe`,
+36 arquivos runtime tracked idênticos às fontes, sem `functions.yaml` antigo ou
+fixtures. Predeploy confirmou caminho absoluto DEV e projeto crmdoceria-9959e.
+CLI encerrou com código1/Authentication Error (credencial expirada), além de aviso
+sobre falha de rede na obtenção de MOTD/config. Não foi possível atribuir a falha
+somente ao firewall. Nenhuma atualização de Function confirmada; Hosting não foi
+executado porque depende do backend novo. Rules, índices, Storage e PROD intactos.
+
+Comandos PowerShell para este código (125f0dbe), no mesmo computador/workspace:
+
+```powershell
+Set-Location 'C:\Users\antonio.pedro\Projeto\projeto-doceria-main\infinitepay-auth-worktree'
+firebase login --reauth
+$env:FUNCTIONS_DISCOVERY_TIMEOUT = '60'
+firebase deploy --project crmdoceria-9959e --config .deploy-checkout-addresses-125f0dbe/firebase.json --only 'functions:api,functions:lookupClientByPhone'
+```
+
+Somente após backend concluído e API validada, executar separadamente:
+
+```powershell
+firebase deploy --project crmdoceria-9959e --only hosting
+```
+
+O staging e o build atuais já estão preparados e fora do Git. Se as fontes
+mudarem antes da execução, renovar o staging e o build e revalidar os testes;
+não reaproveitar snapshot antigo inadvertidamente. Conferir artefatos/hash remoto
+e homologação específica após publicar. Não usar deploy global ou projeto PROD.
