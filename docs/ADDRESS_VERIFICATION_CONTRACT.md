@@ -199,9 +199,13 @@ auditoria confirmou code_requested/code_sent/phone_verified/address_create/
 address_read em24/10/2026. Portanto envio/validação, criação com grant e leitura
 autorizada reais PASS. O usuário efetivamente salvou um endereço na conta; leitura
 administrativa confirmou1 registro, sem expor seu conteúdo. Não desfazer/excluir
-essa ação nem enviar novo SMS automaticamente. Edição/delete/default remotos e
-aprovação visual390/1920 não foram comprovados por esse resultado; testes locais
-correspondentes permanecem PASS. Verificação real não eleva o modo financeiro.
+essa ação nem enviar novo SMS automaticamente. Edição/delete/default remotos não
+foram comprovados por esse resultado; testes locais correspondentes permanecem
+PASS. A aprovação visual foi recebida separadamente do usuário em24/10/2026,
+em390 CSS px e desktop1920×889: campos/botões acessíveis, sem corte/sobreposição.
+Novo requisito endereços/SMS aceito no DEV com esses limites de evidência,
+sem alegar operações remotas adicionais ou captura automática de screenshots.
+Verificação real não eleva o modo financeiro. Nenhum deploy extra pelo aceite.
 Config DEV limita-se aos dois destinatários explicitamente autorizados e mantém
 2 envios/telefone/hora, 5/IP/hora e 10/dia. Reenvio mínimo agora60 segundos,
 5 tentativas, OTP300 segundos e grant600 segundos. SMS tem custo variável;
