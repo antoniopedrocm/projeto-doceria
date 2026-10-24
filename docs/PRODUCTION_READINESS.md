@@ -11,14 +11,24 @@ validados e cadastro ambíguo recusado. Nenhum merge, escrita de endereço priva
 nova tarifa ou permissão; STRONG_AUTH, LEGACY_PHONE e GUEST continuam separados.
 Contrato e limites em [CHECKOUT_IDENTITY_CONTRACT.md](CHECKOUT_IDENTITY_CONTRACT.md).
 
-**Publicação/homologação remota desta extensão: PENDENTE.** O precheck da CLI
-retornou Authentication Error (credencial expirada). Nenhum deploy tentado,
-nenhum dado remoto alterado. Após reautenticação: atualizar somente `api` e
-`lookupClientByPhone` DEV, validar resposta allowlist e frete sem revelar destino,
-depois Hosting; confirmar hashes e UI com cadastro DEV autorizado, sem criar pedido
-ou modificar endereços reais só para teste. Rules/índices/Storage permanecem iguais.
-Essa dependência operacional não é a resposta externa InfinitePay; a homologação
-anterior de identificação por celular abaixo continua válida para sua versão.
+**Publicação DEV: CONCLUÍDA em 2026-10-23, código funcional125f0dbe.**
+Somente api e lookupClientByPhone (us-central1), depois Hosting54 arquivos, em
+crmdoceria-9959e. A nova tentativa após liberação do firewall aceitou autenticação,
+concluiu ambas as Functions e o Hosting. Doze artefatos200/SHA-256 iguais ao build;
+HTML/SPA/bootstrap/worker revalidáveis e main hashado immutable preservados.
+
+**Homologação positiva do telefone de teste: PENDENTE POR AMBIGUIDADE DE DADOS.**
+O lookup remoto retornou FAILED_PRECONDITION/cadastro não único: mais de um
+cadastro corresponde aos formatos aceitos do telefone já autorizado. Nenhum
+cadastro foi escolhido arbitrariamente, mesclado ou alterado. Configuração pública
+Matriz200, contexto canônico guest200 e bloqueio de endereço salvo para guest409
+PASS. Nenhum payload de endereço privado foi exposto. Projeção/lista/seleção/frete
+positivos continuam comprovados localmente/emulados; não foram declarados PASS
+nesse cadastro remoto. Auditar os registros canônicos e sua associação autorizada
+antes de resolver a duplicidade; não deduzir ownership pelo telefone nem fazer
+merge automático. Esta dependência de dados DEV é distinta do contrato externo
+InfinitePay. Rules/índices/Storage Rules e PROD intactos; nenhum pedido, pagamento,
+estoque ou endereço remoto alterado. Somente contextos/rate limit normais do smoke.
 
 Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%/NÃO INICIADA.
 Nenhuma ação PROD ou operação financeira/WhatsApp autorizada por esta extensão.
