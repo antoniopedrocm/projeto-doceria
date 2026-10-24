@@ -132,8 +132,10 @@ não pode ser alterado anonimamente. CRUD por OTP passa exclusivamente por `mana
 
 SMS: APIs oficiais `accounts:sendVerificationCode` e
 `accounts:signInWithPhoneNumber`, ambas no projeto exclusivo. Número deriva
-do contexto servidor. reCAPTCHA é resolvido no browser em Auth secundário apenas
-para verificação, com persistência em memória; não se modifica o Auth `[DEFAULT]`.
+do contexto servidor. Desde bed94bd2, a avaliação usa a API JavaScript pública
+reCAPTCHA Enterprise com chave gerenciada SCORE e ação sendVerificationCode.
+Não há RecaptchaVerifier, widget ou Auth secundário no browser. Não se modifica
+o Auth `[DEFAULT]` nem se cria sessão/persistência OTP no navegador.
 A geração/entrega/validação do código é feita pelo backend Firebase. Armazenamos
 somente `sessionInfo` criptografado pelo provider, nunca o código. A resposta é
 validada por instância Admin nomeada com projectId de verificação e
@@ -143,7 +145,7 @@ envia `idToken` para vincular ou reautenticar a conta principal.
 Phone Auth cria/reutiliza um usuário persistente no projeto exclusivo, não uma
 conta automaticamente temporária por código. Expirar o grant NÃO apaga esse
 usuário. Não guardamos refresh tokens nem iniciamos sessão Phone no browser:
-o Auth secundário tem persistência em memória e serve apenas ao reCAPTCHA.
+o browser produz somente um token de avaliação novo por solicitação, sem cache.
 Não há signOut da sessão principal. Usuários de prova podem se acumular por
 número; retenção/limpeza precisa de inventário e autorização próprios, nunca
 exclusão automática de usuários cuja finalidade exclusiva não esteja comprovada.
@@ -266,3 +268,29 @@ os canais/adapters, erro/expiração/replay/rate/cooldown, concorrência/revoga�
 CRUD e privacidade, cliente/telefone/loja/revisão, credencial de projeto separado recusada, Rules, pagamento bloqueado, Strong, Guest,
 checkout/frete/carrinho/reorder e CRM. Resultado e publicação exatos no checkpoint
 do plano; teste de adapter não é evidência de entrega SMS/WhatsApp real.
+
+## Proteção transparente vigente — 24/10/2026
+
+O backend consulta a configuração pública oficial do projeto SMS e anuncia o
+canal somente quando PHONE_PROVIDER está ENFORCE, bot score e toll fraud estão
+ativos e a chave gerenciada está disponível. Start/verify revalidam a configuração;
+não há downgrade OFF/AUDIT/v2. A solicitação oficial sendVerificationCode recebe
+captchaResponse, CLIENT_TYPE_WEB e RECAPTCHA_ENTERPRISE, nunca recaptchaToken v2.
+Recusa/erro bloqueia o envio com mensagem amigável, sem score/regra/erro Google.
+
+O modal não contém container de CAPTCHA. A alternativa de branding documentada
+pelo Google usa atribuição textual visível e oculta somente o badge informativo;
+nenhum iframe/checkbox/challenge é escondido, manipulado ou resolvido. Esta
+integração SCORE não renderiza desafios. Um erro não dispara puzzle alternativo.
+
+O SDK canônico Firebase10.8 não foi atualizado: a integração automática Phone do
+SDK exige versão mais nova, mas este fluxo usa as APIs públicas Enterprise JS e
+Identity Platform REST, sem importar classes privadas do SDK. OTP/quotas/+55,
+replay/grant, privacidade, criação persistente sem OTP e bloqueio financeiro
+permanecem como antes. Configuração, limites da evidência e fontes:
+[RECAPTCHA_ENTERPRISE_DEV.md](RECAPTCHA_ENTERPRISE_DEV.md).
+
+Aceite do save5ec21a8c recebido nesta retomada: usuário informou “pronto, deu
+certo” para o roteiro de save sem SMS, seleção automática, Online bloqueado,
+refresh/nova identificação, lista mascarada/seleção e convite SMS View/Edit.
+Esse aceite não comprova a nova integração Enterprise ou novo envio de SMS.

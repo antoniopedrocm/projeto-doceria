@@ -121,8 +121,23 @@
   },
   "lint": "PASS focused",
   "build": "PASS known warnings",
-  "functionalRemoteAcceptance": "PENDING_MANUAL",
+  "functionalRemoteAcceptance": "PASS_USER_MANUAL",
   "newSmsSent": false,
   "financialOperation": false,
-  "productionChanged": false
+  "productionChanged": false,
+  "manualAcceptance": {
+    "date": "2026-10-24",
+    "answer": "pronto, deu certo",
+    "scope": [
+      "save without SMS",
+      "automatic selection",
+      "online blocked",
+      "refresh and new phone lookup",
+      "persisted masked list and selection without SMS",
+      "view/edit ask for SMS, canceled without sending"
+    ],
+    "source": "user reply to complete requested DEV checklist",
+    "newSmsSent": false,
+    "financialOperation": false
+  }
 }

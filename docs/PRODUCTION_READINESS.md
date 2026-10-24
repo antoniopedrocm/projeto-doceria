@@ -2,6 +2,22 @@
 
 ## Decisão e fronteira
 
+### Gate atual — SMS sem CAPTCHA manual (24/10/2026)
+
+Runtime bed94bd2 substitui o único widget clássico por Enterprise SCORE e
+Identity Platform REST sem sessão Auth OTP no browser. Projeto SMS DEV em
+ENFORCE com bot/toll fraud ativos e chave gerenciada pronta; main Auth inalterado.
+Nenhum OFF/fallback v2/token falso/manipulação de iframe. API status remoto200
+anuncia só projectId/chave pública, sem thresholds/API key/endereço; cinco
+operações manage sem grant continuam403. Nenhum SMS enviado por esse smoke.
+
+Ainda pendentes: confirmação do toggle adicional SMS defense no Console e
+homologação do novo fluxo normal em390×800 e1920×889. Controle automático do
+navegador não inicializa; sem capturas ou aceite novos. Não reutilizar o aceite
+SMS anterior como prova desta migração. Real SMS exige autorização nova.
+Detalhes/antes-depois/fontes/rollback em RECAPTCHA_ENTERPRISE_DEV.md.
+Fase9=75%, Global95,00%, Fase13=0%; PROD/WhatsApp/financeiro intactos.
+
 ### Novo ajuste — endereço persistente sem SMS (24/10/2026)
 
 Substitui somente a regra de rascunho temporário. LEGACY_PHONE sem grant pode
@@ -13,7 +29,9 @@ Nenhum Customer ID arbitrário, concessão de leitura completa, edição, exclus
 padrão ou pagamento. Botão Salvar Endereço; erro backend não vira rascunho local.
 
 Status deste delta: implementação/testes/push/publicação DEV concluídos;
-criação persistente sem OTP no navegador ainda aguarda execução manual do usuário.
+criação persistente sem OTP aprovada pelo usuário nesta retomada (“pronto, deu certo”)
+para o roteiro de save/seleção/Online bloqueado/refresh/nova identificação/máscara
+e seleção sem SMS, com View/Edit solicitando SMS sem envio.
 O aceite anterior de SMS permanece
 válido historicamente e não comprova o save sem OTP deste novo contrato. Deploy
 necessário somente api + Hosting; lookupClientByPhone não mudou. Rules, Auth,
@@ -33,7 +51,9 @@ existente200 sem dados completos. Cadastro tinha1 endereço antes do ensaio novo
 Nenhum SMS, pedido, pagamento, endereço ou estoque remoto modificado pelo smoke.
 Browser continua sem inicializar por kernel assets/path; solicitado ao usuário
 salvar sem SMS, conferir seleção automática/Online bloqueado, refresh e nova
-identificação com máscara/seleção. Não declarar esse resultado antes da confirmação.
+identificação com máscara/seleção. Confirmação recebida nesta retomada: “pronto,
+deu certo”. Pendência de save5ec21a8c encerrada por esse aceite; leitura do smoke
+seguinte observou2 endereços mascarados, sem revelar conteúdo ou criar dados.
 
 ### Extensão OTP de endereços — 2026-10-24
 
@@ -321,8 +341,10 @@ simula autenticação nem inventa payload oficial de estorno.
 ## Dependência única e retomada
 
 Para o último marco FINANCEIRO: **resposta técnica oficial da InfinitePay**,
-detalhada na seção vigente do relatório. O novo requisito de endereços/SMS é uma
-pendência interna separada até homologação, sem inflar percentuais.
+detalhada na seção vigente do relatório. O requisito de endereços/SMS e o save
+persistente sem OTP já possuem aceite DEV. A nova migração de CAPTCHA visível
+para Enterprise SCORE é gate interno separado até confirmação do Console SMS
+defense e homologação normal mobile/desktop; não infla percentuais.
 Preparação e testes internos não substituem a resposta nem concedem pontuação.
 Quando chegar: conferir fonte/versão, escolher somente o ramo condicional documentado,
 implementar/testar o que for necessário e avaliar o quarto marco. Não executar refund
