@@ -1,0 +1,153 @@
+{
+  "date": "2026-10-24",
+  "commit": "5cba7ad2",
+  "environment": "DEV",
+  "hosting": {
+    "project": "crmdoceria-9959e",
+    "commit": "5cba7ad2",
+    "result": "PASS",
+    "matched": 12,
+    "results": [
+      {
+        "file": "index.html",
+        "status": 200,
+        "sha256": "a6f019930c6d6ffe5a5e355a6df354cf80c5705c640a6adbfa2c4da623a478b7",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio.html",
+        "status": 200,
+        "sha256": "fed3f68a026f7bf9ecf617b3c6749d22dd6d7b950611bbbbfb770e9b819980a1",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio-matriz.html",
+        "status": 200,
+        "sha256": "fed3f68a026f7bf9ecf617b3c6749d22dd6d7b950611bbbbfb770e9b819980a1",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio-garavelo.html",
+        "status": 200,
+        "sha256": "fed3f68a026f7bf9ecf617b3c6749d22dd6d7b950611bbbbfb770e9b819980a1",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio-festa.html",
+        "status": 200,
+        "sha256": "fed3f68a026f7bf9ecf617b3c6749d22dd6d7b950611bbbbfb770e9b819980a1",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "address-management.mjs",
+        "status": 200,
+        "sha256": "297e2039b93ee843afb79ff2912abc861244f85b7d3a64e3859c2c3d37cb2824",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "address-verification-firebase.mjs",
+        "status": 200,
+        "sha256": "948cfb43a9a5a58672eadb593177e341b64931dc3174ef7119fa51b84b89c309",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "checkout-addresses.mjs",
+        "status": 200,
+        "sha256": "83a0d11d1431a355bb4fea0f83b1d4bb40ad966c4ef7681c4b0fe4c2d6ea6101",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "checkout-identity.mjs",
+        "status": 200,
+        "sha256": "228ad2641ce624697262805c276801f152951dc2c1169ac04f967bc8c1acf19c",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "firebaseClientConfig.js",
+        "status": 200,
+        "sha256": "bb0bf2341afa894b44bfeb14ca68d3d6dbfd5563cc2045205e2b7408c2ca546b",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "firebase-messaging-sw.js",
+        "status": 200,
+        "sha256": "65d0989ad6c4f8afa6f184f82fdcce9df5a1d4a578adbc50da95aa7eb556f550",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "static/js/main.10a3ca43.js",
+        "status": 200,
+        "sha256": "2c50e2ac81787f95f28769a8380ef6215b4a1f80236bce5cf45dbc18943cd69c",
+        "cache": "public, max-age=31536000, immutable"
+      }
+    ]
+  },
+  "smsConfiguration": {
+    "project": "crmdoceria-9959e",
+    "smsProject": "crmdoceria-sms-dev-2026",
+    "sameBillingAsDev": true,
+    "enabled": true,
+    "smsEnabled": true,
+    "recipientCount": 2,
+    "resendSeconds": 60,
+    "globalDaily": 10,
+    "smsRegions": [
+      "BR"
+    ],
+    "mainPhoneEnabled": false,
+    "configuredTestNumberCount": 0,
+    "smsSent": false
+  },
+  "apiSmoke": {
+    "project": "crmdoceria-9959e",
+    "lookup": "PASS",
+    "customerMatch": "unique",
+    "savedAddressCount": 0,
+    "status": 200,
+    "smsChannel": true,
+    "whatsappChannel": false,
+    "resendSeconds": 60,
+    "mainPhoneEnabled": false,
+    "proofGates": [
+      {
+        "operation": "read",
+        "status": 403,
+        "code": "OTP_REQUIRED"
+      },
+      {
+        "operation": "create",
+        "status": 403,
+        "code": "OTP_REQUIRED"
+      },
+      {
+        "operation": "update",
+        "status": 403,
+        "code": "OTP_REQUIRED"
+      },
+      {
+        "operation": "delete",
+        "status": 403,
+        "code": "OTP_REQUIRED"
+      },
+      {
+        "operation": "default",
+        "status": 403,
+        "code": "OTP_REQUIRED"
+      }
+    ],
+    "privateAddressExposed": false,
+    "smsSent": false,
+    "financialCalls": 0
+  },
+  "tests": {
+    "unit": 210,
+    "integration": 90,
+    "crm": 69,
+    "finalDeltaOverlaps": 11
+  },
+  "lint": "PASS focused",
+  "build": "PASS known warnings",
+  "smsRealSent": false,
+  "visualApproval": "PENDING",
+  "productionChanged": false
+}

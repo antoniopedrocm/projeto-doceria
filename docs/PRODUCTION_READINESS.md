@@ -2,6 +2,50 @@
 
 ## Decisão e fronteira
 
+### Extensão OTP de endereços — 2026-10-24
+
+Implementação local de CRUD LEGACY_PHONE por OTP e grant restrito, sem promover
+Customer/Staff/pagamento e sem usar produção. Contrato e checklist em
+[ADDRESS_VERIFICATION_CONTRACT.md](ADDRESS_VERIFICATION_CONTRACT.md).
+
+**Novo requisito pré-PROD: implementação/testes locais concluídos; homologação
+visual/SMS real PENDENTE.** Não reescrever fases já concluídas. Telefone sem SMS
+pode listar/selecionar máscaras e usar endereço novo somente no checkout, sem
+persistir no Customer ou alterar padrão. Ver completo/escrever na conta exige
+grant backend. SMS não autoriza pagamento/Customer privado/Staff.
+
+Projeto exclusivo crmdoceria-sms-dev-2026 criado com autorização; API confirmou
+billing na mesma conta DEV, final8193EE, em24/10/2026. Identity Platform Phone
+configurado apenas nele, região BR e domínio DEV. Phone principal continua
+desligado, subtype FIREBASE_AUTH preservado; nenhum PROD consultado. Template/
+WhatsApp continua desligado. Não declarar entrega real por mocks/emuladores.
+Telefone autorizado final0290 continua ambíguo; não escolher cadastro/merge.
+Alternativo final8602 tem cadastro único e zero endereços: pode testar o SMS/
+formulário novo, mas não fingir evidência de edição de endereço existente.
+
+Rollout inicial2501110f: api + lookupClientByPhone + addClientAddress + updateClientProfile,
+depois Hosting, já publicado. Delta5cba7ad2: somente api + lookupClientByPhone e
+Hosting. Credenciais de outro projectId não passam pela validação Firebase
+do projeto da aplicação. Sem mudança de Rules, Staff, índices, Storage Rules ou
+58 callables privadas. Rotas legadas de endereço não contornam OTP/ownership.
+Storage Rules DEV permissivas preexistentes não guardam dados OTP e não são
+copiadas para produção; sua política deve ser avaliada em escopo de segurança.
+
+**DEV publicado5cba7ad2:** api/lookupClientByPhone us-central1 e Hosting56 arquivos;
+12/12 hashes e cache PASS. Config SMS habilitada somente para2 destinatários
+autorizados; reenvio60s, 2/telefone/hora, 5/IP/hora, 10/dia, OTP300s/grant600s.
+Smoke: lookup único final8602 (sem endereços), status SMS200 e cinco operações
+manage403 sem grant. Testes210/210 unitários/DOM/ESM,90/90 emulados,69/69 CRM,
+delta final11/11 sobreposto; lint sem erros/avisos de código, build PASS com
+warnings conhecidos, diff-check PASS. Nenhum SMS/pagamento/WhatsApp real.
+Browser não inicializou (kernel assets/path não encontrado): evidência visual
+390/1920 e verificação real continuam pendentes. Usuário autorizou UM SMS ao
+final8602; código somente no site, sem reenvio automático ou salvar endereço.
+
+Esse trabalho não fecha o contrato InfinitePay não-PAID, não reabre aprovações
+visuais anteriores e não pontua automaticamente. Fase9=75%, Fase11=100%,
+Fase12=100%, Global=95,00%, Fase13=0%/NÃO INICIADA. PROD permanece intacta.
+
 ### Extensão de endereços no checkout celular — 2026-10-23
 
 Implementada e validada localmente: reconhecimento de endereços persistidos por
@@ -228,7 +272,9 @@ simula autenticação nem inventa payload oficial de estorno.
 
 ## Dependência única e retomada
 
-**Resposta técnica oficial da InfinitePay**, detalhada na seção vigente do relatório.
+Para o último marco FINANCEIRO: **resposta técnica oficial da InfinitePay**,
+detalhada na seção vigente do relatório. O novo requisito de endereços/SMS é uma
+pendência interna separada até homologação, sem inflar percentuais.
 Preparação e testes internos não substituem a resposta nem concedem pontuação.
 Quando chegar: conferir fonte/versão, escolher somente o ramo condicional documentado,
 implementar/testar o que for necessário e avaliar o quarto marco. Não executar refund

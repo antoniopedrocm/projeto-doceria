@@ -1,9 +1,34 @@
 # Identidade selecionada no checkout — DEV
 
+## Extensão vigente — gerenciamento de endereços com prova de telefone
+
+Listar/selecionar endereço salvo no modo celular NÃO exige SMS: browser recebe
+referência opaca/projeção mascarada; backend resolve o destino persistido.
+Ver completo e criar/editar/excluir/definir padrão NA CONTA exigem o grant descrito
+em [ADDRESS_VERIFICATION_CONTRACT.md](ADDRESS_VERIFICATION_CONTRACT.md).
+
+Adicionar/usar endereço NOVO digitado pelo próprio usuário NÃO exige SMS. Esse
+rascunho fica somente no checkout, nunca modifica `clientes/{id}.enderecos`,
+nunca herda padrão e pode ser promovido por ação explícita após grant válido.
+A lista é atualizada sem reload. Selecionar para o pedido não altera o padrão.
+
+Google/e-mail principal continua STRONG_AUTH e dispensa esse OTP adicional.
+Firebase SMS usa projeto DEV exclusivo de verificação. Auth secundário em memória
+é usado apenas para reCAPTCHA, sem trocar
+a sessão principal. ID/refresh tokens ficam no backend e são descartados; audience
+separada não autentica nas APIs/Rules da aplicação. Nenhum auto-merge, nova tarifa
+ou liberação de pagamento. O checkout permanece LEGACY_PHONE após OTP. GUEST não
+herda prova ou endereços. Detalhes e rollout seletivo no contrato acima.
+
+Os quatro estados de confiança são Strong, Phone sem grant, Phone com grant e
+Guest. Os dois estados Phone continuam com `mode=legacy_phone` financeiro;
+somente o grant validado pelo backend distingue a permissão de endereço. Não há
+novo provider/UID principal nem promoção implícita de pagamento.
+
 ## Fronteira
 
 Sessão Firebase `[DEFAULT]` e identidade do checkout são independentes. Nenhuma
-escolha de celular/visitante executa signOut, cria Auth, muda role/capabilities,
+escolha de celular/visitante executa signOut, cria Auth principal, muda role/capabilities,
 activeContext ou associação FCM. A seleção é por aba e loja, sem whitelist.
 
 | Modo | Evidência | Perfil/histórico privado | Iniciação InfinitePay |
