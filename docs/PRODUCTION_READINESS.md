@@ -2,6 +2,20 @@
 
 ## Decisão e fronteira
 
+### Correção pontual — apelido do endereço na listagem (24/10/2026)
+
+Runtime9246a950 remove a restrição de quatro apelidos na projeção/backend e
+renderer. O nome canônico nickname já estava salvo corretamente e agora pode
+ser exibido sem SMS, com fallback só para valor ausente/inválido. Nenhuma migração
+ou alteração dos endereços DEV. Máscaras, IDs/ownership, SMS, default e pagamento
+preservados. Testes127/127 +94/94 emulados +69/69 CRM, build/lint/diff-check PASS.
+Publicados somente api/lookupClientByPhone e Hosting DEV;14/14 hashes/cache PASS.
+Dois novos lookups reais agora retornam o nome esperado, sem campos residenciais
+privados; renderer de produção com a resposta real PASS em DOM local. Correção
+funcional resolvida tecnicamente; aceite visual após reload ainda não presumido.
+Essa correção não encerra o gate separado de homologação Enterprise/SMS abaixo,
+nem a pendência externa InfinitePay. Fase9=75%, Global95,00%, Fase13=0%.
+
 ### Gate atual — SMS sem CAPTCHA manual (24/10/2026)
 
 Runtime bed94bd2 substitui o único widget clássico por Enterprise SCORE e
@@ -11,8 +25,8 @@ Nenhum OFF/fallback v2/token falso/manipulação de iframe. API status remoto200
 anuncia só projectId/chave pública, sem thresholds/API key/endereço; cinco
 operações manage sem grant continuam403. Nenhum SMS enviado por esse smoke.
 
-Ainda pendentes: confirmação do toggle adicional SMS defense no Console e
-homologação do novo fluxo normal em390×800 e1920×889. Controle automático do
+Toggle adicional SMS defense confirmado pelo usuário em24/10/2026 (“ativado!”).
+Ainda pendente: homologação do novo fluxo normal em390×800 e1920×889. Controle automático do
 navegador não inicializa; sem capturas ou aceite novos. Não reutilizar o aceite
 SMS anterior como prova desta migração. Real SMS exige autorização nova.
 Detalhes/antes-depois/fontes/rollback em RECAPTCHA_ENTERPRISE_DEV.md.

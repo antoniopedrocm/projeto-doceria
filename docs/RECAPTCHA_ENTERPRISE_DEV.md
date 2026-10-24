@@ -47,10 +47,11 @@ inicial; nesta entrega DEV foi escolhido ENFORCE, conforme requisito, para que
 falha bloqueie em vez de fallback v2. Nenhum envio real comprova a calibração.
 
 API confirmou ENFORCE/ambas flags/chave pública pronta. A etapa adicional
-Console reCAPTCHA → Settings → SMS defense → Enable ainda exige confirmação
-do operador: flags Identity Platform não são evidência suficiente desse toggle.
-Confirmação solicitada sem envio SMS. Não declarar SMS defense integralmente
-homologado antes disso e de evidência do fluxo normal.
+Console reCAPTCHA → Settings → SMS defense → Enable foi confirmada pelo usuário
+em24/10/2026 com “ativado!”. Essa é evidência manual do toggle, separada das
+flags Identity Platform. Não houve envio SMS nem alteração de thresholds por
+essa confirmação. Ainda falta evidência do fluxo normal/assessment de envio;
+não declarar homologação mobile/desktop ou entrega de SMS com base no toggle.
 
 Aplicação principal permanece Phone=false e configuração reCAPTCHA anterior
 inalterada. Não se habilitou Phone na aplicação nem se consultou PROD.

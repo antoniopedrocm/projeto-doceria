@@ -128,6 +128,25 @@ contexto PHONE correspondente, sem atualizar o encontrado nem devolver perfil;
 o frontend relê pelo lookup mínimo para vincular o contexto novo. Perfil legado
 não pode ser alterado anonimamente. CRUD por OTP passa exclusivamente por `manage`.
 
+## Nome do endereço na listagem — correção24/10/2026
+
+Campo canônico: nickname no objeto de clientes/{Customer canônico}.enderecos.
+Cadastro weak/Strong e leitura completa já preservavam esse campo. A projeção
+mascarada restringia os valores a Casa/Trabalho/Apartamento/Outro e substituía
+nomes personalizados por Endereço N; o renderer tinha regra equivalente para
+opções weak não salvas. Essa restrição foi removida, sem migração de registros.
+
+Nome salvo válido é apresentação pública também sem SMS: string não vazia após
+trim, até60 caracteres como o contrato de cadastro e sem caracteres de controle.
+O renderer usa textContent, sem interpretar HTML. Não inferir nome a partir de
+enderecoCompleto ou aliases não comprovados. Registros antigos sem nickname
+válido mantêm Endereço N; padrão mantém seu nome e badge independente.
+
+Rua/número/CEP/complemento/referência/coordenadas continuam protegidos como
+antes. Seleção usa ID opaco, não altera nickname/default e resolve o destino
+persistido server-side. Ler completo/editar/excluir/default continuam exigindo
+grant; nome público não concede prova SMS, Strong, ownership ou pagamento.
+
 ## Provedores reais e armazenamento
 
 SMS: APIs oficiais `accounts:sendVerificationCode` e

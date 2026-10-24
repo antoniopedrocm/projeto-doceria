@@ -38,7 +38,14 @@
       "webIntegration": "SCORE",
       "webAllowAllDomainsProviderManaged": true,
       "publicMetadataKeyReady": true,
-      "smsDefenseConsoleToggle": "PENDING_OPERATOR_CONFIRMATION"
+      "smsDefenseConsoleToggle": "ENABLED_USER_CONFIRMED",
+      "smsDefenseConfirmation": {
+        "date": "2026-10-24",
+        "source": "user response to Console configuration request",
+        "answer": "ativado!",
+        "newSmsSent": false,
+        "liveSmsAssessmentProven": false
+      }
     },
     "client": {
       "recaptchaVerifierCount": 0,
