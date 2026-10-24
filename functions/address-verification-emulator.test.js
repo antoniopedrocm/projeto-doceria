@@ -14,7 +14,7 @@ const {addressOptions}=require('./checkout-addresses');
 admin.initializeApp();const db=admin.firestore();let sequence=0;
 after(()=>admin.app().delete());
 const hash=v=>createHash('sha256').update(v).digest('hex');
-const address={id:'stable',nickname:'Casa',street:'Rua teste',number:'10',neighborhood:'Bueno',city:'Goiânia',cep:'74230000',enderecoCompleto:'Rua teste 10',lat:-16,lng:-49,isDefault:true};
+const address={id:'stable',nickname:'Casa da minha Mãe',street:'Rua teste',number:'10',neighborhood:'Bueno',city:'Goiânia',cep:'74230000',enderecoCompleto:'Rua teste 10',lat:-16,lng:-49,isDefault:true};
 async function fixture(overrides={}) {
   const n=++sequence,phone='6298500'+String(n).padStart(4,'0'),storeId='loja-futura-otp-'+n,customerId='otp-customer-'+n;
   let time=1000000,sends=0,verifications=0,failSend=false;
@@ -50,7 +50,7 @@ test('uso único gera autorização apenas de endereço e não promove identidad
   assert.equal(grant.purpose,'ADDRESS_MANAGEMENT');assert.equal(grant.idToken,undefined);assert.equal(grant.refreshToken,undefined);
   await assert.rejects(()=>f.service.verify({...f.input,challengeId:sent.challengeId,code:'123456'}),e=>e.code==='OTP_USED');
   const context=await f.identities.read(f.input.checkoutIdentityToken,f.storeId);assert.equal(context.mode,'legacy_phone');assert.throws(()=>f.identities.requireStrong(context,'private-owner',f.customerId));
-  const detail=await f.manage(grant,'read');assert.equal(detail.address.enderecoCompleto,address.enderecoCompleto);assert.equal(detail.address.authOwnerUid,undefined);
+  const detail=await f.manage(grant,'read');assert.equal(detail.address.nickname,'Casa da minha Mãe');assert.equal(detail.address.enderecoCompleto,address.enderecoCompleto);assert.equal(detail.address.authOwnerUid,undefined);
 });
 test('create/update/default/delete usam ID persistido, allowlist e auditoria; nenhuma alteração de Auth/telefone',async()=>{
   const f=await fixture(),grant=await f.authorize();

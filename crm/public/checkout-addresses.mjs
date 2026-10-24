@@ -7,7 +7,8 @@ export function renderCheckoutAddresses({document,addresses=[],weak=false,onSele
     card.className='bg-white border border-gray-200 rounded-lg p-3 mb-2';
     const heading=document.createElement('div');heading.className='flex items-center gap-2';
     const name=document.createElement('strong');name.className='text-sm break-words';
-    name.textContent=weak && !saved && !/^(casa|trabalho|apartamento|outro)$/iu.test(address?.nickname || '') ? `Endereço ${index+1}` : address?.nickname || `Endereço ${index+1}`;heading.append(name);
+    const nickname=typeof address?.nickname==='string' ? address.nickname.trim() : '';
+    name.textContent=nickname && nickname.length<=60 && !/\p{Cc}/u.test(nickname) ? nickname : `Endereço ${index+1}`;heading.append(name);
     if(address?.isDefault) {const badge=document.createElement('span');badge.className='text-xs text-pink-700';badge.textContent='Padrão';heading.append(badge);}
     card.append(heading);
     const text=document.createElement('p');text.className='text-sm text-gray-700 break-words';

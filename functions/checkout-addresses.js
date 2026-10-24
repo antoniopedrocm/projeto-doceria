@@ -11,8 +11,10 @@ function maskedLocation(value,prefixPattern) {
   return (prefix?prefix.trim()+' ':'')+initial+'***';
 }
 function maskedAddress(address,index) {
-  // Nicknames and free-form legacy text can themselves contain residential data.
-  const nickname=/^(casa|trabalho|apartamento|outro)$/iu.test(address.nickname || '') ? address.nickname : `Endereço ${index+1}`;
+  // The saved nickname is public presentation; residential fields stay masked.
+  // Never derive a label from the free-form destination of legacy records.
+  const name=typeof address.nickname==='string' ? address.nickname.trim() : '';
+  const nickname=name && name.length<=60 && !/\p{Cc}/u.test(name) ? name : `Endereço ${index+1}`;
   // Free-form legacy data contributes at most a street type/initial, never a
   // parsed residential component. Municipality/state require structured fields.
   const city=typeof address.city==='string' && /^[\p{L}\s.-]{1,60}$/u.test(address.city.trim()) ? address.city.trim() : '';

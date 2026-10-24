@@ -114,15 +114,16 @@ test('sem endereço retorna lista vazia; telefone duplicado não escolhe cadastr
 });
 test('HTTP Salvar sem SMS → nova identificação → lista mascarada → frete/snapshot persistidos e Online bloqueado',async()=>{
   const input={storeId:store,checkoutIdentityToken:lookup.checkoutIdentity.token,checkoutIdentityRevision:lookup.checkoutIdentity.revision,
-    requestId:'abcdef12-1234-4234-8234-123456789abc',address:{nickname:'Outro',street:'Rua nova privada',number:'87',city:'Goiânia',neighborhood:'Centro',cep:'74000000',complement:'Sala confidencial',referencia:'Portão interno',isDefault:true,lat:-16,lng:-49}};
+    requestId:'abcdef12-1234-4234-8234-123456789abc',address:{nickname:'Casa da minha Mãe',street:'Rua nova privada',number:'87',city:'Goiânia',neighborhood:'Centro',cep:'74000000',complement:'Sala confidencial',referencia:'Portão interno',isDefault:true,lat:-16,lng:-49}};
   const save=async body=>{const r=await originalFetch(base+'/checkout/addresses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,cache:r.headers.get('cache-control'),data:await r.json()};};
   for(const extra of [{customerId:'other'},{addressId:source[0].id},{phone}])assert.equal((await save({...input,...extra})).status,403);
   const created=await save(input);assert.equal(created.status,200,JSON.stringify(created));assert.equal(created.cache,'no-store');assert.equal(created.data.created,true);
+  assert.equal(created.data.addresses.find(a=>a.id===created.data.addressId).nickname,'Casa da minha Mãe');
   const projected=JSON.stringify(created.data.addresses.map(({id,...value})=>value));
   for(const secret of ['Rua nova privada','87','74000000','Sala confidencial','Portão interno','-16','-49','creationFingerprint'])assert.equal(projected.includes(secret),false,secret);
   const retried=await save(input);assert.equal(retried.data.addressId,created.data.addressId);assert.equal(retried.data.created,false);
-  const data=(await customer.get()).data(),saved=data.enderecos.at(-1);assert.equal(saved.createdVia,'legacy_phone');assert.equal(saved.isDefault,false);
-  const fresh=await find(),index=fresh.client.enderecos.findIndex(a=>a.nickname==='Outro');assert.ok(index>=0);assert.notEqual(fresh.client.enderecos[index].id,created.data.addressId);
+  const data=(await customer.get()).data(),saved=data.enderecos.at(-1);assert.equal(saved.createdVia,'legacy_phone');assert.equal(saved.isDefault,false);assert.equal(saved.nickname,'Casa da minha Mãe');
+  const fresh=await find(),index=fresh.client.enderecos.findIndex(a=>a.nickname==='Casa da minha Mãe');assert.ok(index>=0);assert.notEqual(fresh.client.enderecos[index].id,created.data.addressId);
   const ref=selection(fresh,index);const quote=await request('/frete/calcular',{...ref,clienteEndereco:'Destino adulterado',clienteLat:0,clienteLng:0});assert.equal(quote.status,200);assert.equal(destinations.at(-1),saved.enderecoCompleto);
   await db.doc(`lojas/${store}/produtos/weak-saved-product`).set({nome:'Fixture',preco:10,estoque:2,ativo:true});
   await db.doc(`lojas/${store}/configuracoesInternas/infinitepay`).set({enabled:true,handle:'merchant-test',redirectUrl:'https://example.com/return',webhookUrl:'https://example.com/webhook'});
@@ -130,4 +131,10 @@ test('HTTP Salvar sem SMS → nova identificação → lista mascarada → frete
   assert.equal((await request('/checkout/confirmar',orderBody)).status,401);
   const confirmed=await request('/checkout/confirmar',{...orderBody,pagamento:{forma:'Dinheiro'}});assert.equal(confirmed.status,200,JSON.stringify(confirmed));
   const order=(await db.doc(`lojas/${store}/pedidos/${confirmed.data.id}`).get()).data();assert.equal(order.clienteEndereco,saved.enderecoCompleto);assert.equal(order.ownerUid,undefined);assert.equal(order.clienteId,null);
+  assert.equal((await customer.get()).data().enderecos.find(a=>a.id===saved.id).nickname,'Casa da minha Mãe');
+  const {createCustomerAccount,digest}=require('./checkout-auth'),uid='different-private-owner',email='address-owner@example.com';
+  await db.doc(`customerAuthIdentities/${digest('email_password',uid)}`).set({customerId:customer.id,uid});
+  const account=createCustomerAccount({db,admin:{auth:()=>({getUser:async()=>({uid,email,providerData:[{providerId:'password',uid:email}]})})}});
+  const strong=await account.account({auth:{uid,token:{email,firebase:{identities:{email:[email]}}}}});
+  assert.equal(strong.customer.enderecos.find(a=>a.id===saved.id).nickname,'Casa da minha Mãe');
 });

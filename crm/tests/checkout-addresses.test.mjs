@@ -27,6 +27,26 @@ test('strong preserva descrição; novo endereço weak atualiza lista/padrão em
   const strong=createAddressCards({document:dom.window.document,addresses:[{id:'real',nickname:'Casa',enderecoCompleto:'Rua completa 42'}],onSelect:()=>{}});
   assert.match(strong[0].textContent,/Rua completa 42/);dom.window.close();
 });
+
+test('apelido personalizado é preservado nos cards weak/strong/default e não vira Endereço N',()=>{
+  const dom=new JSDOM();
+  for(const weak of [true,false])for(const isSaved of [true,false]) {
+    const address={...saved,nickname:'Casa da minha Mãe',saved:isSaved,isDefault:true,enderecoCompleto:'Descrição autorizada'};let selected;
+    const [card]=createAddressCards({document:dom.window.document,addresses:[address],weak,onSelect:(_,value)=>{selected=value;}});
+    assert.equal(card.querySelector('strong').textContent,'Casa da minha Mãe');assert.match(card.textContent,/Padrão/);
+    card.querySelector('button').click();assert.equal(selected,address);assert.equal(address.nickname,'Casa da minha Mãe');
+  }
+  dom.window.close();
+});
+
+test('fallback só com apelido ausente/inválido e texto do apelido nunca injeta HTML',()=>{
+  const dom=new JSDOM();
+  for(const nickname of [undefined,null,3,'  ','x'.repeat(61),'Casa\nprivada']){
+    const [card]=createAddressCards({document:dom.window.document,addresses:[{...saved,nickname}],weak:true,onSelect:()=>{}});assert.equal(card.querySelector('strong').textContent,'Endereço 1');
+  }
+  const nickname='<img src=x onerror=alert(1)>';
+  const [card]=createAddressCards({document:dom.window.document,addresses:[{...saved,nickname}],weak:true,onSelect:()=>{}});assert.equal(card.querySelector('strong').textContent,nickname);assert.equal(card.querySelector('img'),null);dom.window.close();
+});
 function harness(page=source) {
   const dom=new JSDOM('<div id="address-list"></div><button id="edit-profile-btn"></button><div id="new-address-section"></div><div id="show-new-address-wrapper"></div><button id="show-new-address-btn"></button><div id="modal"></div><div id="payment" class="hidden"></div>');
   let identity={mode:'legacy_phone',token:'token',revision:2};const requests=[],snapshots=[];
