@@ -1,0 +1,128 @@
+{
+  "date": "2026-10-24",
+  "commit": "5ec21a8c",
+  "environment": "DEV",
+  "hosting": {
+    "project": "crmdoceria-9959e",
+    "commit": "5ec21a8c",
+    "result": "PASS",
+    "matched": 13,
+    "results": [
+      {
+        "file": "index.html",
+        "sha256": "a6f019930c6d6ffe5a5e355a6df354cf80c5705c640a6adbfa2c4da623a478b7",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio.html",
+        "sha256": "dd0b1a083d4561b87471cc1841de0532009e968ccef843d763f118e122ff4158",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio-matriz.html",
+        "sha256": "dd0b1a083d4561b87471cc1841de0532009e968ccef843d763f118e122ff4158",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio-garavelo.html",
+        "sha256": "dd0b1a083d4561b87471cc1841de0532009e968ccef843d763f118e122ff4158",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio-festa.html",
+        "sha256": "dd0b1a083d4561b87471cc1841de0532009e968ccef843d763f118e122ff4158",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "address-management.mjs",
+        "sha256": "297e2039b93ee843afb79ff2912abc861244f85b7d3a64e3859c2c3d37cb2824",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "address-verification-firebase.mjs",
+        "sha256": "948cfb43a9a5a58672eadb593177e341b64931dc3174ef7119fa51b84b89c309",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "checkout-addresses.mjs",
+        "sha256": "83a0d11d1431a355bb4fea0f83b1d4bb40ad966c4ef7681c4b0fe4c2d6ea6101",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "checkout-identity.mjs",
+        "sha256": "228ad2641ce624697262805c276801f152951dc2c1169ac04f967bc8c1acf19c",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "firebaseClientConfig.js",
+        "sha256": "bb0bf2341afa894b44bfeb14ca68d3d6dbfd5563cc2045205e2b7408c2ca546b",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "firebase-messaging-sw.js",
+        "sha256": "65d0989ad6c4f8afa6f184f82fdcce9df5a1d4a578adbc50da95aa7eb556f550",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "static/js/main.10a3ca43.js",
+        "sha256": "2c50e2ac81787f95f28769a8380ef6215b4a1f80236bce5cf45dbc18943cd69c",
+        "cache": "public, max-age=31536000, immutable"
+      },
+      {
+        "file": "legacy-address-save.mjs",
+        "sha256": "000a945da73ac59b61e119405865ec3e013d25638e9af4a1612961bbc59b189a",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      }
+    ]
+  },
+  "apiSmoke": {
+    "project": "crmdoceria-9959e",
+    "lookup": "PASS",
+    "savedAddressCount": 1,
+    "maskedAllowlist": "PASS",
+    "createForeignCustomerGuard": 403,
+    "createInvalidContextGuard": 403,
+    "otpGuards": [
+      {
+        "operation": "read",
+        "status": 403,
+        "code": "OTP_REQUIRED"
+      },
+      {
+        "operation": "update",
+        "status": 403,
+        "code": "OTP_REQUIRED"
+      },
+      {
+        "operation": "delete",
+        "status": 403,
+        "code": "OTP_REQUIRED"
+      },
+      {
+        "operation": "default",
+        "status": 403,
+        "code": "OTP_REQUIRED"
+      }
+    ],
+    "existingSavedAddressQuote": {
+      "status": 200,
+      "privateAddressExposed": false
+    },
+    "customerAddressWrites": 0,
+    "smsSent": false,
+    "financialCalls": 0,
+    "newWeakCreation": "PENDING_USER_MANUAL_TEST"
+  },
+  "tests": {
+    "unit": 214,
+    "integration": 94,
+    "crm": 69,
+    "finalDeltaOverlaps": 12
+  },
+  "lint": "PASS focused",
+  "build": "PASS known warnings",
+  "functionalRemoteAcceptance": "PENDING_MANUAL",
+  "newSmsSent": false,
+  "financialOperation": false,
+  "productionChanged": false
+}

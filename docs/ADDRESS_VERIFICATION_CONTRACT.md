@@ -28,19 +28,20 @@ da publicação são registrados no checkpoint, sem usar a autorização antiga 
 tenant para executar uma alternativa diferente sem esclarecer.
 
 Config ausente resulta em canais vazios; a interface informa indisponibilidade e
-oferece Google/e-mail, sem simular envio nem liberar escrita.
+oferece Google/e-mail, sem simular envio nem liberar operações protegidas por grant.
 
 Atualização operacional de24/10/2026: projeto `crmdoceria-sms-dev-2026` e app Web
 criados com autorização. Usuário corrigiu billing; API confirmou a mesma conta
 do DEV, final8193EE. Identity Platform/Phone configurados SOMENTE nesse projeto
 isolado: região BR e domínio DEV autorizado. Main DEV continua FIREBASE_AUTH e
-Phone desligado. Nenhum recurso PROD consultado. Nenhum SMS real enviado.
+Phone desligado. Nenhum recurso PROD consultado. Na etapa de configuração ainda
+não havia envio real; a homologação SMS posterior está registrada adiante.
 
 ## Contrato de identidade
 
 | Contexto | Resumo/seleção existente | Escrita na conta | Pagamento online |
 |---|---|---|---|
-| LEGACY_PHONE sem prova | Permitidos pela referência opaca já existente | Negada; novo destino só no checkout | Negado |
+| LEGACY_PHONE sem prova | Permitidos pela referência opaca já existente | Só criar endereço novo não padrão; sem alterar existentes | Negado |
 | LEGACY_PHONE + prova de telefone | Permitidos | Só endereços do cliente/contexto, com grant temporário | Negado |
 | STRONG_AUTH Google/e-mail principal | Contrato privado existente | Contrato privado existente, sem OTP adicional | Demais gates existentes |
 | GUEST | Nenhum endereço herdado | Negada | Negado |
@@ -60,14 +61,15 @@ global canônico `clientes/{customerId}.enderecos`; não há auto-merge.
   contribui no máximo com tipo/inicial; não se reconstrói destino no browser.
 - Selecionar usa contexto/revisão/Customer/loja e registro estável: cotação e
   snapshot internos usam o destino persistido, mesmo com resumo/coords adulterados.
-- Novo endereço sem SMS: formulário/mapa atuais e Usar neste pedido; rascunho
-  checkoutOnly=true, saved=false, isDefault=false. Nenhuma escrita no cadastro,
-  pending global ou mudança nos endereços históricos. Destino selecionado entra
-  no snapshot normal por aba checkoutState_v1; rascunho não selecionado pode ser
-  descartado no reload/novo lookup. Grant e detalhe privado nunca entram nele.
-- Salvar na minha conta é promoção explícita após grant, via create com formulário
-  preenchido. Não há promoção automática. Retirada/carrinho/loja/cupom e algoritmo
-  autoritativo de frete continuam independentes.
+- Regra revisada: Salvar Endereço sem SMS persiste no array oficial do Customer,
+  com ID UUID gerado pelo servidor, createdVia=legacy_phone, phoneVerified=false e
+  isDefault/localizacaoFrequente=false, inclusive no primeiro endereço. Não muda
+  registros históricos/default. A resposta contém só referência opaca/máscaras;
+  o formulário é limpo e a seleção automática usa o registro do servidor para
+  frete/snapshot. Refresh/novo lookup não dependem do storage local para a lista.
+- A regra anterior de rascunho/promoção não é mais o caminho de criação normal.
+  Helpers de compatibilidade não concedem permissão. Retirada/carrinho/loja/cupom
+  e algoritmo autoritativo de frete continuam independentes.
 - Ver endereço completo/Editar pedem SMS e retomam a ação original. read retorna
   o alvo permitido sem coordenadas desnecessárias; expiração/troca de identidade
   remove detalhes da memória. Excluir exige confirmação adicional.
@@ -93,6 +95,27 @@ POST em `/api/checkout/address-verification/`:
   vínculo integral revalidado na transação. `read` libera somente o endereço alvo
   autorizado para leitura/edição. Nenhum Customer ID arbitrário é aceito.
 - `revoke`: retira do contexto os ponteiros de desafio/grant dessa revisão.
+
+POST `/api/checkout/addresses`: exceção explícita de criação sem SMS, não libera
+manage/read/update/delete/default. Aceita só storeId/contexto/revisão/address e
+requestId UUID; não Customer ID ou ID de endereço arbitrários. Valida modo PHONE,
+Customer canônico existente/telefone atual/revisão/expiração/loja na transação.
+Mesmo com Firebase Auth antigo, continua identidade fraca sem pagamento online.
+
+Idempotência: hash por Customer/requestId + fingerprint privado do conteúdo
+normalizado. Chave reutilizada com conteúdo diferente é409; mesmo conteúdo em
+retry/novo contexto retorna o registro já existente sem nova escrita. Comparação
+também reconhece registros estruturados anteriores; não parseia/migra strings
+legadas nem tenta mesclar endereços ambíguos. Duplo clique é bloqueado na UI e
+converge na transação. Limites:20 endereços/Customer,5 criações/Customer/hora e
+10/IP/hora; retries deduplicados não gastam quota de criação. Campos de controle
+não aparecem na projeção pública. Histórico anterior é preservado sem migração.
+
+Risco residual aceito pela nova regra de negócio: saber o telefone permite
+acrescentar endereço ao cadastro. Isso não comprova posse; cotas e não alterar
+default/existentes limitam o impacto, sem eliminar abuso distribuído. OTP segue
+obrigatório para leitura completa e alterações sensíveis. Origem/auditoria
+address_create_unverified distinguem essa criação de uma criação após SMS.
 
 Todos respondem `Cache-Control: no-store`, campos externos limitados e erros
 amigáveis. Excluir exige `confirmed:true` depois de uma confirmação visual.

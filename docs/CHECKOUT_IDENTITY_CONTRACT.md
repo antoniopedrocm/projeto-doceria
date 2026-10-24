@@ -4,13 +4,16 @@
 
 Listar/selecionar endereço salvo no modo celular NÃO exige SMS: browser recebe
 referência opaca/projeção mascarada; backend resolve o destino persistido.
-Ver completo e criar/editar/excluir/definir padrão NA CONTA exigem o grant descrito
+Ver completo e editar/excluir/definir padrão NA CONTA exigem o grant descrito
 em [ADDRESS_VERIFICATION_CONTRACT.md](ADDRESS_VERIFICATION_CONTRACT.md).
 
-Adicionar/usar endereço NOVO digitado pelo próprio usuário NÃO exige SMS. Esse
-rascunho fica somente no checkout, nunca modifica `clientes/{id}.enderecos`,
-nunca herda padrão e pode ser promovido por ação explícita após grant válido.
-A lista é atualizada sem reload. Selecionar para o pedido não altera o padrão.
+Regra atualizada em24/10/2026: adicionar endereço NOVO NÃO exige SMS e grava em
+`clientes/{id}.enderecos` via POST /api/checkout/addresses. O servidor deriva o
+Customer do contexto legado, força não padrão e devolve só ID opaco/máscaras.
+Salvar Endereço seleciona esse ID para cotação/snapshot server-side. A lista é
+atualizada sem reload e a próxima identificação retorna o endereço persistido.
+Isso substitui a regra anterior de rascunho somente no checkout; não altera
+histórico/default, não é merge e não concede leitura/edição/pagamento.
 
 Google/e-mail principal continua STRONG_AUTH e dispensa esse OTP adicional.
 Firebase SMS usa projeto DEV exclusivo de verificação. Auth secundário em memória

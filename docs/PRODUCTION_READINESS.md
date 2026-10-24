@@ -2,6 +2,39 @@
 
 ## Decisão e fronteira
 
+### Novo ajuste — endereço persistente sem SMS (24/10/2026)
+
+Substitui somente a regra de rascunho temporário. LEGACY_PHONE sem grant pode
+criar endereço em clientes/{Customer canônico}.enderecos, com origem fraca e
+sem default automático. POST /api/checkout/addresses deriva o Customer do
+contexto, valida telefone/revisão/loja, deduplica requests/conteúdo e devolve
+somente ID opaco/máscaras. Seleção/frete/snapshot usam o registro persistido.
+Nenhum Customer ID arbitrário, concessão de leitura completa, edição, exclusão,
+padrão ou pagamento. Botão Salvar Endereço; erro backend não vira rascunho local.
+
+Status deste delta: implementação/testes/push/publicação DEV concluídos;
+criação persistente sem OTP no navegador ainda aguarda execução manual do usuário.
+O aceite anterior de SMS permanece
+válido historicamente e não comprova o save sem OTP deste novo contrato. Deploy
+necessário somente api + Hosting; lookupClientByPhone não mudou. Rules, Auth,
+Staff, InfinitePay e WhatsApp não mudaram. Percentuais permanecem95,00% global,
+Fase9=75%, Fase13=0%. Risco de inclusão por terceiro que saiba o telefone está
+explicitamente limitado por quota/limite20 e não alterar dados existentes/default.
+
+Runtime5ec21a8c: somente api(us-central1), depois Hosting57 arquivos;13/13 hashes
+remotos e headers de cache PASS. Backend214/214 unitários/DOM/ESM,94/94 emulados,
+CRM69/69, delta final12/12 sobreposto; lint focado/build/diff-check PASS, warnings
+externos conhecidos. Emulador teve uma expectativa de fixture de pagamento
+corrigida (config explícita e401 sem Auth), e rejeição transitória de token em
+fixture Customer preexistente; bateria limpa final94/94, sem alterar Auth/guards.
+Smoke remoto sem escrita: lookup/lista com allowlist, criação com Customer/contexto
+forjados403, view/edit/delete/default403 sem grant, seleção/frete de endereço
+existente200 sem dados completos. Cadastro tinha1 endereço antes do ensaio novo.
+Nenhum SMS, pedido, pagamento, endereço ou estoque remoto modificado pelo smoke.
+Browser continua sem inicializar por kernel assets/path; solicitado ao usuário
+salvar sem SMS, conferir seleção automática/Online bloqueado, refresh e nova
+identificação com máscara/seleção. Não declarar esse resultado antes da confirmação.
+
 ### Extensão OTP de endereços — 2026-10-24
 
 Implementação local de CRUD LEGACY_PHONE por OTP e grant restrito, sem promover
