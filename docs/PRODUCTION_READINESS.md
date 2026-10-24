@@ -8,8 +8,8 @@ Implementação local de CRUD LEGACY_PHONE por OTP e grant restrito, sem promove
 Customer/Staff/pagamento e sem usar produção. Contrato e checklist em
 [ADDRESS_VERIFICATION_CONTRACT.md](ADDRESS_VERIFICATION_CONTRACT.md).
 
-**Novo requisito pré-PROD: implementação/testes locais concluídos; homologação
-visual/SMS real PENDENTE.** Não reescrever fases já concluídas. Telefone sem SMS
+**Novo requisito pré-PROD: implementação/testes locais e SMS real concluídos;
+aprovação visual consolidada PENDENTE.** Não reescrever fases já concluídas. Telefone sem SMS
 pode listar/selecionar máscaras e usar endereço novo somente no checkout, sem
 persistir no Customer ou alterar padrão. Ver completo/escrever na conta exige
 grant backend. SMS não autoriza pagamento/Customer privado/Staff.
@@ -20,8 +20,9 @@ configurado apenas nele, região BR e domínio DEV. Phone principal continua
 desligado, subtype FIREBASE_AUTH preservado; nenhum PROD consultado. Template/
 WhatsApp continua desligado. Não declarar entrega real por mocks/emuladores.
 Telefone autorizado final0290 continua ambíguo; não escolher cadastro/merge.
-Alternativo final8602 tem cadastro único e zero endereços: pode testar o SMS/
-formulário novo, mas não fingir evidência de edição de endereço existente.
+Alternativo final8602 tinha cadastro único e zero endereços no smoke. Após SMS,
+o usuário cadastrou1 endereço; sua criação e leitura protegida foram comprovadas
+pela auditoria, sem ler/expor conteúdo na evidência. Não presumir edição existente.
 
 Rollout inicial2501110f: api + lookupClientByPhone + addClientAddress + updateClientProfile,
 depois Hosting, já publicado. Delta5cba7ad2: somente api + lookupClientByPhone e
@@ -38,9 +39,14 @@ Smoke: lookup único final8602 (sem endereços), status SMS200 e cinco operaçõ
 manage403 sem grant. Testes210/210 unitários/DOM/ESM,90/90 emulados,69/69 CRM,
 delta final11/11 sobreposto; lint sem erros/avisos de código, build PASS com
 warnings conhecidos, diff-check PASS. Nenhum SMS/pagamento/WhatsApp real.
-Browser não inicializou (kernel assets/path não encontrado): evidência visual
-390/1920 e verificação real continuam pendentes. Usuário autorizou UM SMS ao
-final8602; código somente no site, sem reenvio automático ou salvar endereço.
+Browser não inicializou (kernel assets/path não encontrado): evidência/aprovação
+visual390/1920 continua pendente. Usuário autorizou UM SMS ao final8602 e executou
+manualmente: code_sent/phone_verified/address_create/address_read comprovados.
+Leitura administrativa apenas, sem novos envios ou alterações. Nenhum código,
+token ou endereço completo integra a documentação. A instrução inicial era
+cancelar o formulário, mas o usuário informou cadastro e a auditoria confirmou
+a gravação por ele: preservar esse registro, sem limpeza automática. Edição/
+delete/default reais não foram executados; cobertura emulada permanece válida.
 
 Esse trabalho não fecha o contrato InfinitePay não-PAID, não reabre aprovações
 visuais anteriores e não pontua automaticamente. Fase9=75%, Fase11=100%,

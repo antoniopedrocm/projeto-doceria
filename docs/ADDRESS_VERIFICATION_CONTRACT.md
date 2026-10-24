@@ -193,9 +193,15 @@ O rollout inicial2501110f (4 Functions + Hosting) já foi publicado; o ajuste de
 rascunho/projeção5cba7ad2 foi publicado em api/lookupClientByPhone + Hosting.
 12/12 hashes remotos e cache PASS; status SMS200/reenvio60s, WhatsApp ausente e
 cinco operações manage sem grant rejeitadas403/OTP_REQUIRED. Configuração privada
-habilitada só para2 destinatários DEV autorizados. Nenhum SMS no smoke. Usuário
-autorizou posteriormente UM SMS real ao final8602; entrega/validação ainda não
-comprovadas. Nenhum dado de endereço será salvo nesse teste.
+habilitada só para2 destinatários DEV autorizados. Nenhum SMS no smoke inicial.
+Após autorização de UM SMS real ao final8602, usuário executou o fluxo manual:
+auditoria confirmou code_requested/code_sent/phone_verified/address_create/
+address_read em24/10/2026. Portanto envio/validação, criação com grant e leitura
+autorizada reais PASS. O usuário efetivamente salvou um endereço na conta; leitura
+administrativa confirmou1 registro, sem expor seu conteúdo. Não desfazer/excluir
+essa ação nem enviar novo SMS automaticamente. Edição/delete/default remotos e
+aprovação visual390/1920 não foram comprovados por esse resultado; testes locais
+correspondentes permanecem PASS. Verificação real não eleva o modo financeiro.
 Config DEV limita-se aos dois destinatários explicitamente autorizados e mantém
 2 envios/telefone/hora, 5/IP/hora e 10/dia. Reenvio mínimo agora60 segundos,
 5 tentativas, OTP300 segundos e grant600 segundos. SMS tem custo variável;

@@ -147,7 +147,50 @@
   },
   "lint": "PASS focused",
   "build": "PASS known warnings",
-  "smsRealSent": false,
+  "smsRealSent": true,
   "visualApproval": "PENDING",
-  "productionChanged": false
+  "productionChanged": false,
+  "manualVerification": {
+    "readOnlyAudit": true,
+    "project": "crmdoceria-9959e",
+    "savedAddressCount": 1,
+    "events": [
+      {
+        "action": "code_requested",
+        "channel": "sms",
+        "at": "2026-10-24T18:50:08.841Z"
+      },
+      {
+        "action": "code_sent",
+        "channel": "sms",
+        "at": "2026-10-24T18:50:11.067Z"
+      },
+      {
+        "action": "phone_verified",
+        "channel": "sms",
+        "at": "2026-10-24T18:52:23.036Z"
+      },
+      {
+        "action": "address_create",
+        "channel": "sms",
+        "at": "2026-10-24T18:52:40.261Z"
+      },
+      {
+        "action": "address_read",
+        "channel": "sms",
+        "at": "2026-10-24T18:53:34.782Z"
+      }
+    ],
+    "results": {
+      "smsSent": "PASS",
+      "phoneVerified": "PASS",
+      "addressCreatedWithGrant": "PASS",
+      "addressReadWithGrant": "PASS",
+      "addressUpdate": "NOT_EXERCISED",
+      "addressDelete": "NOT_EXERCISED",
+      "addressDefault": "NOT_EXERCISED"
+    },
+    "source": "User manual operation; backend audit corroborated",
+    "additionalSmsSentByAgent": false
+  }
 }
