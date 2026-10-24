@@ -2,6 +2,7 @@
 const {createHash,createHmac,randomInt,timingSafeEqual}=require('node:crypto');
 const {sendCloudTemplate,buildTemplatePayload}=require('./whatsapp-client');
 const {DEV_PROJECT_ID,getRuntimeProjectId,parseConfiguration,accessTokenVersion}=require('./whatsapp-config');
+const {getSmsEnterpriseProtection}=require('./recaptcha-enterprise');
 const fingerprint=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const safeId=value=>typeof value==='string' && /^[a-zA-Z0-9-]{1,100}$/.test(value);
 const unavailable=()=>{throw Object.assign(new Error('Não foi possível enviar o código agora. Tente novamente em alguns instantes.'),{code:'OTP_UNAVAILABLE',httpStatus:503});};
@@ -23,7 +24,8 @@ function createAddressVerificationProvider({db,admin,fetchImpl=globalThis.fetch,
         /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(sms.projectId || '') && ![DEV_PROJECT_ID,'ana-guimaraes'].includes(sms.projectId) &&
         typeof sms.apiKey==='string' && /^[\w-]{20,150}$/.test(sms.apiKey) &&
         sms.authDomain===`${sms.projectId}.firebaseapp.com`) {
-        channels.sms={...sms,fingerprint:fingerprint(sms)};
+        const protection=await getSmsEnterpriseProtection(sms,fetchImpl);
+        if(protection) channels.sms={...sms,enterpriseSiteKey:protection.siteKey,fingerprint:fingerprint([sms,protection.siteKey])};
       }
       const wa=raw.whatsapp;
       if(wa?.enabled===true && safeId(wa.integrationStoreId) && wa.templateCategory==='AUTHENTICATION' && wa.templateApproved===true &&
@@ -44,7 +46,7 @@ function createAddressVerificationProvider({db,admin,fetchImpl=globalThis.fetch,
     if(channel==='sms') {
       if(typeof recaptchaToken!=='string' || recaptchaToken.length<10 || recaptchaToken.length>10000) unavailable();
       const result=await post(`https://identitytoolkit.googleapis.com/v1/accounts:sendVerificationCode?key=${config.apiKey}`,
-        {phoneNumber:phone,recaptchaToken},{'X-Firebase-Locale':'pt-BR'});
+        {phoneNumber:phone,captchaResponse:recaptchaToken,clientType:'CLIENT_TYPE_WEB',recaptchaVersion:'RECAPTCHA_ENTERPRISE'},{'X-Firebase-Locale':'pt-BR'});
       if(!result.ok || typeof result.data.sessionInfo!=='string') unavailable();
       // Encrypted provider session, never an OTP or a Firebase token for the app.
       return {sessionInfo:result.data.sessionInfo,fingerprint:config.fingerprint};

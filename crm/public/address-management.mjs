@@ -30,8 +30,7 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
       if(!availability.channels.length){view.message.textContent='Verificação indisponível agora. Entre com Google ou e-mail para gerenciar seus endereços.';return;}
       const destination=document.createElement('p');destination.textContent='Celular '+availability.phoneMasked;view.content.append(destination);
       const channels=document.createElement('div');view.content.append(channels);
-      if(availability.channels.includes('sms')){const consent=document.createElement('p');consent.className='text-xs my-2';consent.textContent='Ao solicitar SMS, você concorda com o uso do número pelo Google para prevenção de spam e abuso.';view.content.append(consent);}
-      const captcha=document.createElement('div');view.content.append(captcha);
+      if(availability.channels.includes('sms')){const consent=document.createElement('p');consent.className='text-xs my-2';consent.textContent='Este site é protegido por reCAPTCHA. Ao solicitar SMS, você concorda com o uso do número para prevenção de spam e abuso.';view.content.append(consent);}
       const form=document.createElement('form');form.hidden=true;
       const label=document.createElement('label');label.textContent='Digite o código enviado por SMS';
       const input=document.createElement('input');input.type='text';input.inputMode='numeric';input.autocomplete='one-time-code';input.maxLength=6;input.pattern='[0-9]{6}';input.required=true;input.className='border rounded p-3 w-full';label.append(input);form.append(label);
@@ -41,15 +40,15 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
       availability.channels.forEach(channel=>sendButtons.push(button(channels,channel==='sms'?'Enviar código por SMS':'Enviar código pelo WhatsApp',async()=>{
         try {
           let token;
-          if(channel==='sms'){disposeCaptcha?.();const verifier=await recaptcha(availability.firebase,captcha);disposeCaptcha=verifier.dispose;token=verifier.token;}
+          if(channel==='sms'){disposeCaptcha?.();const verifier=await recaptcha(availability.firebase);disposeCaptcha=verifier.dispose;token=verifier.token;}
           if(current!==generation || !same(s)) return;
           challenge=await api('start',{channel,...(token?{recaptchaToken:token}:{})},s);if(current!==generation) return;
-          disposeCaptcha?.();disposeCaptcha=null;captcha.replaceChildren();resendAt=challenge.resendAt;input.value='';form.hidden=false;
+          disposeCaptcha?.();disposeCaptcha=null;resendAt=challenge.resendAt;input.value='';form.hidden=false;
           view.message.textContent='Digite o código enviado por SMS para confirmar seu número.';input.focus();
           if(interval) clock.clearInterval(interval);
           const tick=()=>{const seconds=Math.max(0,Math.ceil((resendAt-now())/1000));for(const b of sendButtons){b.disabled=seconds>0;b.dataset.cooldown=String(seconds>0);b.textContent=seconds?`Reenviar código em ${seconds} segundos`:b.dataset.label;}};
           tick();interval=clock.setInterval(tick,1000);
-        }catch(error){if(current===generation)view.message.textContent=error.message || 'Não foi possível enviar o código agora.';}
+        }catch(error){if(current===generation)view.message.textContent=error.code==='OTP_LIMITED'?'Você solicitou códigos recentemente. Aguarde antes de tentar novamente.':'Não foi possível enviar o código agora. Aguarde um momento e tente novamente.';}
       })));
       sendButtons.forEach(b=>{b.dataset.label=b.textContent;});
       form.onsubmit=async e=>{

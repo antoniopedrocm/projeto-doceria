@@ -3,7 +3,7 @@ import {createPhoneAddressManager} from '../public/address-management.mjs';
 const {JSDOM}=createRequire(import.meta.url)('jsdom');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const option={id:'opaque-address',nickname:'Casa',summary:'Rua ••, nº •• · Bueno',saved:true};
-function fixture({channels=['sms']}={}){
+function fixture({channels=['sms'],sendError}={}){
   const dom=new JSDOM('<main>Checkout preservado</main>');let state={mode:'legacy_phone',token:'context-a',revision:2},time=1000,verified=false;
   const watchers=new Set(),intervals=new Map(),timeouts=new Map();let timerId=0;
   const identity={get:()=>state,subscribe:listener=>{watchers.add(listener);return()=>watchers.delete(listener);}};
@@ -11,7 +11,7 @@ function fixture({channels=['sms']}={}){
   const request=async(method,data,scope)=>{
     calls.push({method,data,scope});
     if(method==='status')return {channels,phoneMasked:'••••0001',resendSeconds:45,firebase:{projectId:'doceria-sms-dev-fixture'}};
-    if(method==='start')return {challengeId:'challenge',expiresAt:time+300000,resendAt:time+45000};
+    if(method==='start'){if(sendError)throw sendError;return {challengeId:'challenge',expiresAt:time+300000,resendAt:time+45000};}
     if(method==='verify'){if(data.code!=='123456')throw Error('Código incorreto.');verified=true;return {addressSessionToken:'limited-proof',expiresAt:time+600000,purpose:'ADDRESS_MANAGEMENT'};}
     if(method==='manage'){
       assert.equal(verified,true);assert.equal(data.addressSessionToken,'limited-proof');
@@ -93,4 +93,10 @@ test('trocar identidade ou expirar remove detalhe privado, revoga prova e nunca 
 });
 test('abrir/fechar não duplica observadores ou timers e preserva conteúdo/carrinho',async()=>{
   const f=fixture();try{for(let i=0;i<3;i++){await f.manager.perform('create');await f.click('Cancelar');}assert.equal(f.watchers.size,1);assert.equal(f.intervals.size,0);assert.equal(f.dom.window.document.querySelector('main').textContent,'Checkout preservado');}finally{f.close();}assert.equal(f.watchers.size,0);
+});
+
+test('bloqueio antifraude e rate limit não expõem erro técnico, score ou provider',async()=>{
+  for(const error of [Error('auth/captcha-check-failed score threshold private'),Object.assign(Error('internal quota'),{code:'OTP_LIMITED'})]){
+    const f=fixture({sendError:error});try{await f.manager.perform('view',option);await f.click('Enviar código por SMS');const text=f.dom.window.document.querySelector('[role="status"]').textContent;assert.doesNotMatch(text,/captcha|score|threshold|internal|quota|auth\//i);assert.match(text,error.code==='OTP_LIMITED'?/Aguarde antes/:/Não foi possível enviar/);assert.equal(f.calls.some(c=>c.method==='manage'),false);}finally{f.close();}
+  }
 });

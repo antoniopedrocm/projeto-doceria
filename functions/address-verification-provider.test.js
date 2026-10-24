@@ -7,7 +7,8 @@ const wa={enabled:true,integrationStoreId:'fixture',templateName:'address_code',
 const integration={enabled:true,mode:'cloud',templateName:'order_confirmation',templateLanguage:'pt_BR',timeoutMs:1000,apiVersion:'v23.0',phoneNumberId:'12345',allowedRecipients:[phone.slice(1)]};
 function setup(raw,fetchImpl,admin) {
   const db={doc:path=>({get:async()=>({data:()=>path.includes('whatsapp')?integration:raw})})};
-  return createAddressVerificationProvider({db,admin,fetchImpl,getProjectId:()=> 'crmdoceria-9959e',readSecret:async name=>name.includes('hash-key')?'p'.repeat(32):'provider-test-token'});
+  const enterpriseFetch=async(url,options)=>String(url).includes('/v2/recaptchaConfig')?{ok:true,json:async()=>({recaptchaKey:'projects/fixture/keys/managed-score-fixture-key',recaptchaEnforcementState:[{provider:'PHONE_PROVIDER',enforcementState:'ENFORCE'}],useSmsBotScore:true,useSmsTollFraudProtection:true})}:fetchImpl(url,options);
+  return createAddressVerificationProvider({db,admin,fetchImpl:enterpriseFetch,getProjectId:()=> 'crmdoceria-9959e',readSecret:async name=>name.includes('hash-key')?'p'.repeat(32):'provider-test-token'});
 }
 
 test('canal desconhecido/propriedade de prototype não consulta identidade, envia ou consome limite',async()=>{
@@ -29,6 +30,7 @@ test('Firebase SMS usa número do servidor/reCAPTCHA e valida prova do projeto d
   assert.equal(proof.code,undefined);assert.equal(proof.idToken,undefined);
   assert.equal(await provider.verify({channel:'sms',config,phone,proof,code:'123456'}),true);
   assert.equal(calls[0].body.phoneNumber,phone);assert.equal(calls[0].body.tenantId,undefined);assert.equal(calls[1].body.tenantId,undefined);assert.equal(calls[1].body.idToken,undefined);assert.equal(calls[1].body.temporaryProof,undefined);assert.equal(verified,1);
+  assert.equal(calls[0].body.recaptchaToken,undefined);assert.equal(calls[0].body.captchaResponse,'recaptcha-fixture');assert.equal(calls[0].body.clientType,'CLIENT_TYPE_WEB');assert.equal(calls[0].body.recaptchaVersion,'RECAPTCHA_ENTERPRISE');
 });
 test('WhatsApp usa template AUTHENTICATION próprio, transporte oficial, HMAC e código de seis dígitos',async()=>{
   let payload;const provider=setup({enabled:true,allowedRecipients:[phone],whatsapp:wa},async(_url,options)=>{payload=JSON.parse(options.body);return {ok:true,status:200,json:async()=>({messaging_product:'whatsapp',messages:[{id:'wamid.fixture'}]})};});

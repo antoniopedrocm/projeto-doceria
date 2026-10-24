@@ -43,7 +43,7 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
     const s=await scope(input),{channels,policy}=await provider.load(input.storeId,s.phone);
     const sms=channels.sms;
     return {channels:Object.keys(channels),phoneMasked:'••••'+s.phone.slice(-4),resendSeconds:policy.resendMs/1000,
-      ...(sms?{firebase:{apiKey:sms.apiKey,projectId:sms.projectId,authDomain:sms.authDomain}}:{})};
+      ...(sms?{firebase:{projectId:sms.projectId,enterpriseSiteKey:sms.enterpriseSiteKey}}:{})};
   }
   // Explicit weak-create capability. Never reuse the grant-only CRUD operation
   // or accept a Customer/address ID supplied by the caller.
