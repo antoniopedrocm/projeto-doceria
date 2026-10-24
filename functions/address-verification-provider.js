@@ -37,7 +37,7 @@ function createAddressVerificationProvider({db,admin,fetchImpl=globalThis.fetch,
     }
     const integer=(key,fallback,min,max)=>Number.isInteger(raw[key]) && raw[key]>=min && raw[key]<=max?raw[key]:fallback;
     return {channels,policy:{otpMs:integer('otpSeconds',300,60,300)*1000,sessionMs:integer('sessionSeconds',600,60,900)*1000,
-      resendMs:integer('resendSeconds',45,30,300)*1000,maxAttempts:integer('maxAttempts',5,1,5),
+      resendMs:integer('resendSeconds',60,60,300)*1000,maxAttempts:integer('maxAttempts',5,1,5),
       phoneHourly:integer('phoneHourly',5,1,5),ipHourly:integer('ipHourly',10,1,20),globalDaily:integer('globalDaily',50,1,100)}};
   }
   async function start({channel,config,phone,recaptchaToken,challengeId}) {

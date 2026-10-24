@@ -27,12 +27,31 @@ function fixture({channels=['sms']}={}){
   const confirm=async(code='123456')=>{const input=dom.window.document.querySelector('input[autocomplete="one-time-code"]');input.value=code;input.form.dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();};
   return {manager,dom,calls,changes,click,confirm,watchers,intervals,timeouts,change:s=>{state=s;watchers.forEach(fn=>fn());},advance:ms=>{time+=ms;intervals.forEach(fn=>fn());for(const [id,t] of timeouts)if(t.at<=time){timeouts.delete(id);t.fn();}},close:()=>{manager.destroy();dom.window.close();}};
 }
-test('editar/novo/excluir/padrão exigem OTP antes de ler endereço completo ou escrever',async()=>{
-  for(const operation of ['update','create','delete','default']){
+test('ver/editar/promover/excluir/padrão exigem OTP antes de ler endereço completo ou escrever',async()=>{
+  for(const operation of ['view','update','create','delete','default']){
     const f=fixture();try{await f.manager.perform(operation,option);assert.match(f.dom.window.document.body.textContent,/Confirme que este número é seu/);
       assert.equal(f.calls.some(c=>c.method==='manage'),false);assert.equal(f.dom.window.document.querySelectorAll('input').length,1);assert.doesNotMatch(f.dom.window.document.body.textContent,/Rua privada/);
     }finally{f.close();}
   }
+});
+test('Ver após SMS libera somente o registro alvo, mantém modo financeiro e expira com o grant',async()=>{
+  const f=fixture();try{
+    assert.equal(f.manager.getTrustState(),'legacy_phone_unverified');
+    await f.manager.perform('view',option);assert.doesNotMatch(f.dom.window.document.body.textContent,/Rua privada/);
+    await f.click('Enviar código por SMS');await f.confirm();
+    assert.match(f.dom.window.document.body.textContent,/Seu endereço|Rua privada/);
+    assert.equal(f.manager.getTrustState(),'legacy_phone_verified');
+    assert.equal(f.calls.find(c=>c.method==='manage').data.addressId,option.id);
+    f.advance(600001);assert.equal(f.manager.getTrustState(),'legacy_phone_unverified');assert.doesNotMatch(f.dom.window.document.body.textContent,/Rua privada/);
+  }finally{f.close();}
+});
+test('promover rascunho exige SMS e preenche formulário sem herdar padrão ou pagamento',async()=>{
+  const f=fixture(),draft={checkoutOnly:true,id:'draft-a',nickname:'Trabalho',street:'Rua digitada',number:'20',city:'Goiânia',neighborhood:'Bueno'};
+  try{await f.manager.perform('create',draft);assert.equal(f.calls.some(c=>c.method==='manage'),false);await f.click('Enviar código por SMS');await f.confirm();
+    assert.equal(f.dom.window.document.querySelector('input').value,'Trabalho');assert.equal(f.dom.window.document.querySelector('input[type="checkbox"]').checked,false);
+    f.dom.window.document.querySelector('form').dispatchEvent(new f.dom.window.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
+    const call=f.calls.find(c=>c.method==='manage');assert.equal(call.data.operation,'create');assert.equal(call.data.addressId,undefined);assert.equal(call.data.address.isDefault,false);
+  }finally{f.close();}
 });
 test('SMS aprovado abre editor completo; código não fica no input e nova gravação atualiza lista',async()=>{
   const f=fixture();try{

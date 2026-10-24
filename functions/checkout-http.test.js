@@ -74,6 +74,20 @@ const selectIdentity=async(mode,context=null,bearer=token,storeId=store)=>{
 };
 const send=async (b,bearer=token)=>{const value={...b};if(b.pagamento.forma!=='Online') delete value.checkoutIdentityToken;const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer},body:JSON.stringify(value)});return {status:r.status,data:await r.json()};};
 
+test('SMS válido libera endereço mas token Firebase forte antigo e grant NÃO autorizam pagamento online',async()=>{
+  const {createCheckoutIdentity}=require('./checkout-identity'),{createAddressVerification}=require('./address-verification');
+  const identities=createCheckoutIdentity({db});
+  const found=await functions.lookupClientByPhone.run({data:{lojaId:store,telefone:'62999991234'},rawRequest:{ip:'verified-no-payment-fixture',headers:{}}});
+  const input={storeId:store,checkoutIdentityToken:found.checkoutIdentity.token,checkoutIdentityRevision:found.checkoutIdentity.revision};
+  const service=createAddressVerification({db,identities,provider:{load:async()=>({channels:{sms:{}},policy:{otpMs:300000,sessionMs:600000,resendMs:60000,maxAttempts:5,phoneHourly:5,ipHourly:10,globalDaily:100}}),start:async()=>({fixture:true}),verify:async()=>true}});
+  const challenge=await service.start({...input,channel:'sms'},'verified-no-payment-fixture');
+  const grant=await service.verify({...input,challengeId:challenge.challengeId,code:'123456'});
+  assert.ok(grant.addressSessionToken);assert.equal((await identities.read(input.checkoutIdentityToken,store)).mode,'legacy_phone');
+  const beforeLinks=links;
+  const result=await send({...body(),...input,addressSessionToken:grant.addressSessionToken});
+  assert.equal(result.status,403);assert.equal(result.data.code,'CHECKOUT_STRONG_AUTH_REQUIRED');assert.equal(links,beforeLinks);
+});
+
 test('rotas legadas não contornam OTP nem expõem endereço por telefone/Customer ID',async()=>{
   const target=db.doc('clientes/otp-http-private');
   const original={nome:'Privado',telefone:'62985007777',enderecos:[{nickname:'Casa',enderecoCompleto:'Endereço privado'}]};

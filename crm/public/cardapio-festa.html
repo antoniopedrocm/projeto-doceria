@@ -1192,7 +1192,7 @@
         import {installCustomerAccount} from './customer-account.js?v=20261015-persistence';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
         import {createCheckoutIdentity,CHECKOUT_MODES} from './checkout-identity.mjs';
-        import {renderCheckoutAddresses,savedAddressFields} from './checkout-addresses.mjs';
+        import {renderCheckoutAddresses,savedAddressFields,createCheckoutAddressDraft,mergeCheckoutAddressOptions} from './checkout-addresses.mjs';
         import {createPhoneAddressManager} from './address-management.mjs';
         import {createSmsRecaptcha} from './address-verification-firebase.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
@@ -2116,8 +2116,7 @@
             });
 
             document.getElementById('show-new-address-btn').addEventListener('click', () => {
-                if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) getPhoneAddressManager().perform('create').catch(error=>showToast(error.message,true));
-                else showNewAddressSection();
+                showNewAddressSection();
             });
             document.getElementById('address-step1-back-btn').addEventListener('click', goBackAddressFlowStep);
             document.getElementById('address-step2-confirm-btn').addEventListener('click', () => {
@@ -2197,6 +2196,10 @@
         }
 
         async function showNewAddressSection() {
+            const weak=checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE;
+            const defaultInput=document.getElementById('manual-address-frequent-location');
+            if(defaultInput){const label=defaultInput.closest('label');label.hidden=weak;label.classList.toggle('hidden',weak);defaultInput.disabled=weak;if(weak)defaultInput.checked=false;}
+            document.getElementById('save-manual-address-button').textContent=weak?'Usar neste pedido':'Salvar endereço';
             document.getElementById('new-address-section').classList.remove('hidden');
             document.getElementById('address-list').classList.add('hidden');
             document.getElementById('show-new-address-wrapper').classList.add('hidden');
@@ -2317,7 +2320,7 @@
 
                 const newAddress = {
                     enderecoCompleto: addressText,
-                    cep:zip,street,number,neighborhood,complement,
+                    cep:zip,street,number,neighborhood,city,complement,
                     nickname,
                     lat,
                     lng,
@@ -2331,9 +2334,12 @@
 
                 const functions = getFunctions(app, 'us-central1');
                 if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
-                    // This address belongs to this checkout, never to the found profile.
-                    // Account writes require the server's scoped phone proof. No local draft is mistaken for a saved account address.
-                    await getPhoneAddressManager().perform('create');return;
+                    // Only the caller's newly typed destination. No customer write,
+                    // default change or private saved-address read occurs here.
+                    const draft=createCheckoutAddressDraft(newAddress,crypto.randomUUID());
+                    currentClient.enderecos=[...(currentClient.enderecos || []),draft];
+                    cancelNewAddress(true);openAddressManagementModal(currentClient);
+                    await useExistingAddress(draft.enderecoCompleto,draft);return;
                 }
                 if (currentClient.accountLinked) {
                     const result = await httpsCallable(functions, 'customerAddAddress')({address: newAddress});
@@ -2385,7 +2391,7 @@
                         if(!response.ok) throw Object.assign(new Error(result.message || 'Não foi possível verificar o número agora.'),{code:result.code});
                         return result;
                     },recaptcha:createSmsRecaptcha,
-                    onAddresses:addresses=>{currentClient.enderecos=addresses;openAddressManagementModal(currentClient);}
+                    onAddresses:(addresses,promotedId)=>{currentClient.enderecos=mergeCheckoutAddressOptions(addresses,(currentClient.enderecos || []).filter(a=>a.id!==promotedId));openAddressManagementModal(currentClient);persistCheckoutState();}
                 });
                 window.addEventListener('pagehide',()=>phoneAddressManager.invalidate());
                 window.addEventListener('pageshow',event=>{if(event.persisted)phoneAddressManager.invalidate();});
@@ -2435,6 +2441,8 @@
                     weak:checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE,
                     onSelect:useExistingAddress,onDelete:deleteAddress,
                     ...(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE?{
+                        onView:address=>getPhoneAddressManager().perform('view',address).catch(error=>showToast(error.message,true)),
+                        onPromote:address=>getPhoneAddressManager().perform('create',address).catch(error=>showToast(error.message,true)),
                         onEdit:address=>getPhoneAddressManager().perform('update',address).catch(error=>showToast(error.message,true)),
                         onDefault:address=>getPhoneAddressManager().perform('default',address).catch(error=>showToast(error.message,true))}:{} )});
                 addressList.append(...cards);
@@ -2446,6 +2454,7 @@
 
 		async function deleteAddress(addressIndex) {
             if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
+                if(currentClient.enderecos[addressIndex]?.checkoutOnly){currentClient.enderecos=currentClient.enderecos.filter((_,index)=>index!==addressIndex);openAddressManagementModal(currentClient);persistCheckoutState();return;}
                 return getPhoneAddressManager().perform('delete',currentClient.enderecos[addressIndex]).catch(error=>showToast(error.message,true));
             }
 			if (!confirm('Tem certeza que deseja excluir este endereço?')) return;

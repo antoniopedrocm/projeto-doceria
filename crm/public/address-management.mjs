@@ -24,18 +24,18 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
     const s=scope();if(identity.get().mode!=='legacy_phone') throw new Error('Identifique novamente o cliente.');
     if(grant && grant.expiresAt>now() && same(activeScope)) return action();
     activeScope=s;const current=++generation,view=modal('Confirme que este número é seu');
-    view.message.textContent='Para proteger seus endereços, confirme a posse do número usado na identificação.';
+    view.message.textContent='Para proteger seus dados, enviaremos um código por SMS para o celular usado na identificação.';
     try {
       const availability=await api('status',{},s);if(current!==generation) return;
       if(!availability.channels.length){view.message.textContent='Verificação indisponível agora. Entre com Google ou e-mail para gerenciar seus endereços.';return;}
-      const destination=document.createElement('p');destination.textContent='Telefone '+availability.phoneMasked;view.content.append(destination);
+      const destination=document.createElement('p');destination.textContent='Celular '+availability.phoneMasked;view.content.append(destination);
       const channels=document.createElement('div');view.content.append(channels);
       if(availability.channels.includes('sms')){const consent=document.createElement('p');consent.className='text-xs my-2';consent.textContent='Ao solicitar SMS, você concorda com o uso do número pelo Google para prevenção de spam e abuso.';view.content.append(consent);}
       const captcha=document.createElement('div');view.content.append(captcha);
       const form=document.createElement('form');form.hidden=true;
-      const label=document.createElement('label');label.textContent='Código de verificação';
+      const label=document.createElement('label');label.textContent='Digite o código enviado por SMS';
       const input=document.createElement('input');input.type='text';input.inputMode='numeric';input.autocomplete='one-time-code';input.maxLength=6;input.pattern='[0-9]{6}';input.required=true;input.className='border rounded p-3 w-full';label.append(input);form.append(label);
-      const submit=document.createElement('button');submit.type='submit';submit.textContent='Confirmar';submit.className='border rounded p-3 mt-2';form.append(submit);view.content.append(form);
+      const submit=document.createElement('button');submit.type='submit';submit.textContent='Confirmar código';submit.className='border rounded p-3 mt-2';form.append(submit);view.content.append(form);
       let challenge=null,resendAt=0;
       const sendButtons=[];
       availability.channels.forEach(channel=>sendButtons.push(button(channels,channel==='sms'?'Enviar código por SMS':'Enviar código pelo WhatsApp',async()=>{
@@ -45,7 +45,7 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
           if(current!==generation || !same(s)) return;
           challenge=await api('start',{channel,...(token?{recaptchaToken:token}:{})},s);if(current!==generation) return;
           disposeCaptcha?.();disposeCaptcha=null;captcha.replaceChildren();resendAt=challenge.resendAt;input.value='';form.hidden=false;
-          view.message.textContent='Enviamos um código de 6 dígitos para seu celular.';input.focus();
+          view.message.textContent='Digite o código enviado por SMS para confirmar seu número.';input.focus();
           if(interval) clock.clearInterval(interval);
           const tick=()=>{const seconds=Math.max(0,Math.ceil((resendAt-now())/1000));for(const b of sendButtons){b.disabled=seconds>0;b.dataset.cooldown=String(seconds>0);b.textContent=seconds?`Reenviar código em ${seconds} segundos`:b.dataset.label;}};
           tick();interval=clock.setInterval(tick,1000);
@@ -76,7 +76,13 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
         const view=modal('Excluir este endereço?');view.message.textContent=option.nickname || 'Endereço selecionado';
         button(view.content,'Excluir',async()=>{view.cancel.disabled=true;try{const result=await execute('delete',option.id,{confirmed:true});if(current===generation){closeDialog();onAddresses(result.addresses);}}catch(error){view.message.textContent=error.message;}finally{view.cancel.disabled=false;}});return;
       }
-      const prior=operation==='update'?(await execute('read',option.id)).address:{};if(current!==generation)return;
+      const prior=['update','view'].includes(operation)?(await execute('read',option.id)).address:option?.checkoutOnly?option:{};if(current!==generation)return;
+      if(operation==='view') {
+        const view=modal('Seu endereço');
+        for(const [key,title] of fields){const value=prior[key] || (key==='complement'?prior.complemento:'');if(value){const row=document.createElement('p');row.className='text-sm my-2 break-words';row.textContent=title+': '+value;view.content.append(row);}}
+        if(!prior.street && prior.enderecoCompleto){const row=document.createElement('p');row.className='break-words';row.textContent=prior.enderecoCompleto;view.content.append(row);}
+        view.cancel.textContent='Fechar';return;
+      }
       const view=modal(operation==='update'?'Editar endereço':'Adicionar novo endereço'),form=document.createElement('form'),inputs={};
       for(const [key,title] of fields){const label=document.createElement('label');label.className='block text-sm mt-2';label.textContent=title;const input=document.createElement('input');input.className='border rounded w-full p-2';input.value=prior[key] || (key==='complement'?prior.complemento:'') || '';input.maxLength=key==='nickname'?60:160;input.required=['nickname','street','number','neighborhood','city'].includes(key);label.append(input);form.append(label);inputs[key]=input;}
       if(prior.enderecoCompleto && !prior.street) view.message.textContent='Endereço antigo: complete rua, bairro e cidade para salvar a correção.';
@@ -85,9 +91,9 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
       noNumber.onchange=()=>{inputs.number.required=!noNumber.checked;inputs.number.disabled=noNumber.checked;};noNumber.onchange();
       const save=document.createElement('button');save.type='submit';save.className='border rounded p-3 block mt-3';save.textContent='Salvar endereço';form.append(save);view.content.append(form);
       form.onsubmit=async e=>{e.preventDefault();save.disabled=true;view.cancel.disabled=true;try{const address=Object.fromEntries(fields.map(([key])=>[key,inputs[key].value]));address.isDefault=isDefault.checked;address.semNumero=noNumber.checked;
-        const result=await execute(operation,option?.id,{address});if(current===generation){closeDialog();onAddresses(result.addresses);}
+        const result=await execute(operation,option?.saved?option.id:undefined,{address});if(current===generation){closeDialog();onAddresses(result.addresses,option?.checkoutOnly?option.id:null);}
       }catch(error){view.message.textContent=error.message;}finally{save.disabled=false;view.cancel.disabled=false;}};
     });
   }
-  return {perform,invalidate,destroy(){invalidate();unsubscribe?.();}};
+  return {perform,invalidate,getTrustState(){return identity.get().mode==='legacy_phone'?(grant && grant.expiresAt>now() && same(activeScope)?'legacy_phone_verified':'legacy_phone_unverified'):identity.get().mode;},destroy(){invalidate();unsubscribe?.();}};
 }

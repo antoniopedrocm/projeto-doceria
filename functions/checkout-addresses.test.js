@@ -6,13 +6,17 @@ test('projeção weak usa allowlist, mascara texto livre e não retorna destino,
     enderecoCompleto:'Av. T-63, 123, apto 401',cep:'74230100',complemento:'apto 401',referencia:'portão azul',lat:-16,lng:-49,isDefault:true},
   'Rua privada 42, casa 150, CEP 12345678', {nickname:'Rua particular 123',enderecoCompleto:'Destino privado'}];
   const options=addressOptions('a'.repeat(64),'private-customer',addresses);
-  assert.deepEqual(Object.keys(options[0]).sort(),['id','isDefault','nickname','saved','summary']);
-  assert.equal(options[0].summary,'Av. T-••, nº •• · Setor Bueno');
+  assert.deepEqual(Object.keys(options[0]).sort(),['id','isDefault','neighborhoodMasked','nickname','numberMasked','protected','saved','streetMasked','summary']);
+  assert.equal(options[0].summary,'Av. T***, nº *** · Setor B*** · Endereço protegido');assert.equal(options[0].protected,true);
   assert.equal(options[0].nickname,'Casa');assert.equal(options[2].nickname,'Endereço 3');
   for(const secret of ['private-id','private-customer','T-63','123','74230100','apto','portão','-16','-49','150','12345678','Destino privado']) assert.equal(JSON.stringify(options.map(({id,...display})=>display)).includes(secret),false,secret);
   assert.deepEqual(addressOptions('a'.repeat(64),'private-customer',addresses),options);
   assert.notEqual(addressOptions('b'.repeat(64),'private-customer',addresses)[0].id,options[0].id);
   assert.notEqual(addressOptions('a'.repeat(64),'other-customer',addresses)[0].id,options[0].id);
+});
+test('projeção anterior ao SMS permite distinguir rua/bairro mascarados sem expor os dados completos',()=>{
+  const [value]=addressOptions('a'.repeat(64),'id',[{id:'one',nickname:'Casa',city:'Goiânia',state:'GO',street:'Rua privada',number:'123',neighborhood:'Setor Bueno',enderecoCompleto:'Rua privada 123'}]);
+  assert.equal(value.city,'Goiânia');assert.equal(value.state,'GO');assert.equal(value.streetMasked,'Rua p***');assert.equal(value.neighborhoodMasked,'Setor B***');assert.doesNotMatch(JSON.stringify(value),/Rua privada|123|Bueno/);
 });
 test('padrão vem primeiro, demais mantêm ordem; vazios e formatos antigos não quebram',()=>{
   const options=addressOptions('a'.repeat(64),'id',[null,{},'', {id:'a',enderecoCompleto:'A'}, {id:'b',enderecoCompleto:'B',isDefault:true},{id:'c',enderecoCompleto:'C'}]);

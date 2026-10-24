@@ -63,6 +63,18 @@ test('confirmação offline resolve full address dentro da transação, não ass
   assert.equal((await db.doc(`lojas/${store}/produtos/address-product`).get()).data().estoque,1);
   assert.deepEqual((await customer.get()).data().enderecos,source);
 });
+test('endereço novo sem SMS pode ser usado no checkout, sem gravar/default/alterar endereços do cliente',async()=>{
+  await db.doc(`lojas/${store}/produtos/draft-product`).set({nome:'Fixture',preco:10,estoque:2,ativo:true});
+  const before=(await customer.get()).data();
+  const result=await request('/checkout/confirmar',{checkoutIdentityToken:lookup.checkoutIdentity.token,
+    cliente:{id:lookup.clientId,nome:'Fixture',telefone:phone,endereco:'Rua nova digitada pelo usuário'},
+    itens:[{produtoId:'draft-product',quantity:1,preco:10}],pagamento:{forma:'Dinheiro'},subtotal:10,valorFrete:8,
+    delivery:{address:{enderecoCompleto:'Rua nova digitada pelo usuário',lat:-16,lng:-49},lat:-16,lng:-49},clienteLat:-16,clienteLng:-49,distanciaFreteKm:4});
+  assert.equal(result.status,200,JSON.stringify(result));
+  const order=(await db.doc(`lojas/${store}/pedidos/${result.data.id}`).get()).data();
+  assert.equal(order.clienteEndereco,'Rua nova digitada pelo usuário');assert.equal(order.clienteId,null);
+  assert.deepEqual((await customer.get()).data().enderecos,before.enderecos);assert.equal(order.ownerUid,undefined);
+});
 test('referência não atravessa cliente, loja, revisão, identidade, expiração ou ID forjado',async()=>{
   await db.doc('clientes/address-other').set({nome:'Outro cliente',telefone:'62985550002',enderecos:source});
   const other=await find('62985550002');

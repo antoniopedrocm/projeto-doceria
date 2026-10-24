@@ -120,7 +120,8 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
       const index=records.findIndex(a=>addressReference(s.token,grant.customerId,a.id)===input.addressId);
       if(input.operation!=='create' && index<0) throw error('ADDRESS_CHANGED','O endereço mudou. Atualize a lista e tente novamente.',409);
       if(input.operation==='read') {
-        const a=records[index],fields=['nickname','enderecoCompleto','street','number','neighborhood','city','cep','complement','complemento','referencia','semNumero','isDefault','lat','lng'];
+        const a=records[index],fields=['nickname','enderecoCompleto','street','number','neighborhood','city','cep','complement','complemento','referencia','semNumero','isDefault'];
+        audit(tx,s,'address_read',grant.channel,a.id);
         return {address:{...Object.fromEntries(fields.filter(k=>a[k]!==undefined).map(k=>[k,a[k]])),id:input.addressId}};
       }
       let affected;
@@ -151,7 +152,15 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
     });
     return {ok:true};
   }
-  return {status,start,verify,manage,revoke};
+  const observed=operation=>async(...args)=>{
+    try{return await operation(...args);}catch(cause){
+      if(['OTP_LIMITED','OTP_EXPIRED'].includes(cause.code)) {
+        try{await db.runTransaction(async tx=>{const s=await scope(args[0],tx);audit(tx,s,cause.code==='OTP_LIMITED'?'verification_limited':'challenge_expired',null);});}catch{ /* Invalid identities never authorize an audit lookup or operation. */ }
+      }
+      throw cause;
+    }
+  };
+  return {status,start:observed(start),verify:observed(verify),manage,revoke};
 }
 function mountAddressVerification(app,service) {
   const allowed=new Set(['storeId','checkoutIdentityToken','checkoutIdentityRevision','channel','recaptchaToken','challengeId','code','addressSessionToken','operation','addressId','address','confirmed']);
