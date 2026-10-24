@@ -112,3 +112,31 @@ test('HTTP rejeita customer/telefone arbitrários, prova ausente e detalhe compl
     }
   }finally{server.closeAllConnections();await new Promise(r=>server.close(r));}
 });
+test('criação sem SMS persiste no Customer canônico, retorna só máscaras e nunca altera padrão/histórico',async()=>{
+  const f=await fixture(),requestId='11111111-1111-4111-8111-111111111111';
+  const created=await f.service.createUnverified({...f.input,requestId,address:{...address,id:'forged',number:'22',isDefault:true,localizacaoFrequente:true,authOwnerUid:'attacker'}},'create-ip-a');
+  assert.equal(created.created,true);assert.equal(created.addresses.length,2);assert.equal(created.addresses[0].isDefault,true);
+  const projection=JSON.stringify(created.addresses.map(({id,...value})=>value));
+  for(const secret of ['Rua teste','22','74230000','-16','-49','authOwnerUid','creationRequestHash','creationFingerprint'])assert.equal(projection.includes(secret),false,secret);
+  const data=(await db.doc('clientes/'+f.customerId).get()).data();assert.deepEqual(data.enderecos[0],address);const last=data.enderecos[1];assert.equal(last.number,'22');assert.equal(last.isDefault,false);assert.equal(last.localizacaoFrequente,false);assert.equal(last.createdVia,'legacy_phone');assert.equal(last.phoneVerified,false);assert.notEqual(last.id,'forged');assert.equal(data.authOwnerUid,'private-owner');
+  for(const operation of ['read','update','delete','default'])await assert.rejects(()=>f.manage(null,operation,{addressId:created.addressId}),e=>e.code==='OTP_REQUIRED');
+  assert.equal((await f.identities.read(f.input.checkoutIdentityToken,f.storeId)).mode,'legacy_phone');
+});
+test('primeiro endereço sem SMS também não vira padrão; retries/concorrência/novo contexto não duplicam',async()=>{
+  const f=await fixture();await db.doc('clientes/'+f.customerId).update({enderecos:[]});
+  const body={...f.input,requestId:'22222222-2222-4222-8222-222222222222',address};
+  const results=await Promise.all([f.service.createUnverified(body,'create-ip-b'),f.service.createUnverified(body,'create-ip-b')]);
+  assert.equal(results[0].addressId,results[1].addressId);assert.equal(results.filter(r=>r.created).length,1);
+  const data=(await db.doc('clientes/'+f.customerId).get()).data();assert.equal(data.enderecos.length,1);assert.equal(data.enderecos[0].isDefault,false);
+  await assert.rejects(()=>f.service.createUnverified({...body,address:{...address,number:'31'}},'create-ip-b'),e=>e.code==='ADDRESS_REQUEST_CONFLICT');
+  const context=await f.identities.select({storeId:f.storeId,mode:'legacy_phone',phone:f.phone,phoneRecordHash:hash(f.phone),legacyCustomerId:f.customerId});
+  const again=await f.service.createUnverified({...body,checkoutIdentityToken:context.token,checkoutIdentityRevision:context.revision,requestId:'33333333-3333-4333-8333-333333333333'},'create-ip-b');
+  assert.equal(again.created,false);assert.notEqual(again.addressId,results[0].addressId);assert.equal((await db.doc('clientes/'+f.customerId).get()).data().enderecos.length,1);
+});
+test('criação não aceita contexto Customer/loja/Guest/revisão forjados e limita abuso sem consumir SMS',async()=>{
+  const f=await fixture(),base={...f.input,address,requestId:'44444444-4444-4444-8444-444444444444'};
+  for(const extra of [{storeId:'other'},{checkoutIdentityRevision:0},{checkoutIdentityToken:'a'.repeat(64)}])await assert.rejects(()=>f.service.createUnverified({...base,...extra},'create-ip-c'));
+  for(let i=0;i<5;i++)await f.service.createUnverified({...base,requestId:`55555555-5555-4555-8555-${String(i).padStart(12,'0')}`,address:{...address,number:String(i+50)}},'create-ip-c');
+  await assert.rejects(()=>f.service.createUnverified({...base,address:{...address,number:'99'}},'create-ip-c'),e=>e.code==='ADDRESS_LIMIT');
+  assert.equal(f.calls().sends,0);await f.identities.select({token:base.checkoutIdentityToken,storeId:f.storeId,mode:'guest'});await assert.rejects(()=>f.service.createUnverified(base,'create-ip-c'));
+});

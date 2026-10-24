@@ -45,6 +45,31 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
     return {channels:Object.keys(channels),phoneMasked:'••••'+s.phone.slice(-4),resendSeconds:policy.resendMs/1000,
       ...(sms?{firebase:{apiKey:sms.apiKey,projectId:sms.projectId,authDomain:sms.authDomain}}:{})};
   }
+  // Explicit weak-create capability. Never reuse the grant-only CRUD operation
+  // or accept a Customer/address ID supplied by the caller.
+  async function createUnverified(input,ip) {
+    if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input.requestId || '') || !input.address || typeof input.address!=='object' || Array.isArray(input.address)) throw error('ADDRESS_INVALID','Confira o endereço para salvar.',400);
+    const address=normalizeManagedAddress({...input.address,isDefault:false,localizacaoFrequente:false});
+    const fingerprint=value=>hash(JSON.stringify(['nickname','street','number','neighborhood','city','cep','complement','referencia','semNumero'].map(key=>typeof value[key]==='string'?value[key].normalize('NFKC').toLowerCase().replace(/\s+/g,' ').trim():value[key])));
+    const digest=fingerprint(address);
+    return db.runTransaction(async tx=>{
+      const s=await scope(input,tx),original=Array.isArray(s.customer.data().enderecos)?s.customer.data().enderecos:[];
+      const records=addressRecords(s.context.legacyCustomerId,original),requestHash=hash(JSON.stringify([s.context.legacyCustomerId,input.requestId]));
+      const retried=records.find(a=>a.creationRequestHash===requestHash);
+      if(retried && retried.creationFingerprint!==digest) throw error('ADDRESS_REQUEST_CONFLICT','O endereço mudou. Confira os dados e tente novamente.',409);
+      const duplicate=retried || records.find(a=>{try{return fingerprint(normalizeManagedAddress(a))===digest;}catch{return false;}});
+      if(duplicate) return {created:false,addressId:addressReference(s.token,s.context.legacyCustomerId,duplicate.id),addresses:addressOptions(s.token,s.context.legacyCustomerId,original)};
+      if(records.length>=20) throw error('ADDRESS_LIMIT','Você atingiu o limite de endereços salvos.',409);
+      const counters=[['address-create:customer:'+s.context.legacyCustomerId,5],['address-create:ip:'+hash(ip || 'unknown'),10]];
+      const limits=await Promise.all(counters.map(([key])=>tx.get(root.collection('limits').doc(hash(key)))));
+      limits.forEach((snap,i)=>{const d=snap.data();if(d && now()-d.windowAt<3600000 && d.count>=counters[i][1]) throw error('ADDRESS_LIMIT','Muitas tentativas. Aguarde alguns minutos.',429);});
+      const saved={...address,id:randomUUID(),criadoEm:new Date(now()).toISOString(),createdVia:'legacy_phone',phoneVerified:false,creationRequestHash:requestHash,creationFingerprint:digest};
+      limits.forEach(snap=>{const d=snap.data(),same=d && now()-d.windowAt<3600000;tx.set(snap.ref,{windowAt:same?d.windowAt:now(),count:(same?d.count:0)+1});});
+      tx.update(s.customerRef,{enderecos:[...original,saved],atualizadoEm:new Date(now())});
+      audit(tx,s,'address_create_unverified',null,saved.id);
+      return {created:true,addressId:addressReference(s.token,s.context.legacyCustomerId,saved.id),addresses:addressOptions(s.token,s.context.legacyCustomerId,[...original,saved])};
+    });
+  }
   async function start(input,ip) {
     if(!['sms','whatsapp'].includes(input.channel)) throw error('OTP_UNAVAILABLE','Escolha um canal de verificação disponível.',400);
     const initial=await scope(input);const {channels,policy}=await provider.load(input.storeId,initial.phone);
@@ -160,9 +185,21 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
       throw cause;
     }
   };
-  return {status,start:observed(start),verify:observed(verify),manage,revoke};
+  return {status,createUnverified,start:observed(start),verify:observed(verify),manage,revoke};
 }
 function mountAddressVerification(app,service) {
+  app.post('/checkout/addresses',async(req,res)=>{
+    res.set('Cache-Control','no-store');
+    try {
+      const allowed=new Set(['storeId','checkoutIdentityToken','checkoutIdentityRevision','address','requestId']);
+      if(Object.keys(req.body || {}).some(key=>!allowed.has(key))) throw error('ADDRESS_INVALID','Não foi possível salvar o endereço. Confira a identificação.',403);
+      return res.json(await service.createUnverified(req.body || {},req.ip));
+    }catch(cause){
+      const contextError=['OTP_REQUIRED','CHECKOUT_STRONG_AUTH_REQUIRED'].includes(cause.code);
+      const known=typeof cause.code==='string' && /^ADDRESS_/.test(cause.code);
+      return res.status(contextError?403:known?(cause.httpStatus || 400):503).json({code:contextError?'ADDRESS_CONTEXT_REQUIRED':known?cause.code:'ADDRESS_SAVE_FAILED',message:contextError?'Identifique novamente pelo celular para salvar o endereço.':known?cause.message:'Não foi possível salvar o endereço. Tente novamente.'});
+    }
+  });
   const allowed=new Set(['storeId','checkoutIdentityToken','checkoutIdentityRevision','channel','recaptchaToken','challengeId','code','addressSessionToken','operation','addressId','address','confirmed']);
   for(const method of ['status','start','verify','manage','revoke']) app.post('/checkout/address-verification/'+method,async(req,res)=>{
     res.set('Cache-Control','no-store');

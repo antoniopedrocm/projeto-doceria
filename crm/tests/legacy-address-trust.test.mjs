@@ -6,25 +6,29 @@ import {createRequire} from 'node:module';
 import {createCheckoutAddressDraft,mergeCheckoutAddressOptions,renderCheckoutAddresses} from '../public/checkout-addresses.mjs';
 const {JSDOM}=createRequire(import.meta.url)('jsdom');
 const source=fs.readFileSync(new URL('../public/cardapio.html',import.meta.url),'utf8');
-test('salvar endereço novo usa somente checkout, sem OTP, escrita de cliente, default ou perda de loja/carrinho',async()=>{
+test('Salvar Endereço aguarda backend e seleciona somente referência persistida sem perder loja/carrinho',async()=>{
   const dom=new JSDOM();
   const fields={street:'Rua fictícia',number:'12',complement:'Sala 2',neighborhood:'Centro',city:'Goiânia',zip:'74000000',reference:'Teste'};
   for(const [field,value] of Object.entries(fields)){const input=dom.window.document.createElement('input');input.id='manual-address-'+field;input.value=value;dom.window.document.body.append(input);}
   const defaultInput=dom.window.document.createElement('input');defaultInput.id='manual-address-frequent-location';defaultInput.checked=true;dom.window.document.body.append(defaultInput);
   const saved={id:'opaque',saved:true,isDefault:true,summary:'Endereço protegido'};
-  const cart=[{id:'produto-futuro',quantity:2}],selected=[];let canceled=0;
+  const cart=[{id:'produto-futuro',quantity:2}],selected=[];let canceled=0,saveCalls=0;
+  const created={id:'persisted-opaque',saved:true,isDefault:false,summary:'Rua F***, nº *** · Endereço protegido'};
   const context={document:dom.window.document,window:{currentLatLng:{lat:-16,lng:-49},manualAddressLocationConfirmed:true},
     currentClient:{id:'canonical-opaque',enderecos:[saved]},CHECKOUT_MODES:{PHONE:'legacy_phone'},checkoutIdentity:{get:()=>({mode:'legacy_phone'})},
-    getManualAddressNickname:()=> 'Casa',showToast:()=>assert.fail('unexpected error'),app:{},getFunctions:()=>({}),
+    getManualAddressNickname:()=> 'Casa',showToast:()=>{},app:{},getFunctions:()=>({}),validateAddressForm:()=>{},
     httpsCallable:()=>assert.fail('no customer API'),getPhoneAddressManager:()=>assert.fail('no OTP needed'),
-    createCheckoutAddressDraft,crypto:{randomUUID:()=> 'draft-stable'},cancelNewAddress:()=>{canceled++;},openAddressManagementModal:()=>{},
-    useExistingAddress:async(text,address)=>selected.push({text,address}),cart,STORE_ID:'loja-futura-teste',console};
-  vm.createContext(context);vm.runInContext(source.slice(source.indexOf('async function saveManualAddress()'),source.indexOf('let phoneAddressManager=null')),context);
-  await context.saveManualAddress();
-  assert.equal(canceled,1);assert.equal(selected.length,1);assert.equal(selected[0].address.checkoutOnly,true);
-  assert.equal(selected[0].address.isDefault,false);assert.equal(selected[0].address.city,'Goiânia');assert.equal(selected[0].address.saved,false);
+    legacyAddressSaver:{save:async input=>{saveCalls++;assert.equal(input.street,'Rua fictícia');return {addresses:[saved,created],selected:created};}},cancelNewAddress:()=>{canceled++;},openAddressManagementModal:()=>{},
+    useSavedPhoneAddress:async address=>selected.push(address),cart,STORE_ID:'loja-futura-teste',console:{error:()=>{}}};
+  vm.createContext(context);vm.runInContext(source.slice(source.indexOf('let addressSaveInFlight=false;'),source.indexOf('let phoneAddressManager=null')),context);
+  await Promise.all([context.saveManualAddress(),context.saveManualAddress()]);assert.equal(saveCalls,1);
+  assert.equal(canceled,1);assert.equal(selected.length,1);assert.equal(selected[0],created);
+  assert.equal(selected[0].isDefault,false);assert.equal(selected[0].saved,true);assert.equal(context.currentClient.enderecos[1].enderecoCompleto,undefined);
   assert.equal(context.currentClient.enderecos[0],saved);assert.equal(saved.isDefault,true);assert.equal(cart[0].quantity,2);assert.equal(context.STORE_ID,'loja-futura-teste');
-  const restored=JSON.parse(JSON.stringify(selected[0].address));assert.equal(restored.checkoutOnly,true);assert.equal(restored.isDefault,false);dom.window.close();
+  const restored=JSON.parse(JSON.stringify(selected[0]));assert.equal(restored.saved,true);assert.equal(restored.isDefault,false);
+  context.currentClient.enderecos=[saved];selected.length=0;canceled=0;const messages=[];
+  context.legacyAddressSaver.save=async()=>{throw Error('Não foi possível salvar o endereço. Tente novamente.');};context.showToast=text=>messages.push(text);
+  await context.saveManualAddress();assert.equal(selected.length,0);assert.equal(canceled,0);assert.deepEqual(context.currentClient.enderecos,[saved]);assert.match(messages[0],/Não foi possível salvar/);dom.window.close();
 });
 test('cards privados nunca carregam detalhes; Ver e promoção explícita são ações separadas',()=>{
   const dom=new JSDOM();const seen=[];

@@ -931,10 +931,11 @@
       }
 
 	  if (saveAddressBtn) {
-        saveAddressBtn.disabled = !hasBasicInfo;
-        saveAddressBtn.classList.toggle('opacity-50', !hasBasicInfo);
-        saveAddressBtn.classList.toggle('cursor-not-allowed', !hasBasicInfo);
-        saveAddressBtn.setAttribute('aria-disabled', hasBasicInfo ? 'false' : 'true');
+        const enabled=hasBasicInfo && saveAddressBtn.dataset.saving!=='true';
+        saveAddressBtn.disabled = !enabled;
+        saveAddressBtn.classList.toggle('opacity-50', !enabled);
+        saveAddressBtn.classList.toggle('cursor-not-allowed', !enabled);
+        saveAddressBtn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
       }
 	}
 
@@ -1192,7 +1193,8 @@
         import {installCustomerAccount} from './customer-account.js?v=20261015-persistence';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
         import {createCheckoutIdentity,CHECKOUT_MODES} from './checkout-identity.mjs';
-        import {renderCheckoutAddresses,savedAddressFields,createCheckoutAddressDraft,mergeCheckoutAddressOptions} from './checkout-addresses.mjs';
+        import {renderCheckoutAddresses,savedAddressFields,mergeCheckoutAddressOptions} from './checkout-addresses.mjs';
+        import {createLegacyAddressSaver} from './legacy-address-save.mjs';
         import {createPhoneAddressManager} from './address-management.mjs';
         import {createSmsRecaptcha} from './address-verification-firebase.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
@@ -1250,6 +1252,14 @@
             syncOnlinePaymentOption(currentClient,checkoutIdentity.isStrong());
             document.querySelectorAll('[data-checkout-strong-invitation]').forEach(el=>{el.hidden=checkoutIdentity.isStrong();});
         }
+        const legacyAddressSaver=createLegacyAddressSaver({identity:checkoutIdentity,storeId:STORE_ID,request:async data=>{
+            let response;
+            try {response=await fetch(API_BASE_URL+'/checkout/addresses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}
+            catch {throw new Error('Não foi possível salvar o endereço. Tente novamente.');}
+            const result=await response.json().catch(()=>({}));
+            if(!response.ok) throw new Error(result.message || 'Não foi possível salvar o endereço. Tente novamente.');
+            return result;
+        }});
         async function selectWeakCheckout(mode) {
             currentClient=null;pendingOrderDetails={};syncCheckoutPayment();
             const ready=checkoutIdentity.select(mode);syncCheckoutPayment();
@@ -2199,7 +2209,7 @@
             const weak=checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE;
             const defaultInput=document.getElementById('manual-address-frequent-location');
             if(defaultInput){const label=defaultInput.closest('label');label.hidden=weak;label.classList.toggle('hidden',weak);defaultInput.disabled=weak;if(weak)defaultInput.checked=false;}
-            document.getElementById('save-manual-address-button').textContent=weak?'Usar neste pedido':'Salvar endereço';
+            document.getElementById('save-manual-address-button').textContent='Salvar Endereço';
             document.getElementById('new-address-section').classList.remove('hidden');
             document.getElementById('address-list').classList.add('hidden');
             document.getElementById('show-new-address-wrapper').classList.add('hidden');
@@ -2255,7 +2265,9 @@
             cancelNewAddress();
         }
 
+        let addressSaveInFlight=false;
         async function saveManualAddress() {
+            if(addressSaveInFlight) return;
             const street = document.getElementById('manual-address-street').value.trim();
             const numberInputValue = document.getElementById('manual-address-number').value.trim();
             const noNumber = document.getElementById('manual-address-no-number')?.checked || false;
@@ -2305,6 +2317,8 @@
             ].filter(Boolean);
             const addressText = addressParts.join(', ');
 
+            const saveButton=document.getElementById('save-manual-address-button');
+            addressSaveInFlight=true;if(saveButton){saveButton.disabled=true;saveButton.dataset.saving='true';}
             try {
                 if (!currentClient?.id) {
                     throw new Error('Cliente não identificado para atualizar endereço.');
@@ -2334,12 +2348,13 @@
 
                 const functions = getFunctions(app, 'us-central1');
                 if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
-                    // Only the caller's newly typed destination. No customer write,
-                    // default change or private saved-address read occurs here.
-                    const draft=createCheckoutAddressDraft(newAddress,crypto.randomUUID());
-                    currentClient.enderecos=[...(currentClient.enderecos || []),draft];
+                    const clientAtStart=currentClient;
+                    const result=await legacyAddressSaver.save(newAddress);
+                    if(currentClient!==clientAtStart) return;
+                    currentClient.enderecos=result.addresses;
                     cancelNewAddress(true);openAddressManagementModal(currentClient);
-                    await useExistingAddress(draft.enderecoCompleto,draft);return;
+                    showToast('Endereço salvo.');
+                    await useSavedPhoneAddress(result.selected);return;
                 }
                 if (currentClient.accountLinked) {
                     const result = await httpsCallable(functions, 'customerAddAddress')({address: newAddress});
@@ -2374,7 +2389,9 @@
                     showToast('Sem permissão para salvar endereço agora. Tente novamente em instantes.', true);
                     return;
                 }
-                showToast('❌ Erro ao salvar o endereço. Tente novamente.', true);
+                showToast(error.message || 'Não foi possível salvar o endereço. Tente novamente.', true);
+            } finally {
+                addressSaveInFlight=false;if(saveButton)delete saveButton.dataset.saving;validateAddressForm();
             }
         }
 

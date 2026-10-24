@@ -52,13 +52,13 @@ test('seleções concorrentes não republicam strong depois de escolha weak',asy
   const first=identity.select(M.STRONG);const second=identity.select(M.PHONE);
   finish();await first;assert.equal(identity.isStrong(),false);await second;assert.equal(identity.get().mode,M.PHONE);
 });
-test('cardápio mantém convite strong e não promove publicação passiva; weak não grava perfil/endereço',()=>{
+test('cardápio mantém convite strong e não promove publicação passiva; weak cria endereço pelo contexto',()=>{
   const page=fs.readFileSync(new URL('../public/cardapio.html',import.meta.url),'utf8');
   assert.match(page,/if\(checkoutIdentity\.isStrong\(\)\) currentClient=client/);
   assert.match(page,/Para pagar online, entre com Google ou e-mail/);
   assert.match(page,/checkoutHeaders\(online,checkoutIdentity\)/);
   assert.match(page,/checkoutIdentityToken:checkoutIdentity\.get\(\)\.token/);
-  assert.match(page,/const draft=createCheckoutAddressDraft\(newAddress,crypto.randomUUID\(\)\)/);
+  assert.match(page,/await legacyAddressSaver\.save\(newAddress\)/);
   assert.match(page,/onPromote:address=>getPhoneAddressManager\(\)\.perform\('create',address\)/);
   assert.match(page,/edit-profile-btn'\)\.hidden=checkoutIdentity\.get\(\)\.mode===CHECKOUT_MODES.PHONE/);
 });
