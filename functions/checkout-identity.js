@@ -10,7 +10,7 @@ function createCheckoutIdentity({db,now=Date.now}) {
     if(!data || data.storeId!==storeId || data.expiresAt<=now() || !Object.values(MODES).includes(data.mode)) fail();
     return data;
   }
-  async function select({token,storeId,mode,uid=null,customerId=null,legacyCustomerId=null,phone=null,expectedRevision}) {
+  async function select({token,storeId,mode,uid=null,customerId=null,legacyCustomerId=null,phone=null,phoneRecordHash=null,expectedRevision}) {
     if(!Object.values(MODES).includes(mode)) fail();
     if(mode===MODES.STRONG && (!uid || !customerId)) fail();
     // An explicit selection can renew an expired context without clearing storage.
@@ -27,7 +27,9 @@ function createCheckoutIdentity({db,now=Date.now}) {
       if(expectedRevision!==undefined && prior?.revision!==expectedRevision) fail();
       const next={storeId,mode,revision:(prior?.revision || 0)+1,expiresAt:now()+24*60*60*1000,
         ownerUid:mode===MODES.STRONG?uid:null,customerId:mode===MODES.STRONG?customerId:null,
-        legacyCustomerId:mode===MODES.PHONE?legacyCustomerId:null,phoneHash:mode===MODES.PHONE && phone?hash(phone):null};
+        legacyCustomerId:mode===MODES.PHONE?legacyCustomerId:null,phoneHash:mode===MODES.PHONE && phone?hash(phone):null,
+        legacyPhone:mode===MODES.PHONE && /^\d{10,11}$/.test(phone || '')?phone:null,
+        phoneRecordHash:mode===MODES.PHONE?phoneRecordHash:null};
       tx.set(reference,next);return next;
     });
     return {token:value,mode:data.mode,revision:data.revision};

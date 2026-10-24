@@ -9,15 +9,17 @@ export function createCheckoutIdentity({storage,storeId,request,getUid=()=>null}
   } catch { /* malformed selection stays guest */ }
   let pending=Promise.resolve();
   let generation=0,networkToken=state.token;
+  const listeners=new Set();
+  const changed=()=>listeners.forEach(listener=>listener());
   const save=()=>{try {storage.setItem(key,JSON.stringify(state));} catch { /* server still enforces selection */ }};
-  const publish=data=>{state={...state,...data,uid:data.mode===CHECKOUT_MODES.STRONG?getUid():null};save();return {...state};};
+  const publish=data=>{state={...state,...data,uid:data.mode===CHECKOUT_MODES.STRONG?getUid():null};save();changed();return {...state};};
   return {
     get:()=>({...state}),
     isStrong:()=>state.mode===CHECKOUT_MODES.STRONG && !!getUid() && state.uid===getUid(),
     select(mode) {
       const current=++generation;
       // Demote synchronously, so passive auth callbacks cannot restore privileges.
-      state={...state,mode,uid:null};save();
+      state={...state,mode,uid:null};save();changed();
       const operation=pending.catch(()=>{}).then(async()=>{
         const data=await request({storeId,mode,checkoutIdentityToken:networkToken});
         networkToken=data.token;
@@ -28,6 +30,7 @@ export function createCheckoutIdentity({storage,storeId,request,getUid=()=>null}
     },
     acceptPhone(data){networkToken=data.token;return publish({...data,mode:CHECKOUT_MODES.PHONE});},
     ready:()=>pending,
-    invalidate(){generation++;networkToken=null;state={mode:CHECKOUT_MODES.GUEST,token:null,revision:0,uid:null};save();},
+    subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},
+    invalidate(){generation++;networkToken=null;state={mode:CHECKOUT_MODES.GUEST,token:null,revision:0,uid:null};save();changed();},
   };
 }

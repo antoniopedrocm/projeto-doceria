@@ -56,6 +56,10 @@ const {createCheckoutIdentity,MODES:CHECKOUT_MODES}=require('./checkout-identity
 const checkoutIdentities=createCheckoutIdentity({db});
 const {addressOptions,createCheckoutAddresses}=require('./checkout-addresses');
 const checkoutAddresses=createCheckoutAddresses({db,identities:checkoutIdentities});
+const {createAddressVerificationProvider}=require('./address-verification-provider');
+const {createAddressVerification,mountAddressVerification}=require('./address-verification');
+const addressVerification=createAddressVerification({db,identities:checkoutIdentities,
+  provider:createAddressVerificationProvider({db,admin})});
 const {createPaymentService, cents, paymentError} = require('./checkout-payment');
 const checkoutPayments = createPaymentService({db, admin});
 const {paymentPrefill}=require('./payment-prefill');
@@ -1245,6 +1249,7 @@ app.use(cors({origin: true})); // Habilita CORS para a API do cardápio
 app.use(express.json());
 const storeResolver = createStoreResolver({db,getAvailability:getStoreAvailability,loadPaymentConfig:store=>checkoutPayments.config(store)});
 mountStoreRoutes(app,storeResolver);
+mountAddressVerification(app,addressVerification);
 // Selection is explicit and independent of the browser's ambient Firebase session.
 app.post('/checkout/identity',async(req,res)=>{
   try {
@@ -1522,6 +1527,16 @@ app.get("/produtos", async (req, res) => {
 });
 
 // Rota para buscar cliente por telefone
+async function isClientStaff(token,lojaId) {
+  const staff=(await db.collection('users').doc(token.uid).get()).data();
+  return !!staff && staff.ativo!==false && staff.status!=='inativo' && ['dono','gerente','atendente'].includes(staff.role) &&
+    (staff.role==='dono' || staff.lojaId===lojaId || staff.lojaIds?.includes(lojaId));
+}
+async function canManageClient(token,lojaId,clientId) {
+  if(await isClientStaff(token,lojaId)) return true;
+  try {return (await customerAccounts.account({auth:{uid:token.uid,token}})).customer?.id===clientId;}
+  catch {return false;}
+}
 app.get("/clientes/buscar", async (req, res) => {
   const lojaId = requireStoreId(req, res);
   if (!lojaId) return;
@@ -1532,6 +1547,8 @@ app.get("/clientes/buscar", async (req, res) => {
   }
 
   try {
+    const token=await checkoutToken(req);
+    if(!await isClientStaff(token,lojaId)) return res.status(403).json({message:'Utilize a identificação protegida por celular.'});
     const existing = await findClientByPhone(telefone);
     if (!existing) {
       return res.status(404).json({message: 'Cliente não encontrado.'});
@@ -1576,10 +1593,22 @@ app.post("/clientes", async (req, res) => {
   if (!lojaId) return;
 
   try {
-    const {data: newClient, purchaseCountIncrement, purchaseValueIncrement} = sanitizeClientPayload(req.body || {});
+    const {checkoutIdentityToken,checkoutIdentityRevision,...incoming}=req.body || {};
+    const {data: newClient, purchaseCountIncrement, purchaseValueIncrement} = sanitizeClientPayload(incoming);
     const telefone = typeof newClient.telefone === 'string' ? newClient.telefone.trim() : '';
 
-    const existing = await findClientByPhone(telefone);
+    const existing = await findClientByNormalizedPhone(normalizePhoneNumber(telefone));
+    let staff=false;
+    try {staff=await isClientStaff(await checkoutToken(req),lojaId);} catch { /* Public creation is restricted below. */ }
+    if(!staff) {
+      const context=await checkoutIdentities.read(checkoutIdentityToken,lojaId);
+      if(context.mode!==CHECKOUT_MODES.PHONE || context.revision!==checkoutIdentityRevision || context.legacyCustomerId ||
+        context.phoneHash!==hashForPrivacy(normalizePhoneNumber(telefone)) || existing ||
+        Object.keys(incoming).some(k=>!['nome','aniversario','telefone','enderecos','lojasVisitadas','numeroDeCompras','valorEmCompras','lojaId'].includes(k)) ||
+        !Array.isArray(incoming.enderecos) || incoming.enderecos.length || purchaseCountIncrement || purchaseValueIncrement) {
+        return res.status(403).json({message:'Confirme novamente a identificação. Endereços exigem verificação do telefone.'});
+      }
+    }
     const targetRef = existing ? getClientsCollection().doc(existing.id) : getClientsCollection().doc();
 
     await upsertClientDocument({
@@ -1593,7 +1622,7 @@ app.post("/clientes", async (req, res) => {
 
     const savedSnap = await targetRef.get();
     const responseStatus = existing ? 200 : 201;
-    res.status(responseStatus).json({id: targetRef.id, ...savedSnap.data()});
+    res.status(responseStatus).json(staff?{id: targetRef.id, ...savedSnap.data()}:{id:targetRef.id});
   } catch (error) {
     logger.error("Erro ao criar cliente:", error);
     res.status(500).send("Erro ao criar cliente.");
@@ -1607,6 +1636,7 @@ app.put("/clientes/:id", async (req, res) => {
 
   try {
     const {id} = req.params;
+    if(!await canManageClient(await checkoutToken(req),lojaId,id)) return res.status(403).json({message:'Confirme seu telefone para gerenciar endereços.'});
     const {newAddress, ...rawData} = req.body || {};
     const {data: clientData, purchaseCountIncrement, purchaseValueIncrement} = sanitizeClientPayload(rawData);
     const clientRef = getClientsCollection().doc(id);
@@ -2256,7 +2286,8 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
     };
 
     const checkoutIdentity=await checkoutIdentities.select({token:request.data?.checkoutIdentityToken,
-      storeId:lojaId,mode:CHECKOUT_MODES.PHONE,legacyCustomerId:found?.id || null,phone:normalizedPhone,expectedRevision:request.data?.checkoutIdentityRevision});
+      storeId:lojaId,mode:CHECKOUT_MODES.PHONE,legacyCustomerId:found?.id || null,phone:normalizedPhone,
+      phoneRecordHash:found?hashForPrivacy(normalizePhoneNumber(found.data?.telefone)):null,expectedRevision:request.data?.checkoutIdentityRevision});
     if (!found) {
       await db.collection('auditLogs').add({
         ...auditPayload,
@@ -2302,6 +2333,8 @@ exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
     const clientId = typeof request.data?.clientId === 'string' ? request.data.clientId.trim() : '';
     const nome = typeof request.data?.nome === 'string' ? request.data.nome.trim() : '';
     const aniversario = typeof request.data?.aniversario === 'string' ? request.data.aniversario.trim() : '';
+
+    if(!request.auth?.uid || !await canManageClient({...request.auth.token,uid:request.auth.uid},lojaId,clientId)) throw new HttpsError('permission-denied','Entre na conta vinculada a este cadastro.');
 
     if (!lojaId) {
       throw new HttpsError('invalid-argument', 'lojaId é obrigatório.');
@@ -2368,6 +2401,8 @@ exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async
     if (!clientId || !lojaId || !address) {
       throw new HttpsError('invalid-argument', 'Parâmetros obrigatórios ausentes.');
     }
+
+    if(!request.auth?.uid || !await canManageClient({...request.auth.token,uid:request.auth.uid},lojaId,clientId)) throw new HttpsError('permission-denied','Confirme seu telefone para gerenciar endereços.');
 
     const storeDoc = await getStoreRef(lojaId).get();
     if (!storeDoc.exists) {

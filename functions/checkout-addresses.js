@@ -31,4 +31,4 @@ function createCheckoutAddresses({db,identities}) {
   }
   return {resolve};
 }
-module.exports={addressOptions,maskedAddress,createCheckoutAddresses};
+module.exports={addressOptions,maskedAddress,createCheckoutAddresses,addressReference:reference};

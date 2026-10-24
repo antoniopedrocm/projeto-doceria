@@ -1,6 +1,6 @@
 // Render only the server's masked projection for saved weak addresses. Never
 // reconstruct a delivery destination from the visible description.
-export function renderCheckoutAddresses({document,addresses=[],weak=false,onSelect,onDelete}) {
+export function renderCheckoutAddresses({document,addresses=[],weak=false,onSelect,onDelete,onEdit,onDefault}) {
   return addresses.map((address,index)=>({address,index})).sort((a,b)=>Number(b.address?.isDefault===true)-Number(a.address?.isDefault===true)).map(({address,index})=>{
     const saved=weak && address?.saved===true;
     const card=document.createElement('div');
@@ -15,8 +15,11 @@ export function renderCheckoutAddresses({document,addresses=[],weak=false,onSele
     card.append(text);
     const button=document.createElement('button');button.type='button';button.className='use-address-btn mt-2 bg-pink-600 text-white py-2 px-3 rounded-lg text-sm';
     button.textContent='Selecionar';button.onclick=()=>onSelect(saved ? address.summary : typeof address==='string' ? address : address.enderecoCompleto,address);card.append(button);
+    for(const [label,handler] of [['Editar',onEdit],['Definir como padrão',address?.isDefault?null:onDefault]]) {
+      if(handler) {const action=document.createElement('button');action.type='button';action.className='ml-3 mt-2 text-sm text-pink-700';action.textContent=label;action.onclick=()=>handler(address);card.append(action);}
+    }
     // Phone possession does not authorize deleting a persisted private address.
-    if(!saved && onDelete) {const remove=document.createElement('button');remove.type='button';remove.className='delete-address-btn ml-3 text-sm text-red-600';remove.textContent='Excluir';remove.onclick=()=>onDelete(index);card.append(remove);}
+    if(onDelete && (!saved || onEdit)) {const remove=document.createElement('button');remove.type='button';remove.className='delete-address-btn ml-3 text-sm text-red-600';remove.textContent='Excluir';remove.onclick=()=>onDelete(index);card.append(remove);}
     return card;
   });
 }

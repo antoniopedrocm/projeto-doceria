@@ -1192,7 +1192,9 @@
         import {installCustomerAccount} from './customer-account.js?v=20261015-persistence';
         import {isLinkedCustomer,retainAuthenticatedCustomer} from './customer-session.mjs';
         import {createCheckoutIdentity,CHECKOUT_MODES} from './checkout-identity.mjs';
-        import {renderCheckoutAddresses,savedAddressFields,appendCheckoutAddress} from './checkout-addresses.mjs';
+        import {renderCheckoutAddresses,savedAddressFields} from './checkout-addresses.mjs';
+        import {createPhoneAddressManager} from './address-management.mjs';
+        import {createSmsRecaptcha} from './address-verification-firebase.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
         import {fetchPublicStore} from './store-public-config.mjs';
         import {STORE_AVAILABILITY, getStoreAvailabilityMessage} from './store-availability.mjs';
@@ -2113,7 +2115,10 @@
                 }
             });
 
-            document.getElementById('show-new-address-btn').addEventListener('click', showNewAddressSection);
+            document.getElementById('show-new-address-btn').addEventListener('click', () => {
+                if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) getPhoneAddressManager().perform('create').catch(error=>showToast(error.message,true));
+                else showNewAddressSection();
+            });
             document.getElementById('address-step1-back-btn').addEventListener('click', goBackAddressFlowStep);
             document.getElementById('address-step2-confirm-btn').addEventListener('click', () => {
                 if (!isValidLatLng(window.currentLatLng)) {
@@ -2327,9 +2332,8 @@
                 const functions = getFunctions(app, 'us-central1');
                 if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
                     // This address belongs to this checkout, never to the found profile.
-                    currentClient.enderecos=appendCheckoutAddress(currentClient.enderecos,newAddress);
-                    cancelNewAddress(true);openAddressManagementModal(currentClient);
-                    await useExistingAddress(addressText,newAddress);return;
+                    // Account writes require the server's scoped phone proof. No local draft is mistaken for a saved account address.
+                    await getPhoneAddressManager().perform('create');return;
                 }
                 if (currentClient.accountLinked) {
                     const result = await httpsCallable(functions, 'customerAddAddress')({address: newAddress});
@@ -2366,6 +2370,27 @@
                 }
                 showToast('❌ Erro ao salvar o endereço. Tente novamente.', true);
             }
+        }
+
+        let phoneAddressManager=null;
+        function getPhoneAddressManager() {
+            if(!phoneAddressManager) {
+                phoneAddressManager=createPhoneAddressManager({document,identity:checkoutIdentity,storeId:STORE_ID,
+                    request:async(method,data,scope)=>{
+                        let response;
+                        try {response=await fetch(API_BASE_URL+'/checkout/address-verification/'+method,{
+                            method:'POST',headers:{'Content-Type':'application/json'},keepalive:method==='revoke',body:JSON.stringify({...scope,...data})});}
+                        catch {throw new Error('Não foi possível conectar. Tente novamente em alguns instantes.');}
+                        const result=await response.json().catch(()=>({}));
+                        if(!response.ok) throw Object.assign(new Error(result.message || 'Não foi possível verificar o número agora.'),{code:result.code});
+                        return result;
+                    },recaptcha:createSmsRecaptcha,
+                    onAddresses:addresses=>{currentClient.enderecos=addresses;openAddressManagementModal(currentClient);}
+                });
+                window.addEventListener('pagehide',()=>phoneAddressManager.invalidate());
+                window.addEventListener('pageshow',event=>{if(event.persisted)phoneAddressManager.invalidate();});
+            }
+            return phoneAddressManager;
         }
 
 		function openAddressManagementModal(client) {
@@ -2408,7 +2433,10 @@
             if(publicStore.delivery.available && checkoutIdentity.get().mode!==CHECKOUT_MODES.GUEST) {
                 const cards=renderCheckoutAddresses({document,addresses:client.enderecos || [],
                     weak:checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE,
-                    onSelect:useExistingAddress,onDelete:deleteAddress});
+                    onSelect:useExistingAddress,onDelete:deleteAddress,
+                    ...(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE?{
+                        onEdit:address=>getPhoneAddressManager().perform('update',address).catch(error=>showToast(error.message,true)),
+                        onDefault:address=>getPhoneAddressManager().perform('default',address).catch(error=>showToast(error.message,true))}:{} )});
                 addressList.append(...cards);
             }
             // O 'else' block que exibia "Nenhum endereço cadastrado" foi removido
@@ -2417,6 +2445,9 @@
 		}
 
 		async function deleteAddress(addressIndex) {
+            if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
+                return getPhoneAddressManager().perform('delete',currentClient.enderecos[addressIndex]).catch(error=>showToast(error.message,true));
+            }
 			if (!confirm('Tem certeza que deseja excluir este endereço?')) return;
 
 			try {
@@ -2429,11 +2460,6 @@
                     : [];
                 if (!existingAddresses[addressIndex]) {
                     throw new Error('Endereço não encontrado.');
-                }
-                if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) {
-                    if(existingAddresses[addressIndex]?.saved) return;
-                    existingAddresses.splice(addressIndex,1);currentClient.enderecos=existingAddresses;
-                    openAddressManagementModal(currentClient);return;
                 }
                 if(currentClient.accountLinked) {
                     const address=existingAddresses[addressIndex];
@@ -2829,17 +2855,18 @@
                     const response = await fetch(`${API_BASE_URL}/clientes?lojaId=${encodeURIComponent(STORE_ID)}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(newClientData)
+                        body: JSON.stringify({...newClientData,checkoutIdentityToken:checkoutIdentity.get().token,checkoutIdentityRevision:checkoutIdentity.get().revision})
                     });
                     const savedClient = await response.json().catch(() => ({}));
                     if (!response.ok || !savedClient?.id) {
                         throw new Error(savedClient?.message || 'Não foi possível criar o cadastro.');
                     }
 
-                    currentClient = savedClient;
                     showToast("Novo cliente criado com sucesso!");
                     modal.classList.add('hidden');
-                    openAddressManagementModal(currentClient);
+                    // Bind the new canonical record through the same minimal lookup.
+                    phoneInput.value=phone;
+                    await handlePhoneSearch();
 
                 } catch (error) {
                     console.error("Erro ao criar cliente:", error);

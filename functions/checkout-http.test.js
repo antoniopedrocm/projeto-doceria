@@ -59,12 +59,41 @@ before(async()=>{
 after(async()=>{global.fetch=originalFetch;server.closeAllConnections();await new Promise(r=>server.close(r));await admin.app().delete();});
 const body=()=>({lojaId:store,checkoutIdentityToken:identityToken,cliente:{id:customerId,nome:'Cliente teste',telefone:'62999991234',endereco:'Retirar na Loja'},itens:[{produtoId:'product',quantity:1,preco:10}],pagamento:{forma:'Online'},subtotal:10,valorFrete:0,delivery:{pickup:true},idempotencyKey:'http-test-'+Date.now()});
 let identityCalls=0;
+test('credencial do projeto SMS separado não autentica API privada nem inicia pagamento',async()=>{
+  const parts=token.split('.');
+  const claims=JSON.parse(Buffer.from(parts[1],'base64url').toString());
+  claims.aud='demo-address-sms';claims.iss='https://securetoken.google.com/demo-address-sms';
+  const foreign=[parts[0],Buffer.from(JSON.stringify(claims)).toString('base64url'),parts[2]].join('.');
+  const priorLinks=links;assert.equal((await send(body(),foreign)).status,401);assert.equal(links,priorLinks);
+  assert.notEqual((await selectIdentity('strong_auth',null,foreign)).status,200);
+});
 const selectIdentity=async(mode,context=null,bearer=token,storeId=store)=>{
   const r=await originalFetch(base+'/checkout/identity',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer,'X-Forwarded-For':'fixture-'+(++identityCalls)},
     body:JSON.stringify({storeId,mode,checkoutIdentityToken:context})});
   return {status:r.status,data:await r.json()};
 };
 const send=async (b,bearer=token)=>{const value={...b};if(b.pagamento.forma!=='Online') delete value.checkoutIdentityToken;const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer},body:JSON.stringify(value)});return {status:r.status,data:await r.json()};};
+
+test('rotas legadas não contornam OTP nem expõem endereço por telefone/Customer ID',async()=>{
+  const target=db.doc('clientes/otp-http-private');
+  const original={nome:'Privado',telefone:'62985007777',enderecos:[{nickname:'Casa',enderecoCompleto:'Endereço privado'}]};
+  await target.set(original);
+  const currentUid=customerId.slice('http-customer-'.length);
+  for(const bearer of [null,token]) {
+    const headers={'Content-Type':'application/json',...(bearer?{Authorization:'Bearer '+bearer}:{})};
+    const get=await originalFetch(base+`/clientes/buscar?lojaId=${store}&telefone=${original.telefone}`,{headers});assert.ok(get.status>=400);
+    const put=await originalFetch(base+`/clientes/${target.id}?lojaId=${store}`,{method:'PUT',headers,body:JSON.stringify({enderecos:[]})});assert.ok(put.status>=400);
+    const post=await originalFetch(base+`/clientes?lojaId=${store}`,{method:'POST',headers,body:JSON.stringify({...original,enderecos:[]})});assert.ok(post.status>=400);
+    await assert.rejects(()=>functions.addClientAddress.run({auth:bearer?{uid:currentUid,token:{}}:null,data:{lojaId:store,clientId:target.id,address:{nickname:'Tentativa',enderecoCompleto:'Novo',lat:-16,lng:-49}}}),e=>e.code==='permission-denied');
+  }
+  assert.deepEqual((await target.get()).data(),original);
+  const lookup=await functions.lookupClientByPhone.run({data:{lojaId:store,telefone:'62985007778'},rawRequest:{ip:'otp-new-client-fixture',headers:{}}});
+  const create=await originalFetch(base+`/clientes?lojaId=${store}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nome:'Novo',telefone:'62985007778',enderecos:[],checkoutIdentityToken:lookup.checkoutIdentity.token,checkoutIdentityRevision:lookup.checkoutIdentity.revision})});
+  assert.equal(create.status,201);const result=await create.json();assert.deepEqual(Object.keys(result),['id']);
+  const bound=await functions.lookupClientByPhone.run({data:{lojaId:store,telefone:'62985007778',checkoutIdentityToken:lookup.checkoutIdentity.token,checkoutIdentityRevision:lookup.checkoutIdentity.revision},rawRequest:{ip:'otp-new-client-fixture',headers:{}}});
+  assert.equal(bound.found,true);assert.equal(bound.client.enderecos.length,0);
+  const context=await require('./checkout-identity').createCheckoutIdentity({db}).read(bound.checkoutIdentity.token,store);assert.equal(context.legacyCustomerId,result.id);
+});
 test('visitante e sessão anônima não iniciam pagamento online',async()=>{
   const b=body();
   assert.equal((await send(b,anonymousToken)).status,403);

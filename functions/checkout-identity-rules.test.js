@@ -15,5 +15,11 @@ test('contexto checkout não é legível por visitante/Customer nem editável po
       const ref=doc(context.firestore(),target);await assertFails(getDoc(ref));await assertFails(setDoc(ref,{mode:'strong_auth',ownerUid:'customer-fixture'}));
     }
     await assertFails(setDoc(doc(env.authenticatedContext('staff-fixture').firestore(),target),{mode:'strong_auth'}));
+    const privatePaths=['integrations/addressVerification/challenges/fixture','integrations/addressVerification/grants/fixture',
+      'integrations/addressVerification/limits/fixture','integrations/addressVerification/audit/fixture'];
+    await env.withSecurityRulesDisabled(async context=>{for(const path of privatePaths)await setDoc(doc(context.firestore(),path),{purpose:'ADDRESS_MANAGEMENT'});});
+    for(const context of [env.unauthenticatedContext(),env.authenticatedContext('customer-fixture'),env.authenticatedContext('staff-fixture')]) {
+      for(const path of privatePaths){const ref=doc(context.firestore(),path);await assertFails(getDoc(ref));await assertFails(setDoc(ref,{status:'approved'}));}
+    }
   } finally {await env.cleanup();}
 });
