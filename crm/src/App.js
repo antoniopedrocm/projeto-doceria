@@ -1,3 +1,5 @@
+import AdminCustomerPreview from './customer/AdminCustomerPreview';
+import {canPreviewCustomer,previewPermissionDetails,previewTarget} from './customer/adminPreviewAccess';
 import StorefrontLinks from './storefront/StorefrontLinks';
 import {normalizeRole, isActiveStaffProfile} from './customer/staffRole';
 import {createCapabilityResolver} from './customer/userCapabilities';
@@ -1012,6 +1014,7 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
   const permissions = permissionsInput || getDefaultPermissionsForRole(role);
   const normalizedRole = normalizeRole(role);
   return {
+    clientes: previewPermissionDetails(normalizedRole,permissions,null),
     'entre-lojas': {
       statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : [],
       manageTransferDestinations: normalizedRole === ROLE_OWNER
@@ -1046,6 +1049,7 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
     : [];
 
   return {
+    clientes: previewPermissionDetails(normalizedRole,permissions,details),
     'entre-lojas': {
       statuses: Array.from(new Set(validStatuses)),
       manageTransferDestinations: normalizedRole === ROLE_OWNER || (
@@ -3654,6 +3658,8 @@ const Relatorios = ({ data, user, availableStores, storeInfoMap }) => {
 function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomerContext, onLogout = logoutCanonicalSession, onStaffAccessLost }) {
   // Leaving a shell is not logout, but its foreground alarm must stop.
   useEffect(() => () => audioManager.stopAlarmSound(), []);
+  const [previewId,setPreviewId]=useState(()=>previewTarget(window.location.pathname));
+  useEffect(()=>{const pop=()=>setPreviewId(previewTarget(window.location.pathname));window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
 
@@ -9953,7 +9959,9 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
         { header: "Última Compra", render: (row) => { const metrics = getPurchaseMetrics(row); return metrics.ultimaCompra ? getJSDate(metrics.ultimaCompra)?.toLocaleDateString('pt-BR') : '-'; } },
         { header: "Status", render: (row) => (<span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'VIP' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>{row.status}</span>) }
     ];
-    const actions = [ { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('clientes', row.id) }) } ];
+    const actions = [ ...(canPreviewCustomer(user?.role,user?.permissions,user?.permissionDetails)?[{icon:Eye,label:"Visualizar como Cliente — somente leitura",onClick:row=>{
+      window.history.pushState(null,'','/admin/customer-preview/'+encodeURIComponent(row.id));setPreviewId(row.id);
+    }}]:[]), { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('clientes', row.id) }) } ];
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Clientes</h1><p className="text-gray-600 mt-1">Gerencie seus clientes</p></div><Button onClick={handleNewClient} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Novo Cliente</Button></div>
@@ -12638,6 +12646,14 @@ const effectiveStoreName = useMemo(() => {
                                             )}
                                         </label>
 
+                                        {item.id==='clientes' && moduleChecked && userFormData.applyCustomProfile && ['dono','gerente'].includes(normalizedFormRole) && (
+                                          <label className="ml-6 flex items-center gap-2 text-sm"><input type="checkbox"
+                                            checked={sanitizedDetails.clientes?.view_customer_as_readonly===true}
+                                            disabled={user?.role!==ROLE_OWNER}
+                                            onChange={event=>setUserFormData(prev=>({...prev,permissionDetails:{...prev.permissionDetails,clientes:{view_customer_as_readonly:event.target.checked}}}))}/>
+                                            Visualizar como Cliente — somente leitura (concessão pelo Dono)
+                                          </label>
+                                        )}
                                         {isEntreLojas && moduleChecked && userFormData.applyCustomProfile && (
                                             <div className="ml-6 rounded-xl border border-pink-100 bg-white p-3 space-y-3">
                                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -21606,6 +21622,10 @@ const handleSubmit = async (e) => {
       default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;
     }
   };
+
+  if(previewId) return <AdminCustomerPreview key={`${staffUid}:${previewId}`} sessionAuth={auth} uid={staffUid} target={previewId} onExit={()=>{
+    window.history.pushState(null,'','/');setPreviewId(null);setCurrentPage('clientes');
+  }}/>;
 
   return (
     // --- REMOVIDO: onClick={unlockAudio} da div principal ---

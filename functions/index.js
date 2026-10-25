@@ -55,6 +55,7 @@ const {ownsCustomer}=require('./customer-ownership');
 const {normalizeCustomerPhone}=require('./customer-phone');
 const customerAccounts = createCustomerAccount({admin, db,getStoreAvailability:config=>getStoreAvailability(config), resolveStore:(...args)=>storeResolver.resolve(...args)});
 const customerRegistry=customerAccounts.registry;
+const {createAdminCustomerPreview,mountAdminCustomerPreview,previewDetails,assertNoPreviewMutation}=require('./admin-customer-preview');
 const {createCustomerPhoneClaim}=require('./customer-phone-claim');
 const {createCheckoutIdentity,MODES:CHECKOUT_MODES}=require('./checkout-identity');
 const checkoutIdentities=createCheckoutIdentity({db});
@@ -87,19 +88,29 @@ const LOOKUP_CLIENT_ALLOWED_ORIGINS = [
   'http://localhost:5000',
   'http://127.0.0.1:5000',
 ];
-exports.customerAccount = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.account);
-exports.customerCompleteProfile = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.completeProfile);
-exports.customerPhoneClaimStatus=onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS},customerPhoneClaim.status);
-exports.customerPhoneClaimStart=onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS},customerPhoneClaim.start);
-exports.customerPhoneClaimConfirm=onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS},customerPhoneClaim.confirm);
-exports.customerUpdate = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.update);
-exports.customerOrders = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.orders);
-exports.customerOrderDetail = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.orderDetail);
-exports.customerReorderPreview = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.reorderPreview);
-exports.customerAddAddress = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.addAddress);
-exports.customerDeleteAddress = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.deleteAddress);
-exports.customerUpdateAddress = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.updateAddress);
-exports.customerSetDefaultAddress = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.setDefaultAddress);
+// Preview sessions are never credentials for Customer-self operations.
+const customerSelfCall=(handler,{readOnly=false}={})=>onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS},async request=>{
+  if(request.rawRequest?.headers?.['x-customer-preview'] || request.data?.previewSession || request.data?.mode==='ADMIN_CUSTOMER_PREVIEW') {
+    throw new HttpsError('permission-denied','Indisponível no modo administrativo.');
+  }
+  if(!readOnly) {
+    try {await assertNoPreviewMutation(db,request.auth?.uid);} catch {throw new HttpsError('permission-denied','Indisponível no modo administrativo.');}
+  }
+  return handler(request);
+});
+exports.customerAccount = customerSelfCall( customerAccounts.account,{readOnly:true});
+exports.customerCompleteProfile = customerSelfCall( customerAccounts.completeProfile);
+exports.customerPhoneClaimStatus=customerSelfCall(customerPhoneClaim.status,{readOnly:true});
+exports.customerPhoneClaimStart=customerSelfCall(customerPhoneClaim.start);
+exports.customerPhoneClaimConfirm=customerSelfCall(customerPhoneClaim.confirm);
+exports.customerUpdate = customerSelfCall( customerAccounts.update);
+exports.customerOrders = customerSelfCall( customerAccounts.orders,{readOnly:true});
+exports.customerOrderDetail = customerSelfCall( customerAccounts.orderDetail,{readOnly:true});
+exports.customerReorderPreview = customerSelfCall( customerAccounts.reorderPreview);
+exports.customerAddAddress = customerSelfCall( customerAccounts.addAddress);
+exports.customerDeleteAddress = customerSelfCall( customerAccounts.deleteAddress);
+exports.customerUpdateAddress = customerSelfCall( customerAccounts.updateAddress);
+exports.customerSetDefaultAddress = customerSelfCall( customerAccounts.setDefaultAddress);
 const STORE_INFO_DOC_ID = 'dados';
 const CONFIG_DOC_ID = 'config';
 const ROLE_OWNER = 'dono';
@@ -241,6 +252,7 @@ const getDefaultPermissionDetailsForRole = (role, permissionsInput = null) => {
   const permissions = permissionsInput || getDefaultPermissionsForRole(role);
   const normalizedRole = normalizeRole(role);
   return {
+    clientes: previewDetails(normalizedRole,permissions,null),
     'entre-lojas': {
       statuses: permissions?.['entre-lojas'] ? [...ENTRE_LOJAS_TRANSFER_STATUS_VALUES] : [],
     },
@@ -271,6 +283,7 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
   const normalizedRole = normalizeRole(role);
 
   return {
+    clientes: previewDetails(normalizedRole,permissions,details),
     'entre-lojas': {statuses},
     caixa: permissions?.fornecedores ?
       sanitizeCashPermissions(caixaDetails, role) :
@@ -440,6 +453,11 @@ const assertManagerCannotGrantUserStatusAccess = async (
   const existingFinancialDetails = targetUid ?
     (await db.collection('customProfiles').doc(targetUid).get()).data()?.permissionDetails : null;
   assertFinancialPermissionGrant(requester, requestedPermissionDetails, existingFinancialDetails);
+  if(requester.role!==ROLE_OWNER &&
+      requestedPermissionDetails?.clientes?.view_customer_as_readonly===true &&
+      existingFinancialDetails?.clientes?.view_customer_as_readonly!==true) {
+    throw new HttpsError('permission-denied','Somente um Dono pode conceder a visualização de clientes.');
+  }
 
   if (
     requester.role !== ROLE_MANAGER ||
@@ -1255,6 +1273,8 @@ const getStoreAvailability = (storeConfig, now = new Date()) => {
 const app = express();
 app.use(cors({origin: true})); // Habilita CORS para a API do cardápio
 app.use(express.json());
+const adminCustomerPreview=createAdminCustomerPreview({db,registry:customerRegistry,authorize:verifyManagementAccess});
+mountAdminCustomerPreview(app,adminCustomerPreview,checkoutToken);
 const storeResolver = createStoreResolver({db,getAvailability:getStoreAvailability,loadPaymentConfig:store=>checkoutPayments.config(store)});
 mountStoreRoutes(app,storeResolver);
 mountAddressVerification(app,addressVerification);
@@ -2118,6 +2138,7 @@ app.post("/frete/calcular", async (req, res) => {
             return res.status(400).json({message: 'Confirme novamente o endereço para calcular o frete.'});
         }
 
+        // eslint-disable-next-line no-inner-declarations -- ES2015 block-scoped helper, supported by Node 22.
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371; // Raio da Terra em km
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -2315,7 +2336,7 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
 });
 
 
-exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
+exports.updateClientProfile = customerSelfCall(async (request) => {
   try {
     const lojaId = typeof request.data?.lojaId === 'string' ? request.data.lojaId.trim() : '';
     const clientId = typeof request.data?.clientId === 'string' && request.data.clientId.trim() ? await customerRegistry.resolveId(request.data.clientId.trim()) : '';
@@ -2379,7 +2400,7 @@ exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
   }
 });
 
-exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
+exports.addClientAddress = customerSelfCall(async (request) => {
   try {
     const clientId = typeof request.data?.clientId === 'string' && request.data.clientId.trim() ? await customerRegistry.resolveId(request.data.clientId.trim()) : '';
     const lojaId = typeof request.data?.lojaId === 'string' ? request.data.lojaId.trim() : '';

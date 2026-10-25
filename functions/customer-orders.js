@@ -87,19 +87,25 @@ function serializeOrder(snapshot, storeName='') {
     itemCount:Array.isArray(d.itens) && itens.every(item=>item.quantity!==null) ? itens.reduce((sum,item)=>sum+item.quantity,0) : null,itens,
     receipt_url:receiptUrl(d.receipt_url || d.receiptUrl || d.comprovanteUrl)};
 }
-function createCustomerOrders({db,resolve}) {
+function customerReadContext(customerId,data) {
+  const reviewed=data.identityRegistryVersion===1;
+  return {customerId,customerIds:[customerId,...(reviewed && Array.isArray(data.legacyCustomerIds)?data.legacyCustomerIds.filter(id=>typeof id==='string' && /^[a-zA-Z0-9_-]{1,150}$/.test(id)):[])].slice(0,30),
+    ownerUids:customerOwnerUids(data),legacyOrderPaths:reviewed && Array.isArray(data.legacyOrderPaths)?data.legacyOrderPaths:[]};
+}
+function createCustomerOrders({db,resolve,authorizeRead}) {
   async function authorized(request) {
+    // Admin readers supply a separately authorized context, never a target user's UID.
+    if(authorizeRead) return authorizeRead(request);
     const identity=await resolve(request);
     if(!identity.customerId) throw new HttpsError('failed-precondition','Conclua seu cadastro de cliente.');
     const customer=await db.collection('clientes').doc(identity.customerId).get();
     if(!customer.exists || !ownsCustomer(customer.data(),identity.user.uid)) throw new HttpsError('permission-denied','Cadastro não autorizado.');
-    const data=customer.data(),reviewed=data.identityRegistryVersion===1;
-    return {...identity,customerIds:[identity.customerId,...(reviewed && Array.isArray(data.legacyCustomerIds)?data.legacyCustomerIds.filter(id=>typeof id==='string' && /^[a-zA-Z0-9_-]{1,150}$/.test(id)):[])].slice(0,30),
-      ownerUids:customerOwnerUids(data),legacyOrderPaths:reviewed && Array.isArray(data.legacyOrderPaths)?data.legacyOrderPaths:[]};
+    return {...identity,...customerReadContext(identity.customerId,customer.data())};
   }
   const owns=(snapshot,identity)=>snapshot.exists && validOrderPath(snapshot.ref.path) &&
     identity.customerIds.includes(snapshot.data().clienteId) && (!snapshot.data().ownerUid || identity.ownerUids.includes(snapshot.data().ownerUid)) &&
-    (!legacyOrderPathPattern.test(snapshot.ref.path) || identity.legacyOrderPaths.includes(snapshot.ref.path));
+    (!legacyOrderPathPattern.test(snapshot.ref.path) || identity.legacyOrderPaths.includes(snapshot.ref.path)) &&
+    (!identity.allowedStoreIds || identity.allowedStoreIds.includes(snapshot.ref.path.match(orderPathPattern)?.[1]));
   async function storeNames(snapshots) {
     const ids=[...new Set(snapshots.map(s=>s.ref.path.match(orderPathPattern)?.[1]).filter(Boolean))];
     if(!ids.length) return new Map();
@@ -160,4 +166,4 @@ function createCustomerOrders({db,resolve}) {
   }
   return {list,detail};
 }
-module.exports={createCustomerOrders,serializeOrder,receiptUrl,getOrderCreatedAt,PAGE_SIZE,SCAN_BATCH_SIZE,MAX_SCAN_CANDIDATES};
+module.exports={createCustomerOrders,customerReadContext,serializeOrder,receiptUrl,getOrderCreatedAt,PAGE_SIZE,SCAN_BATCH_SIZE,MAX_SCAN_CANDIDATES};

@@ -2,10 +2,12 @@ process.env.FIRESTORE_EMULATOR_HOST='127.0.0.1:8080';
 process.env.FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099';
 process.env.GCLOUD_PROJECT='demo-doceria-checkout';
 process.env.FUNCTIONS_EMULATOR='true';
-const {test,after}=require('node:test');
+const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const admin=require('firebase-admin');
 const functions=require('./index');
+const {seedRegistry}=require('./customer-registry.test-fixture');
+before(()=>seedRegistry(admin.firestore()));
 after(()=>admin.app().delete());
 test('cadastro vinculado permite identificação mínima sem conceder perfil ou ownership',async()=>{
   const db=admin.firestore();
@@ -14,6 +16,7 @@ test('cadastro vinculado permite identificação mínima sem conceder perfil ou 
   const original={nome:'Cliente Privado Teste',telefone:'62987654321',authOwnerUid:'private-owner',
     email:'private@example.test',aniversario:'2000-01-01',enderecos:[{enderecoCompleto:'Privado'}],roles:['private']};
   await ref.set(original);
+  await seedRegistry(db);
   const result=await functions.lookupClientByPhone.run({data:{telefone:'62987654321',lojaId:'phone-fixture'},
     rawRequest:{headers:{},ip:'fixture-no-auth'}});
   assert.equal(result.found,true);

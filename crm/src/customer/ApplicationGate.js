@@ -42,6 +42,9 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
         }
         const capabilities=await resolveCapabilities(auth.currentUser);
         if(!current() || capabilities.uid!==uid) return;
+        if(window.location.pathname.startsWith('/admin/customer-preview/') && !capabilities.isStaff) {
+          state.activeContext=null;setView({kind:'admin-denied'});return;
+        }
         const context=permittedContext(capabilities,target);
         state.activeContext=context;state.requestedContext=context;
         if(!context) {
@@ -76,6 +79,7 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
   },[]);
   if(view.kind==='loading') return <p role="status" className="p-8">Carregando acesso…</p>;
   if(view.kind==='blocked') return <main className="p-8"><p role="alert">Não foi possível autorizar o acesso. Recarregue ou entre novamente.</p><button onClick={logout}>Sair</button></main>;
+  if(view.kind==='admin-denied') return <main className="p-8"><p role="alert">Acesso administrativo não autorizado.</p></main>;
   if(view.kind==='staff') return <StaffApplication key={`${view.uid}:staff:${view.contextGeneration}`} staffUid={view.uid}
     canOpenCustomer={view.capabilities.isCustomer} onCustomerContext={openCustomer} onLogout={logout} onStaffAccessLost={revalidateStaff}/>;
   if(['customer','customer-login','onboarding'].includes(view.kind)) return <CustomerShell key={`${view.uid || 'login'}:customer:${view.contextGeneration || 0}`}
