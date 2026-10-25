@@ -191,10 +191,23 @@
   "smsRealSent": false,
   "financialOperation": false,
   "whatsappSent": false,
-  "visualAcceptance": "PENDING_USER_CONFIRMATION_BROWSER_UNAVAILABLE",
+  "visualAcceptance": "PASS_USER_MANUAL",
   "progress": {
     "phase9": 75,
     "global": 95,
     "phase13": 0
-  }
+  },
+  "manualAcceptance": {
+    "date": "2026-10-24",
+    "source": "user response to requested DEV reload and fresh phone identification",
+    "answer": "PASS — nome correto e endereço mascarado",
+    "scope": [
+      "expected saved nickname visible in address list",
+      "residential fields remain masked after normal reload and fresh phone identification"
+    ],
+    "newAddressRequested": false,
+    "smsRequested": false,
+    "financialOperationRequested": false
+  },
+  "finalStatus": "RESOLVED_AND_ACCEPTED_DEV"
 }

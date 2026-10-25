@@ -12,7 +12,9 @@ preservados. Testes127/127 +94/94 emulados +69/69 CRM, build/lint/diff-check PAS
 Publicados somente api/lookupClientByPhone e Hosting DEV;14/14 hashes/cache PASS.
 Dois novos lookups reais agora retornam o nome esperado, sem campos residenciais
 privados; renderer de produção com a resposta real PASS em DOM local. Correção
-funcional resolvida tecnicamente; aceite visual após reload ainda não presumido.
+funcional RESOLVIDA/HOMOLOGADA NO DEV: usuário confirmou “PASS — nome correto e
+endereço mascarado” após reload normal e nova identificação pelo mesmo telefone
+em24/10/2026. Nenhum novo cadastro, SMS ou pagamento exigido para esse aceite.
 Essa correção não encerra o gate separado de homologação Enterprise/SMS abaixo,
 nem a pendência externa InfinitePay. Fase9=75%, Global95,00%, Fase13=0%.
 
