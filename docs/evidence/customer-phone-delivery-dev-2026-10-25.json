@@ -226,7 +226,7 @@
     "productionChanged": false
   },
   "visual": {
-    "status": "PENDING_MANUAL_CONSOLIDATED_ACCEPTANCE",
+    "status": "APPROVED_MANUALLY",
     "browserAutomation": "UNAVAILABLE: kernel assets/path OS error 3",
     "requested": [
       "masked historical address final1755",
@@ -234,6 +234,22 @@
       "protected actions prompt SMS without sending",
       "strong history for reviewed group",
       "390 CSS px and 1920x889"
+    ],
+    "acceptedAt": "2026-10-25",
+    "acceptanceSource": "human_chat",
+    "response": "PASS",
+    "validated": [
+      "masked historical address final1755",
+      "12 masked saved addresses/default final0290",
+      "protected actions prompt SMS without sending",
+      "strong history for reviewed group",
+      "390 CSS px and 1920x889"
+    ],
+    "generatedScreenshots": false,
+    "exclusions": [
+      "No new SMS or provider financial operation",
+      "No claim of new UID tested with real SMS",
+      "Prior Editar Perfil/Enterprise positive OTP acceptance remains separate"
     ]
   },
   "residualDataQuality": {
@@ -255,5 +271,6 @@
     "global": 95,
     "phase13": 0
   },
-  "smokeContextsDiscarded": true
+  "smokeContextsDiscarded": true,
+  "canonicalizationStatus": "COMPLETED_AND_HOMOLOGATED_DEV"
 }

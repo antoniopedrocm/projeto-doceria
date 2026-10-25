@@ -1,6 +1,6 @@
 # Customer canônico por telefone — pré-PROD / DEV
 
-Estado: **IMPLEMENTADO, PUBLICADO E MIGRADO NO DEV; ACEITE VISUAL CONSOLIDADO PENDENTE**. Fase9=75%, Fase11=100%,
+Estado: **CONCLUÍDO E HOMOLOGADO NO DEV — ACEITE MANUAL CONSOLIDADO EM25/10/2026**. Fase9=75%, Fase11=100%,
 Fase12=100% histórico, Global95,00%, Fase13=0%. Não iniciar produção.
 Workspace C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree;
 branch feature/infinitepay-customer-auth; somente crmdoceria-9959e.
@@ -212,10 +212,16 @@ Não executar nenhuma dessas ações em ana-guimaraes nesta entrega.
   1 inválido,3 endereços globais sem owner e1 pedido só por telefone. Permanecem
   preservados para revisão de dados; não são Customers extras do mesmo telefone
   canônico nem autorização para revelar histórico.
-- ACEITE VISUAL CONSOLIDADO ainda PENDENTE: ferramenta de browser não inicializa
-  (kernel assets/path OS error3). Solicitada conferência manual estreita da lista
-  e do histórico em390 e1920x889, sem novo SMS, cadastro, pedido ou pagamento.
-  Não chamar esta evidência de print real nem declarar homologação visual feita.
+- ACEITE MANUAL CONSOLIDADO APROVADO em25/10/2026: usuário respondeu “PASS”
+  ao roteiro completo em390 CSS px e desktop1920x889. Confirmados endereço
+  histórico mascarado de Thiago final1755;12 endereços/apelidos/1 padrão no
+  grupo0290; Ver completo/Editar solicitando SMS e cancelamento sem envio;
+  histórico após Google/e-mail e indicação explícita de loja desconhecida nos
+  pedidos antigos. Evidência é declaração manual do usuário, sem print gerado
+  pelo agente. A indisponibilidade da automação do browser não invalida esse aceite.
+- CUSTOMER PHONE CANONICALIZATION: CONCLUÍDA E HOMOLOGADA NO DEV. Este aceite
+  não inclui novo SMS, claim real de UID por SMS, pagamento ou a homologação
+  positiva separada da extensão anterior Editar Perfil/Enterprise após OTP.
 - Evidência: docs/evidence/customer-phone-delivery-dev-2026-10-25.json. Snapshots,
   backups e tokens opacos de smoke privados ficam fora de Git/Hosting. Nenhum
   SMS, pagamento/refund/cancelamento financeiro ou WhatsApp foi executado.

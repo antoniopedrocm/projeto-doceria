@@ -5,7 +5,8 @@
 Autorização humana: “Aprovar aplicação da proposta no DEV”. Aplicação verificada:
 12 endereços,1 padrão,3 UIDs,4 aliases,64 referências diretas;91/91 pedidos
 inalterados. As seções abaixo preservam a proposta revisada. Aceite visual
-consolidado pós-deploy ainda pendente; ver CUSTOMER_PHONE_CANONICALIZATION.md.
+consolidado pós-deploy aprovado manualmente com “PASS” em25/10/2026;
+ver CUSTOMER_PHONE_CANONICALIZATION.md.
 Usuário confirmou que os5 cadastros são da mesma pessoa e solicitou proposta.
 Essa confirmação inicial não equivalia à autorização para aplicar. A aplicação
 só ocorreu após a aprovação explícita de25/10/2026.
