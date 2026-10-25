@@ -1,0 +1,259 @@
+{
+  "date": "2026-10-25",
+  "project": "crmdoceria-9959e",
+  "branch": "feature/infinitepay-customer-auth",
+  "runtimeCommit": "f7466d4a",
+  "toolFixCommit": "c6993f9f",
+  "approval": {
+    "group": "phone-final-0290",
+    "source": "human_chat",
+    "decision": "Aprovar aplicação da proposta no DEV",
+    "firstFreePhoneStrongRegistration": "NO_SMS"
+  },
+  "deployment": {
+    "hosting": true,
+    "hostingFiles": 59,
+    "functionsUpdated": 14,
+    "functionsCreated": 3,
+    "rules": true,
+    "indexes": false,
+    "storage": false,
+    "runtimeFiles": 42
+  },
+  "migration": {
+    "safe": {
+      "id": "customer-phone-b050e9629e3a0440",
+      "writes": 22
+    },
+    "reviewed": {
+      "id": "reviewed-phone-dc87cd6e840f6b1a",
+      "writes": 17
+    },
+    "repeat": {
+      "safe": "ALREADY_APPLIED",
+      "reviewed": "ALREADY_APPLIED",
+      "writes": 0
+    },
+    "typedBackups": "Private operator TEMP folders keyed by migration ID, not Git/Hosting",
+    "project": "crmdoceria-9959e",
+    "customerDocuments": 18,
+    "visibleCrmRecords": 14,
+    "canonicalPhoneGroups": 10,
+    "indexAllReady": true,
+    "aliasMappings": 4,
+    "uidMappings": 4,
+    "group0290": {
+      "addresses": 12,
+      "uniqueAddressIds": 12,
+      "defaults": 1,
+      "owners": 3,
+      "aliasOriginalFieldsPreserved": true,
+      "legacyOrders": 23,
+      "aliasesCorrect": true
+    },
+    "thiago": {
+      "addresses": 1,
+      "sourceFieldsPreserved": true
+    },
+    "orders": {
+      "before": 91,
+      "after": 91,
+      "identical": 91
+    },
+    "authUserWrites": 0,
+    "orderWrites": 0
+  },
+  "tests": {
+    "consolidatedLocal": {
+      "total": 289,
+      "pass": 283,
+      "preexistingFailures": 6,
+      "baseline": "1f75ed78",
+      "fixture": "freight-pages.test.js",
+      "baselineResult": "same 6 failures / 24 pass"
+    },
+    "emulated": {
+      "distinctCases": 134,
+      "note": "84 existing regression cases + 23 new cases + 27 existing Rules cases; final deltas overlap"
+    },
+    "crm": {
+      "suites": 4,
+      "pass": 60
+    },
+    "esmUiMigrationDelta": {
+      "pass": 7,
+      "overlaps": true
+    },
+    "aliasRaceDelta": {
+      "pass": 50,
+      "overlaps": true
+    },
+    "lint": {
+      "errors": 0,
+      "newWarnings": 0,
+      "existingWarning": "customer-account-core.mjs no-loop-func in pre-existing address editor callback",
+      "metadataWarnings": [
+        "Browserslist",
+        "baseline-browser-mapping"
+      ]
+    },
+    "build": {
+      "status": "PASS",
+      "main": "main.10aa0dd8.js",
+      "existingWarnings": "4 native-audio sourcemaps and browser metadata"
+    },
+    "diffCheck": "PASS"
+  },
+  "remote": {
+    "project": "crmdoceria-9959e",
+    "commit": "f7466d4a",
+    "thiagoLookup": {
+      "status": "PASS",
+      "maskedAddresses": 1
+    },
+    "group0290Lookup": {
+      "status": "PASS",
+      "maskedAddresses": 12,
+      "defaultCount": 1,
+      "globalCustomerAcrossStores": true
+    },
+    "protectedRead": {
+      "withoutGrant": 403,
+      "profileWithoutGrant": 403,
+      "claimWithoutStrongAuth": 401
+    },
+    "hashes": [
+      {
+        "file": "index.html",
+        "sha256": "3bb1f565427bf30a96b1c9f7a6d30eb8f6b4e5712deee2871a0f6faf5efcbb73",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "firebaseClientConfig.js",
+        "sha256": "bb0bf2341afa894b44bfeb14ca68d3d6dbfd5563cc2045205e2b7408c2ca546b",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "canonical-auth.mjs",
+        "sha256": "023f27616c6761b4eb845358f72ba2afb8490d622f3815033bce5b74c7dfc7f5",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "customer-account-core.mjs",
+        "sha256": "4a9ab095fd04124aee29d056a08b09942fd7e6a10b4aa48f65e51df6a4022004",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "customer-phone-claim.mjs",
+        "sha256": "face9da002fe17dba675c32839c3fcfdc029255279eccecbe6b18d5f29bd74cc",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "customer-orders-view.mjs",
+        "sha256": "24b9224e10e00fc7f1a79f35453a175fcf2d061899085773122b3e22774e7033",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "address-management.mjs",
+        "sha256": "3c961485636b85bf84f95a3710afc69468bf1cf4774d3aeeb07408fb5a753d69",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "checkout-addresses.mjs",
+        "sha256": "69d40df3ca2325ff3fdd5f3b5a6a6b2fcd01d453529f2127b6e8dd929f8cd705",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "sms-enterprise.mjs",
+        "sha256": "077fb61e3db70781bde4bb75299d1385af8b53d82b005627d5e6b5cb902eae2f",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "firebase-messaging-sw.js",
+        "sha256": "65d0989ad6c4f8afa6f184f82fdcce9df5a1d4a578adbc50da95aa7eb556f550",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio.html",
+        "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio-matriz.html",
+        "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio-garavelo.html",
+        "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "cardapio-festa.html",
+        "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+        "cache": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "file": "static/css/main.3e497307.css",
+        "sha256": "5e4409d76ca045ea96cce9dd52678d7a1db10d0a57c30fa4d3ca4061d477f6b7",
+        "cache": "public, max-age=31536000, immutable"
+      },
+      {
+        "file": "static/js/main.10aa0dd8.js",
+        "sha256": "2289fe962ffb6f478b8e4c4e29c32707cd37e8f4272552691e0c4cd082caf17a",
+        "cache": "public, max-age=31536000, immutable"
+      },
+      {
+        "file": "static/css/main.3e497307.css.map",
+        "sha256": "d5233e4f0c120268aab0a2a6b685bf7444263799ac692aa3c9cea681196904c3",
+        "cache": "public, max-age=31536000, immutable"
+      },
+      {
+        "file": "static/js/main.10aa0dd8.js.map",
+        "sha256": "0ce2962c4ccd159f36ccef268c7f448bf29b2b3a6f1ad788a4cc11ae63545ed9",
+        "cache": "public, max-age=31536000, immutable"
+      }
+    ],
+    "garavelo": {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "deliveryAvailable": false,
+      "deliveryReadiness": "BLOCKED"
+    },
+    "realSmsSent": false,
+    "paymentEndpointCalled": false,
+    "financialOperation": false,
+    "whatsapp": false,
+    "productionChanged": false
+  },
+  "visual": {
+    "status": "PENDING_MANUAL_CONSOLIDATED_ACCEPTANCE",
+    "browserAutomation": "UNAVAILABLE: kernel assets/path OS error 3",
+    "requested": [
+      "masked historical address final1755",
+      "12 masked saved addresses/default final0290",
+      "protected actions prompt SMS without sending",
+      "strong history for reviewed group",
+      "390 CSS px and 1920x889"
+    ]
+  },
+  "residualDataQuality": {
+    "customersWithoutPhone": 3,
+    "customersWithInvalidPhone": 1,
+    "unownedRootAddresses": 3,
+    "phoneOnlyOrderExcluded": 1,
+    "action": "Preserved; no inferred phone, address owner or order ownership"
+  },
+  "realSmsSent": false,
+  "financialOperation": false,
+  "paymentEndpointCalled": false,
+  "whatsapp": false,
+  "productionChanged": false,
+  "progress": {
+    "phase9": 75,
+    "phase11": 100,
+    "phase12": 100,
+    "global": 95,
+    "phase13": 0
+  },
+  "smokeContextsDiscarded": true
+}

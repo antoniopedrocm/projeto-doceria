@@ -1,0 +1,792 @@
+{
+  "date": "2026-10-24",
+  "project": "crmdoceria-9959e",
+  "auditMode": "READ_ONLY",
+  "inventory": {
+    "project": "crmdoceria-9959e",
+    "databaseEdition": "STANDARD",
+    "rootCollections": [
+      "auditLogs",
+      "checkoutNotificationAttempts",
+      "checkoutPayments",
+      "checkoutReceipts",
+      "clientes",
+      "configuracoes",
+      "contas_a_pagar",
+      "cupomUsos",
+      "cupons",
+      "customProfiles",
+      "customerAuthIdentities",
+      "empresaInfo",
+      "enderecos",
+      "estoque",
+      "fechamentosEntreLojas",
+      "fornecedores",
+      "integrations",
+      "logs",
+      "lojas",
+      "notificationEvents",
+      "notificationTokens",
+      "pedidos",
+      "pedidosCompra",
+      "pontos",
+      "producoesVitrine",
+      "produtos",
+      "rateLimits",
+      "storefrontAliases",
+      "transferDestinationAuditLogs",
+      "transferenciasEntreLojas",
+      "userStatusMetadata",
+      "users"
+    ]
+  },
+  "report": {
+    "project": "crmdoceria-9959e",
+    "totalCustomers": 18,
+    "withAnyPhone": 15,
+    "withoutPhone": 3,
+    "invalidPhone": 1,
+    "uniqueNormalizedPhones": 10,
+    "duplicatePhoneGroups": 1,
+    "recordsInDuplicateGroups": 5,
+    "customersWithInlineAddresses": 8,
+    "customersWithSingularAddress": 6,
+    "rootAddresses": 3,
+    "customersWithRootAddresses": 0,
+    "customersWithRelatedOrders": 15,
+    "customersWithDirectOrderReferences": 13,
+    "orders": 91,
+    "ordersWithCustomerId": 90,
+    "ordersWithPhone": 49,
+    "identityRecords": 4,
+    "customersWithIdentity": 4,
+    "customerFieldNames": [
+      "nome",
+      "aniversario",
+      "telefone",
+      "createdAt",
+      "enderecos",
+      "cuponsUsados",
+      "authOwnerUid",
+      "phone_number",
+      "phone_verified_at",
+      "criadoEm",
+      "numeroDeCompras",
+      "ultimaCompra",
+      "valorEmCompras",
+      "valorEmComprasCentavos",
+      "metricasComprasPorLoja",
+      "atualizadoEm",
+      "cidade",
+      "codigoIbge",
+      "documento",
+      "lojaId",
+      "lojasVisitadas",
+      "uf",
+      "cpf",
+      "email",
+      "status",
+      "cep",
+      "address",
+      "endereco",
+      "bairro",
+      "totalCompras",
+      "newAddress"
+    ],
+    "rootAddressFieldNames": [
+      "apelido",
+      "bairro",
+      "cidade",
+      "numero",
+      "complemento",
+      "cep",
+      "enderecoCompleto",
+      "latitude",
+      "longitude",
+      "createdAt",
+      "updatedAt"
+    ],
+    "orderFieldNames": [
+      "createdAt",
+      "clienteEndereco",
+      "clienteId",
+      "clienteNome",
+      "lojaId",
+      "status",
+      "order_status",
+      "telefone",
+      "payment_status",
+      "ownerUid"
+    ],
+    "duplicateGroups": [
+      {
+        "phoneMasked": "+55 ** *****-0290",
+        "refs": [
+          "C02",
+          "C04",
+          "C18",
+          "C06",
+          "C08"
+        ],
+        "recordCount": 5,
+        "strongUidRefs": [
+          "f8c3811e79e7",
+          "1edb24d4de68",
+          "f0a2495855cd"
+        ],
+        "addresses": 14,
+        "orders": 65
+      }
+    ],
+    "targets": {
+      "1755": [
+        {
+          "ref": "C07",
+          "fieldNames": [
+            "cidade",
+            "telefone",
+            "address",
+            "endereco",
+            "bairro",
+            "codigoIbge",
+            "documento",
+            "nome",
+            "lojaId",
+            "cep",
+            "lojasVisitadas",
+            "aniversario",
+            "uf",
+            "criadoEm",
+            "cpf",
+            "email",
+            "status",
+            "numeroDeCompras",
+            "metricasComprasPorLoja",
+            "atualizadoEm",
+            "ultimaCompra",
+            "valorEmCompras",
+            "valorEmComprasCentavos"
+          ],
+          "inlineAddressCount": 0,
+          "inlineAddressShapes": [],
+          "singularAddressFields": [
+            "endereco",
+            "address"
+          ],
+          "rootAddressCount": 0,
+          "rootAddressRefs": [],
+          "rootAddressShapes": [],
+          "directOrderCount": 2,
+          "phoneOrIdOrderCount": 2,
+          "createdAt": "2026-06-19T13:20:16.554Z",
+          "ownerUidRef": null,
+          "orderOwnerUidRefs": [],
+          "identityLinks": []
+        }
+      ],
+      "0290": [
+        {
+          "ref": "C02",
+          "fieldNames": [
+            "authOwnerUid",
+            "nome",
+            "telefone",
+            "phone_number",
+            "phone_verified_at",
+            "criadoEm",
+            "aniversario",
+            "numeroDeCompras",
+            "ultimaCompra",
+            "valorEmCompras",
+            "valorEmComprasCentavos",
+            "enderecos",
+            "metricasComprasPorLoja",
+            "atualizadoEm"
+          ],
+          "inlineAddressCount": 3,
+          "inlineAddressShapes": [
+            [
+              "cep",
+              "street",
+              "number",
+              "neighborhood",
+              "complement",
+              "enderecoCompleto",
+              "nickname",
+              "referencia",
+              "complemento",
+              "semNumero",
+              "isDefault",
+              "localizacaoFrequente",
+              "lat",
+              "lng",
+              "id",
+              "criadoEm"
+            ],
+            [
+              "cep",
+              "street",
+              "number",
+              "neighborhood",
+              "complement",
+              "enderecoCompleto",
+              "nickname",
+              "referencia",
+              "complemento",
+              "semNumero",
+              "isDefault",
+              "localizacaoFrequente",
+              "lat",
+              "lng",
+              "id",
+              "criadoEm"
+            ],
+            [
+              "cep",
+              "street",
+              "number",
+              "neighborhood",
+              "complement",
+              "enderecoCompleto",
+              "nickname",
+              "referencia",
+              "complemento",
+              "semNumero",
+              "isDefault",
+              "localizacaoFrequente",
+              "lat",
+              "lng",
+              "id",
+              "criadoEm"
+            ]
+          ],
+          "singularAddressFields": [],
+          "rootAddressCount": 0,
+          "rootAddressRefs": [],
+          "rootAddressShapes": [],
+          "directOrderCount": 9,
+          "phoneOrIdOrderCount": 35,
+          "createdAt": "2026-10-10T03:32:01.645Z",
+          "ownerUidRef": "f8c3811e79e7",
+          "orderOwnerUidRefs": [
+            "f8c3811e79e7"
+          ],
+          "identityLinks": [
+            {
+              "provider": "google",
+              "uidRef": "f8c3811e79e7"
+            }
+          ]
+        },
+        {
+          "ref": "C04",
+          "fieldNames": [
+            "authOwnerUid",
+            "nome",
+            "telefone",
+            "phone_number",
+            "phone_verified_at",
+            "criadoEm",
+            "enderecos",
+            "numeroDeCompras",
+            "ultimaCompra",
+            "valorEmCompras",
+            "valorEmComprasCentavos",
+            "metricasComprasPorLoja",
+            "atualizadoEm"
+          ],
+          "inlineAddressCount": 2,
+          "inlineAddressShapes": [
+            [
+              "cep",
+              "street",
+              "number",
+              "neighborhood",
+              "enderecoCompleto",
+              "nickname",
+              "referencia",
+              "complemento",
+              "semNumero",
+              "isDefault",
+              "localizacaoFrequente",
+              "lat",
+              "lng",
+              "criadoEm"
+            ],
+            [
+              "cep",
+              "street",
+              "number",
+              "neighborhood",
+              "enderecoCompleto",
+              "nickname",
+              "referencia",
+              "complemento",
+              "semNumero",
+              "isDefault",
+              "localizacaoFrequente",
+              "lat",
+              "lng",
+              "criadoEm"
+            ]
+          ],
+          "singularAddressFields": [],
+          "rootAddressCount": 0,
+          "rootAddressRefs": [],
+          "rootAddressShapes": [],
+          "directOrderCount": 0,
+          "phoneOrIdOrderCount": 35,
+          "createdAt": "2026-09-30T18:41:39.165Z",
+          "ownerUidRef": "1edb24d4de68",
+          "orderOwnerUidRefs": [
+            "f8c3811e79e7"
+          ],
+          "identityLinks": [
+            {
+              "provider": "email_password",
+              "uidRef": "1edb24d4de68"
+            }
+          ]
+        },
+        {
+          "ref": "C18",
+          "fieldNames": [
+            "aniversario",
+            "criadoEm",
+            "lojaId",
+            "status",
+            "telefone",
+            "email",
+            "endereco",
+            "cpf",
+            "documento",
+            "nome",
+            "cep",
+            "lojasVisitadas",
+            "enderecos",
+            "numeroDeCompras",
+            "ultimaCompra",
+            "valorEmCompras",
+            "valorEmComprasCentavos",
+            "metricasComprasPorLoja",
+            "atualizadoEm"
+          ],
+          "inlineAddressCount": 4,
+          "inlineAddressShapes": [
+            [
+              "enderecoCompleto",
+              "nickname",
+              "referencia",
+              "complemento",
+              "semNumero",
+              "isDefault",
+              "localizacaoFrequente",
+              "criadoEm",
+              "lat",
+              "lng"
+            ],
+            [
+              "enderecoCompleto",
+              "nickname",
+              "referencia",
+              "complemento",
+              "semNumero",
+              "isDefault",
+              "localizacaoFrequente",
+              "criadoEm",
+              "lat",
+              "lng"
+            ],
+            [
+              "enderecoCompleto",
+              "nickname",
+              "referencia",
+              "complemento",
+              "semNumero",
+              "isDefault",
+              "localizacaoFrequente",
+              "criadoEm",
+              "lat",
+              "lng"
+            ],
+            [
+              "enderecoCompleto",
+              "nickname",
+              "referencia",
+              "complemento",
+              "semNumero",
+              "isDefault",
+              "localizacaoFrequente",
+              "criadoEm",
+              "lat",
+              "lng"
+            ]
+          ],
+          "singularAddressFields": [
+            "endereco"
+          ],
+          "rootAddressCount": 0,
+          "rootAddressRefs": [],
+          "rootAddressShapes": [],
+          "directOrderCount": 32,
+          "phoneOrIdOrderCount": 64,
+          "createdAt": "2026-05-08T14:36:15.260Z",
+          "ownerUidRef": null,
+          "orderOwnerUidRefs": [
+            "f8c3811e79e7"
+          ],
+          "identityLinks": []
+        },
+        {
+          "ref": "C06",
+          "fieldNames": [
+            "nome",
+            "aniversario",
+            "endereco",
+            "telefone",
+            "status",
+            "newAddress",
+            "ultimaCompra",
+            "totalCompras",
+            "cuponsUsados",
+            "enderecos"
+          ],
+          "inlineAddressCount": 5,
+          "inlineAddressShapes": [
+            [
+              "nickname",
+              "lng",
+              "enderecoCompleto",
+              "lat",
+              "criadoEm"
+            ],
+            [
+              "nickname",
+              "enderecoCompleto",
+              "criadoEm",
+              "lng",
+              "lat"
+            ],
+            [
+              "lat",
+              "nickname",
+              "criadoEm",
+              "lng",
+              "enderecoCompleto"
+            ],
+            [
+              "lng",
+              "lat",
+              "criadoEm",
+              "nickname",
+              "enderecoCompleto"
+            ],
+            [
+              "enderecoCompleto",
+              "nickname",
+              "lat",
+              "lng",
+              "criadoEm"
+            ]
+          ],
+          "singularAddressFields": [
+            "endereco"
+          ],
+          "rootAddressCount": 0,
+          "rootAddressRefs": [],
+          "rootAddressShapes": [],
+          "directOrderCount": 23,
+          "phoneOrIdOrderCount": 36,
+          "createdAt": null,
+          "ownerUidRef": null,
+          "orderOwnerUidRefs": [
+            "f8c3811e79e7"
+          ],
+          "identityLinks": []
+        },
+        {
+          "ref": "C08",
+          "fieldNames": [
+            "authOwnerUid",
+            "nome",
+            "telefone",
+            "phone_number",
+            "phone_verified_at",
+            "enderecos",
+            "criadoEm",
+            "atualizadoEm"
+          ],
+          "inlineAddressCount": 0,
+          "inlineAddressShapes": [],
+          "singularAddressFields": [],
+          "rootAddressCount": 0,
+          "rootAddressRefs": [],
+          "rootAddressShapes": [],
+          "directOrderCount": 0,
+          "phoneOrIdOrderCount": 35,
+          "createdAt": "2026-10-11T22:34:47.060Z",
+          "ownerUidRef": "f0a2495855cd",
+          "orderOwnerUidRefs": [
+            "f8c3811e79e7"
+          ],
+          "identityLinks": [
+            {
+              "provider": "email_password",
+              "uidRef": "f0a2495855cd"
+            }
+          ]
+        }
+      ]
+    },
+    "writes": 0,
+    "strictBrazilianValidation": {
+      "validRecords": 14,
+      "missing": 3,
+      "invalid": [
+        {
+          "ref": "C09",
+          "reason": "INVALID_LENGTH_OR_COUNTRY",
+          "digitCount": 13
+        }
+      ],
+      "policy": "DDD allocated; mobile 9 digits starting 9; fixed 8 digits starting 2–5; no inferred digits"
+    },
+    "totalInlineAddresses": 19,
+    "duplicateGroupsWithDistributedData": 1
+  },
+  "legacyShapes": {
+    "targets": [
+      {
+        "ref": "C02",
+        "addressType": "undefined",
+        "addressFields": [],
+        "enderecoType": "undefined",
+        "enderecoPresent": false,
+        "addressStreetPresent": false,
+        "addressAndEnderecoSame": false,
+        "possibleDefaultCount": 1,
+        "emailPresent": false,
+        "creationUidPresent": false
+      },
+      {
+        "ref": "C04",
+        "addressType": "undefined",
+        "addressFields": [],
+        "enderecoType": "undefined",
+        "enderecoPresent": false,
+        "addressStreetPresent": false,
+        "addressAndEnderecoSame": false,
+        "possibleDefaultCount": 0,
+        "emailPresent": false,
+        "creationUidPresent": false
+      },
+      {
+        "ref": "C18",
+        "addressType": "undefined",
+        "addressFields": [],
+        "enderecoType": "string",
+        "enderecoPresent": true,
+        "addressStreetPresent": false,
+        "addressAndEnderecoSame": false,
+        "possibleDefaultCount": 2,
+        "emailPresent": true,
+        "creationUidPresent": false
+      },
+      {
+        "ref": "C06",
+        "addressType": "undefined",
+        "addressFields": [],
+        "enderecoType": "string",
+        "enderecoPresent": true,
+        "addressStreetPresent": false,
+        "addressAndEnderecoSame": false,
+        "possibleDefaultCount": 0,
+        "emailPresent": false,
+        "creationUidPresent": false
+      },
+      {
+        "ref": "C08",
+        "addressType": "undefined",
+        "addressFields": [],
+        "enderecoType": "undefined",
+        "enderecoPresent": false,
+        "addressStreetPresent": false,
+        "addressAndEnderecoSame": false,
+        "possibleDefaultCount": 0,
+        "emailPresent": false,
+        "creationUidPresent": false
+      },
+      {
+        "ref": "C07",
+        "addressType": "object",
+        "addressFields": [
+          "zip",
+          "city",
+          "cityCode",
+          "street",
+          "district",
+          "state"
+        ],
+        "enderecoType": "string",
+        "enderecoPresent": true,
+        "addressStreetPresent": true,
+        "addressAndEnderecoSame": true,
+        "possibleDefaultCount": 0,
+        "emailPresent": false,
+        "creationUidPresent": false
+      }
+    ],
+    "rootAddresses": [
+      {
+        "ref": "A1",
+        "pathDepth": 2,
+        "idLength": 20,
+        "customerIdMatches": [],
+        "phoneMatches": []
+      },
+      {
+        "ref": "A2",
+        "pathDepth": 2,
+        "idLength": 20,
+        "customerIdMatches": [],
+        "phoneMatches": []
+      },
+      {
+        "ref": "A3",
+        "pathDepth": 2,
+        "idLength": 20,
+        "customerIdMatches": [],
+        "phoneMatches": []
+      }
+    ]
+  },
+  "history": {
+    "ordersByLocation": {
+      "root": 38,
+      "store": 53,
+      "other": 0
+    },
+    "repeatedOrderDocumentIdGroups": 0,
+    "rootOrdersWithoutStore": 38,
+    "rootOrdersWithOwnerUid": 0,
+    "invalidPhoneCustomers": [
+      {
+        "phoneType": "string",
+        "digitCount": 13
+      }
+    ],
+    "customerStorePaths": [
+      "clientes"
+    ]
+  },
+  "auth": {
+    "mainProjectUserCount": 167,
+    "linked": [
+      {
+        "ref": "C02",
+        "owners": [
+          {
+            "uidRef": "f8c3811e79e7",
+            "authUserExists": true,
+            "providers": [
+              "google.com",
+              "password"
+            ],
+            "disabled": false,
+            "emailMasked": "an***@gmail.com"
+          }
+        ]
+      },
+      {
+        "ref": "C04",
+        "owners": [
+          {
+            "uidRef": "1edb24d4de68",
+            "authUserExists": true,
+            "providers": [
+              "password"
+            ],
+            "disabled": false,
+            "emailMasked": "an***@gmail.com"
+          }
+        ]
+      },
+      {
+        "ref": "C08",
+        "owners": [
+          {
+            "uidRef": "f0a2495855cd",
+            "authUserExists": true,
+            "providers": [
+              "password"
+            ],
+            "disabled": false,
+            "emailMasked": "an***@gmail.com"
+          }
+        ]
+      },
+      {
+        "ref": "C16",
+        "owners": [
+          {
+            "uidRef": "1a02eb1a70ea",
+            "authUserExists": true,
+            "providers": [
+              "google.com",
+              "password"
+            ],
+            "disabled": false,
+            "emailMasked": "an***@gmail.com"
+          }
+        ]
+      }
+    ]
+  },
+  "reviewedProposal": {
+    "state": "PROPOSAL_ONLY_NOT_APPROVED_FOR_APPLY",
+    "canonicalRef": "C02",
+    "aliasRefs": [
+      "C04",
+      "C06",
+      "C08",
+      "C18"
+    ],
+    "ownerUidRefs": [
+      "f8c3811e79e7",
+      "1edb24d4de68",
+      "f0a2495855cd"
+    ],
+    "addressCount": 12,
+    "exactDuplicates": 4,
+    "originalDefaultFlags": 3,
+    "defaultCount": 1,
+    "orderReferences": 64,
+    "orderWrites": 0,
+    "authUserWrites": 0,
+    "finalApprovalRequired": true
+  },
+  "customerWrites": 0,
+  "authWrites": 0,
+  "orderWrites": 0,
+  "productionChanged": false,
+  "realSmsSent": false,
+  "financialOperation": false,
+  "progress": {
+    "phase9": 75,
+    "phase11": 100,
+    "phase12": 100,
+    "global": 95,
+    "phase13": 0
+  },
+  "initialPolicyDecisions": {
+    "firstStrongRegistrationForFreePhone": "NO_SMS_PER_USER",
+    "existingPhoneNewIdentity": "PHONE_PROOF_REQUIRED; DIFFERENT_EXISTING_OWNER_REQUIRES_ACCOUNT_PROOF_OR_REVIEW",
+    "duplicate0290": "SAME_PERSON_CONFIRMED; PROPOSAL_ONLY; APPLY_NOT_AUTHORIZED"
+  },
+  "followup": {
+    "date": "2026-10-25",
+    "group0290": "APPROVED_AND_APPLIED",
+    "evidence": "customer-phone-delivery-dev-2026-10-25.json",
+    "note": "Counts and zero-write flags above describe the initial read-only audit, not the subsequent approved migration."
+  }
+}

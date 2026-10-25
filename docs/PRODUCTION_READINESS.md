@@ -431,3 +431,15 @@ O staging e o build atuais já estão preparados e fora do Git. Se as fontes
 mudarem antes da execução, renovar o staging e o build e revalidar os testes;
 não reaproveitar snapshot antigo inadvertidamente. Conferir artefatos/hash remoto
 e homologação específica após publicar. Não usar deploy global ou projeto PROD.
+
+### 2026-10-25 — Gate interno adicional: Customer canônico por telefone
+
+PENDENTE: implementação local e consolidação ainda não publicadas. Proposta final0290 em CUSTOMER_PHONE_CONSOLIDATION_0290_PROPOSAL.md aguarda aprovação de canônico/aliases/3 UIDs/acesso a64 pedidos; o usuário pediu o caminho para leitura. Primeiro cadastro forte de telefone livre permanece sem SMS por decisão expressa. Disco C: sem espaço bloqueia build/commit; limpeza de cache foi rejeitada pela revisão automática. Arquivo novo afetado recuperado e testes9/9+diff-check PASS, sem migração/alteração remota. Retomar suites/Rules/tooling após liberar espaço. Não declarar readiness final nem única pendência total; InfinitePay continua pendência financeira externa. Fase9=75%, Global=95%, Fase13=0%, PROD intacta.
+
+### 2026-10-25 — Entrega técnica Customer por telefone concluída no DEV
+
+Backend/Rules/Hosting publicados, migração segura e consolidação0290 aprovadas e aplicadas. Commits f7466d4a+c6993f9f;18/18 hashes remotos,91/91 pedidos inalterados,12 endereços/1 padrão/3 UIDs no grupo, Thiago com endereço histórico mascarado. Índice privado/transactions, UID/alias resolver, claim específico, bloqueio de troca simples de telefone, reserva/uso de cupons por família e isolamento de grants implementados.134 casos emulados e60 CRM; build/lint/diff/ESM PASS, preexistências documentadas. Veja CUSTOMER_PHONE_CANONICALIZATION.md e evidence/customer-phone-delivery-dev-2026-10-25.json.
+
+O bloqueio de disco anterior está RESOLVIDO. Gate atual desta extensão: ACEITE MANUAL CONSOLIDADO pós-deploy (390/1920, lista/histórico), solicitado porque CUA continua sem inicializar; não afirmar homologação visual sem resposta. A extensão anterior de edição de perfil/Enterprise após OTP mantém seu gate próprio e nenhum SMS adicional foi enviado.4 cadastros sem telefone válido,3 endereços sem owner e1 pedido apenas por telefone permanecem preservados como revisão histórica, sem invenção/merge indevido.
+
+Readiness final ainda NÃO liberada: aceites internos remanescentes e resposta técnica oficial InfinitePay. Fase9=75%, Fase11/12=100% histórico, Global95,00%, Fase13=0%. Nenhum recurso PROD, usuário Auth, SMS, pagamento/reembolso/cancelamento financeiro ou WhatsApp alterado/executado por esta entrega. Rollback lógico preparado com backups tipados e precondições; não sobrescrever alterações posteriores nem apagar histórico.
