@@ -447,12 +447,12 @@
 	<!-- Modal de Gerenciamento de Endereço -->
 	<div id="address-management-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
 		<div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
-			<div class="p-6 border-b bg-white flex justify-between items-center">
-                <div>
+			<div class="p-6 border-b bg-white flex flex-wrap gap-3 justify-between items-center">
+                <div class="min-w-0 break-words">
                     <h2 class="text-2xl font-bold text-pink-600">Seus Endereços</h2>
                     <p class="text-gray-600 mt-1">Olá, <strong id="confirm-customer-name"></strong>!</p>
                 </div>
-                <button id="edit-profile-btn" class="bg-blue-500 text-white py-2 px-4 rounded-lg font-bold hover:bg-blue-600 text-sm flex items-center gap-2">
+                <button id="edit-profile-btn" class="bg-blue-500 text-white py-2 px-4 rounded-lg font-bold hover:bg-blue-600 text-sm flex shrink-0 items-center gap-2">
                     <i class="fa-solid fa-user-pen"></i> Editar Perfil
                 </button>
             </div>
