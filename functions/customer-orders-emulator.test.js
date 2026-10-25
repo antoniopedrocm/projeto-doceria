@@ -24,9 +24,10 @@ async function send(route,data={},token=a?.idToken) {
   return {status:response.status,body:await response.json()};
 }
 before(async()=>{
+  await db.doc('integrations/customerRegistry').set({state:'READY'});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base=`http://127.0.0.1:${server.address().port}`;
   a=await signup(`history-a-${Date.now()}@example.test`);b=await signup(`history-b-${Date.now()}@example.test`);anonymous=await signup();
-  const pa=await send('/profile',{nome:'Customer A',phone:'+5562999991234'}),pb=await send('/profile',{nome:'Customer B',phone:'+5562999991234'},b.idToken);
+  const pa=await send('/profile',{nome:'Customer A',phone:'+5562999991234'}),pb=await send('/profile',{nome:'Customer B',phone:'+5562999991235'},b.idToken);
   assert.equal(pa.status,200);assert.equal(pb.status,200);customerA=pa.body.result.customer.id;customerB=pb.body.result.customer.id;
   const batch=db.batch();
   for(const store of ['history-matriz','history-garavelo']) {
@@ -76,7 +77,7 @@ test('ausência de Auth/sessão anônima não concede histórico ou detalhe priv
 });
 test('Firestore real inclui datas legadas/ausentes e mantém ordenação entre páginas',async()=>{
   const user=await signup(`history-legacy-${Date.now()}@example.test`);
-  const profile=await send('/profile',{nome:'Legacy dates',phone:'+5562999991234'},user.idToken);
+  const profile=await send('/profile',{nome:'Legacy dates',phone:'+5562999991236'},user.idToken);
   const owner={clienteId:profile.body.result.customer.id,ownerUid:user.localId,total:16};
   const batch=db.batch();
   for(let i=0;i<23;i++) batch.set(db.doc(`lojas/history-matriz/pedidos/legacy-${String(i).padStart(2,'0')}`),{
@@ -92,7 +93,7 @@ test('Firestore real inclui datas legadas/ausentes e mantém ordenação entre p
 });
 test('Firestore real atravessa lotes totalmente filtrados sem perder pedidos próprios multiloja',async()=>{
   const user=await signup(`history-filtered-${Date.now()}@example.test`);
-  const profile=await send('/profile',{nome:'Filtered batches',phone:'+5562999991234'},user.idToken);
+  const profile=await send('/profile',{nome:'Filtered batches',phone:'+5562999991237'},user.idToken);
   const owner={clienteId:profile.body.result.customer.id,total:16,createdAt:admin.firestore.Timestamp.fromMillis(1760000000000)};
   const batch=db.batch();
   for(let i=0;i<220;i++) batch.set(db.doc(`lojas/history-garavelo/pedidos/aaa-filtered-${i}`),{...owner,ownerUid:b.localId});

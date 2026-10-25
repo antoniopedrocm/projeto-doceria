@@ -35,6 +35,7 @@ function createCheckoutAddresses({db,identities}) {
     if(context.mode!=='legacy_phone' || !context.legacyCustomerId || context.revision!==revision || !/^addr_[a-f0-9]{64}$/.test(id || '')) throw unavailable();
     const ref=db.collection('clientes').doc(context.legacyCustomerId);
     const snapshot=await (transaction?transaction.get(ref):ref.get());
+    if(snapshot.data()?.canonicalStatus==='ALIAS') throw unavailable();
     const address=addressRecords(context.legacyCustomerId,snapshot.data()?.enderecos).find(a=>reference(token,context.legacyCustomerId,a.id)===id);
     if(!address || typeof address.enderecoCompleto!=='string' || !address.enderecoCompleto.trim()) throw unavailable();
     // Full persisted data stays server-side, including on quote/selection responses.

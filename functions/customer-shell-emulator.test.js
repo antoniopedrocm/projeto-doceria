@@ -44,6 +44,7 @@ test('dual-role Staff remains subject to Customer ownership; Staff-only lookup h
     await admin.auth().getUser(uid).catch(error=>{if(error.code!=='auth/user-not-found') throw error;return admin.auth().createUser({uid,email,password:'Emulator-only-credential-123!'});});
     return {uid,token:{email,firebase:{identities:{email:[email]},sign_in_provider:'password'}}};
   };
+  await db.doc('integrations/customerRegistry').set({state:'READY'});
   const dual=await user('dual-context-owner','dual-context@example.test');
   const other=await user('dual-context-other','dual-other@example.test');
   await db.doc('users/'+dual.uid).set({role:'dono',ativo:true,lojaIds:[]});

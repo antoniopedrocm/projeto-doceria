@@ -35,7 +35,7 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
     if(context.mode!=='legacy_phone' || context.revision!==revision || !context.legacyCustomerId || !/^\d{10,11}$/.test(context.legacyPhone || '') || hash(context.legacyPhone)!==context.phoneHash) throw required();
     const customerRef=db.collection('clientes').doc(context.legacyCustomerId);
     const customer=await (tx?tx.get(customerRef):customerRef.get());
-    if(!customer.exists || hash(normalizeContactPhone(customer.data().telefone))!==context.phoneRecordHash) throw required();
+    if(!customer.exists || customer.data().canonicalStatus==='ALIAS' || hash(normalizeContactPhone(customer.data().telefone))!==context.phoneRecordHash) throw required();
     return {context,customer,customerRef,contextRef:identities.ref(token),phone:'+55'+context.legacyPhone,token};
   }
   function audit(tx,s,action,channel,addressId=null) {

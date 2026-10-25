@@ -584,14 +584,14 @@ match /cupons/{cupomId} {
 // Fluxo público deve usar Cloud Function para identificação por telefone, sem leitura direta no cliente.
 // Apenas usuários autenticados (CRM) podem ler documentos de clientes.
 match /clientes/{clienteId} {
-  allow create: if isCreatingOwnClient() && !request.resource.data.keys().hasAny(['authOwnerUid', 'authIdentities']);
+  // Canonical phone uniqueness and identity/alias writes require Admin transactions.
+  allow create: if false;
   allow read: if isSignedIn() && (
     !isReadOnlyAccountant()
     || accountantHasModule('clientes')
     || accountantCanReadFiscalClient()
   );
-  allow update: if isOwnerByUid() && request.resource.data.uid == resource.data.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['authOwnerUid', 'authIdentities']);
-  allow delete: if isOwnerByUid();
+  allow update, delete: if false;
 }
 
 
@@ -844,6 +844,7 @@ match /{collection}/{document=**} {
     && (!isReadOnlyAccountant()
       || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
   allow write: if canStaffWrite()
+    && collection != 'clientes'
     && collection != 'checkoutPayments'
     && collection != 'checkoutReceipts'
     && collection != 'checkoutNotificationAttempts'

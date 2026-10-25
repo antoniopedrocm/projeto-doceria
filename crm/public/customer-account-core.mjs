@@ -1,3 +1,4 @@
+import {createCustomerPhoneClaimView} from './customer-phone-claim.mjs';
 import {customerAuthErrorMessage} from './customer-auth-errors.mjs';
 import {createCustomerAuthState} from './customer-session.mjs';
 import {isCustomerIdentity as isCustomerUser, createCustomerAreaNavigation} from './customer-area.mjs';
@@ -120,6 +121,9 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     snapshot:orderSession,isCurrent:orderSessionCurrent,onReorder:reorder.start,onClear:reorder.clear,
     onExpired:()=>authState.invalidate()});
   const busy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {message(customerAuthErrorMessage(e));} finally {button.disabled=false;}};
+  const phoneClaim=createCustomerPhoneClaimView({document,window,call,auth,onLinked:async()=>{await refresh();}});
+  let claimUid=auth.currentUser?.uid || null;
+  async function completeWithPhone(data){const result=await call('customerCompleteProfile',data);if(result.claimRequired){if(emailDialog.open)emailDialog.close();await phoneClaim.open({...result,phone:data.phone});return false;}return true;}
   const emailButtonBusy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
   const emailBusy = (form, fn) => async event => {event.preventDefault();const button=form.querySelector('button:not([type])');button.disabled=true;try {await fn();} catch(e) {emailMessage(customerAuthErrorMessage(e),true);} finally {button.disabled=false;}};
   function showEmail(mode='login') {const registering=mode==='register';emailEl('login-form').hidden=registering;emailEl('register-form').hidden=!registering;emailEl('email-title').textContent=registering?'Criar conta':'Entrar com e-mail';emailMessage('');if(!emailDialog.open) emailDialog.showModal();}
@@ -144,7 +148,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     current=nextCustomer;currentUid=current ? snapshot.uid : null;navigation.navigate(current ? requestedRoute : 'login');el('signed-out').hidden=true;el('phone').hidden=!!current;el('logout').hidden=!!current;
     if (!current) {el('new-name').value=data.nome || auth.currentUser.displayName || '';message('Informe seu celular de contato para concluir seu cadastro.');return;}
     onSession(current);message(`Olá, ${current.nome}.`);el('name').value=current.nome;el('profile-phone').value=current.telefone || '';el('birthdate').value=current.aniversario || '';
-    el('phone-state').textContent='Telefone de contato não verificado. Alterá-lo não recupera cadastros ou pedidos antigos.';
+    el('profile-phone').readOnly=true;el('phone-state').textContent='A troca do telefone exige um fluxo próprio de verificação para proteger seu cadastro.';
     el('created-state').textContent=current.createdAt ? `Conta criada em ${new Date(current.createdAt).toLocaleDateString('pt-BR')}` : '';
     el('email-state').textContent=current.email?`${current.email} — ${current.emailVerified?'Verificado':'Não verificado'}`:'E-mail não informado.';
     const passwordAccount=auth.currentUser.providerData.some(p=>p.providerId==='password') && !auth.currentUser.providerData.some(p=>p.providerId==='google.com');
@@ -175,7 +179,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   // Embedded profile/history and checkout authentication still use this API.
   const openAccount=async(route='profile')=>{checkoutIntent=false;requestedRoute=route;showAccount();message('Carregando sua conta…');await refresh();};
   el('account-google').onclick=busy(el('account-google'),googleSignIn);el('account-email').onclick=()=>showEmail();
-  el('complete').onclick=busy(el('complete'),async()=>{let digits=el('number').value.replace(/\D/g,'');if(digits.length<=11)digits='55'+digits;if(!/^55\d{10,11}$/.test(digits))throw new Error('Informe o celular com DDD.');await call('customerCompleteProfile',{phone:'+'+digits,nome:el('new-name').value});await refresh();});
+  el('complete').onclick=busy(el('complete'),async()=>{let digits=el('number').value.replace(/\D/g,'');if(digits.length<=11)digits='55'+digits;if(!/^55\d{10,11}$/.test(digits))throw new Error('Informe o celular com DDD.');if(await completeWithPhone({phone:'+'+digits,nome:el('new-name').value}))await refresh();});
   async function profileCall(name,data) {
     if(!navigation.isAllowed()) throw new Error('Entre novamente para acessar seu perfil.');
     const snapshot=authState.observe(auth.currentUser.uid);const customerId=current.id;
@@ -240,9 +244,9 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   emailEl('show-register').onclick=()=>showEmail('register');emailEl('show-login').onclick=()=>showEmail('login');
   emailEl('forgot').onclick=emailButtonBusy(emailEl('forgot'),async()=>{const email=emailEl('login-email').value.trim();if(!email)throw new Error('Informe seu e-mail.');await sendPasswordResetEmail(auth,email);emailMessage('Enviamos as instruções para redefinir sua senha.');});
   emailEl('login-form').onsubmit=emailBusy(emailEl('login-form'),async()=>{await signInWithEmailAndPassword(auth,emailEl('login-email').value.trim(),emailEl('login-password').value);await finishEmailAuth();});
-  emailEl('register-form').onsubmit=emailBusy(emailEl('register-form'),async()=>{const name=emailEl('register-name').value.trim();const phone=emailEl('register-phone').value;const password=emailEl('register-password').value;if(password!==emailEl('register-confirm').value)throw new Error('As senhas não conferem.');const credential=await createUserWithEmailAndPassword(auth,emailEl('register-email').value.trim(),password);await updateProfile(credential.user,{displayName:name});sendEmailVerification(credential.user).catch(()=>{});await call('customerCompleteProfile',{nome:name,phone});await finishEmailAuth();});
-  const unsubscribe=onAuthStateChanged(auth,user=>{const customerUser=isCustomerUser(user);authState.observe(customerUser?user.uid:null);if(!customerUser){current=null;renderSignedOut();markReady();return;}refresh().catch(()=>{}).finally(markReady);});
+  emailEl('register-form').onsubmit=emailBusy(emailEl('register-form'),async()=>{const name=emailEl('register-name').value.trim();const phone=emailEl('register-phone').value;const password=emailEl('register-password').value;if(password!==emailEl('register-confirm').value)throw new Error('As senhas não conferem.');const credential=await createUserWithEmailAndPassword(auth,emailEl('register-email').value.trim(),password);await updateProfile(credential.user,{displayName:name});sendEmailVerification(credential.user).catch(()=>{});if(await completeWithPhone({nome:name,phone}))await finishEmailAuth();});
+  const unsubscribe=onAuthStateChanged(auth,user=>{if((user?.uid || null)!==claimUid){claimUid=user?.uid || null;phoneClaim.clear();}const customerUser=isCustomerUser(user);authState.observe(customerUser?user.uid:null);if(!customerUser){current=null;renderSignedOut();markReady();return;}refresh().catch(()=>{}).finally(markReady);});
   return {getCustomer:()=>current,openAccount,ready,
     openOrder:async({storeId,orderId})=>{await openAccount('orders');if(navigation.isAllowed()) await orderHistory.openDetail({storeId,id:orderId});},
-    dispose:()=>{disposed=true;navigation.invalidate();authState.observe(null);if(typeof unsubscribe==='function')unsubscribe();authState.invalidate();orderHistory.clear();google?.removeEventListener('click',googleHandler);emailButton?.removeEventListener('click',emailHandler);dialog.remove();emailDialog.remove();}};
+    dispose:()=>{disposed=true;navigation.invalidate();authState.observe(null);if(typeof unsubscribe==='function')unsubscribe();authState.invalidate();orderHistory.clear();google?.removeEventListener('click',googleHandler);emailButton?.removeEventListener('click',emailHandler);phoneClaim.dispose();dialog.remove();emailDialog.remove();}};
 }

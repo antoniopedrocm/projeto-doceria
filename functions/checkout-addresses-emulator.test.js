@@ -4,6 +4,7 @@ process.env.GCLOUD_PROJECT='demo-doceria-checkout';
 process.env.FUNCTIONS_EMULATOR='true';
 process.env.GOOGLE_MAPS_SERVER_API_KEY='fixture-not-a-secret';
 const {test,before,after}=require('node:test');
+const {seedRegistry}=require('./customer-registry.test-fixture');
 const assert=require('node:assert/strict');
 const http=require('node:http');
 const admin=require('firebase-admin');
@@ -33,7 +34,7 @@ before(async()=>{
   await db.doc(`lojas/${store}`).set({nome:'Fixture'});
   await db.doc(`lojas/${store}/configuracoes/config`).set({manualOverride:{mode:'force_open'},frete:{lat:-16,lng:-49,valorPorKm:2,valorMinimoFrete:3}});
   customer=db.doc('clientes/address-fixture-customer');await customer.set({nome:'Cliente privado',telefone:phone,authOwnerUid:'different-private-owner',enderecos:source});
-  lookup=await find();
+  await seedRegistry(db);lookup=await find();
 });
 after(async()=>{global.fetch=originalFetch;server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await admin.app().delete();});
 test('lookup sem strong retorna resumos por cliente canônico, vários endereços/default sem dados privados',async()=>{
@@ -58,7 +59,7 @@ test('confirmação offline resolve full address dentro da transação, não ass
     itens:[{produtoId:'address-product',quantity:1,preco:10}],pagamento:{forma:'Dinheiro'},subtotal:10,valorFrete:4,distanciaFreteKm:2});
   assert.equal(result.status,200,JSON.stringify(result));
   const order=(await db.doc(`lojas/${store}/pedidos/${result.data.id}`).get()).data();
-  assert.equal(order.clienteEndereco,source[1].enderecoCompleto);assert.equal(order.clienteId,null);assert.equal(order.ownerUid,undefined);
+  assert.equal(order.clienteEndereco,source[1].enderecoCompleto);assert.equal(order.clienteId,customer.id);assert.equal(order.ownerUid,undefined);
   assert.equal(order.total,14);assert.equal(JSON.stringify(result.data).includes('completa'),false);
   assert.equal((await db.doc(`lojas/${store}/produtos/address-product`).get()).data().estoque,1);
   assert.deepEqual((await customer.get()).data().enderecos,source);
@@ -72,11 +73,11 @@ test('endereço novo sem SMS pode ser usado no checkout, sem gravar/default/alte
     delivery:{address:{enderecoCompleto:'Rua nova digitada pelo usuário',lat:-16,lng:-49},lat:-16,lng:-49},clienteLat:-16,clienteLng:-49,distanciaFreteKm:4});
   assert.equal(result.status,200,JSON.stringify(result));
   const order=(await db.doc(`lojas/${store}/pedidos/${result.data.id}`).get()).data();
-  assert.equal(order.clienteEndereco,'Rua nova digitada pelo usuário');assert.equal(order.clienteId,null);
+  assert.equal(order.clienteEndereco,'Rua nova digitada pelo usuário');assert.equal(order.clienteId,customer.id);
   assert.deepEqual((await customer.get()).data().enderecos,before.enderecos);assert.equal(order.ownerUid,undefined);
 });
 test('referência não atravessa cliente, loja, revisão, identidade, expiração ou ID forjado',async()=>{
-  await db.doc('clientes/address-other').set({nome:'Outro cliente',telefone:'62985550002',enderecos:source});
+  await db.doc('clientes/address-other').set({nome:'Outro cliente',telefone:'62985550002',enderecos:source});await seedRegistry(db);
   const other=await find('62985550002');
   const options=[{...selection(),checkoutIdentityToken:other.checkoutIdentity.token,checkoutAddressRevision:other.checkoutIdentity.revision},
     {...selection(),lojaId:'other-store'}, {...selection(),checkoutAddressRevision:0},
@@ -106,10 +107,10 @@ test('endereços globais podem ser usados em outra loja com contexto próprio, s
 });
 test('sem endereço retorna lista vazia; telefone duplicado não escolhe cadastro arbitrário nem faz merge',async()=>{
   await db.doc('clientes/address-empty').set({nome:'Sem endereço',telefone:'62985550003'});
-  assert.deepEqual((await find('62985550003')).client.enderecos,[]);
+  await seedRegistry(db);assert.deepEqual((await find('62985550003')).client.enderecos,[]);
   await db.doc('clientes/address-duplicate-a').set({nome:'A',telefone:'62985550004',enderecos:source});
   await db.doc('clientes/address-duplicate-b').set({nome:'B',telefone:'62985550004',enderecos:source});
-  await assert.rejects(()=>find('62985550004'),e=>e.code==='failed-precondition');
+  await seedRegistry(db);await assert.rejects(()=>find('62985550004'),e=>e.code==='failed-precondition');
   assert.deepEqual((await customer.get()).data().enderecos,source);
 });
 test('HTTP Salvar sem SMS → nova identificação → lista mascarada → frete/snapshot persistidos e Online bloqueado',async()=>{
@@ -130,7 +131,7 @@ test('HTTP Salvar sem SMS → nova identificação → lista mascarada → frete
   const orderBody={...ref,cliente:{id:'forged',nome:'Fixture',telefone:phone,endereco:'Texto adulterado'},itens:[{produtoId:'weak-saved-product',quantity:1,preco:10}],pagamento:{forma:'Online'},subtotal:10,valorFrete:8,distanciaFreteKm:4};
   assert.equal((await request('/checkout/confirmar',orderBody)).status,401);
   const confirmed=await request('/checkout/confirmar',{...orderBody,pagamento:{forma:'Dinheiro'}});assert.equal(confirmed.status,200,JSON.stringify(confirmed));
-  const order=(await db.doc(`lojas/${store}/pedidos/${confirmed.data.id}`).get()).data();assert.equal(order.clienteEndereco,saved.enderecoCompleto);assert.equal(order.ownerUid,undefined);assert.equal(order.clienteId,null);
+  const order=(await db.doc(`lojas/${store}/pedidos/${confirmed.data.id}`).get()).data();assert.equal(order.clienteEndereco,saved.enderecoCompleto);assert.equal(order.ownerUid,undefined);assert.equal(order.clienteId,customer.id);
   assert.equal((await customer.get()).data().enderecos.find(a=>a.id===saved.id).nickname,'Casa da minha Mãe');
   const {createCustomerAccount,digest}=require('./checkout-auth'),uid='different-private-owner',email='address-owner@example.com';
   await db.doc(`customerAuthIdentities/${digest('email_password',uid)}`).set({customerId:customer.id,uid});

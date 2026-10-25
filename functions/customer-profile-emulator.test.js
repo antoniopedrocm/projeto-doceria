@@ -20,13 +20,13 @@ before(async()=>{
   await db.doc('clientes/profile-other').set({nome:'Outro',authOwnerUid:'other-uid',enderecos:[{...address('Privado'),id:'private-id'}]});
 });
 after(()=>app.delete());
-test('perfil em transação atualiza contato e não associa Customer com telefone igual',async()=>{
+test('perfil rejeita troca de telefone sem prova e preserva registro legado separado',async()=>{
   await db.doc('clientes/profile-legacy').set({nome:'Legado',telefone:'62999990000'});
-  const result=await call('update',{nome:' Nova   Ana ',telefone:'62999990000',customerId:'profile-other'});
-  assert.equal(result.customer.id,'profile-owner');assert.equal(result.customer.nome,'Nova Ana');
-  assert.equal((await ref.get()).data().phone_verified_at,null);
+  await assert.rejects(()=>call('update',{nome:'Nova Ana',telefone:'62999990000',customerId:'profile-other'}),e=>e.code==='failed-precondition');
+  assert.equal((await ref.get()).data().telefone,'62999991234');assert.equal((await ref.get()).data().phone_verified_at,'old-proof');
   assert.equal((await db.doc('clientes/profile-legacy').get()).data().authOwnerUid,undefined);
 });
+
 test('adições concorrentes geram IDs únicos e apenas um padrão',async()=>{
   await ref.update({enderecos:[]});
   await Promise.all(['Casa','Trabalho','Outro'].map(n=>call('addAddress',{address:address(n)})));

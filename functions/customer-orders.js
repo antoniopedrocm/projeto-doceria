@@ -1,10 +1,13 @@
 /* eslint-env es2020 */
 const {HttpsError} = require('firebase-functions/v2/https');
+const {ownsCustomer,customerOwnerUids}=require('./customer-ownership');
 const {FieldPath} = require('firebase-admin/firestore');
 const PAGE_SIZE = 20;
 const SCAN_BATCH_SIZE = 100;
 const MAX_SCAN_CANDIDATES = 1000;
 const orderPathPattern = /^lojas\/([a-zA-Z0-9_-]{1,150})\/pedidos\/([a-zA-Z0-9_-]{1,150})$/;
+const legacyOrderPathPattern=/^pedidos\/([a-zA-Z0-9_-]{1,150})$/;
+const validOrderPath=path=>orderPathPattern.test(path) || legacyOrderPathPattern.test(path);
 const text = (value, max=300) => typeof value==='string' || typeof value==='number' ? String(value).slice(0,max) : '';
 const number = value => (typeof value==='number' || (typeof value==='string' && value.trim()!=='')) && Number.isFinite(Number(value)) ? Number(value) : null;
 const missing = () => {throw new HttpsError('not-found','Pedido não encontrado.');};
@@ -58,7 +61,8 @@ function paymentMethod(value) {
 }
 function serializeOrder(snapshot, storeName='') {
   const d=snapshot.data() || {}, path=snapshot.ref.path;
-  const [,storeId]=path.match(orderPathPattern);
+  const storeId=path.match(orderPathPattern)?.[1] || null;
+  const legacy=!storeId;
   const rawItems=Array.isArray(d.itens) ? d.itens : [];
   const itens=rawItems.map(value=>{
     const item=value && typeof value==='object' ? value : {};
@@ -72,8 +76,8 @@ function serializeOrder(snapshot, storeName='') {
   });
   const address=historicalAddress(d.clienteEndereco);
   const pickup=d.tipoFrete==='retirada' || address==='Retirar na Loja';
-  return {id:snapshot.id,storeId,lojaId:storeId,number:text(d.numeroPedido || d.numero || snapshot.id,150),
-    storeName:text(d.lojaNome || d.storeName || storeName || storeId,160),
+  return {id:snapshot.id,storeId,lojaId:storeId,...(legacy?{source:'legacy'}:{}),number:text(d.numeroPedido || d.numero || snapshot.id,150),
+    storeName:legacy?'Histórico — loja não informada':text(d.lojaNome || d.storeName || storeName || storeId,160),
     createdAt:getOrderCreatedAt(d),
     status:text(d.order_status || d.status,80), payment_status:text(d.payment_status,80) || null,
     requiresReview:d.requiresReview===true, formaPagamento:paymentMethod(d.formaPagamento || d.pagamento?.forma),
@@ -88,24 +92,27 @@ function createCustomerOrders({db,resolve}) {
     const identity=await resolve(request);
     if(!identity.customerId) throw new HttpsError('failed-precondition','Conclua seu cadastro de cliente.');
     const customer=await db.collection('clientes').doc(identity.customerId).get();
-    if(!customer.exists || customer.data().authOwnerUid!==identity.user.uid) throw new HttpsError('permission-denied','Cadastro não autorizado.');
-    return identity;
+    if(!customer.exists || !ownsCustomer(customer.data(),identity.user.uid)) throw new HttpsError('permission-denied','Cadastro não autorizado.');
+    const data=customer.data(),reviewed=data.identityRegistryVersion===1;
+    return {...identity,customerIds:[identity.customerId,...(reviewed && Array.isArray(data.legacyCustomerIds)?data.legacyCustomerIds.filter(id=>typeof id==='string' && /^[a-zA-Z0-9_-]{1,150}$/.test(id)):[])].slice(0,30),
+      ownerUids:customerOwnerUids(data),legacyOrderPaths:reviewed && Array.isArray(data.legacyOrderPaths)?data.legacyOrderPaths:[]};
   }
-  const owns=(snapshot,identity)=>snapshot.exists && orderPathPattern.test(snapshot.ref.path) &&
-    snapshot.data().clienteId===identity.customerId && (!snapshot.data().ownerUid || snapshot.data().ownerUid===identity.user.uid);
+  const owns=(snapshot,identity)=>snapshot.exists && validOrderPath(snapshot.ref.path) &&
+    identity.customerIds.includes(snapshot.data().clienteId) && (!snapshot.data().ownerUid || identity.ownerUids.includes(snapshot.data().ownerUid)) &&
+    (!legacyOrderPathPattern.test(snapshot.ref.path) || identity.legacyOrderPaths.includes(snapshot.ref.path));
   async function storeNames(snapshots) {
-    const ids=[...new Set(snapshots.map(s=>s.ref.path.match(orderPathPattern)[1]))];
+    const ids=[...new Set(snapshots.map(s=>s.ref.path.match(orderPathPattern)?.[1]).filter(Boolean))];
     if(!ids.length) return new Map();
     const stores=await db.getAll(...ids.map(id=>db.doc(`lojas/${id}`)));
     return new Map(stores.map(s=>[s.id,text(s.data()?.nome,160)]));
   }
   async function list(request) {
     const identity=await authorized(request);
-    const query=db.collectionGroup('pedidos').where('clienteId','==',identity.customerId).orderBy(FieldPath.documentId());
+    const queries=identity.customerIds.map(id=>db.collectionGroup('pedidos').where('clienteId','==',id).orderBy(FieldPath.documentId()));
     let previous=null;
     const cursor=request.data?.cursor;
     if(cursor!==undefined && cursor!==null) {
-      if(typeof cursor!=='string' || !orderPathPattern.test(cursor)) missing();
+      if(typeof cursor!=='string' || !validOrderPath(cursor)) missing();
       previous=await db.doc(cursor).get();
       if(!owns(previous,identity)) missing();
     }
@@ -113,7 +120,9 @@ function createCustomerOrders({db,resolve}) {
     // candidates in bounded physical batches, retaining the next logical page, never all data.
     // The physical cursor advances through rejected candidates; the public cursor is the
     // authorized boundary in normalized date/path order (not the physical document order).
-    const eligible=[];let scanned=0,physicalCursor=null,exhausted=false;
+    const eligible=[];let scanned=0;
+    for(const query of queries) {
+    let physicalCursor=null,exhausted=false;
     for(let batch=0;batch<=MAX_SCAN_CANDIDATES/SCAN_BATCH_SIZE;batch++) {
       const remaining=MAX_SCAN_CANDIDATES-scanned;
       const size=Math.min(SCAN_BATCH_SIZE,remaining+1);
@@ -131,17 +140,19 @@ function createCustomerOrders({db,resolve}) {
       if(result.docs.length<size) {exhausted=true;break;}
     }
     if(!exhausted) throw new HttpsError('resource-exhausted','Histórico excede o limite seguro de consulta.');
+    }
     const own=eligible.slice(0,PAGE_SIZE);
     const names=await storeNames(own);
     const last=own.at(-1), hasMore=eligible.length>PAGE_SIZE;
-    return {orders:own.map(s=>serializeOrder(s,names.get(s.ref.path.match(orderPathPattern)[1]))),
+    return {orders:own.map(s=>serializeOrder(s,names.get(s.ref.path.match(orderPathPattern)?.[1]))),
       nextCursor:hasMore?last.ref.path:null,hasMore};
   }
   async function detail(request) {
     const identity=await authorized(request);
-    if(typeof request.data?.storeId!=='string' || typeof request.data?.orderId!=='string') missing();
-    const path=`lojas/${request.data?.storeId}/pedidos/${request.data?.orderId}`;
-    if(!orderPathPattern.test(path)) missing();
+    if(typeof request.data?.orderId!=='string') missing();
+    const legacy=request.data.source==='legacy';
+    const path=legacy?`pedidos/${request.data.orderId}`:`lojas/${request.data?.storeId}/pedidos/${request.data.orderId}`;
+    if(!validOrderPath(path)) missing();
     const snapshot=await db.doc(path).get();
     if(!owns(snapshot,identity)) missing();
     const names=await storeNames([snapshot]);

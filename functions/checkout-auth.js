@@ -2,6 +2,9 @@ const {createHash, randomUUID} = require('node:crypto');
 const {HttpsError} = require('firebase-functions/v2/https');
 const {FieldValue} = require('firebase-admin/firestore');
 const {createCustomerOrders} = require('./customer-orders');
+const {createCustomerRegistry}=require('./customer-registry');
+const {normalizeCustomerPhone}=require('./customer-phone');
+const {ownsCustomer}=require('./customer-ownership');
 const {createCustomerReorder} = require('./customer-reorder');
 const digest = (provider, subject) => createHash('sha256').update(`${provider}:${subject}`).digest('hex');
 const fail = (code, message) => { throw new HttpsError(code, message); };
@@ -19,10 +22,7 @@ function verifiedIdentity(token, user) {
   fail('unauthenticated', 'Entre com Google ou e-mail para acessar sua conta.');
 }
 function normalizeContactPhone(value) {
-  let digits = String(value || '').replace(/\D/g, '');
-  if (digits.startsWith('55') && digits.length >= 12) digits = digits.slice(2);
-  if (!/^\d{10,11}$/.test(digits)) fail('invalid-argument', 'Informe um celular válido com DDD.');
-  return digits;
+  try {return normalizeCustomerPhone(value).national;} catch {fail('invalid-argument','Informe um telefone brasileiro válido com DDD.');}
 }
 function normalizeName(value) {
   const name = typeof value === 'string' ? value.normalize('NFC').trim().replace(/\s+/gu, ' ') : '';
@@ -67,7 +67,7 @@ function normalizeBirthdate(value) {
 }
 function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNAVAILABLE', resolveStore}) {
   const stamp = () => FieldValue.serverTimestamp();
-  const identities = db.collection('customerAuthIdentities');
+  const registry=createCustomerRegistry({db});
   async function identity(request) {
     if (!request.auth?.uid) fail('unauthenticated', 'Entre com Google ou e-mail.');
     const user = await admin.auth().getUser(request.auth.uid);
@@ -75,34 +75,24 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
   }
   async function resolve(request) {
     const id = await identity(request);
-    const snap = await identities.doc(digest(id.provider, id.sub)).get();
-    return {...id, customerId: snap.data()?.customerId || null};
+    return registry.resolveStrongIdentity(id);
   }
   const safeProfile = (id, d, identity) => ({id, accountLinked:true, nome: d.nome || '', telefone: d.telefone || '', aniversario: d.aniversario || '', enderecos: addressRecords(id, d.enderecos), email: identity.user.email || '', emailVerified: !!identity.user.emailVerified, authProvider: identity.provider, createdAt: d.criadoEm?.toDate?.().toISOString() || null});
   async function account(request) {
     const id = await resolve(request);
     if (!id.customerId) return {needsPhone: true, nome: id.user.displayName || '', email: id.user.email || '', emailVerified: !!id.user.emailVerified, authProvider: id.provider};
     const snap = await db.collection('clientes').doc(id.customerId).get();
-    if (!snap.exists || snap.data().authOwnerUid !== id.user.uid) fail('not-found', 'Cadastro indisponível.');
+    if (!snap.exists || !ownsCustomer(snap.data(),id.user.uid)) fail('not-found', 'Cadastro indisponível.');
     return {customer: safeProfile(snap.id, snap.data(), id)};
   }
   async function completeProfile(request) {
     const id = await identity(request);
     const national = normalizeContactPhone(request.data?.phone);
     const requestedName = normalizeName(request.data?.nome || id.user.displayName || 'Cliente');
-    const identityRef = identities.doc(digest(id.provider, id.sub));
-    const newRef = db.collection('clientes').doc();
-    await db.runTransaction(async tx => {
-      const identitySnap = await tx.get(identityRef);
-      const customerId = identitySnap.data()?.customerId || newRef.id;
-      const ref = db.collection('clientes').doc(customerId);
-      const customer = await tx.get(ref);
-      if (customer.data()?.authOwnerUid && customer.data().authOwnerUid !== id.user.uid) fail('already-exists', 'Este cadastro já está vinculado a outra conta.');
-      if (!customer.exists) tx.set(ref, {authOwnerUid: id.user.uid, nome: requestedName,
-        telefone: national, phone_number: `+55${national}`, phone_verified_at: null,
-        enderecos: [], criadoEm: stamp(), atualizadoEm: stamp()});
-      tx.set(identityRef, {provider: id.provider, subject: id.sub, customerId, uid: id.user.uid, updatedAt: stamp()});
-    });
+    let result;
+    try {result=await registry.createForStrong({identity:id,phone:national,nome:requestedName});}
+    catch(e){fail(e.httpStatus===503?'unavailable':e.httpStatus===400?'invalid-argument':'failed-precondition',e.message);}
+    if(result.claimRequired) return result;
     return account(request);
   }
   async function update(request) {
@@ -114,9 +104,9 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
     const phone = Object.prototype.hasOwnProperty.call(request.data || {}, 'telefone') ? normalizeContactPhone(request.data.telefone) : null;
     await db.runTransaction(async tx => {
       const ref=db.collection('clientes').doc(id.customerId); const customer=await tx.get(ref);
-      if(!customer.exists || customer.data().authOwnerUid!==id.user.uid) fail('permission-denied','Cadastro não autorizado.');
+      if(!customer.exists || !ownsCustomer(customer.data(),id.user.uid)) fail('permission-denied','Cadastro não autorizado.');
       const patch={...fields};
-      if (phone !== null && phone !== customer.data().telefone) Object.assign(patch, {telefone: phone, phone_number: `+55${phone}`, phone_verified_at: null});
+      if(phone!==null) {try {registry.assertPhoneUnchanged(customer.data(),phone);} catch {fail('failed-precondition','A troca de telefone exige um fluxo de verificação próprio.');}}
       tx.update(ref, patch);
     });
     return account(request);
@@ -127,7 +117,7 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
     const address=normalizeAddress(request.data?.address);
     await db.runTransaction(async tx=>{
       const ref=db.collection('clientes').doc(id.customerId);const snap=await tx.get(ref);
-      if(!snap.exists || snap.data().authOwnerUid!==id.user.uid) fail('permission-denied','Cadastro não autorizado.');
+      if(!snap.exists || !ownsCustomer(snap.data(),id.user.uid)) fail('permission-denied','Cadastro não autorizado.');
       let addresses=addressRecords(id.customerId, snap.data().enderecos);
       if(addresses.length>=20) fail('resource-exhausted','Você atingiu o limite de endereços salvos.');
       if(address.isDefault) addresses=addresses.map(item=>typeof item==='object'?{...item,isDefault:false}:item);
@@ -143,7 +133,7 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
     if(!request.data?.addressId && (!Number.isInteger(index) || index<0)) fail('invalid-argument','Endereço inválido.');
     await db.runTransaction(async tx=>{
       const ref=db.collection('clientes').doc(id.customerId);const snap=await tx.get(ref);
-      if(snap.data()?.authOwnerUid!==id.user.uid) fail('permission-denied','Cadastro não autorizado.');
+      if(!ownsCustomer(snap.data(),id.user.uid)) fail('permission-denied','Cadastro não autorizado.');
       const addresses=addressRecords(id.customerId, snap.data().enderecos);
       const position=request.data.addressId ? addresses.findIndex(a=>a.id===request.data.addressId) : index;
       const address=addresses[position];
@@ -162,7 +152,7 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
     if(!makeDefault && (!input || typeof input!=='object' || Array.isArray(input))) fail('invalid-argument','Dados de endereço inválidos.');
     await db.runTransaction(async tx=>{
       const ref=db.collection('clientes').doc(id.customerId); const snap=await tx.get(ref);
-      if(!snap.exists || snap.data().authOwnerUid!==id.user.uid) fail('permission-denied','Cadastro não autorizado.');
+      if(!snap.exists || !ownsCustomer(snap.data(),id.user.uid)) fail('permission-denied','Cadastro não autorizado.');
       let addresses=addressRecords(id.customerId,snap.data().enderecos);
       const index=addresses.findIndex(a=>a.id===request.data.addressId);
       if(index<0) fail('not-found','Endereço não encontrado. Atualize sua conta.');
@@ -181,7 +171,7 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
   }
   const history=createCustomerOrders({db,resolve});
   const reorderPreview=createCustomerReorder({db,readOrder:history.detail,getStoreAvailability,resolveStore});
-  return {account, completeProfile, update, orders:history.list, orderDetail:history.detail, reorderPreview, addAddress, resolve, deleteAddress,
+  return {account, completeProfile, update, orders:history.list, orderDetail:history.detail, reorderPreview, addAddress, resolve, identity, registry, deleteAddress,
     updateAddress: request=>mutateAddress(request,false), setDefaultAddress: request=>mutateAddress(request,true)};
 }
 module.exports = {createCustomerAccount, verifiedIdentity, normalizeContactPhone, normalizeAddress, normalizeBirthdate, normalizeName, addressRecords, digest};

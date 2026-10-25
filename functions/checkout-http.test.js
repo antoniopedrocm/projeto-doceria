@@ -8,6 +8,7 @@ const assert=require('node:assert/strict');
 const http=require('node:http');
 const admin=require('firebase-admin');
 const {digest}=require('./checkout-auth');
+const {seedRegistry}=require('./customer-registry.test-fixture');
 const originalFetch=global.fetch;
 let links=0;
 let nextLinkError=null;
@@ -48,6 +49,7 @@ before(async()=>{
   const account=await accountResponse.json();token=account.idToken;assert.ok(token,'email emulator token');
   customerId=`http-customer-${account.localId}`;
   await db.doc(`clientes/${customerId}`).set({authOwnerUid:account.localId,nome:'Cliente teste',telefone:'62999991234',cuponsUsados:[]});
+  await seedRegistry(db);
   await db.doc(`customerAuthIdentities/${digest('email_password',account.localId)}`).set({customerId,provider:'email_password',subject:account.localId,uid:account.localId});
   await db.doc(`lojas/${store}`).set({nome:'Loja de teste'});
   await db.doc(`lojas/${store}/configuracoes/config`).set({manualOverride:{mode:'force_open'},frete:{lat:-16,lng:-49,valorPorKm:2}});
@@ -172,7 +174,7 @@ test('pedido weak não herda ownership nem altera Customer mesmo com token váli
   const data=await r.json();assert.equal(r.status,200,JSON.stringify(data));
   const order=(await db.doc(`lojas/${store}/pedidos/${data.id}`).get()).data();
   assert.equal(order.checkoutIdentity.mode,'legacy_phone');assert.equal(order.checkoutIdentity.legacyClientId,customerId);
-  assert.equal(order.clienteId,null);assert.equal(order.ownerUid,undefined);assert.equal(order.paymentId,undefined);
+  assert.equal(order.clienteId,customerId);assert.equal(order.ownerUid,undefined);assert.equal(order.paymentId,undefined);
   assert.deepEqual((await customer.get()).data(),before);assert.equal(links,priorLinks);
 });
 test('HTTP online reserva uma vez e devolve o mesmo checkout no retry',async()=>{

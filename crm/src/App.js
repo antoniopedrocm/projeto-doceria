@@ -4569,7 +4569,7 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
                       (snapshot) => {
                             if (!isMounted) return;
 
-                            clientesDataRef.current = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+                            clientesDataRef.current = snapshot.docs.filter(docSnap => docSnap.data().canonicalStatus !== 'ALIAS').map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
                             const computedData = recomputeDataForView();
                             setData(computedData);
 
@@ -5016,6 +5016,10 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
     try {
         assertWritableRole();
         const storeId = targetStoreId || resolveActiveStoreForWrite();
+        if (section === 'clientes') {
+            await callClientApi('/clientes/' + encodeURIComponent(id), { method: 'DELETE' });
+            return;
+        }
         await runWithRetry(
             `deleteItem:${section}`,
             () => deleteDoc(getStoreDocRef(storeId, section, id)),

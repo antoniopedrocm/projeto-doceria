@@ -51,15 +51,20 @@ exports.whatsappWebhook = onRequest({region: 'southamerica-east1', timeoutSecond
     createWhatsAppWebhook({db, logger}));
 const auth = admin.auth();
 const {createCustomerAccount} = require('./checkout-auth');
+const {ownsCustomer}=require('./customer-ownership');
+const {normalizeCustomerPhone}=require('./customer-phone');
 const customerAccounts = createCustomerAccount({admin, db,getStoreAvailability:config=>getStoreAvailability(config), resolveStore:(...args)=>storeResolver.resolve(...args)});
+const customerRegistry=customerAccounts.registry;
+const {createCustomerPhoneClaim}=require('./customer-phone-claim');
 const {createCheckoutIdentity,MODES:CHECKOUT_MODES}=require('./checkout-identity');
 const checkoutIdentities=createCheckoutIdentity({db});
 const {addressOptions,createCheckoutAddresses}=require('./checkout-addresses');
 const checkoutAddresses=createCheckoutAddresses({db,identities:checkoutIdentities});
 const {createAddressVerificationProvider}=require('./address-verification-provider');
 const {createAddressVerification,mountAddressVerification}=require('./address-verification');
-const addressVerification=createAddressVerification({db,identities:checkoutIdentities,
-  provider:createAddressVerificationProvider({db,admin})});
+const addressProvider=createAddressVerificationProvider({db,admin});
+const addressVerification=createAddressVerification({db,identities:checkoutIdentities,provider:addressProvider});
+const customerPhoneClaim=createCustomerPhoneClaim({db,accounts:customerAccounts,provider:addressProvider});
 const {createPaymentService, cents, paymentError} = require('./checkout-payment');
 const checkoutPayments = createPaymentService({db, admin});
 const {paymentPrefill}=require('./payment-prefill');
@@ -84,6 +89,9 @@ const LOOKUP_CLIENT_ALLOWED_ORIGINS = [
 ];
 exports.customerAccount = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.account);
 exports.customerCompleteProfile = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.completeProfile);
+exports.customerPhoneClaimStatus=onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS},customerPhoneClaim.status);
+exports.customerPhoneClaimStart=onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS},customerPhoneClaim.start);
+exports.customerPhoneClaimConfirm=onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS},customerPhoneClaim.confirm);
 exports.customerUpdate = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.update);
 exports.customerOrders = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.orders);
 exports.customerOrderDetail = onCall({cors:LOOKUP_CLIENT_ALLOWED_ORIGINS}, customerAccounts.orderDetail);
@@ -1311,7 +1319,7 @@ const sanitizeClientPayload = (input = {}) => {
     ...rest
   } = input || {};
 
-  for (const key of ['authOwnerUid', 'uid', 'authIdentities', 'customerId', 'phoneVerified', 'payment_status', 'order_status']) delete rest[key];
+  for (const key of ['id', 'clientId', 'clienteId', 'authOwnerUid', 'authOwnerUids', 'identityRegistryVersion', 'canonicalCustomerId', 'canonicalStatus', 'legacyCustomerIds', 'legacyOrderPaths', 'normalizedPhone', 'phoneOwnership', 'phone_number', 'phone_verified_at', 'uid', 'authIdentities', 'customerId', 'phoneVerified', 'payment_status', 'order_status']) delete rest[key];
   delete rest.numeroDeComprasIncrement;
   delete rest.valorEmComprasIncrement;
 
@@ -1331,41 +1339,9 @@ const sanitizeClientPayload = (input = {}) => {
   };
 };
 
-const findClientByPhone = async (telefone) => {
-  if (!telefone) return null;
-  const snapshot = await admin.firestore().collection(CLIENTS_COLLECTION).where('telefone', '==', telefone).limit(1).get();
-  if (snapshot.empty) return null;
-  const docSnap = snapshot.docs[0];
-  return {id: docSnap.id, data: docSnap.data()};
-};
+const findClientByPhone = async phone=>findClientByNormalizedPhone(phone);
 
-const normalizePhoneNumber = (value) => {
-  if (typeof value !== 'string' && typeof value !== 'number') return '';
-
-  let digits = String(value).replace(/\D/g, '');
-
-  if (digits.startsWith('55') && digits.length > 11) {
-    digits = digits.slice(2);
-  }
-
-  if (digits.length < 10 || digits.length > 11) return '';
-  return digits;
-};
-
-const getPhoneLookupCandidates = (normalizedPhone) => {
-  if (!normalizedPhone) return [];
-
-  const candidates = [normalizedPhone];
-  if (normalizedPhone.length === 11 && normalizedPhone[2] === '9') {
-    candidates.push(`${normalizedPhone.slice(0, 2)}${normalizedPhone.slice(3)}`);
-  }
-
-  if (normalizedPhone.length === 10) {
-    candidates.push(`${normalizedPhone.slice(0, 2)}9${normalizedPhone.slice(2)}`);
-  }
-
-  return Array.from(new Set(candidates));
-};
+const normalizePhoneNumber=value=>{try{return normalizeCustomerPhone(value).national;}catch{return '';}};
 
 const abbreviateName = (name) => {
   if (typeof name !== 'string' || !name.trim()) return 'Cliente';
@@ -1396,15 +1372,11 @@ const buildSafeClientPayload = (clientData = {}) => ({
   nomeAbreviado: abbreviateName(clientData.nome),
 });
 
-const findClientByNormalizedPhone = async (normalizedPhone) => {
-  const candidates = getPhoneLookupCandidates(normalizedPhone);
-  const matches=new Map();
-  for (const candidate of candidates) {
-    const snapshot=await getClientsCollection().where('telefone','==',candidate).limit(2).get();
-    for(const doc of snapshot.docs) matches.set(doc.id,{id:doc.id,data:doc.data(),matchedPhone:candidate});
-    if(matches.size>1) throw new HttpsError('failed-precondition','Não foi possível identificar um cadastro único. Entre com Google ou e-mail.');
-  }
-  return matches.values().next().value || null;
+const findClientByNormalizedPhone=async phone=>{
+  const result=await customerRegistry.resolvePhone(phone);
+  if(!result.customerId)return null;
+  const coupons=await customerRegistry.couponState(result.customerId);
+  return {id:result.customerId,data:{...result.customer.data(),cuponsUsados:coupons.used,cuponsReservados:coupons.reserved},matchedPhone:result.phone.national};
 };
 
 const hashForPrivacy = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -1481,6 +1453,9 @@ const upsertClientDocument = async ({
   const timestamp = FieldValue.serverTimestamp();
   return db.runTransaction(async (transaction) => {
     const snap = await transaction.get(targetRef);
+    if(!snap.exists) throw createHttpError(404,'Cliente não encontrado.');
+    if(snap.data().canonicalStatus==='ALIAS') throw createHttpError(409,'Este cadastro foi consolidado. Reabra o cadastro principal.');
+    if(data.telefone) customerRegistry.assertPhoneUnchanged(snap.data(),data.telefone);
     if (snap.data()?.authOwnerUid) throw createHttpError(403, 'Use Minha Conta para alterar este cadastro.');
     const payload = {
       ...data,
@@ -1554,13 +1529,6 @@ app.get("/clientes/buscar", async (req, res) => {
       return res.status(404).json({message: 'Cliente não encontrado.'});
     }
 
-    await upsertClientDocument({
-      targetRef: getClientsCollection().doc(existing.id),
-      data: existing.data,
-      lojaId,
-      setCreatedIfMissing: true,
-    });
-
     const refreshed = await getClientsCollection().doc(existing.id).get();
     return res.status(200).json({id: refreshed.id, ...refreshed.data()});
   } catch (error) {
@@ -1579,7 +1547,7 @@ app.get("/clientes", async (req, res) => {
     if (!staff || staff.ativo === false || staff.status === 'inativo' || !['dono', 'gerente', 'atendente'].includes(staff.role)) return res.status(403).json({message:'Acesso restrito à equipe.'});
     if (staff.role !== 'dono' && staff.lojaId !== lojaId && !staff.lojaIds?.includes(lojaId)) return res.status(403).json({message:'Loja não autorizada.'});
     const snapshot = await getClientsCollection().where('lojasVisitadas', 'array-contains', lojaId).get();
-    const clients = snapshot.docs.map((doc) => ({id: doc.id, ...doc.data()}));
+    const clients = snapshot.docs.filter(doc=>doc.data().canonicalStatus!=='ALIAS').map((doc) => ({id: doc.id, ...doc.data()}));
     res.status(200).json(clients);
   } catch (error) {
     logger.error("Erro ao buscar clientes:", error);
@@ -1609,23 +1577,15 @@ app.post("/clientes", async (req, res) => {
         return res.status(403).json({message:'Confirme novamente a identificação. Endereços exigem verificação do telefone.'});
       }
     }
-    const targetRef = existing ? getClientsCollection().doc(existing.id) : getClientsCollection().doc();
-
-    await upsertClientDocument({
-      targetRef,
-      data: newClient,
-      lojaId,
-      setCreatedIfMissing: !existing,
-      purchaseCountIncrement,
-      purchaseValueIncrement,
-    });
-
+    const result=await customerRegistry.createOrGet({phone:telefone,data:{...newClient,lojasVisitadas:[lojaId],numeroDeCompras:0,valorEmCompras:0}});
+    const targetRef=getClientsCollection().doc(result.customerId);
+    if(staff && !result.created) await upsertClientDocument({targetRef,data:newClient,lojaId,purchaseCountIncrement,purchaseValueIncrement});
     const savedSnap = await targetRef.get();
-    const responseStatus = existing ? 200 : 201;
+    const responseStatus = result.created ? 201 : 200;
     res.status(responseStatus).json(staff?{id: targetRef.id, ...savedSnap.data()}:{id:targetRef.id});
   } catch (error) {
     logger.error("Erro ao criar cliente:", error);
-    res.status(500).send("Erro ao criar cliente.");
+    res.status(Number(error.httpStatus)||500).json({message:error.httpStatus?error.message:"Não foi possível salvar o cliente."});
   }
 });
 
@@ -1635,7 +1595,7 @@ app.put("/clientes/:id", async (req, res) => {
   if (!lojaId) return;
 
   try {
-    const {id} = req.params;
+    const id=await customerRegistry.resolveId(req.params.id);
     if(!await canManageClient(await checkoutToken(req),lojaId,id)) return res.status(403).json({message:'Confirme seu telefone para gerenciar endereços.'});
     const {newAddress, ...rawData} = req.body || {};
     const {data: clientData, purchaseCountIncrement, purchaseValueIncrement} = sanitizeClientPayload(rawData);
@@ -1659,8 +1619,30 @@ app.put("/clientes/:id", async (req, res) => {
     res.status(200).json({id, ...updatedSnap.data()});
   } catch (error) {
     logger.error("Erro ao atualizar cliente:", error);
-    res.status(500).send("Erro ao atualizar cliente.");
+    res.status(Number(error.httpStatus)||500).json({message:error.httpStatus?error.message:"Não foi possível atualizar o cliente."});
   }
+});
+
+// CRM deletion must not orphan the uniqueness index or erase identity/history.
+app.delete('/clientes/:id',async(req,res)=>{
+  const lojaId=requireStoreId(req,res);if(!lojaId)return;
+  try {
+    if(!await isClientStaff(await checkoutToken(req),lojaId))throw createHttpError(403,'Acesso restrito à equipe.');
+    const id=await customerRegistry.resolveId(req.params.id);
+    if(id!==req.params.id)throw createHttpError(409,'Abra o cadastro principal para continuar.');
+    await db.runTransaction(async tx=>{
+      const ref=getClientsCollection().doc(id),customer=await tx.get(ref);
+      if(!customer.exists)throw createHttpError(404,'Cliente não encontrado.');
+      const data=customer.data(),phone=normalizeCustomerPhone(data.telefone || data.phone_number);
+      const [index,orders,identities]=await Promise.all([tx.get(customerRegistry.phoneRef(phone)),
+        tx.get(db.collectionGroup('pedidos').where('clienteId','==',id).limit(1)),tx.get(db.collection('customerAuthIdentities').where('customerId','==',id).limit(1))]);
+      if(data.authOwnerUid || data.authOwnerUids?.length || data.legacyCustomerIds?.length || data.enderecos?.length || !orders.empty || !identities.empty)
+        throw createHttpError(409,'Este cadastro possui vínculos ou histórico. Use o status Inativo para preservá-los.');
+      if(index.data()?.state!=='READY' || index.data()?.customerId!==id)throw createHttpError(409,'O cadastro precisa de conferência antes de excluir.');
+      tx.delete(ref);tx.delete(index.ref);
+    });
+    return res.json({ok:true});
+  }catch(e){return res.status(Number(e.httpStatus)||500).json({message:e.httpStatus?e.message:'Não foi possível excluir este cadastro.'});}
 });
 
 
@@ -1709,6 +1691,7 @@ app.post("/pedidos", async (req, res) => {
   }
 
   try {
+    const canonicalClientId=req.body?.clienteId?await customerRegistry.resolveId(String(req.body.clienteId)):null;
     const orderId = await db.runTransaction(async (transaction) => {
       const storeConfigSnap = await transaction.get(getStoreConfigDoc(lojaId));
       const storeConfig = storeConfigSnap.exists ? (storeConfigSnap.data() || {}) : null;
@@ -1778,6 +1761,7 @@ app.post("/pedidos", async (req, res) => {
       const orderRef = db.collection("lojas").doc(lojaId).collection("pedidos").doc();
       transaction.set(orderRef, {
         ...req.body,
+        clienteId:canonicalClientId,
         lojaId,
         itens: validatedItems,
         subtotal: subtotalFinal,
@@ -1834,8 +1818,9 @@ app.post("/checkout/confirmar", async (req, res) => {
       ownerUid=(await checkoutToken(req)).uid;
       checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
     } else {
-      // Weak identification never attaches an order to a private Customer profile.
-      cliente.id=null;
+      // Business association comes from the server context, never the browser.
+      // This does not grant Auth, private reads or online payment.
+      cliente.id=checkoutIdentity.mode===CHECKOUT_MODES.PHONE?checkoutIdentity.legacyCustomerId:null;
       if(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.phoneHash && hashForPrivacy(normalizePhoneNumber(cliente.telefone))!==checkoutIdentity.phoneHash) throw paymentError('Identifique novamente o celular deste checkout.',403);
     }
     if(online) {
@@ -1861,6 +1846,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         if(checkoutIdentity.revision!==checkoutIdentityRevision) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
         if(checkoutIdentity.mode===CHECKOUT_MODES.STRONG) checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
         else if(online || ownerUid) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
+        if(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.legacyCustomerId) cliente.id=await customerRegistry.resolveId(checkoutIdentity.legacyCustomerId,transaction);
       }
       if(online) {
         const prior=await transaction.get(db.collection('checkoutPayments').doc(paymentId));
@@ -2028,10 +2014,11 @@ app.post("/checkout/confirmar", async (req, res) => {
         clienteSnap = await transaction.get(clienteRef);
       }
 
-      if (online && (!clienteSnap?.exists || clienteRef.id!==checkoutCustomerId || clienteSnap.data().authOwnerUid!==ownerUid)) throw paymentError('Cadastro de cliente não autorizado para pagamento online.',403);
-      if (clienteSnap?.data()?.authOwnerUid && clienteSnap.data().authOwnerUid !== ownerUid) throw paymentError('Entre na conta vinculada ao cadastro.',403);
-      if (online && clienteSnap?.data()?.cuponsUsados?.includes(couponCode)) throw paymentError('Você já utilizou este cupom.');
-      if (couponCode && clienteSnap?.data()?.cuponsReservados?.includes(couponCode)) throw paymentError('Este cupom está reservado em outro pedido.');
+      if (online && (!clienteSnap?.exists || clienteRef.id!==checkoutCustomerId || !ownsCustomer(clienteSnap.data(),ownerUid))) throw paymentError('Cadastro de cliente não autorizado para pagamento online.',403);
+      if (checkoutIdentity.mode===CHECKOUT_MODES.STRONG && clienteSnap?.data()?.authOwnerUid && !ownsCustomer(clienteSnap.data(),ownerUid)) throw paymentError('Entre na conta vinculada ao cadastro.',403);
+      const customerCoupons=couponCode && clienteSnap?.exists?await customerRegistry.couponState(clienteRef.id,transaction):null;
+      if (online && customerCoupons?.used.includes(couponCode)) throw paymentError('Você já utilizou este cupom.');
+      if (couponCode && customerCoupons?.reserved.includes(couponCode)) throw paymentError('Este cupom está reservado em outro pedido.');
       if (!orderRef) orderRef = db.collection('lojas').doc(lojaId).collection('pedidos').doc();
       if(online) {
         transaction.set(db.collection('checkoutPayments').doc(paymentId),{
@@ -2322,6 +2309,7 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
       throw error;
     }
 
+    if(error.httpStatus) throw new HttpsError(error.httpStatus===503?'unavailable':'failed-precondition',error.message);
     throw new HttpsError('internal', 'Não foi possível buscar o cliente agora. Tente novamente.');
   }
 });
@@ -2330,7 +2318,7 @@ exports.lookupClientByPhone = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
 exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
   try {
     const lojaId = typeof request.data?.lojaId === 'string' ? request.data.lojaId.trim() : '';
-    const clientId = typeof request.data?.clientId === 'string' ? request.data.clientId.trim() : '';
+    const clientId = typeof request.data?.clientId === 'string' && request.data.clientId.trim() ? await customerRegistry.resolveId(request.data.clientId.trim()) : '';
     const nome = typeof request.data?.nome === 'string' ? request.data.nome.trim() : '';
     const aniversario = typeof request.data?.aniversario === 'string' ? request.data.aniversario.trim() : '';
 
@@ -2355,7 +2343,7 @@ exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
     const clientRef = getClientsCollection().doc(clientId);
     const clientSnap = await clientRef.get();
 
-    if (clientSnap.data()?.authOwnerUid && clientSnap.data().authOwnerUid !== request.auth?.uid) throw new HttpsError('permission-denied', 'Entre na conta vinculada a este cadastro.');
+    if (clientSnap.data()?.authOwnerUid && !ownsCustomer(clientSnap.data(),request.auth?.uid)) throw new HttpsError('permission-denied', 'Entre na conta vinculada a este cadastro.');
     if (!clientSnap.exists) {
       throw new HttpsError('not-found', 'Cliente não encontrado.');
     }
@@ -2393,7 +2381,7 @@ exports.updateClientProfile = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, as
 
 exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async (request) => {
   try {
-    const clientId = typeof request.data?.clientId === 'string' ? request.data.clientId.trim() : '';
+    const clientId = typeof request.data?.clientId === 'string' && request.data.clientId.trim() ? await customerRegistry.resolveId(request.data.clientId.trim()) : '';
     const lojaId = typeof request.data?.lojaId === 'string' ? request.data.lojaId.trim() : '';
     const incomingAddress = request.data?.address;
     const address = incomingAddress && typeof incomingAddress === 'object' ? incomingAddress : null;
@@ -2431,7 +2419,7 @@ exports.addClientAddress = onCall({ cors: LOOKUP_CLIENT_ALLOWED_ORIGINS }, async
 
     const clientRef = getClientsCollection().doc(clientId);
     const clientSnap = await clientRef.get();
-    if (clientSnap.data()?.authOwnerUid && clientSnap.data().authOwnerUid !== request.auth?.uid) throw new HttpsError('permission-denied', 'Entre na conta vinculada a este cadastro.');
+    if (clientSnap.data()?.authOwnerUid && !ownsCustomer(clientSnap.data(),request.auth?.uid)) throw new HttpsError('permission-denied', 'Entre na conta vinculada a este cadastro.');
     if (!clientSnap.exists) {
       throw new HttpsError('not-found', 'Cliente não encontrado.');
     }

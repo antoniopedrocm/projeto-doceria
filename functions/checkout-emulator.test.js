@@ -11,6 +11,7 @@ const {doc,getDoc,setDoc}=require('firebase/firestore');
 const {createPaymentService}=require('./checkout-payment');
 const {claimOnlineOrderNotification}=require('./checkout-notification');
 const {createCustomerAccount}=require('./checkout-auth');
+const {seedRegistry}=require('./customer-registry.test-fixture');
 const app=admin.initializeApp({projectId:'demo-doceria-checkout'},'checkout-tests');
 const db=app.firestore();
 const stamp=admin.firestore.Timestamp.now();
@@ -118,35 +119,30 @@ test('criação concorrente do link chama provedor uma vez; falha ambígua não 
   await assert.rejects(()=>failing.start(id,'owner'));const before=calls;
   await assert.rejects(()=>failing.start(id,'owner'));assert.equal(calls,before);
 });
-test('cadastro Google concorrente é idempotente e permanece isolado do legado',async()=>{
-  const uid='link-test', phone='+5562999997654', sub='test-google-sub';
+test('Google com telefone legado exige prova sem criar Customer concorrente',async()=>{
+  const uid='link-test',phone='+5562999997654',sub='test-google-sub';
   const user={uid,displayName:'Teste',providerData:[{providerId:'google.com',uid:sub}]};
-  const wrapper={firestore:admin.firestore,auth:()=>({getUser:async()=>user})};
-  const service=createCustomerAccount({db,admin:wrapper});
-  const request={auth:{uid,token:{uid,firebase:{sign_in_provider:'google.com',identities:{'google.com':[sub]}}}},data:{phone}};
-  await db.collection('customerAuthIdentities').get().then(s=>Promise.all(s.docs.map(d=>d.ref.delete())));
-  await db.doc('clientes/link-existing').set({nome:'Cliente antigo',telefone:phone.slice(3),enderecos:[],createdAt:stamp});
-  await Promise.all([service.completeProfile(request),service.completeProfile(request)]);
-  const account=(await service.account(request)).customer;
-  assert.notEqual(account.id,'link-existing');
-  assert.equal(account.telefone,phone.slice(3));
-  assert.equal((await db.doc(`clientes/${account.id}`).get()).data().phone_verified_at,null);
-  assert.equal((await db.doc('clientes/link-existing').get()).data().authOwnerUid,undefined);
-  assert.equal((await db.collection('customerAuthIdentities').where('provider','==','phone').get()).empty,true);
+  const service=createCustomerAccount({db,admin:{auth:()=>({getUser:async()=>user})}});
+  const request={auth:{uid,token:{uid,firebase:{identities:{'google.com':[sub]}}}},data:{phone}};
+  await db.doc('clientes/link-existing').set({nome:'Cliente antigo',telefone:phone.slice(3),enderecos:[],createdAt:stamp});await seedRegistry(db);
+  const results=await Promise.all([service.completeProfile(request),service.completeProfile(request)]);assert.ok(results.every(r=>r.claimRequired));
+  assert.equal((await service.account(request)).needsPhone,true);assert.equal((await db.doc('clientes/link-existing').get()).data().authOwnerUid,undefined);
+  assert.equal((await db.collection('customerAuthIdentities').where('uid','==',uid).get()).empty,true);
 });
-test('cadastro por e-mail usa UID do Firebase e não associa telefone legado',async()=>{
+
+test('primeiro cadastro por e-mail em telefone livre não exige SMS e mantém endereços próprios',async()=>{
   const uid='email-user-test', email='cliente@example.com', phone='+5562999994321';
   const user={uid,email,emailVerified:false,displayName:'Cliente e-mail',providerData:[{providerId:'password',uid:email}]};
   const wrapper={firestore:admin.firestore,auth:()=>({getUser:async()=>user})};
   const service=createCustomerAccount({db,admin:wrapper});
   const request={auth:{uid,token:{uid,email,firebase:{sign_in_provider:'password',identities:{email:[email]}}}},data:{phone,nome:'Cliente e-mail'}};
-  await db.doc('clientes/email-legacy').set({nome:'Legado',telefone:phone.slice(3),enderecos:[]});
+  await seedRegistry(db);
   await service.completeProfile(request);
   const account=(await service.account(request)).customer;
-  assert.notEqual(account.id,'email-legacy');
+  assert.ok(account.id);
   assert.equal(account.authProvider,'email_password');
   assert.equal(account.emailVerified,false);
-  assert.equal((await db.doc('clientes/email-legacy').get()).data().authOwnerUid,undefined);
+  assert.equal((await db.doc('clientes/'+account.id).get()).data().phone_verified_at,null);
   const address={enderecoCompleto:'Rua Teste, 10',nickname:'Casa',lat:-16.67,lng:-49.27,isDefault:true};
   request.data={address};
   assert.equal((await service.addAddress(request)).customer.enderecos.length,1);

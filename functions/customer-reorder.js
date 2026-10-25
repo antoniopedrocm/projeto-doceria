@@ -5,6 +5,7 @@ function createCustomerReorder({db,readOrder,getStoreAvailability,resolveStore})
   return async request=>{
     const {order}=await readOrder(request); // Resolves UID/Customer and checks order ownership first.
     const storeId=order.storeId;
+    if(!validId(storeId)) throw new HttpsError('failed-precondition','Este pedido histórico não possui loja identificada para comprar novamente.');
     const readiness=resolveStore ? (await resolveStore(storeId)).publicConfig : null;
     if(readiness && (!readiness.active || readiness.readiness.catalog!=='READY' || readiness.readiness.schedule!=='READY'))
       throw new HttpsError('failed-precondition','Esta loja não está disponível para comprar novamente.');

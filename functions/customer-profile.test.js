@@ -16,6 +16,7 @@ function fixture(provider='email_password') {
   const reads=[], writes=[];
   const db={collection:name=>({doc:id=>db.doc(`${name}/${id || 'new-customer'}`)}),
     doc:path=>({path,id:path.split('/').at(-1),get:async()=>{reads.push(path);return {exists:rows.has(path),data:()=>rows.get(path),id:path.split('/').at(-1)};}}),
+    getAll:async(...refs)=>Promise.all(refs.map(ref=>ref.get())),
     runTransaction:async fn=>{const pending=[];await fn({get:ref=>ref.get(),
       update:(ref,patch)=>pending.push(()=>{rows.set(ref.path,{...rows.get(ref.path),...patch});writes.push(ref.path);}),
       set:(ref,data)=>pending.push(()=>{rows.set(ref.path,data);writes.push(ref.path);})});pending.forEach(apply=>apply());},
@@ -33,16 +34,21 @@ test('perfil normaliza nome, preserva nascimento omitido e ignora campos de iden
   for(const name of ['', ' '.repeat(4), 'a'.repeat(121), 'Ana\u0000']) assert.throws(()=>normalizeName(name));
   assert.equal(normalizeName(' Jose\u0301 '),'José');
 });
-test('troca de telefone reseta verificação e não faz merge, inclusive com telefone legado',async()=>{
-  const f=fixture();await f.call('update',{nome:'Ana',telefone:'(62) 99999-0000'});
-  const d=f.rows.get('clientes/a');assert.equal(d.telefone,'62999990000');assert.equal(d.phone_number,'+5562999990000');assert.equal(d.phone_verified_at,null);
-  assert.equal(f.rows.get('clientes/legacy').authOwnerUid,undefined);assert.ok(f.writes.every(p=>p==='clientes/a'));
-  assert.ok(!f.reads.includes('clientes/legacy'));
+test('troca real de telefone é bloqueada sem fluxo próprio, sem merge nem reset da prova',async()=>{
+  const f=fixture();await assert.rejects(()=>f.call('update',{nome:'Ana',telefone:'(62) 99999-0000'}),e=>e.code==='failed-precondition');
+  const d=f.rows.get('clientes/a');assert.equal(d.telefone,'62999991234');assert.equal(d.phone_verified_at,'verified');assert.equal(f.rows.get('clientes/legacy').authOwnerUid,undefined);assert.equal(f.writes.length,0);
   await assert.rejects(f.call('update',{nome:'Ana',telefone:'123'}),e=>e.code==='invalid-argument');
 });
+
 test('sem alteração de telefone, verificação existente não é apagada',async()=>{
   const f=fixture();await f.call('update',{nome:'Ana',telefone:'62999991234'});
   assert.equal(f.rows.get('clientes/a').phone_verified_at,'verified');
+});
+
+test('referência antiga em voo não grava nem revela perfil de um registro já marcado alias',async()=>{
+  const f=fixture(),before={...f.rows.get('clientes/a'),canonicalStatus:'ALIAS',canonicalCustomerId:'reviewed'};f.rows.set('clientes/a',before);
+  await assert.rejects(()=>f.call('update',{nome:'Não gravar no alias'}),e=>e.code==='permission-denied');
+  await assert.rejects(()=>f.call('account'),e=>e.code==='not-found');assert.deepEqual(f.rows.get('clientes/a'),before);
 });
 
 for (const [scenario, value] of [['omitido',undefined],['vazio',''],['novo','Casa 2']]) {

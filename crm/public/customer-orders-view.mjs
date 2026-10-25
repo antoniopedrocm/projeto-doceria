@@ -29,12 +29,12 @@ export function createCustomerOrderHistory({panel,call,snapshot,isCurrent,onExpi
       const count=order.itemCount ?? (Array.isArray(order.itens) && order.itens.every(i=>i.quantity!==null && i.quantity!==undefined) ? order.itens.reduce((sum,i)=>sum+(Number(i.quantity) || 0),0) : null);
       item.append(node('p',count===null?'Quantidade de itens não informada':`${count} item(ns)`),node('p',(order.itens || []).map(i=>i.nome).filter(Boolean).join(', ')));
       const button=node('button','Ver pedido');button.type='button';button.dataset.orderKey=`${order.storeId || order.lojaId}/${order.id}`;
-      button.disabled=!order.id || !(order.storeId || order.lojaId);button.onclick=()=>openDetail(order);item.append(button);reorderButton(item,order);el('orders').append(item);
+      button.disabled=!order.id || !(order.storeId || order.lojaId || order.source==='legacy');button.onclick=()=>openDetail(order);item.append(button);reorderButton(item,order);el('orders').append(item);
     }
     el('orders-more').hidden=!cursor;el('orders-more').disabled=loading;
   }
   function reorderButton(container,order) {
-    if(!onReorder || !order.itens?.some(item=>item.productId)) return;
+    if(!onReorder || !(order.storeId || order.lojaId) || !order.itens?.some(item=>item.productId)) return;
     const button=node('button','Comprar Novamente');button.type='button';button.dataset.reorderButton='';
     button.onclick=()=>onReorder(order);container.append(button);
   }
@@ -91,7 +91,7 @@ export function createCustomerOrderHistory({panel,call,snapshot,isCurrent,onExpi
     el('orders-list').hidden=true;el('order-detail').hidden=false;el('order-detail-content').replaceChildren();
     el('order-detail-message').textContent='Carregando pedido...';
     try {
-      const data=await call('customerOrderDetail',{storeId:order.storeId || order.lojaId,orderId:order.id});
+      const data=await call('customerOrderDetail',{...(order.source==='legacy'?{source:'legacy'}:{storeId:order.storeId || order.lojaId}),orderId:order.id});
       if(!active(session,revision) || detailRevision!==detailGeneration) return;
       if(!data.order) throw new Error('not-found');
       renderDetail(data.order);el('order-detail-message').textContent='';el('order-detail-heading').focus();
