@@ -95,28 +95,39 @@
       "orderProjectionStableHash": "8c0108fd05986d8dfa8279ea04e64eb14f16ae00ce02e495b703205de1820e9b"
     },
     "audit": {
+      "targetOrderViews": 0,
+      "viewedReferences": [
+        "C07",
+        "C03"
+      ],
       "project": "crmdoceria-9959e",
-      "auditCount": 2,
-      "sessionCount": 1,
+      "auditCount": 9,
+      "sessionCount": 4,
       "eventCounts": {
-        "ADMIN_CUSTOMER_PREVIEW_ENDED": 1,
-        "ADMIN_CUSTOMER_PREVIEW_STARTED": 1
+        "ADMIN_CUSTOMER_PREVIEW_ENDED": 3,
+        "ADMIN_CUSTOMER_ORDER_VIEWED": 2,
+        "ADMIN_CUSTOMER_PREVIEW_STARTED": 4
       },
       "fieldNames": [
-        "timestamp",
-        "canonicalCustomerId",
         "adminUid",
+        "timestamp",
         "type",
-        "storeIds",
-        "globalScope"
+        "canonicalCustomerId",
+        "orderId",
+        "orderSource",
+        "globalScope",
+        "orderStoreId",
+        "storeIds"
       ],
       "globalScopes": [
         true
       ],
-      "activeSessions": 0,
-      "status": "MANDATORY_START_END_CONFIRMED",
+      "activeSessions": 1,
+      "status": "START_END_AND_ORDER_VIEW_CONFIRMED",
       "detailEventImplementedAndEmulatorTested": true,
-      "detailEventObservedInDev": false
+      "detailEventObservedInDev": true,
+      "detailTargetC02Observed": false,
+      "activeSessionNotForceEnded": true
     }
   },
   "manual": {
@@ -135,8 +146,9 @@
       "exit without admin logout",
       "read-only action blocks"
     ],
-    "additionalTechnicalCheck": "Optional complementary real ORDER_VIEWED verification requested; consolidated manual acceptance remains valid",
-    "additionalCheckBlocksDelivery": false
+    "additionalTechnicalCheck": "User confirmed “detalhe abriu”; real audit events confirmed for C03 and C07. No C02 detail event observed; canonical data validation and prior consolidated manual acceptance remain separate evidence.",
+    "additionalCheckBlocksDelivery": false,
+    "additionalResponse": "detalhe abriu"
   },
   "safety": {
     "customerSessionCreated": false,

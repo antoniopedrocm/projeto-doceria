@@ -464,10 +464,12 @@ Controle/auditoria são privados; não constituem alteração do cadastro/pedido
 
 Usuário aprovou390×800 e1920×889: faixa/título, home, perfil/12 endereços/1 padrão,
 histórico consolidado/detalhe, saída com admin conectado e ações somente leitura.
-Auditoria real STARTED/ENDED confirmada,0 sessões ativas ao sair. Registro opcional
-ORDER_VIEWED implementado/testado emulado; conferência remota complementar
-solicitada, ainda não contabilizada como evento observado. Não cria novo gate de
-fechamento nem retira o aceite consolidado.
+Auditoria inicial STARTED/ENDED confirmada,0 sessões ativas naquele encerramento.
+Complemento: usuário confirmou “detalhe abriu”;2 ORDER_VIEWED reais no DEV, para
+C03 e C07,4 STARTED/3 ENDED. C02 sem evento de detalhe nessa consulta; sua projeção
+canônica e aceite anterior são evidências separadas. Havia1 preview ativo, sem
+encerramento forçado; saída pelo botão ou TTL30min. Nenhum novo gate ou alteração
+no aceite consolidado.
 
 Contrato/limites/endpoints/testes em ADMIN_CUSTOMER_PREVIEW.md e evidências em
 evidence/admin-customer-preview-dev-2026-10-25.json. Este aceite não fecha por

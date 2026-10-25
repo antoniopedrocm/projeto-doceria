@@ -165,12 +165,17 @@ faixa/título, home, conta/endereços, histórico/detalhe, somente leitura e sa�
 mantendo o administrador conectado. Aceite manual; nenhuma captura automatizada
 inventada. O controlador de navegador falhou ao inicializar (OS error3).
 
-Auditoria real já confirma STARTED e ENDED (os dois registros obrigatórios),
-escopo global e nenhuma sessão ativa após sair. ORDER_VIEWED está implementado e
-testado nos emuladores; ainda não observado no primeiro aceite remoto. Solicitada
-conferência complementar estreita, sem repetir larguras/aceite ou executar mutações.
-Essa evidência complementar não revoga o PASS manual nem cria novo critério de
-fechamento: o requisito do evento de detalhe era avaliar seu registro.
+Auditoria real confirmou STARTED e ENDED no aceite inicial, com escopo global e
+nenhuma sessão ativa naquele encerramento. Na conferência complementar, usuário
+respondeu **“detalhe abriu”**. Consulta DEV confirmou2 eventos
+ADMIN_CUSTOMER_ORDER_VIEWED, referentes a C03 e C07, além de4 STARTED/3 ENDED.
+C02 ainda não possui evento de detalhe nessa consulta; não atribuir a ele os
+acessos de outros Customers. Sua projeção canônica12 endereços/64 pedidos e o
+aceite consolidado anterior permanecem evidências separadas.
+
+Havia1 sessão ativa na consulta complementar; não foi encerrada administrativamente.
+O usuário pode sair pelo botão da visualização; a expiração server-side de30min
+continua aplicável. Nenhum dado Customer/pedido foi alterado por esta conferência.
 
 **ADMIN CUSTOMER PREVIEW = CONCLUÍDO E HOMOLOGADO MANUALMENTE NO DEV.**
 Registro agrupado final em INFINITEPAY_PROJECT_PLAN.md e
