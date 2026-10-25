@@ -1,3 +1,4 @@
+/* global globalThis */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -47,7 +48,7 @@ test('sem frete mostra retirada e esconde seleção de entrega no modal real',()
   assert.equal(document.getElementById('show-new-address-wrapper').hidden,true);assert.match(document.body.textContent,/Entrega indisponível/);dom.window.close();
 });
 
-test('modo celular oculta Editar Perfil mesmo com display flex; modo forte restaura controle',()=>{
+test('Editar Perfil permanece visível no celular e no modo forte, mesmo com classe hidden antiga',()=>{
   const html=fs.readFileSync(new URL('../public/cardapio.html',import.meta.url),'utf8');
   const start=html.indexOf('function openAddressManagementModal(client)'),end=html.indexOf('async function deleteAddress',start);
   const dom=new JSDOM('<style>.flex{display:flex}.hidden{display:none}</style><button id="edit-profile-btn" class="flex">Editar Perfil</button><div id="address-list"></div><div id="new-address-section"></div><div id="show-new-address-wrapper"></div><button id="show-new-address-btn"></button><div id="modal"></div>');
@@ -59,7 +60,7 @@ test('modo celular oculta Editar Perfil mesmo com display flex; modo forte resta
   try {
     const button=document.getElementById('edit-profile-btn');
     context.openAddressManagementModal({nome:'Fixture',enderecos:[]});
-    assert.equal(dom.window.getComputedStyle(button).display,'none');
+    assert.equal(button.hidden,false);assert.equal(dom.window.getComputedStyle(button).display,'flex');
     mode='strong_auth';context.openAddressManagementModal({nome:'Fixture',enderecos:[]});
     assert.equal(button.hidden,false);assert.equal(dom.window.getComputedStyle(button).display,'flex');
   } finally {dom.window.close();}

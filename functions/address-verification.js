@@ -1,8 +1,11 @@
 const {randomBytes,randomUUID,createHash}=require('node:crypto');
-const {addressRecords,normalizeContactPhone}=require('./checkout-auth');
+const {addressRecords,normalizeContactPhone,normalizeName,normalizeBirthdate}=require('./checkout-auth');
 const {addressOptions,addressReference}=require('./checkout-addresses');
 const {getRuntimeProjectId,DEV_PROJECT_ID}=require('./whatsapp-config');
 const PURPOSE='ADDRESS_MANAGEMENT';
+// Retain the existing proof purpose/token contract; explicitly restrict the
+// newly authorized basic-profile capability to name/birthdate, never security.
+const GRANT_SCOPES=['address_manage','profile_basic'];
 const hash=value=>createHash('sha256').update(String(value)).digest('hex');
 const error=(code,message,httpStatus=403)=>Object.assign(new Error(message),{code,httpStatus});
 const required=()=>error('OTP_REQUIRED','Confirme que este número é seu para gerenciar endereços.');
@@ -126,7 +129,7 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
       const s=await scope(input,tx),d=(await tx.get(ref)).data();
       if(d?.nonce!==nonce || d.status!=='verifying' || s.context.addressChallengeId!==ref.id || d.expiresAt<=now()) throw expired();
       if(!valid) {tx.update(ref,{status:d.attempts>=d.maxAttempts?'locked':'sent'});audit(tx,s,'code_rejected',d.channel);return null;}
-      const grant={purpose:PURPOSE,customerId:s.context.legacyCustomerId,phoneHash:s.context.phoneHash,phoneRecordHash:s.context.phoneRecordHash,
+      const grant={purpose:PURPOSE,scopes:d.channel==='sms'?GRANT_SCOPES:['address_manage'],customerId:s.context.legacyCustomerId,phoneHash:s.context.phoneHash,phoneRecordHash:s.context.phoneRecordHash,
         contextPath:s.contextRef.path,revision:s.context.revision,storeId:input.storeId,channel:d.channel,verifiedAt:now(),expiresAt:now()+d.sessionMs};
       tx.set(ref,{...d,status:'consumed',proof:null});tx.create(root.collection('grants').doc(hash(token)),grant);
       tx.update(s.contextRef,{addressGrantHash:hash(token)});audit(tx,s,'phone_verified',d.channel);
@@ -135,15 +138,24 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
     if(!result) throw unavailable?error('OTP_VERIFY_FAILED','Não foi possível confirmar o código agora. Tente novamente em alguns instantes.',503):error('OTP_INVALID','Código incorreto.',400);
     return result;
   }
-  async function manage(input) {
+  async function authorized(input,tx,capability) {
     if(!/^[a-f0-9]{64}$/.test(input.addressSessionToken || '')) throw required();
+    const s=await scope(input,tx),ref=root.collection('grants').doc(hash(input.addressSessionToken)),grant=(await tx.get(ref)).data();
+    if(!grant || grant.purpose!==PURPOSE || grant.expiresAt<=now() || grant.contextPath!==s.contextRef.path || grant.revision!==s.context.revision || grant.customerId!==s.context.legacyCustomerId || grant.storeId!==input.storeId || grant.phoneHash!==s.context.phoneHash || grant.phoneRecordHash!==s.context.phoneRecordHash || s.context.addressGrantHash!==hash(input.addressSessionToken)) throw required();
+    if(capability==='profile_basic' && grant.channel!=='sms') throw required();
+    if(grant.scopes!==undefined && (!Array.isArray(grant.scopes) || !grant.scopes.includes(capability))) throw required();
+    // Existing, unexpired server-issued SMS proof is sufficient under the new
+    // business policy. Upgrade only after all bindings, without extending TTL.
+    if(grant.scopes===undefined && capability==='profile_basic'){tx.update(ref,{scopes:GRANT_SCOPES});audit(tx,s,'grant_scope_upgrade',grant.channel);}
+    return {s,grant};
+  }
+  async function manage(input) {
     if(!['read','create','update','delete','default'].includes(input.operation)) throw error('ADDRESS_INVALID','Operação de endereço inválida.',400);
     return db.runTransaction(async tx=>{
-      const s=await scope(input,tx),grant=(await tx.get(root.collection('grants').doc(hash(input.addressSessionToken)))).data();
-      if(!grant || grant.purpose!==PURPOSE || grant.expiresAt<=now() || grant.contextPath!==s.contextRef.path || grant.revision!==s.context.revision || grant.customerId!==s.context.legacyCustomerId || grant.storeId!==input.storeId || grant.phoneHash!==s.context.phoneHash || grant.phoneRecordHash!==s.context.phoneRecordHash || s.context.addressGrantHash!==hash(input.addressSessionToken)) throw required();
+      const {s,grant}=await authorized(input,tx,'address_manage');
       let records=addressRecords(grant.customerId,s.customer.data().enderecos);
       const index=records.findIndex(a=>addressReference(s.token,grant.customerId,a.id)===input.addressId);
-      if(input.operation!=='create' && index<0) throw error('ADDRESS_CHANGED','O endereço mudou. Atualize a lista e tente novamente.',409);
+      if(input.operation!=='create' && index<0) throw error('ADDRESS_CHANGED','O endereço mudou. Atualize a lista e tente novamente.',403);
       if(input.operation==='read') {
         const a=records[index],fields=['nickname','enderecoCompleto','street','number','neighborhood','city','cep','complement','complemento','referencia','semNumero','isDefault'];
         audit(tx,s,'address_read',grant.channel,a.id);
@@ -169,6 +181,23 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
       return {addresses:addressOptions(s.token,grant.customerId,records)};
     });
   }
+  async function profile(input) {
+    const permitted=new Set(['storeId','checkoutIdentityToken','checkoutIdentityRevision','addressSessionToken','operation','profile']);
+    if(Object.keys(input).some(key=>!permitted.has(key)) || !['read','update'].includes(input.operation)) throw required();
+    return db.runTransaction(async tx=>{
+      const {s,grant}=await authorized(input,tx,'profile_basic'),data=s.customer.data();
+      let nome=typeof data.nome==='string'?data.nome:'',aniversario=typeof data.aniversario==='string'?data.aniversario:'';
+      if(input.operation==='update') {
+        if(!input.profile || typeof input.profile!=='object' || Array.isArray(input.profile) || Object.keys(input.profile).some(key=>!['nome','aniversario'].includes(key))) throw error('ADDRESS_PROFILE_INVALID','Confira nome e data de nascimento.',400);
+        try {nome=normalizeName(input.profile.nome);if(input.profile.aniversario!==undefined && input.profile.aniversario!==aniversario) aniversario=normalizeBirthdate(input.profile.aniversario);}
+        catch {throw error('ADDRESS_PROFILE_INVALID','Confira nome e data de nascimento.',400);}
+        tx.update(s.customerRef,{nome,aniversario,atualizadoEm:new Date(now())});
+      }
+      audit(tx,s,'profile_'+input.operation,grant.channel);
+      const parts=nome.trim().split(/\s+/).filter(Boolean),publicName=parts.length>1?`${parts[0]} ${parts.at(-1)[0]}.`:parts[0] || 'Cliente';
+      return {profile:{nome,aniversario},phoneMasked:'••••'+s.phone.slice(-4),publicName};
+    });
+  }
   async function revoke(input) {
     environment();
     await db.runTransaction(async tx=>{
@@ -185,7 +214,7 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
       throw cause;
     }
   };
-  return {status,createUnverified,start:observed(start),verify:observed(verify),manage,revoke};
+  return {status,createUnverified,start:observed(start),verify:observed(verify),manage,profile,revoke};
 }
 function mountAddressVerification(app,service) {
   app.post('/checkout/addresses',async(req,res)=>{
@@ -200,8 +229,8 @@ function mountAddressVerification(app,service) {
       return res.status(contextError?403:known?(cause.httpStatus || 400):503).json({code:contextError?'ADDRESS_CONTEXT_REQUIRED':known?cause.code:'ADDRESS_SAVE_FAILED',message:contextError?'Identifique novamente pelo celular para salvar o endereço.':known?cause.message:'Não foi possível salvar o endereço. Tente novamente.'});
     }
   });
-  const allowed=new Set(['storeId','checkoutIdentityToken','checkoutIdentityRevision','channel','recaptchaToken','challengeId','code','addressSessionToken','operation','addressId','address','confirmed']);
-  for(const method of ['status','start','verify','manage','revoke']) app.post('/checkout/address-verification/'+method,async(req,res)=>{
+  const allowed=new Set(['storeId','checkoutIdentityToken','checkoutIdentityRevision','channel','recaptchaToken','challengeId','code','addressSessionToken','operation','addressId','address','confirmed','profile']);
+  for(const method of ['status','start','verify','manage','profile','revoke']) app.post('/checkout/address-verification/'+method,async(req,res)=>{
     res.set('Cache-Control','no-store');
     try {
       if(Object.keys(req.body || {}).some(k=>!allowed.has(k))) throw required();

@@ -85,6 +85,20 @@ test('lookup → modal mostra endereço automaticamente; GUEST não herda lista,
   assert.equal(h.dom.window.document.querySelectorAll('.use-address-btn').length,0);
   assert.ok(h.dom.window.document.querySelector('.use-pickup-btn'));h.dom.window.close();
 });
+
+test('listar não pede OTP: ações de endereço e Editar Perfil ficam visíveis e autorizam apenas no clique',async()=>{
+  const h=harness(),actions=[];let managerCalls=0,strongEdits=0;
+  h.c.getPhoneAddressManager=()=>{managerCalls++;return {perform:async(operation,address)=>actions.push([operation,address?.id])};};
+  h.c.openCustomerModalForEdit=()=>{strongEdits++;};h.c.showToast=()=>{};
+  vm.runInContext(source.slice(source.indexOf('async function editCheckoutProfile()'),source.indexOf('function openAddressManagementModal(client)')),h.c);
+  h.c.openAddressManagementModal(h.c.currentClient);assert.equal(managerCalls,0);
+  const profile=h.dom.window.document.getElementById('edit-profile-btn');assert.equal(profile.hidden,false);assert.equal(profile.classList.contains('hidden'),false);
+  for(const title of ['Ver endereço completo','Editar','Definir como padrão','Excluir'])assert.ok([...h.dom.window.document.querySelectorAll('button')].find(b=>b.textContent===title),title);
+  [...h.dom.window.document.querySelectorAll('button')].find(b=>b.textContent==='Editar').click();await h.c.editCheckoutProfile();
+  assert.deepEqual(actions,[['update',saved.id],['profile',undefined]]);assert.equal(strongEdits,0);
+  h.setIdentity({mode:'strong_auth'});await h.c.editCheckoutProfile();assert.equal(strongEdits,1);assert.equal(managerCalls,2);
+  h.c.CHECKOUT_MODES.GUEST='guest';h.setIdentity({mode:'guest'});await h.c.editCheckoutProfile();assert.equal(strongEdits,1);h.dom.window.close();
+});
 test('seleção e reabertura/refresh transportam apenas referência e revisão; pickup limpa referência',async()=>{
   const h=harness();await h.c.useExistingAddress(saved.summary,saved);
   assert.equal(h.requests[0].checkoutAddressId,saved.id);assert.equal(h.requests[0].checkoutAddressRevision,2);

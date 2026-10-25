@@ -60,5 +60,6 @@ test('cardápio mantém convite strong e não promove publicação passiva; weak
   assert.match(page,/checkoutIdentityToken:checkoutIdentity\.get\(\)\.token/);
   assert.match(page,/await legacyAddressSaver\.save\(newAddress\)/);
   assert.match(page,/onPromote:address=>getPhoneAddressManager\(\)\.perform\('create',address\)/);
-  assert.match(page,/edit-profile-btn'\)\.hidden=checkoutIdentity\.get\(\)\.mode===CHECKOUT_MODES.PHONE/);
+  assert.match(page,/edit-profile-btn'\)\.hidden=false/);
+  assert.match(page,/getPhoneAddressManager\(\)\.perform\('profile'\)/);
 });

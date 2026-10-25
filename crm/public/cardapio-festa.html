@@ -2117,13 +2117,7 @@
                 document.getElementById('customer-details-modal').classList.add('hidden');
             });
 
-            document.getElementById('edit-profile-btn').addEventListener('click', () => {
-                if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) return;
-                if (currentClient) {
-                    addressManagementModal.classList.add('hidden');
-                    openCustomerModalForEdit(currentClient);
-                }
-            });
+            document.getElementById('edit-profile-btn').addEventListener('click', editCheckoutProfile);
 
             document.getElementById('show-new-address-btn').addEventListener('click', () => {
                 showNewAddressSection();
@@ -2408,7 +2402,8 @@
                         if(!response.ok) throw Object.assign(new Error(result.message || 'Não foi possível verificar o número agora.'),{code:result.code});
                         return result;
                     },recaptcha:createSmsRecaptcha,
-                    onAddresses:(addresses,promotedId)=>{currentClient.enderecos=mergeCheckoutAddressOptions(addresses,(currentClient.enderecos || []).filter(a=>a.id!==promotedId));openAddressManagementModal(currentClient);persistCheckoutState();}
+                    onAddresses:(addresses,promotedId)=>{currentClient.enderecos=mergeCheckoutAddressOptions(addresses,(currentClient.enderecos || []).filter(a=>a.id!==promotedId));openAddressManagementModal(currentClient);persistCheckoutState();},
+                    onProfile:publicName=>{currentClient.nome=publicName;currentClient.nomeAbreviado=publicName;delete currentClient.aniversario;openAddressManagementModal(currentClient);persistCheckoutState();}
                 });
                 window.addEventListener('pagehide',()=>phoneAddressManager.invalidate());
                 window.addEventListener('pageshow',event=>{if(event.persisted)phoneAddressManager.invalidate();});
@@ -2416,10 +2411,16 @@
             return phoneAddressManager;
         }
 
+        async function editCheckoutProfile() {
+            if(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE) return getPhoneAddressManager().perform('profile').catch(error=>showToast(error.message,true));
+            if(currentClient && checkoutIdentity.get().mode!==CHECKOUT_MODES.GUEST) {
+                addressManagementModal.classList.add('hidden');openCustomerModalForEdit(currentClient);
+            }
+        }
 		function openAddressManagementModal(client) {
 			currentClient = client;
-            document.getElementById('edit-profile-btn').hidden=checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE;
-            document.getElementById('edit-profile-btn').classList.toggle('hidden',checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE);
+            document.getElementById('edit-profile-btn').hidden=false;
+            document.getElementById('edit-profile-btn').classList.remove('hidden');
             syncCheckoutPayment();
 			addressList.innerHTML = '';
 			confirmCustomerName.textContent = client.nome || 'Cliente';

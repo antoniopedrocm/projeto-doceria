@@ -1,6 +1,6 @@
 /* global globalThis */
 const fields=[['nickname','Nome do endereço'],['street','Rua / logradouro'],['number','Número'],['cep','CEP'],['neighborhood','Bairro'],['city','Cidade'],['complement','Complemento'],['referencia','Referência']];
-export function createPhoneAddressManager({document,identity,storeId,request,onAddresses,recaptcha,now=Date.now,clock=globalThis}) {
+export function createPhoneAddressManager({document,identity,storeId,request,onAddresses,onProfile,recaptcha,now=Date.now,clock=globalThis}) {
   let grant=null,activeScope=null,dialog=null,interval=null,expiryTimer=null,disposeCaptcha=null,generation=0;
   const scope=()=>{const s=identity.get();return {storeId,checkoutIdentityToken:s.token,checkoutIdentityRevision:s.revision};};
   const same=s=>{if(!s)return false;const current=scope();return current.checkoutIdentityToken===s.checkoutIdentityToken && current.checkoutIdentityRevision===s.checkoutIdentityRevision && identity.get().mode==='legacy_phone';};
@@ -62,14 +62,29 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
       };
     }catch(error){if(current===generation)view.message.textContent=error.message || 'Verificação indisponível.';}
   }
-  async function execute(operation,addressId,data={}) {
+  async function execute(operation,addressId,data={},method='manage') {
     if(!grant || grant.expiresAt<=now() || !same(activeScope)){invalidate();throw new Error('Confirme novamente seu número para gerenciar endereços.');}
-    try{return await api('manage',{operation,addressId,...data,addressSessionToken:grant.addressSessionToken});}
+    try{return await api(method,{operation,...(addressId===undefined?{}:{addressId}),...data,addressSessionToken:grant.addressSessionToken});}
     catch(error){if(error.code==='OTP_REQUIRED'){invalidate();throw new Error('Confirme novamente seu número para gerenciar endereços.');}throw error;}
   }
   async function perform(operation,option) {
     return authorize(async()=>{
       const current=generation;
+      if(operation==='profile') {
+        const prior=await execute('read',undefined,{},'profile');if(current!==generation)return;
+        const view=modal('Editar Perfil'),form=document.createElement('form'),inputs={};
+        const phone=document.createElement('p');phone.className='text-sm my-2';phone.textContent='Celular '+prior.phoneMasked;view.content.append(phone);
+        for(const [key,title,max] of [['nome','Nome',120],['aniversario','Data de nascimento (AAAA-MM-DD, opcional)',10]]) {
+          const label=document.createElement('label');label.className='block text-sm mt-2';label.textContent=title;
+          const input=document.createElement('input');input.name=key;input.className='border rounded w-full p-2';input.maxLength=max;input.required=key==='nome';input.value=prior.profile[key] || '';label.append(input);form.append(label);inputs[key]=input;
+        }
+        const save=document.createElement('button');save.type='submit';save.className='border rounded p-3 block mt-3';save.textContent='Salvar Alterações';form.append(save);view.content.append(form);
+        form.onsubmit=async event=>{event.preventDefault();save.disabled=true;view.cancel.disabled=true;
+          try {const result=await execute('update',undefined,{profile:{nome:inputs.nome.value,aniversario:inputs.aniversario.value}},'profile');if(current===generation){closeDialog();onProfile?.(result.publicName);}}
+          catch(error){if(current===generation)view.message.textContent=error.message;}
+          finally{save.disabled=false;view.cancel.disabled=false;}
+        };return;
+      }
       if(operation==='default'){const result=await execute('default',option.id);if(current===generation)onAddresses(result.addresses);return;}
       if(operation==='delete'){
         const view=modal('Excluir este endereço?');view.message.textContent=option.nickname || 'Endereço selecionado';

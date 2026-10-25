@@ -52,6 +52,35 @@ test('uso único gera autorização apenas de endereço e não promove identidad
   const context=await f.identities.read(f.input.checkoutIdentityToken,f.storeId);assert.equal(context.mode,'legacy_phone');assert.throws(()=>f.identities.requireStrong(context,'private-owner',f.customerId));
   const detail=await f.manage(grant,'read');assert.equal(detail.address.nickname,'Casa da minha Mãe');assert.equal(detail.address.enderecoCompleto,address.enderecoCompleto);assert.equal(detail.address.authOwnerUid,undefined);
 });
+
+test('perfil básico exige o mesmo grant, permite só nome/aniversário e não concede Customer/Online',async()=>{
+  const f=await fixture(),read={...f.input,operation:'read'};
+  await assert.rejects(()=>f.service.profile(read),e=>e.code==='OTP_REQUIRED');
+  const grant=await f.authorize(),input={...read,addressSessionToken:grant.addressSessionToken};
+  const before=(await db.doc('clientes/'+f.customerId).get()).data();
+  const profile=await f.service.profile(input);assert.deepEqual(Object.keys(profile.profile).sort(),['aniversario','nome']);assert.equal(profile.phoneMasked,'••••'+f.phone.slice(-4));assert.equal(profile.telefone,undefined);assert.equal(profile.enderecos,undefined);
+  const update={...input,operation:'update',profile:{nome:'Nome Cliente Teste',aniversario:'1990-01-02'}};
+  for(const extra of [{telefone:'62999999999'},{email:'other@example.com'},{authOwnerUid:'attacker'},{enderecos:[]}])await assert.rejects(()=>f.service.profile({...update,profile:{...update.profile,...extra}}),e=>e.httpStatus===400);
+  await assert.rejects(()=>f.service.profile({...update,customerId:'other'}),e=>e.httpStatus===403);
+  const result=await f.service.profile(update);assert.equal(result.publicName,'Nome T.');
+  const after=(await db.doc('clientes/'+f.customerId).get()).data();assert.equal(after.nome,'Nome Cliente Teste');assert.equal(after.aniversario,'1990-01-02');
+  assert.equal(after.telefone,before.telefone);assert.equal(after.authOwnerUid,before.authOwnerUid);assert.deepEqual(after.enderecos,before.enderecos);
+  const context=await f.identities.read(f.input.checkoutIdentityToken,f.storeId);assert.equal(context.mode,'legacy_phone');assert.throws(()=>f.identities.requireStrong(context,before.authOwnerUid,f.customerId));assert.equal(f.calls().sends,1);
+  const b=await fixture();await assert.rejects(()=>b.service.profile({...b.input,operation:'read',addressSessionToken:grant.addressSessionToken}),e=>e.httpStatus===403);
+  await assert.rejects(()=>f.manage(grant,'read',{addressId:'addr_'+'a'.repeat(64)}),e=>e.httpStatus===403);
+  f.advance(600001);await assert.rejects(()=>f.service.profile(input),e=>e.httpStatus===403);
+});
+
+test('grant anterior válido é ampliado explicitamente sem novo SMS nem extensão de TTL; escopo removido é negado',async()=>{
+  const f=await fixture(),grant=await f.authorize(),ref=db.doc('integrations/addressVerification/grants/'+hash(grant.addressSessionToken));
+  const issued=(await ref.get()).data();assert.deepEqual(issued.scopes,['address_manage','profile_basic']);
+  await ref.update({scopes:admin.firestore.FieldValue.delete()});
+  await f.service.profile({...f.input,operation:'read',addressSessionToken:grant.addressSessionToken});
+  const upgraded=(await ref.get()).data();assert.deepEqual(upgraded.scopes,issued.scopes);assert.equal(upgraded.expiresAt,issued.expiresAt);assert.equal(f.calls().sends,1);
+  await ref.update({scopes:['address_manage']});await assert.rejects(()=>f.service.profile({...f.input,operation:'read',addressSessionToken:grant.addressSessionToken}),e=>e.httpStatus===403);
+  await f.manage(grant,'read');
+  await ref.update({scopes:issued.scopes,channel:'whatsapp'});await assert.rejects(()=>f.service.profile({...f.input,operation:'read',addressSessionToken:grant.addressSessionToken}),e=>e.httpStatus===403);
+});
 test('create/update/default/delete usam ID persistido, allowlist e auditoria; nenhuma alteração de Auth/telefone',async()=>{
   const f=await fixture(),grant=await f.authorize();
   const created=await f.manage(grant,'create',{address:{...address,nickname:'Trabalho',number:'20',authOwnerUid:'attacker',isDefault:true}});
@@ -110,6 +139,13 @@ test('HTTP rejeita customer/telefone arbitrários, prova ausente e detalhe compl
     for(const extra of [{},{customerId:f.customerId},{phone:f.phone},{addressSessionToken:'a'.repeat(64)}]) {
       const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...f.input,operation:'read',...extra})});const data=await r.json();assert.equal(r.status,403);assert.equal(data.address,undefined);assert.equal(r.headers.get('cache-control'),'no-store');
     }
+    const profileUrl=url.replace('/manage','/profile');
+    const profileCall=async body=>{const r=await fetch(profileUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...f.input,operation:'read',...body})});return {r,data:await r.json()};};
+    assert.equal((await profileCall({})).r.status,403);
+    const grant=await f.authorize();
+    const ok=await profileCall({addressSessionToken:grant.addressSessionToken});assert.equal(ok.r.status,200);assert.equal(ok.r.headers.get('cache-control'),'no-store');assert.equal(ok.data.profile.nome,'Fixture');assert.equal(ok.data.enderecos,undefined);
+    assert.equal((await profileCall({addressSessionToken:grant.addressSessionToken,customerId:f.customerId})).r.status,403);
+    assert.equal((await profileCall({addressSessionToken:grant.addressSessionToken,operation:'update',profile:{nome:'Fixture',email:'forged'}})).r.status,400);
   }finally{server.closeAllConnections();await new Promise(r=>server.close(r));}
 });
 test('criação sem SMS persiste no Customer canônico, retorna só máscaras e nunca altera padrão/histórico',async()=>{
