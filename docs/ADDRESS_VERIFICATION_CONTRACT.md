@@ -1,4 +1,4 @@
-# Verificação de telefone para gerenciar endereços — DEV
+# Verificação de telefone para endereços e perfil básico — DEV
 
 ## Decisão e estado operacional
 
@@ -42,7 +42,7 @@ não havia envio real; a homologação SMS posterior está registrada adiante.
 | Contexto | Resumo/seleção existente | Escrita na conta | Pagamento online |
 |---|---|---|---|
 | LEGACY_PHONE sem prova | Permitidos pela referência opaca já existente | Só criar endereço novo não padrão; sem alterar existentes | Negado |
-| LEGACY_PHONE + prova de telefone | Permitidos | Só endereços do cliente/contexto, com grant temporário | Negado |
+| LEGACY_PHONE + prova de telefone | Permitidos | Endereços do cliente/contexto; nome/aniversário somente com grant SMS temporário | Negado |
 | STRONG_AUTH Google/e-mail principal | Contrato privado existente | Contrato privado existente, sem OTP adicional | Demais gates existentes |
 | GUEST | Nenhum endereço herdado | Negada | Negado |
 
@@ -94,6 +94,8 @@ POST em `/api/checkout/address-verification/`:
 - `manage`: `read`, `create`, `update`, `delete`, `default`; exige grant válido e
   vínculo integral revalidado na transação. `read` libera somente o endereço alvo
   autorizado para leitura/edição. Nenhum Customer ID arbitrário é aceito.
+- `profile`: `read`/`update`, com o mesmo grant SMS e todas as vinculações; somente
+  nome/aniversário. Nenhum customerId, telefone, e-mail, vínculo ou endereço arbitrário.
 - `revoke`: retira do contexto os ponteiros de desafio/grant dessa revisão.
 
 POST `/api/checkout/addresses`: exceção explícita de criação sem SMS, não libera
@@ -127,6 +129,41 @@ forte proprietário. POST `/clientes` público só cria cadastro novo vazio sob
 contexto PHONE correspondente, sem atualizar o encontrado nem devolver perfil;
 o frontend relê pelo lookup mínimo para vincular o contexto novo. Perfil legado
 não pode ser alterado anonimamente. CRUD por OTP passa exclusivamente por `manage`.
+
+## Ações visíveis e perfil básico — regra24/10/2026
+
+Listagem/retirada/seleção/criação persistente sem SMS não iniciam OTP. Os cards
+weak salvos já oferecem Ver/Editar/Excluir/Definir padrão independentemente do
+grant; os callbacks pedem prova apenas quando acionados. Editar Perfil deixa de
+ser ocultado/bloqueado no modo PHONE e chama a mesma autorização. Strong mantém
+seu fluxo existente; Guest não abre editor privado nem herda prova.
+
+Após SMS válido, retoma-se a ação original/ID do endereço. Grant em memória pode
+ser reutilizado entre endereços e perfil até expirar, sem novo SMS ou renovação
+do prazo. Excluir mantém confirmação adicional; IDs de outro Customer são403.
+Telefone de destino é fixado no contexto servidor; no modal há só sua máscara,
+nunca campo para trocar número. Eventos de troca de identidade/expiração removem
+os formulários e invalidam a prova como antes.
+
+Ampliação explicitamente autorizada: POST /api/checkout/address-verification/profile
+permite ler/editar somente nome e aniversário do Customer canônico. O propósito
+histórico ADDRESS_MANAGEMENT permanece para compatibilidade, com scopes explícitos
+address_manage e profile_basic. O segundo exige canal SMS. Grant antigo sem scopes
+só é ampliado no servidor após revalidar propósito/hash/contexto/revisão/Customer/
+loja/telefone/expiração; a ampliação é auditada e não altera TTL. Um scope explícito
+ausente/restrito não é ampliado automaticamente. Não há grant genérico de Customer.
+
+Backend deriva o alvo do contexto, não do browser, valida nome/data com os
+normalizadores existentes e rejeita campos adicionais. Não altera telefone/e-mail,
+authOwnerUid/identidades/roles/endereços. Auditoria profile_read/profile_update sem
+nome/data/OTP/token nos logs. Leitura completa do perfil básico só após grant;
+após salvar, o checkout recebe para persistência somente a apresentação abreviada,
+sem armazenar aniversário/nome completo no snapshot. O formulário privado é
+removido ao fechar/expirar; não concede /minha-conta, histórico ou Online.
+
+Nenhum adapter/flag WhatsApp ou contrato InfinitePay foi alterado por essa regra.
+SMS real e screenshots após OTP exigem evidência/autorização específicas; mocks
+e emuladores não equivalem a entrega real.
 
 ## Nome do endereço na listagem — correção24/10/2026
 

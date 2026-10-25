@@ -2,6 +2,38 @@
 
 ## Decisão e fronteira
 
+### Novo requisito — ações visíveis e perfil básico por SMS (24/10/2026)
+
+Editar Perfil permanece visível no cabeçalho PHONE e chama OTP só no clique;
+cards PHONE salvos já tinham Ver/Editar/Excluir/Padrão protegidos e permanecem
+visíveis sem grant. Listar/selecionar/retirar/criar/salvar novo endereço não pedem
+SMS. Cabeçalho permite quebra de linha em telas estreitas. Strong preservado.
+
+Ampliação autorizada estritamente limitada: endpoint profile read/update permite
+nome/aniversário com grant SMS válido do mesmo Customer/contexto/telefone/loja/
+revisão. Scopes address_manage/profile_basic, sem acesso geral a perfil/Customer,
+e-mail/telefone/security/Staff/Online. Grant anterior sem scopes pode ser ampliado
+server-side após todos os bindings, sem estender TTL ou pedir novo SMS; scope
+explícito removido não é ampliado. Novos formulários privados são limpos na
+expiração/troca/cancel; snapshot recebe só apresentação abreviada após save.
+
+Testes141/141 regressões,96/96 emulados,69/69 CRM; delta final16/16 do backend e
+7/7 storefront/ESM sobrepostos. Build/lint/diff-check PASS. Backend ce7537b0,
+ajuste mobile4aedfeb6; publicação/evidência no checkpoint. Homologação visual e
+prints mobile/desktop/após OTP ainda não são presumidos: controle de browser
+falha ao iniciar. SMS real exige autorização específica nova, sem save remoto
+de perfil/endereço para testar. O gate Enterprise de envio segue separado.
+Fase9=75%, Global95,00%, Fase13=0%; nenhum PROD/WhatsApp/financeiro real.
+
+Publicação confirmada: somente api(us-central1) de ce7537b0 e Hosting58 arquivos
+de4aedfeb6 em crmdoceria-9959e. Backend idêntico entre ambos os commits, sem
+republicação desnecessária.14/14 hashes/cache PASS; demais Functions/Rules/índices/
+Storage não publicados. Perfil read/update e endereço read/update/delete/default
+sem grant403, sem dados privados. HTML publicado com resposta/status DEV reais
+renderizado em DOM local confirma botões e OTP apenas no clique; não é print de
+browser remoto. Sem SMS ou escritas em cadastro para esse smoke. Evidência:
+docs/evidence/protected-checkout-actions-dev-2026-10-24.json.
+
 ### Correção pontual — apelido do endereço na listagem (24/10/2026)
 
 Runtime9246a950 remove a restrição de quatro apelidos na projeção/backend e

@@ -1,0 +1,208 @@
+{
+  "date": "2026-10-24",
+  "environment": "DEV",
+  "backendCommit": "ce7537b0",
+  "hostingCommit": "4aedfeb6",
+  "rootCause": {
+    "addressActions": "already provided for saved PHONE cards independently of grant",
+    "profileAction": "explicitly hidden and handler returned for PHONE"
+  },
+  "behavior": {
+    "actionsVisibleBeforeSms": true,
+    "otpOnlyOnProtectedAction": true,
+    "newAddressRequiresSms": false,
+    "selectionRequiresSms": false,
+    "basicProfileAllowedFields": [
+      "nome",
+      "aniversario"
+    ],
+    "grantScopes": [
+      "address_manage",
+      "profile_basic"
+    ],
+    "profileRequiresSmsChannel": true,
+    "oldUnscopedGrantUpgrade": "server validates all bindings, audits, no TTL extension",
+    "explicitScopeRemoval": "denied",
+    "onlinePaymentAfterSms": "BLOCKED",
+    "canonicalAuthChanged": false,
+    "strongFlowChanged": false
+  },
+  "tests": {
+    "regressions": {
+      "passed": 141,
+      "files": 19
+    },
+    "integration": {
+      "passed": 96,
+      "files": 9
+    },
+    "crm": {
+      "passed": 69,
+      "suites": 4
+    },
+    "finalBackendDeltaOverlapping": 16,
+    "finalHeaderEsmDeltaOverlapping": 7,
+    "lint": "PASS focused, zero code errors/warnings",
+    "build": "PASS four known dependency sourcemap warnings",
+    "diffCheck": "PASS"
+  },
+  "deployment": {
+    "project": "crmdoceria-9959e",
+    "functions": [
+      "api(us-central1)"
+    ],
+    "hosting": {
+      "project": "crmdoceria-9959e",
+      "commit": "4aedfeb6",
+      "result": "PASS",
+      "matched": 14,
+      "results": [
+        {
+          "file": "index.html",
+          "sha256": "a6f019930c6d6ffe5a5e355a6df354cf80c5705c640a6adbfa2c4da623a478b7",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "cardapio.html",
+          "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "cardapio-matriz.html",
+          "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "cardapio-garavelo.html",
+          "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "cardapio-festa.html",
+          "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "address-management.mjs",
+          "sha256": "3c961485636b85bf84f95a3710afc69468bf1cf4774d3aeeb07408fb5a753d69",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "address-verification-firebase.mjs",
+          "sha256": "3ccf55cb69921c2d7dd45ea8d9e1b7bfab3982ff532d521bba92e48a7f4d135a",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "checkout-addresses.mjs",
+          "sha256": "69d40df3ca2325ff3fdd5f3b5a6a6b2fcd01d453529f2127b6e8dd929f8cd705",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "checkout-identity.mjs",
+          "sha256": "228ad2641ce624697262805c276801f152951dc2c1169ac04f967bc8c1acf19c",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "firebaseClientConfig.js",
+          "sha256": "bb0bf2341afa894b44bfeb14ca68d3d6dbfd5563cc2045205e2b7408c2ca546b",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "firebase-messaging-sw.js",
+          "sha256": "65d0989ad6c4f8afa6f184f82fdcce9df5a1d4a578adbc50da95aa7eb556f550",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "static/js/main.10a3ca43.js",
+          "sha256": "2c50e2ac81787f95f28769a8380ef6215b4a1f80236bce5cf45dbc18943cd69c",
+          "cache": "public, max-age=31536000, immutable"
+        },
+        {
+          "file": "legacy-address-save.mjs",
+          "sha256": "000a945da73ac59b61e119405865ec3e013d25638e9af4a1612961bbc59b189a",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        },
+        {
+          "file": "sms-enterprise.mjs",
+          "sha256": "077fb61e3db70781bde4bb75299d1385af8b53d82b005627d5e6b5cb902eae2f",
+          "cache": "no-cache, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    "rules": false,
+    "indexes": false,
+    "storage": false,
+    "otherFunctions": false
+  },
+  "remoteGuards": {
+    "project": "crmdoceria-9959e",
+    "lookup": "PASS",
+    "maskedList": true,
+    "status": 200,
+    "smsAvailable": true,
+    "phoneMasked": true,
+    "guardResults": [
+      {
+        "operation": "read",
+        "status": 403,
+        "privateDataReturned": false
+      },
+      {
+        "operation": "update",
+        "status": 403,
+        "privateDataReturned": false
+      },
+      {
+        "operation": "address_read",
+        "status": 403
+      },
+      {
+        "operation": "address_update",
+        "status": 403
+      },
+      {
+        "operation": "address_delete",
+        "status": 403
+      },
+      {
+        "operation": "address_default",
+        "status": 403
+      }
+    ],
+    "smsSent": false,
+    "customerWrites": 0,
+    "financialCalls": 0
+  },
+  "domTechnicalEvidence": {
+    "hostingCommit": "4aedfeb6",
+    "render": "local DOM, published HTML and real DEV response/status",
+    "profileButtonVisible": true,
+    "allSavedCardsHaveProtectedActions": true,
+    "listingDoesNotRequestSms": true,
+    "addressEditOpensOtp": true,
+    "profileEditOpensOtp": true,
+    "phoneNotEditable": true,
+    "smsSendCalls": 0,
+    "customerWrites": 0,
+    "visualScreenshots": "PENDING_BROWSER_UNAVAILABLE"
+  },
+  "manualVisual": {
+    "mobile390x800": "PENDING",
+    "desktop1920x889": "PENDING",
+    "postOtpEditor": "PENDING",
+    "screenshots": "not captured, browser initialization fails",
+    "realSmsAuthorization": "REQUIRED_NEW_SPECIFIC_AUTHORIZATION"
+  },
+  "customerWrites": 0,
+  "smsRealSent": false,
+  "productionChanged": false,
+  "whatsappSent": false,
+  "financialOperation": false,
+  "progress": {
+    "phase9": 75,
+    "phase11": 100,
+    "phase12": 100,
+    "global": 95,
+    "phase13": 0
+  }
+}
