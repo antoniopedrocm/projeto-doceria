@@ -448,3 +448,30 @@ Readiness final ainda NÃO liberada: aceites internos remanescentes e resposta t
 ### 2026-10-25 — Fechamento manual da canonicalização por telefone
 
 PASS recebido para todo o roteiro consolidado em390 CSS px e1920x889. Esta extensão está CONCLUÍDA E HOMOLOGADA NO DEV; a pendência visual anterior desta entrega foi encerrada. Atualização exclusivamente documental, sem novo deploy ou operação remota. Permanecem separados o gate anterior de Editar Perfil/Enterprise após OTP, as revisões históricas de dados sem prova e a resposta técnica InfinitePay. Não declarar readiness global final nem iniciar produção. Fase9=75%, Fase11/12=100%, Global95,00%, Fase13=0%.
+## 2026-10-25 — Gate interno: Visualizar como Cliente — somente leitura
+
+**CONCLUÍDO E HOMOLOGADO MANUALMENTE NO DEV.** Requisito novo, sem reescrever a
+conclusão histórica das fases11/12. Funcional `c75a24ea`,19 Functions necessárias
+e Hosting DEV publicados;59/59 hashes/cache PASS.106 unitários,66 CRM,59 emulados,
+ESM6 entradas/2 controles negativos, build, lint sem erros novos e diff-check PASS.
+
+Capability específica/revogável, Staff ativo/loja conferidos no backend, Customer
+canônico/aliases/histórico revisado, projection allowlists e sessão administrativa
+opaca. Não impersona Customer, não altera Firebase Auth canônico, não cria token
+Customer e não executa edição/reorder/SMS/checkout/pagamento. Lease por UID bloqueia
+também mutações Customer com token válido quando o header de preview é removido.
+Controle/auditoria são privados; não constituem alteração do cadastro/pedido.
+
+Usuário aprovou390×800 e1920×889: faixa/título, home, perfil/12 endereços/1 padrão,
+histórico consolidado/detalhe, saída com admin conectado e ações somente leitura.
+Auditoria real STARTED/ENDED confirmada,0 sessões ativas ao sair. Registro opcional
+ORDER_VIEWED implementado/testado emulado; conferência remota complementar
+solicitada, ainda não contabilizada como evento observado. Não cria novo gate de
+fechamento nem retira o aceite consolidado.
+
+Contrato/limites/endpoints/testes em ADMIN_CUSTOMER_PREVIEW.md e evidências em
+evidence/admin-customer-preview-dev-2026-10-25.json. Este aceite não fecha por
+implicação os gates anteriores de outras funcionalidades. Nenhuma produção,
+secret/config PROD, migração PROD, pagamento/SMS/WhatsApp real ou novo deploy após
+o fechamento documental. Fase9=75%, Fase11/12=100%, Global=95,00%, Fase13=0%.
+

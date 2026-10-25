@@ -140,7 +140,38 @@ as6 fontes JS alteradas correspondem byte a byte ao código compilado, com
 normalização de EOL. ESM público:6 entradas e2 controles negativos PASS. Diff-check
 PASS. Resultados remotos/commit serão registrados no checkpoint agrupado.
 
-Homologação DEV pendente após publicação: Dono abre olho de Customer C02 final0290;
-perfil/12 endereços/64 pedidos, sem phone-only; navegar lista/detalhe e sair; admin
-permanece autenticado. Revisar390×800 e1920×889, banner persistente, sem overflow;
-nenhum botão de mutação/compra ativo. Não criar pedido/endereço nem enviar SMS.
+## Entrega DEV e aceite — 2026-10-25
+
+Commit funcional `c75a24ea`, push na feature/infinitepay-customer-auth. Publicadas
+somente19 Functions necessárias (api,13 Customer-self,2 legadas de perfil/endereço
+e3 de gerenciamento de usuários) e Hosting DEV. Runtime:45 arquivos versionados,
+grafo local41 módulos, sem testes/fixtures/functions.yaml/env/temporários no pacote.
+Rules, índices, Storage, SMS/provider e PROD não foram publicados/alterados.
+
+Hosting:59/59 hashes correspondentes; main.cb34a812.js SHA256
+`81eb8582db79031180769b5d45bad972fbcb0c31b3afcd5af1514c2b97f27a63`.
+HTML/bootstrap/worker revalidáveis e assets hashados immutable preservados.
+Rota administrativa SPA PASS. API remota sem Auth/token inválido:401/no-store.
+Autorização positiva/negativa e bloqueios exercitados integralmente nos emuladores.
+
+Leitura técnica DEV do alvo C02:12 endereços/1 padrão,5 IDs canônicos+aliases,
+3 UIDs aprovados,64 pedidos elegíveis (41 loja+23 root aprovados), aliases privados
+resolvendo corretamente. Nenhum vínculo por telefone foi inventado. Metadado de
+última alteração do Customer anterior ao deploy; hashes de objetos usam ordenação
+canônica das chaves, pois a ordem dos campos JSON REST não é contrato de dados.
+
+Usuário respondeu **“PASS — homologação consolidada”** para390×800 e1920×889:
+faixa/título, home, conta/endereços, histórico/detalhe, somente leitura e saída
+mantendo o administrador conectado. Aceite manual; nenhuma captura automatizada
+inventada. O controlador de navegador falhou ao inicializar (OS error3).
+
+Auditoria real já confirma STARTED e ENDED (os dois registros obrigatórios),
+escopo global e nenhuma sessão ativa após sair. ORDER_VIEWED está implementado e
+testado nos emuladores; ainda não observado no primeiro aceite remoto. Solicitada
+conferência complementar estreita, sem repetir larguras/aceite ou executar mutações.
+Essa evidência complementar não revoga o PASS manual nem cria novo critério de
+fechamento: o requisito do evento de detalhe era avaliar seu registro.
+
+**ADMIN CUSTOMER PREVIEW = CONCLUÍDO E HOMOLOGADO MANUALMENTE NO DEV.**
+Registro agrupado final em INFINITEPAY_PROJECT_PLAN.md e
+evidence/admin-customer-preview-dev-2026-10-25.json.

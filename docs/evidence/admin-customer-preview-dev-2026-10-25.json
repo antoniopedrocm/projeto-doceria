@@ -1,0 +1,161 @@
+{
+  "date": "2026-10-25",
+  "project": "crmdoceria-9959e",
+  "branch": "feature/infinitepay-customer-auth",
+  "functionalCommit": "c75a24ea",
+  "feature": "Visualizar como Cliente — somente leitura",
+  "mode": "ADMIN_CUSTOMER_PREVIEW",
+  "impersonation": false,
+  "capability": "view_customer_as_readonly",
+  "local": {
+    "unit": {
+      "pass": 106,
+      "fail": 0
+    },
+    "crm": {
+      "pass": 66,
+      "fail": 0,
+      "newPreviewCases": 7
+    },
+    "emulators": {
+      "pass": 59,
+      "fail": 0,
+      "newPreviewCases": 19,
+      "isolatedDemoOnly": true
+    },
+    "esm": {
+      "status": "PASS",
+      "entries": 6,
+      "negativeControls": 2
+    },
+    "lint": {
+      "errors": 0,
+      "newWarnings": 0,
+      "preexistingFrontendWarnings": 66,
+      "preexistingBackendWarnings": 6,
+      "baselineCompared": true
+    },
+    "build": {
+      "status": "PASS",
+      "sourceMapMatches": 6,
+      "knownWarnings": "4 native-audio sourcemaps; browser metadata"
+    },
+    "diffCheck": "PASS"
+  },
+  "remote": {
+    "functions": {
+      "status": "PASS",
+      "updated": 19,
+      "region": "us-central1",
+      "stagedTrackedRuntimeFiles": 45,
+      "localDependencyModules": 41
+    },
+    "hosting": {
+      "status": "PASS",
+      "files": 59,
+      "matched": 59,
+      "main": {
+        "file": "static/js/main.cb34a812.js",
+        "sha256": "81eb8582db79031180769b5d45bad972fbcb0c31b3afcd5af1514c2b97f27a63",
+        "cache": "public, max-age=31536000, immutable"
+      },
+      "cache": "PASS",
+      "spaRoute": "PASS"
+    },
+    "apiGates": [
+      {
+        "name": "anonymous",
+        "status": 401,
+        "code": "unauthenticated",
+        "cache": "no-store"
+      },
+      {
+        "name": "mutation",
+        "status": 401,
+        "code": "unauthenticated",
+        "cache": "no-store"
+      },
+      {
+        "name": "invalid-token",
+        "status": 401
+      }
+    ],
+    "canonicalCustomer": {
+      "reference": "C02",
+      "addresses": 12,
+      "defaults": 1,
+      "canonicalIds": 5,
+      "ownerUidsCount": 3,
+      "aliasesResolve": true,
+      "orders": 64,
+      "storeOrders": 41,
+      "approvedRootOrders": 23,
+      "customerLastUpdate": "2026-10-25T10:43:30.131352Z",
+      "customerStableHash": "5533fb472963085dbccda6683fe56c0ec122976adbe19d9950d12b87ad726743",
+      "orderProjectionStableHash": "8c0108fd05986d8dfa8279ea04e64eb14f16ae00ce02e495b703205de1820e9b"
+    },
+    "audit": {
+      "project": "crmdoceria-9959e",
+      "auditCount": 2,
+      "sessionCount": 1,
+      "eventCounts": {
+        "ADMIN_CUSTOMER_PREVIEW_ENDED": 1,
+        "ADMIN_CUSTOMER_PREVIEW_STARTED": 1
+      },
+      "fieldNames": [
+        "timestamp",
+        "canonicalCustomerId",
+        "adminUid",
+        "type",
+        "storeIds",
+        "globalScope"
+      ],
+      "globalScopes": [
+        true
+      ],
+      "activeSessions": 0,
+      "status": "MANDATORY_START_END_CONFIRMED",
+      "detailEventImplementedAndEmulatorTested": true,
+      "detailEventObservedInDev": false
+    }
+  },
+  "manual": {
+    "status": "APPROVED_MANUALLY",
+    "response": "PASS — homologação consolidada",
+    "viewports": [
+      "390x800",
+      "1920x889"
+    ],
+    "scenarios": [
+      "banner/title",
+      "home",
+      "profile/addresses",
+      "consolidated history",
+      "order detail",
+      "exit without admin logout",
+      "read-only action blocks"
+    ],
+    "additionalTechnicalCheck": "Optional complementary real ORDER_VIEWED verification requested; consolidated manual acceptance remains valid",
+    "additionalCheckBlocksDelivery": false
+  },
+  "safety": {
+    "customerSessionCreated": false,
+    "customerTokenMinted": false,
+    "canonicalAuthChanged": false,
+    "businessWritesByPreview": false,
+    "realPayment": false,
+    "realSms": false,
+    "whatsapp": false,
+    "productionChanged": false,
+    "rulesChanged": false,
+    "indexesChanged": false
+  },
+  "progress": {
+    "phase9": 75,
+    "phase11": 100,
+    "phase12": 100,
+    "global": 95,
+    "phase13": 0
+  },
+  "status": "COMPLETED_AND_MANUALLY_APPROVED_DEV"
+}
