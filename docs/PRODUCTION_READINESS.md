@@ -474,4 +474,3 @@ evidence/admin-customer-preview-dev-2026-10-25.json. Este aceite não fecha por
 implicação os gates anteriores de outras funcionalidades. Nenhuma produção,
 secret/config PROD, migração PROD, pagamento/SMS/WhatsApp real ou novo deploy após
 o fechamento documental. Fase9=75%, Fase11/12=100%, Global=95,00%, Fase13=0%.
-
