@@ -2,7 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),{createHash}=require('node:crypto');
 const {buildCustomerMigrationPlan}=require('../functions/customer-migration-plan');
 const {fields,buildSafeMigrationWrites,buildReviewedMigrationWrites}=require('../functions/customer-migration-writes');
-const args=process.argv.slice(2),arg=n=>args[args.indexOf(n)+1],modes=['--dry-run','--apply-safe','--apply-reviewed','--rollback'].filter(n=>args.includes(n));
+const args=process.argv.slice(2),arg=n=>{const i=args.indexOf(n);return i<0?undefined:args[i+1];},modes=['--dry-run','--apply-safe','--apply-reviewed','--rollback'].filter(n=>args.includes(n));
 const project='crmdoceria-9959e',root=fs.realpathSync(process.cwd()),segments=root.toLowerCase().split(/[\\/]+/),digest=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 if(modes.length!==1 || !args.includes('--project') || arg('--project')!==project || !segments.includes('projeto-doceria-main') || segments.includes('projeto-doceria-multiloja'))throw Error('One mode and explicit DEV workspace/project required.');
 if(cp.execFileSync('git',['branch','--show-current'],{encoding:'utf8'}).trim()!=='feature/infinitepay-customer-auth')throw Error('Wrong branch.');
