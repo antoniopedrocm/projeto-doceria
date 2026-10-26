@@ -1,4 +1,5 @@
 import AdminCustomerPreview from './customer/AdminCustomerPreview';
+import {storePerfMark,storePerfEvent,storePerfRequest,storePerfPaint} from './performance/storeBootstrapPerf';
 import {canPreviewCustomer,previewPermissionDetails,previewTarget} from './customer/adminPreviewAccess';
 import StorefrontLinks from './storefront/StorefrontLinks';
 import {normalizeRole, isActiveStaffProfile} from './customer/staffRole';
@@ -292,16 +293,16 @@ const buildUserDataFromProfile = (authUser, profile = {}, customProfileData = nu
 };
 const loadCurrentStaffProfile = async authUser => {
   let snapshot;
-  try { snapshot = await getDocFromServer(doc(db, 'users', authUser.uid)); }
+  try { snapshot = await storePerfRequest('staff-user',()=>getDocFromServer(doc(db, 'users', authUser.uid))); }
   catch (error) { if (['permission-denied','firestore/permission-denied'].includes(error.code)) return null; throw error; }
   const profile = snapshot.exists() ? snapshot.data() : null;
   if (!isActiveStaffProfile(profile)) return null;
-  const custom = await getDocFromServer(doc(db, 'customProfiles', authUser.uid));
+  const custom = await storePerfRequest('staff-custom-profile',()=>getDocFromServer(doc(db, 'customProfiles', authUser.uid)));
   return {...buildUserDataFromProfile(authUser, profile, custom.exists() ? custom.data() : null), profile,
     stores: extractStoreIdsFromProfile(profile)};
 };
 const resolveUserCapabilities = createCapabilityResolver({loadStaff: loadCurrentStaffProfile,
-  loadCustomer: async () => (await httpsCallable(functions, 'customerAccount')()).data});
+  loadCustomer: async () => (await storePerfRequest('customer-capability',()=>httpsCallable(functions, 'customerAccount')())).data});
 
 const USER_INACTIVE_ACCESS_DENIED = 'auth/user-inactive';
 const CLIENT_ADMIN_ACCESS_DENIED = 'auth/client-admin-access-denied';
@@ -3656,6 +3657,7 @@ const Relatorios = ({ data, user, availableStores, storeInfoMap }) => {
 
 // Componente principal
 function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomerContext, onLogout = logoutCanonicalSession, onStaffAccessLost }) {
+  useEffect(()=>{storePerfMark('shell-interactive');},[]);
   // Leaving a shell is not logout, but its foreground alarm must stop.
   useEffect(() => () => audioManager.stopAlarmSound(), []);
   const [previewId,setPreviewId]=useState(()=>previewTarget(window.location.pathname));
@@ -3697,6 +3699,18 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
 
   const [availableStores, setAvailableStores] = useState([]);
   const [storeInfoMap, setStoreInfoMap] = useState({});
+  useEffect(()=>{if(user?.auth?.uid)storePerfMark('staff-shell-ready');},[user?.auth?.uid]);
+  useEffect(()=>{
+    if(!user || !availableStores.length)return;
+    return storePerfPaint('T8');
+  },[user,availableStores]);
+  useEffect(()=>{
+    if(!user || !availableStores.length)return;
+    return storePerfPaint('T9');
+  },[user,availableStores]);
+  useEffect(()=>{
+    if(availableStores.length && availableStores.every(id=>Object.prototype.hasOwnProperty.call(storeInfoMap,id)))return storePerfPaint('store-names-rendered');
+  },[availableStores,storeInfoMap]);
   const [selectedStoreId, setSelectedStoreId] = usePersistentState('selectedStoreId', null);
   const [showStoreManager, setShowStoreManager] = useState(false);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
@@ -5266,13 +5280,18 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
             try {
                 let storeIds = [];
 
+                storePerfMark('T4');storePerfEvent('staff-directory-start');
                 if (user.role === ROLE_OWNER && user.canAccessAllStores) {
-                    const snapshot = await getDocs(collection(db, 'lojas'));
+                    storePerfMark('T5');
+                    const snapshot = await storePerfRequest('staff-directory-query',()=>getDocs(collection(db, 'lojas')));
+                    storePerfMark('T6');
                     storeIds = snapshot.docs.map((docSnap) => docSnap.id);
                 } else {
+                    storePerfMark('T5');storePerfMark('T6');storePerfEvent('staff-directory-membership');
                     storeIds = user.lojaIds && user.lojaIds.length ? user.lojaIds : (user.lojaId ? [user.lojaId] : []);
                 }
 
+                storePerfMark('T7');
                 if (!isMounted) return;
 
                 setAvailableStores(storeIds);
@@ -5321,17 +5340,17 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
                 const entries = await Promise.all(availableStores.map(async (storeId) => {
                     try {
                         const empresaDocRef = doc(db, 'lojas', storeId, 'meuEspaco', 'empresa');
-                        const empresaDocSnap = await getDoc(empresaDocRef);
+                        const empresaDocSnap = await storePerfRequest('store-company',()=>getDoc(empresaDocRef));
                         if (empresaDocSnap.exists()) {
                             return [storeId, empresaDocSnap.data()];
                         }
 
-                        const pontoDocSnap = await getDoc(doc(db, 'lojas', storeId, 'meuEspaco', 'ponto'));
+                        const pontoDocSnap = await storePerfRequest('store-point-fallback',()=>getDoc(doc(db, 'lojas', storeId, 'meuEspaco', 'ponto')));
                         if (pontoDocSnap.exists()) {
                             return [storeId, pontoDocSnap.data()];
                         }
 
-                        const fallbackDocSnap = await getDoc(doc(db, 'lojas', storeId));
+                        const fallbackDocSnap = await storePerfRequest('store-root-fallback',()=>getDoc(doc(db, 'lojas', storeId)));
                         if (fallbackDocSnap.exists()) {
                             return [storeId, fallbackDocSnap.data()];
                         }

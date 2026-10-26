@@ -2,6 +2,60 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
+    <script id="crm-store-perf-bootstrap">
+/* DEV diagnostic; load only via ?crmPerf=1. No network requests or persistent storage. */
+(() => {
+  if(!['crmdoceria-9959e.web.app','crmdoceria-9959e.firebaseapp.com','localhost','127.0.0.1'].includes(location.hostname) ||
+      new URLSearchParams(location.search).get('crmPerf')!=='1')return;
+  const marks={T0:performance.now()},events=[];
+  performance.mark('crm-store:T0');
+  const measures={T1_T0:['T0','T1'],T2_T1:['T1','T2'],T3_T2:['T2','T3'],T5_T4:['T4','T5'],T6_T5:['T5','T6'],T7_T6:['T6','T7'],T8_T7:['T7','T8'],T9_T0:['T0','T9'],shell_T0:['T0','shell-interactive'],names_T0:['T0','store-names-rendered'],homeLinks_T0:['T0','home-links-rendered'],homeLinks_load_to_render:['home-links-started','home-links-rendered']};
+  const round=n=>Math.round(n*10)/10;
+  const mark=name=>{
+    if(!/^(T[0-9]|shell-interactive|staff-shell-ready|store-names-rendered|home-links-started|home-links-rendered)$/.test(name) || marks[name]!==undefined)return;
+    marks[name]=performance.now();performance.mark('crm-store:'+name);
+    for(const [label,[start,end]]of Object.entries(measures))if(end===name && marks[start]!==undefined)performance.measure('crm-store:'+label,'crm-store:'+start,'crm-store:'+end);
+  };
+  const event=(name,values={})=>{
+    if(events.length>=200 || !/^[a-z0-9-]{1,60}$/.test(name))return;
+    const record={name,atMs:round(performance.now()-marks.T0)};
+    for(const key of ['durationMs','documents','bytes','status','failed'])if(typeof values[key]==='number' || typeof values[key]==='boolean')record[key]=typeof values[key]==='number'?round(values[key]):values[key];
+    events.push(record);
+  };
+  const category=entry=>{
+    try {
+      const url=new URL(entry.name);
+      if(url.pathname.endsWith('/store/public-list'))return 'public-store-list';
+      if(url.hostname==='firestore.googleapis.com')return 'firestore-transport-shared';
+      if(url.pathname.endsWith('/customerAccount'))return 'customer-capability';
+      if(/\/static\/js\/main\.[a-f0-9]+\.js$/.test(url.pathname))return 'main-bundle';
+      if(url.pathname.startsWith('/__/firebase/'))return 'firebase-compat-bootstrap';
+      return null;
+    } catch{return null;}
+  };
+  const report=()=>{
+    const navigation=performance.getEntriesByType('navigation')[0];
+    const resourceTimings=performance.getEntriesByType('resource').map(entry=>({entry,kind:category(entry)})).filter(r=>r.kind).map(({entry,kind})=>({kind,startMs:round(entry.startTime),durationMs:round(entry.duration),transferBytes:entry.transferSize,encodedBodyBytes:entry.encodedBodySize}));
+    return {schema:1,variant:'baseline-da795618-instrumented',scope:'DEV browser, opt-in; no identity or document payload',
+      navigationType:navigation?.type || null,viewport:{width:innerWidth,height:innerHeight},
+      marksMs:Object.fromEntries(Object.entries(marks).map(([key,value])=>[key,round(value-marks.T0)])),
+      intervalsMs:Object.fromEntries(Object.entries(measures).map(([label,[a,b]])=>[label,marks[a]!==undefined && marks[b]!==undefined?round(marks[b]-marks[a]):null])),
+      eventCounts:events.reduce((counts,r)=>(counts[r.name]=(counts[r.name] || 0)+1,counts),{}),events,resourceTimings,
+      notes:['T0 is the diagnostic script in the HTML head, not network navigationStart.','Logical Firestore operations and HTTP transports are different counts; streams can multiplex reads.','Cross-origin resource byte sizes may be zero without Timing-Allow-Origin.','No throttling profile inferred; label normal/Fast 3G manually.']};
+  };
+  window.__crmStorePerf={mark,event,report};
+  const mount=()=>{
+    const panel=document.createElement('details');panel.id='crm-store-perf-panel';panel.style.cssText='position:fixed;bottom:8px;left:8px;z-index:100000;background:white;border:1px solid #be185d;padding:8px;border-radius:8px;font:12px sans-serif;max-width:calc(100vw - 16px);box-sizing:border-box';
+    const summary=document.createElement('summary');summary.textContent='Diagnóstico DEV · Lojas';
+    const copy=document.createElement('button');copy.type='button';copy.textContent='Copiar medição';copy.style.cssText='padding:8px;cursor:pointer';
+    const output=document.createElement('textarea');output.readOnly=true;output.setAttribute('aria-label','Medição de carregamento sem dados pessoais');output.style.cssText='display:none;width:320px;max-width:100%;height:180px';
+    copy.onclick=async()=>{const value=JSON.stringify(report(),null,2);output.value=value;output.style.display='block';try{await navigator.clipboard.writeText(value);copy.textContent='Medição copiada';}catch{output.select();copy.textContent='Selecione e copie a medição';}};
+    panel.append(summary,copy,output);document.body.append(panel);
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
+})();
+
+</script>
     <link rel="icon" href="%PUBLIC_URL%/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#E11D48" />

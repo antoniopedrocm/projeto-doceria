@@ -1,6 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import {app} from '../firebaseConfig';
 import {storeMenuUrl} from './storeRoutes.mjs';
+import {storePerfMark,storePerfEvent,storePerfPaint} from '../performance/storeBootstrapPerf';
 export default function StorefrontLinks() {
   const [stores,setStores]=useState([]),[cursor,setCursor]=useState(null),[message,setMessage]=useState('Carregando lojas…');
   const [busy,setBusy]=useState(false);
@@ -9,11 +10,13 @@ export default function StorefrontLinks() {
     : `https://us-central1-${app.options.projectId}.cloudfunctions.net/api`;
   useEffect(()=>{
     let active=true;
-    fetch(`${base}/store/public-list`,{cache:'no-cache'}).then(async r=>{if(!r.ok) throw Error();return r.json();}).then(data=>{
+    const start=performance.now();storePerfMark('home-links-started');storePerfEvent('public-links-start');
+    fetch(`${base}/store/public-list`,{cache:'no-cache'}).then(async r=>{if(!r.ok) throw Error();const data=await r.json();storePerfEvent('public-links-response',{durationMs:performance.now()-start,status:r.status,documents:data.stores?.length});return data;}).then(data=>{
       if(active) {setStores(data.stores);setCursor(data.nextCursor);setMessage(data.stores.length?'':'Nenhuma loja disponível.');}
-    }).catch(()=>{if(active) setMessage('Não foi possível carregar as lojas.');});
+    }).catch(()=>{storePerfEvent('public-links-error',{durationMs:performance.now()-start,failed:true});if(active) setMessage('Não foi possível carregar as lojas.');});
     return()=>{active=false;};
   },[base]);
+  useEffect(()=>{if(stores.length)return storePerfPaint('home-links-rendered');},[stores]);
   const more=async()=>{
     setBusy(true);
     try {const r=await fetch(`${base}/store/public-list?cursor=${encodeURIComponent(cursor)}`,{cache:'no-cache'});

@@ -1,4 +1,5 @@
 import {clearStaffUiState} from './staffUiState';
+import {storePerfMark} from '../performance/storeBootstrapPerf';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {onIdTokenChanged} from 'firebase/auth';
 import {auth} from '../firebaseConfig';
@@ -41,6 +42,7 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
           return;
         }
         const capabilities=await resolveCapabilities(auth.currentUser);
+        storePerfMark('T3');
         if(!current() || capabilities.uid!==uid) return;
         if(window.location.pathname.startsWith('/admin/customer-preview/') && !capabilities.isStaff) {
           state.activeContext=null;setView({kind:'admin-denied'});return;
@@ -60,7 +62,7 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
       }
     };
     state.resolve=resolve;
-    const stops=[onIdTokenChanged(auth,user=>resolve({requested:user?.uid===state.uid ? state.requestedContext || state.activeContext : undefined})),onIdTokenChanged(legacyAuth,user=>{if(user) resolve({transition:true});})];
+    const stops=[onIdTokenChanged(auth,user=>{storePerfMark('T2');return resolve({requested:user?.uid===state.uid ? state.requestedContext || state.activeContext : undefined});}),onIdTokenChanged(legacyAuth,user=>{if(user) resolve({transition:true});})];
     const pop=()=>resolve({requested:isCustomerPath(window.location.pathname)?'customer':'staff',transition:true});
     window.addEventListener('popstate',pop);
     return()=>{active=false;state.generation++;state.resolve=null;stops.forEach(stop=>stop());window.removeEventListener('popstate',pop);};
