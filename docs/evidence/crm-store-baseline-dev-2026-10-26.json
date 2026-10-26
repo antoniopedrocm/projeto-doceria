@@ -1,0 +1,529 @@
+{
+  "schema": 1,
+  "checkedAt": "2026-10-26T04:23:50.043Z",
+  "project": "crmdoceria-9959e",
+  "commit": "d0d1b5f8c377741dedd05b002ae791452e5ddd75",
+  "scope": "DEV Hosting baseline-only instrumentation, no performance optimization yet",
+  "filesChecked": 59,
+  "filesMatched": 59,
+  "diagnosticRouteMatched": true,
+  "cachePassed": true,
+  "main": {
+    "path": "static/js/main.70654ccd.js",
+    "status": 200,
+    "bytes": 1665286,
+    "sha256": "8e0b7d8c8271717e4e098700b4789d4e038f2ac89284b254cdedf4be3138f927",
+    "same": true,
+    "cache": "public, max-age=31536000, immutable"
+  },
+  "stable": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "bytes": 6468,
+      "sha256": "20a322ef42383a351c665777a709ca0bfb8695ee4cab837efbecd4c63acd66b4",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "firebase-messaging-sw.js",
+      "status": 200,
+      "bytes": 3584,
+      "sha256": "65d0989ad6c4f8afa6f184f82fdcce9df5a1d4a578adbc50da95aa7eb556f550",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-home.js",
+      "status": 200,
+      "bytes": 180,
+      "sha256": "31aa2381382bfc7895596c3979352f861706bef4871f959d89de3d55d28988e4",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    }
+  ],
+  "tests": {
+    "react": 68,
+    "authCache": 9
+  },
+  "lint": {
+    "errors": 0,
+    "preexistingWarnings": 66,
+    "baselineMessagesMatched": true
+  },
+  "sourceMapSourcesVerified": 5,
+  "files": [
+    {
+      "path": ".well-known/assetlinks.json",
+      "status": 200,
+      "bytes": 275,
+      "sha256": "dd4e2783217aa9e394b763f252cc1a7634aabe3f974199523be185b6ef9fed9d",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "address-management.mjs",
+      "status": 200,
+      "bytes": 13321,
+      "sha256": "3c961485636b85bf84f95a3710afc69468bf1cf4774d3aeeb07408fb5a753d69",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "address-verification-firebase.mjs",
+      "status": 200,
+      "bytes": 492,
+      "sha256": "3ccf55cb69921c2d7dd45ea8d9e1b7bfab3982ff532d521bba92e48a7f4d135a",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "asset-manifest.json",
+      "status": 200,
+      "bytes": 517,
+      "sha256": "63f44f752a801eb829b28aedad19ad99301cee78d8b95460769c1c3a7cb74e68",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "audio/alarm_old.mp3",
+      "status": 200,
+      "bytes": 134678,
+      "sha256": "1ab889a19998f0f0872fa7a8971dde5847b57e85be6ccad960e688f9d310a91a",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "audio/alarm.mp3",
+      "status": 200,
+      "bytes": 187008,
+      "sha256": "2c4e76e82db26f9ad7f817c9463a97ecc4ffc309131e2f4449e218036d112dc9",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "audio/mixkit_vintage_warning_alarm_990.mp3",
+      "status": 200,
+      "bytes": 134678,
+      "sha256": "1ab889a19998f0f0872fa7a8971dde5847b57e85be6ccad960e688f9d310a91a",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "canonical-auth.mjs",
+      "status": 200,
+      "bytes": 787,
+      "sha256": "023f27616c6761b4eb845358f72ba2afb8490d622f3815033bce5b74c7dfc7f5",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "canonical-session.mjs",
+      "status": 200,
+      "bytes": 3565,
+      "sha256": "ecbcc6457b99d3fe13ee0ff2c5374b5398e3fc3abed83d0acbad1bda6d2e3697",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "cardapio-festa.html",
+      "status": 200,
+      "bytes": 210210,
+      "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "cardapio-garavelo.html",
+      "status": 200,
+      "bytes": 210210,
+      "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "cardapio-matriz.html",
+      "status": 200,
+      "bytes": 210210,
+      "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "cardapio.html",
+      "status": 200,
+      "bytes": 210210,
+      "sha256": "0965def2b238776ba3d098971672c02a268df815fc5fc7c465d2ab5dfe502e15",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "checkout-addresses.mjs",
+      "status": 200,
+      "bytes": 3608,
+      "sha256": "69d40df3ca2325ff3fdd5f3b5a6a6b2fcd01d453529f2127b6e8dd929f8cd705",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "checkout-environment.js",
+      "status": 200,
+      "bytes": 1131,
+      "sha256": "ae6615f05f5c02e4aa3d112e5849b787399b7525ed51bd244a49d0c5341f428c",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "checkout-identity.mjs",
+      "status": 200,
+      "bytes": 2011,
+      "sha256": "228ad2641ce624697262805c276801f152951dc2c1169ac04f967bc8c1acf19c",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "checkout-payment-client.js",
+      "status": 200,
+      "bytes": 2758,
+      "sha256": "49d725e1384157c26c549b509abc728ded6c2e21935ae26e479b4a50b6ca8f70",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-account-core.mjs",
+      "status": 200,
+      "bytes": 28581,
+      "sha256": "4a9ab095fd04124aee29d056a08b09942fd7e6a10b4aa48f65e51df6a4022004",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-account.js",
+      "status": 200,
+      "bytes": 582,
+      "sha256": "0f75e1edb057e00bbab91f83fe58723f1d383c6fc91eea108b1c7e5be30156c6",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-area.css",
+      "status": 200,
+      "bytes": 2746,
+      "sha256": "2eb1433003113b21feab14a228ce372b05f2f08fc79ec31ecbed90d28b96ad6c",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "customer-area.mjs",
+      "status": 200,
+      "bytes": 1083,
+      "sha256": "2a99ab7c8fe1c316e257b8f5b6c77e8951e3f57882fc5543e47476267038280a",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-auth-errors.mjs",
+      "status": 200,
+      "bytes": 1278,
+      "sha256": "dbc11992b825feb1d50802bd7b8f7caabd988fb1136d06db275569a77b2a93f0",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-home.js",
+      "status": 200,
+      "bytes": 180,
+      "sha256": "31aa2381382bfc7895596c3979352f861706bef4871f959d89de3d55d28988e4",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-orders-view.mjs",
+      "status": 200,
+      "bytes": 7887,
+      "sha256": "24b9224e10e00fc7f1a79f35453a175fcf2d061899085773122b3e22774e7033",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-phone-claim.mjs",
+      "status": 200,
+      "bytes": 5310,
+      "sha256": "face9da002fe17dba675c32839c3fcfdc029255279eccecbe6b18d5f29bd74cc",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-profile.mjs",
+      "status": 200,
+      "bytes": 2460,
+      "sha256": "f1a0c9ae7fa58e234eb345d81fc11b802e81f2fb9722b6b6d14cc788729571d3",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-reorder-view.mjs",
+      "status": 200,
+      "bytes": 6168,
+      "sha256": "873bf43854daf81ad093c152c0c0e96e83e2cf4cfa21f696a1fb48112b0a4d90",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "customer-session.mjs",
+      "status": 200,
+      "bytes": 1306,
+      "sha256": "79dc36150be36a8cfa4448380ac315d38f5bf9fe285c6268f8a3a6c7583293ea",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "firebase-messaging-sw.js",
+      "status": 200,
+      "bytes": 3584,
+      "sha256": "65d0989ad6c4f8afa6f184f82fdcce9df5a1d4a578adbc50da95aa7eb556f550",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "firebaseClientConfig.js",
+      "status": 200,
+      "bytes": 7824,
+      "sha256": "bb0bf2341afa894b44bfeb14ca68d3d6dbfd5563cc2045205e2b7408c2ca546b",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "ic_launcher_foreground.png",
+      "status": 200,
+      "bytes": 26572,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "ic_launcher_round.png",
+      "status": 200,
+      "bytes": 26572,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "ic_launcher.png",
+      "status": 200,
+      "bytes": 26572,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "index.html",
+      "status": 200,
+      "bytes": 6468,
+      "sha256": "20a322ef42383a351c665777a709ca0bfb8695ee4cab837efbecd4c63acd66b4",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "legacy-address-save.mjs",
+      "status": 200,
+      "bytes": 1901,
+      "sha256": "000a945da73ac59b61e119405865ec3e013d25638e9af4a1612961bbc59b189a",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "logo_old.png",
+      "status": 200,
+      "bytes": 1474,
+      "sha256": "fcc58c55add19249721ec0bbcc36f916ffdea5c53ab79837a230344a575dadd6",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "logo.png",
+      "status": 200,
+      "bytes": 26572,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "logo192.png",
+      "status": 200,
+      "bytes": 26572,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "logo512.png",
+      "status": 200,
+      "bytes": 26572,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "logotipo.png",
+      "status": 200,
+      "bytes": 78547,
+      "sha256": "a6df8f594b9a6370df209f465086f1bf0fe64be079b558cf595060e8ad5ff63c",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "manifest.json",
+      "status": 200,
+      "bytes": 515,
+      "sha256": "77ceefbd5951f3e4747ef40e1d46838ab4f883ba01a5a4badd1f2e36e5404712",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "payment-return.html",
+      "status": 200,
+      "bytes": 844,
+      "sha256": "5ba7c37c095e07a636c314ab06eda9e48a62972fd0414e032f0730c61fd8ca6d",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "payment-return.js",
+      "status": 200,
+      "bytes": 1707,
+      "sha256": "d8da43253c543c6e792cdffabdf6eeeebdbdda605b42595de5adf61bfa1a567f",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "reorder-cart.mjs",
+      "status": 200,
+      "bytes": 6258,
+      "sha256": "e911254d7a3b2db5d198e39d5dcaf4c66754a6ec1015ed166954a4f16808002d",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "slide/slide1.png",
+      "status": 200,
+      "bytes": 196874,
+      "sha256": "06e61c2e860c70014d67d112863517f96f28bb40110aa120abc64372a7777b25",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "slide/slide2.png",
+      "status": 200,
+      "bytes": 414505,
+      "sha256": "a996fa2fd945e672f7ab3f0b3ab0b55c490a72a474229291d1fcba2bcb41f7a7",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "slide/slide3.png",
+      "status": 200,
+      "bytes": 580930,
+      "sha256": "fcc9c5358439ae82cded1c34f8fa9f883d0af4dae66af7934e01d05087f4f46f",
+      "same": true,
+      "cache": "max-age=3600"
+    },
+    {
+      "path": "sms-enterprise.mjs",
+      "status": 200,
+      "bytes": 2716,
+      "sha256": "077fb61e3db70781bde4bb75299d1385af8b53d82b005627d5e6b5cb902eae2f",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "staff-push-cleanup.mjs",
+      "status": 200,
+      "bytes": 4127,
+      "sha256": "2d0f428c65600f3aebf1fcb061017954667038eafb61f65187ab466568636a9b",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "static/css/main.a250970b.css",
+      "status": 200,
+      "bytes": 62242,
+      "sha256": "ebc12bf185fa4078b276999398a9defff9b5a4a206ca045f899607929bedf10c",
+      "same": true,
+      "cache": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "static/css/main.a250970b.css.map",
+      "status": 200,
+      "bytes": 24751,
+      "sha256": "2ffd6c8aa806a139b24a21b43ce028be5bdfd6f7cefeaf6d88001469b503f65d",
+      "same": true,
+      "cache": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "static/js/522.599bd7ea.chunk.js",
+      "status": 200,
+      "bytes": 2474,
+      "sha256": "eeb7c70515db0180dc8d2a07619075f8ce55bec48653e255289a31a18c3603a7",
+      "same": true,
+      "cache": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "static/js/522.599bd7ea.chunk.js.map",
+      "status": 200,
+      "bytes": 2790,
+      "sha256": "4bd2c44937d564c99b802ac613b77939e5d633d17add5410fbf505f4e08ba21a",
+      "same": true,
+      "cache": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "static/js/main.70654ccd.js",
+      "status": 200,
+      "bytes": 1665286,
+      "sha256": "8e0b7d8c8271717e4e098700b4789d4e038f2ac89284b254cdedf4be3138f927",
+      "same": true,
+      "cache": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "static/js/main.70654ccd.js.LICENSE.txt",
+      "status": 200,
+      "bytes": 10202,
+      "sha256": "3af38016848e12134186cf2143270bc0836d6c2cee899ab6fd7dfd3636e357a2",
+      "same": true,
+      "cache": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "static/js/main.70654ccd.js.map",
+      "status": 200,
+      "bytes": 6595173,
+      "sha256": "a9c5b7ccccdf8c27c0f62901320b7418be8d50d362c0576d02647571ab133dbd",
+      "same": true,
+      "cache": "public, max-age=31536000, immutable"
+    },
+    {
+      "path": "store-availability.mjs",
+      "status": 200,
+      "bytes": 2507,
+      "sha256": "591bc1d9491e9a5e101f874a055e76a4654778250bab30367535bcc93be98bc2",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "store-links.mjs",
+      "status": 200,
+      "bytes": 381,
+      "sha256": "b6770f8ff895b823a3599ac3bbc95ed6d88525312aa578aa0032b19dd38bdeb5",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "store-public-config.mjs",
+      "status": 200,
+      "bytes": 2722,
+      "sha256": "2cdebac3716ec5b1ba527add54421fb2cccaa70fdc2283a96b1f6fe89c24b334",
+      "same": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    }
+  ]
+}
