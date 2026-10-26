@@ -476,3 +476,9 @@ evidence/admin-customer-preview-dev-2026-10-25.json. Este aceite não fecha por
 implicação os gates anteriores de outras funcionalidades. Nenhuma produção,
 secret/config PROD, migração PROD, pagamento/SMS/WhatsApp real ou novo deploy após
 o fechamento documental. Fase9=75%, Fase11/12=100%, Global=95,00%, Fase13=0%.
+
+## Requisito adicional — performance de lojas CRM (26/10/2026)
+
+- Correção interna `a23912fc` commitada/enviada ao DEV, com baseline autenticado recebido e testes/build/lint/diff PASS. Relatório: `CRM_STORE_LOADING_PERFORMANCE.md`.
+- **PENDENTE de deploy DEV e comparação/homologação remota:** Firebase CLI retornou Authentication Error nos prechecks da API/Hosting; nenhum deploy da correção foi concluído. Automação visual interrompida pela revisão automática por não conseguir confirmar a URL do navegador. Comandos DEV e próximos passos estão no relatório; sem contornar autenticação/política.
+- Não declarar readiness interna final enquanto esse gate estiver pendente. Não altera fases históricas nem autoriza produção: Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%/NÃO INICIADA. Nenhum SMS/WhatsApp/pagamento real ou PROD.

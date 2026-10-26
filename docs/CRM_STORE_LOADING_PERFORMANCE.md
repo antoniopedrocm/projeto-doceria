@@ -80,3 +80,71 @@ O controle automático de navegador não inicia neste ambiente (`kernel assets/p
 ## Próxima etapa após baseline
 
 Confrontar contagens e durações reais com as dependências acima; corrigir somente os gargalos comprovados. Separar diretório Staff de detalhes, eliminar remount/requisições redundantes e custo desnecessário da listagem pública sem usar public-list como autorização Staff. Testar erro/retry/zero/uma/várias lojas, seleção preservada, capabilities e sessão; publicar somente os componentes necessários no DEV e repetir as mesmas medições. A otimização permanece requisito interno pré-PROD **PENDENTE** até essa comparação/homologação.
+
+## Baseline autenticado recebido e correção — 26/10/2026
+
+O usuário forneceu o JSON real do painel na sessão Staff, reload normal, viewport1920×945. Resumo fiel em `docs/evidence/crm-store-browser-before-2026-10-26.json`; sem afirmar hard reload, Fast3G ou console limpo. O início dos atalhos aos16225,6ms ocorreu após navegação manual: não usar26866,6ms como custo puro de bootstrap.
+
+| Intervalo | Antes (ms) |
+| --- | --- |
+| T1−T0 | 3,1 |
+| T2−T1 | 423,7 |
+| T3−T2 | 1719,4 |
+| T5−T4 | 0,1 |
+| T6−T5 | 141,8 |
+| T7−T6 | 0,1 |
+| T8−T7 | 15,1 |
+| T9−T0, seletor habilitado | 2504,3 |
+| Shell−T0 | 2148,2 |
+| Nomes−T0 | 2953,9 |
+| Atalhos: início do carregamento→render | **10641,0** |
+
+Contagens efetivas:2 leituras de users+2 customProfiles,1 customerAccount(**1035ms** na trilha crítica),2 descobertas Staff com3 documentos cada,3 company reads(~452–454ms),**4 GET públicos**(2704,5/4509,6/7056,3/9479,5ms). A resposta inicial do primeiro GET foi descartada por remontagem; o render veio após o último. A sequência de remontagens está corroborada pelo escopo aninhado de PaginaInicial e por teste do componente extraído. Não converter os transportes Firestore do relatório em quantidade exata de leituras faturadas; streams são compartilhados.
+
+### Mudanças funcionais
+
+- `CrmHome`/slider extraídos para tipo React estável; atualizações do pai não reiniciam fetch nem animação. Página Inicial não aguarda o carregamento genérico das coleções CRM, e restauração/token refresh preserva a seção atual; login explícito continua podendo escolher dashboard.
+- Resolver emite Staff validado antes de consultar Customer. Gate só usa a emissão para contexto Staff, conserva controles de UID/geração e não concede Customer antecipado. Resultado privado posterior atualiza o botão de contexto sem remontar o shell. Customer-only/onboarding e rotas Customer aguardam a resolução apropriada.
+- Gate fornece seu perfil Staff já validado ao shell; observer interno deixa de repetir as duas leituras. Revalidação canônica em token/contexto e observação de inatividade continuam existentes. Não há nova autoridade em cache, Auth extra, troca de UID ou alteração de capability/backend Rules.
+- Descoberta Staff depende de UID/role/memberships/escopo estáveis, não do objeto user inteiro; atualizações de jornada/transferência/notificação não repetem diretório. Nomes da raiz da listagem global chegam no mesmo commit dos IDs; detalhes empresa/ponto permanecem em paralelo, preservando dados consumidos pelas outras telas. Membership Staff continua vindo do perfil autorizado; public-list nunca alimenta permissões/seletor Staff.
+- Seletor sempre presente, desabilitado quando necessário, erro/retry explícito; Adicionar Loja depende da autorização já existente Dono/Gerente e não da listagem. Backend createStore não foi alterado. Seleção válida é preservada; resposta canônica remove seleção revogada. Resultado de escopo/UID anterior é descartado; seletor não usa estado ready de outro escopo. CreateStore atualiza os nomes/estado imediatamente com resposta autorizada.
+- Public-list usa raiz já lida+batch de definições storefront e queries de canais em paralelo, limitadas à página existente de20 lojas/20 canais por loja. Critério catálogo/loja compartilhado com resolve completo: versões/inativos/drafts continuam negados, canais precisam enabled+storeId correto+listed. Ordenação e cursores preservados. **Não carrega schedule, frete, credenciais ou paymentConfig para montar links.** Resolve completo/middleware de vendas mantêm seus contratos.
+- Sem cache persistente/TTL de resultados de lojas, permissions ou configs. Somente requests públicos ainda em voo são coalescidos por URL/cursor, sem reuso de resultado concluído; nova montagem/retry revalida a fonte. Rate/autorizações do provider não foram alterados.
+- Deadline UI15s com erro e retry, escolhida para dar margem ao baseline isolado de~2,5s/primeira amostra6,4s sem espera indefinida. GET público usa AbortController oficial; deadline Staff não cancela listener Firestore e ignora resposta tardia. Nenhum SLA de rede foi inventado.
+
+### Validação local da correção
+
+| Suíte | Resultado | Escopo |
+| --- | --- | --- |
+| React,9 suítes | 92 testes PASS | Gate progressivo/UID/contexto/dual-role, Customer, preview, links estáveis, erro/retry,0/1/várias lojas, create-store permitido/negado, timeout/coalescência/seleção. |
+| Backend,5 arquivos | 30 testes PASS | Diretório leve, allowlist/ownership de canal/paginação, paridade com catálogo completo, frete/checkout/reorder/multiloja existentes. |
+| Auth/cache/cross-tab/FCM | 21 testes PASS | Sessão canônica, logout, carrinho, coordenação e headers. |
+| Firestore+HTTP emulados | 1 teste integrado PASS | Demo isolado, createStore draft, aliases/lista/readiness, entrega bloqueada/retirada, ownership histórico/reorder. Sem provider real. Emulador de Admin SDK com Rules abertas apenas localmente; não é novo teste de Rules publicadas. |
+| Imports ESM reais | PASS |6 entradas e2 controles negativos. |
+
+O primeiro teste parametrizado do seletor passava string em vez de array; corrigido somente o setup, sem enfraquecer assertions. Reexecução5/5 limpa, diagnóstico8/8 também. Totais acima não somam reexecuções. Novos testes não repetem as fixtures antigas de catálogo/frete conhecidas e fora deste escopo.
+
+Lint direcionado:0 erros,65 avisos anteriores em App (66 no baseline; dependência ausente corrigida no observer), nenhum aviso novo nos componentes/testes/backend. Build final/diff/deploy e medição depois serão registrados pela evidência efetivamente coletada. Percentuais preservados; otimização ainda exige comparação remota/homologação.
+
+### Entrega local e gate de publicação
+
+- Commit funcional **`a23912fccc5f548d3927de0b42ac17da3162112b`**, push concluído na branch DEV, sem divergência com origin.
+- Build final PASS: `main.3483dd59.js`,435,84kB gzip (~980bytes a mais que baseline); CSS11,65kB.4 avisos native-audio/metadados de browsers conhecidos. Nenhum refactor amplo de bundle: a coleta normal mostrou bundle em cache e T1−T0=3,1ms, não evidenciou gargalo ali.
+- Staging isolado `.deploy-crm-store-baseline-a23912fc`,59 arquivos Hosting e45 runtimes Functions rastreados. Dez fontes conferidas no sourcemap; entre os45 runtimes, somente store-config.js difere da entrega anterior. Sem testes/fixtures/temporários/env/functions.yaml no artefato; node_modules é dependência local excluída do pacote. Nenhum índice/Rules/Storage novo.
+- Tentativa **somente functions:api** falhou no precheck com Authentication Error, antes de publicar. Consulta somente leitura hosting:sites:list também falhou. Tentativa **somente hosting** falhou com Authentication Error e erro secundário de resolução do site sem autenticação. Nenhum Deploy complete/Successful update; não afirmar publicação ou hash remoto de a23912fc.
+- Firebase CLI15.34.1. Solicitação de liberar firewall/reauth enviada, sem pedir token/código. A entrega de medição d0d1b5f8 é a última publicação desta tarefa comprovada; **tempo depois/contagens depois/cold load/hard reload/Fast3G/console visual continuam PENDENTES**, não inferidos dos mocks.
+- Diff-check local e da entrega PASS. Documentação/evidências em commit separado; sem novo pagamento/SMS/WhatsApp ou PROD.
+
+Depois de restabelecer o acesso, publicar sequencialmente no staging já validado (primeiro API; Hosting somente após sucesso):
+
+```powershell
+Set-Location -LiteralPath 'C:\Users\antonio.pedro\Projeto\projeto-doceria-main\infinitepay-auth-worktree\.deploy-crm-store-baseline-a23912fc'
+npx -y firebase-tools@15.34.1 deploy --project crmdoceria-9959e --only functions:api --non-interactive
+npx -y firebase-tools@15.34.1 deploy --project crmdoceria-9959e --only hosting --non-interactive
+```
+
+Sem publicar outros targets ou projeto. Conferir hashes/headers e repetir probe HTTP e coleta do painel antes de fechar o requisito.
+
+### Limitação de automação nesta retomada
+
+O inventário Chrome voltou a responder, mas leituras DOM falharam com timeout de Emulation.setFocusEmulationEnabled. A alternativa oficial Computer Use nativa foi interrompida pela revisão automática por não conseguir confirmar a URL corrente com segurança. Nenhuma tentativa de contornar essa barreira; nenhuma medição/screenshot do browser foi inventada. Consultas HTTP e deploy por CLI autorizados são independentes desse bloqueio. A comparação do navegador continua dependendo da coleta manual após publicação.

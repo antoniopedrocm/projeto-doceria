@@ -1,0 +1,28 @@
+{
+  "source": "User supplied opt-in DEV report; normal reload; no hard-reload/throttling claim",
+  "variant": "baseline-da795618-instrumented",
+  "navigationType": "reload",
+  "viewport": {"width":1920,"height":945},
+  "marksMs": {"T0":0,"T1":3.1,"T2":426.8,"T3":2146.2,"shell-interactive":2148.2,"staff-shell-ready":2346.6,"T4":2347.1,"T5":2347.2,"T6":2489,"T7":2489.1,"T8":2504.2,"T9":2504.3,"store-names-rendered":2953.9,"home-links-started":16225.6,"home-links-rendered":26866.6},
+  "intervalsMs": {"T1_T0":3.1,"T2_T1":423.7,"T3_T2":1719.4,"T5_T4":0.1,"T6_T5":141.8,"T7_T6":0.1,"T8_T7":15.1,"T9_T0":2504.3,"shell_T0":2148.2,"names_T0":2953.9,"homeLinks_T0":26866.6,"homeLinks_load_to_render":10641},
+  "eventCounts": {"staff-user":2,"staff-custom-profile":2,"customer-capability":1,"staff-directory-start":2,"staff-directory-query":2,"store-company":3,"public-links-start":4,"public-links-response":4},
+  "logicalOperations": [
+    {"name":"staff-user","atMs":1005.2,"durationMs":134.9,"documents":1},
+    {"name":"staff-custom-profile","atMs":1110.3,"durationMs":105.1,"documents":1},
+    {"name":"customer-capability","atMs":2146.2,"durationMs":1035},
+    {"name":"staff-user","atMs":2233,"durationMs":82.4,"documents":1},
+    {"name":"staff-custom-profile","atMs":2323.3,"durationMs":90.3,"documents":1},
+    {"name":"staff-directory-query","atMs":2489,"durationMs":141.8,"documents":3},
+    {"name":"staff-directory-query","atMs":2489.3,"durationMs":26.4,"documents":3},
+    {"name":"store-company","atMs":2945.5,"durationMs":452.3,"documents":1},
+    {"name":"store-company","atMs":2946.4,"durationMs":453.2,"documents":1},
+    {"name":"store-company","atMs":2947.3,"durationMs":454.1,"documents":1}
+  ],
+  "publicHttpRequests": [
+    {"atMs":16225.6,"durationMs":2704.5,"status":200,"entries":4},
+    {"atMs":17067,"durationMs":4509.6,"status":200,"entries":4},
+    {"atMs":17187.5,"durationMs":7056.3,"status":200,"entries":4},
+    {"atMs":17386.2,"durationMs":9479.5,"status":200,"entries":4}
+  ],
+  "limits": ["Summarized from supplied JSON; no browser console or screenshot was supplied.","Home started after manual navigation; homeLinks_T0 includes that delay. Compare homeLinks_load_to_render instead.","Firestore operations are not HTTP request counts; transport streams are shared.","Cross-origin byte sizes were zero without timing exposure; endpoint body size299 bytes was measured separately."]
+}
