@@ -29,3 +29,19 @@ test.each(['admin','ADMIN','administrador_master','administrador master','gerent
 test('inactive, client, missing and unknown roles never authorize Staff',()=>{
   for(const profile of [null,{role:'cliente'},{role:'unknown'},{role:'admin',ativo:false},{role:'admin',status:'inativo'},{role:'admin',authDisabled:true}]) expect(isActiveStaffProfile(profile)).toBe(false);
 });
+
+test('Staff ready releases only Staff while private Customer lookup is pending',async()=>{
+  let finish;const progress=jest.fn();
+  const staff={role:'dono'},loadCustomer=jest.fn(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending=createCapabilityResolver({loadStaff:async()=>staff,loadCustomer})(user,{onStaffResolved:progress});
+  await Promise.resolve();await Promise.resolve();
+  expect(progress).toHaveBeenCalledWith(expect.objectContaining({uid:'a',staff,isStaff:true,isCustomer:false,customer:null,customerState:'PENDING'}));
+  finish(linked);expect(await pending).toMatchObject({isStaff:true,isCustomer:true});
+});
+test('Customer-only or rejected Staff never receives a provisional Staff capability',async()=>{
+  const progress=jest.fn();
+  await createCapabilityResolver({loadStaff:async()=>null,loadCustomer:async()=>linked})(user,{onStaffResolved:progress});
+  expect(progress).not.toHaveBeenCalled();
+  await expect(createCapabilityResolver({loadStaff:async()=>{throw Error('denied');},loadCustomer:jest.fn()})(user,{onStaffResolved:progress})).rejects.toThrow('denied');
+  expect(progress).not.toHaveBeenCalled();
+});

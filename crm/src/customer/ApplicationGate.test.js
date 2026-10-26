@@ -77,6 +77,31 @@ test('capability error fails closed',async()=>{
   resolver.mockRejectedValue(Error('offline'));await mount();await emit(identity('a'));expect(host.textContent).toContain('Não foi possível autorizar');expect(host.textContent).not.toContain('CRM:a');
 });
 
+test('Staff mounts before Customer lookup finishes, using gate profile; final dual-role does not remount',async()=>{
+  const profile={role:'dono'};let finish;
+  resolver.mockImplementation(async(u,{onStaffResolved})=>{
+    onStaffResolved({...caps(u.uid,true,false),staff:profile,customerState:'PENDING'});
+    return new Promise(done=>{finish=()=>done({...caps(u.uid),staff:profile});});
+  });
+  await mount();await emit(identity('a'));
+  expect(host.textContent).toContain('CRM:a');expect(host.textContent).not.toContain('Área do Cliente');
+  expect(staff.mock.calls.at(-1)[0].staffProfile).toBe(profile);
+  const shell=host.firstChild;
+  await act(async()=>finish());
+  expect(host.firstChild).toBe(shell);expect(host.textContent).toContain('Área do Cliente');
+});
+test('provisional Staff cannot redirect a Customer route or restore an old UID after logout',async()=>{
+  let late,finish;
+  resolver.mockImplementation(async(u,{onStaffResolved})=>{
+    late=()=>onStaffResolved(caps(u.uid,true,false));
+    return new Promise(done=>{finish=()=>done(caps(u.uid));});
+  });
+  window.history.replaceState(null,'','/area-cliente');await mount();await emit(identity('a'));
+  await act(async()=>late());expect(staff).not.toHaveBeenCalled();
+  await emit(null);await act(async()=>{late();finish();});
+  expect(host.textContent).toContain('Customer:login');expect(staff).not.toHaveBeenCalled();
+});
+
 test('two tabs may keep different contexts; canonical logout invalidates both',async()=>{
   await mount();await emit(identity('a'));await click('Área do Cliente');expect(host.textContent).toContain('Customer:a');
   const otherHost=document.createElement('div');document.body.append(otherHost);const otherRoot=createRoot(otherHost);

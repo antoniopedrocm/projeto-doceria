@@ -1,31 +1,33 @@
 import React,{useEffect,useState} from 'react';
 import {app} from '../firebaseConfig';
 import {storeMenuUrl} from './storeRoutes.mjs';
-import {storePerfMark,storePerfEvent,storePerfPaint} from '../performance/storeBootstrapPerf';
+import {storePerfMark,storePerfPaint} from '../performance/storeBootstrapPerf';
+import {readPublicDirectory} from '../stores/storeRequests';
 export default function StorefrontLinks() {
-  const [stores,setStores]=useState([]),[cursor,setCursor]=useState(null),[message,setMessage]=useState('Carregando lojas…');
-  const [busy,setBusy]=useState(false);
+  const [stores,setStores]=useState([]),[cursor,setCursor]=useState(null),[message,setMessage]=useState('');
+  const [busy,setBusy]=useState(true),[retry,setRetry]=useState(0),[moreError,setMoreError]=useState(false);
   const base=app.options.projectId==='demo-doceria-checkout'
     ? 'http://127.0.0.1:5001/demo-doceria-checkout/us-central1/api'
     : `https://us-central1-${app.options.projectId}.cloudfunctions.net/api`;
   useEffect(()=>{
-    let active=true;
-    const start=performance.now();storePerfMark('home-links-started');storePerfEvent('public-links-start');
-    fetch(`${base}/store/public-list`,{cache:'no-cache'}).then(async r=>{if(!r.ok) throw Error();const data=await r.json();storePerfEvent('public-links-response',{durationMs:performance.now()-start,status:r.status,documents:data.stores?.length});return data;}).then(data=>{
+    let active=true;storePerfMark('home-links-started');setBusy(true);setMessage('');
+    readPublicDirectory(base).then(data=>{
       if(active) {setStores(data.stores);setCursor(data.nextCursor);setMessage(data.stores.length?'':'Nenhuma loja disponível.');}
-    }).catch(()=>{storePerfEvent('public-links-error',{durationMs:performance.now()-start,failed:true});if(active) setMessage('Não foi possível carregar as lojas.');});
+    }).catch(()=>{if(active)setMessage('Não foi possível carregar as lojas.');}).finally(()=>{if(active)setBusy(false);});
     return()=>{active=false;};
-  },[base]);
+  },[base,retry]);
   useEffect(()=>{if(stores.length)return storePerfPaint('home-links-rendered');},[stores]);
   const more=async()=>{
-    setBusy(true);
-    try {const r=await fetch(`${base}/store/public-list?cursor=${encodeURIComponent(cursor)}`,{cache:'no-cache'});
-      if(!r.ok) throw Error();const data=await r.json();setStores(previous=>[...previous,...data.stores]);setCursor(data.nextCursor);
-    } catch {setMessage('Não foi possível carregar mais lojas.');} finally {setBusy(false);}
+    setBusy(true);setMoreError(false);
+    try {const data=await readPublicDirectory(base,cursor);setStores(previous=>[...previous,...data.stores]);setCursor(data.nextCursor);
+    } catch {setMoreError(true);} finally {setBusy(false);}
   };
-  return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+  return <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full" aria-busy={busy}>
+    {busy && !stores.length && <div role="status" className="col-span-full grid grid-cols-2 gap-3"><span className="sr-only">Carregando lojas</span><span aria-hidden="true" className="h-12 rounded-xl bg-pink-100 animate-pulse"/><span aria-hidden="true" className="h-12 rounded-xl bg-pink-100 animate-pulse"/></div>}
     {message && <p role="status">{message}</p>}
+    {!busy && !stores.length && message.startsWith('Não foi') && <button onClick={()=>setRetry(value=>value+1)}>Tentar novamente</button>}
     {stores.map(store=>{const url=storeMenuUrl(store.storeId,store.channelId || null);return url && <a key={`${store.storeId}:${store.channelId || ''}`} href={url} target="_blank" rel="noopener noreferrer" className="p-4 rounded-xl bg-pink-600 text-white text-center">{store.name}</a>;})}
+    {moreError && <p role="alert">Não foi possível carregar mais lojas. Tente novamente.</p>}
     {cursor && <button disabled={busy} onClick={more}>Ver mais lojas</button>}
     <a href="/cardapio" className="p-4 underline">Escolher loja</a>
   </div>;

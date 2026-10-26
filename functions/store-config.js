@@ -4,6 +4,15 @@ const error = (code, status = 409) => Object.assign(new Error(code), {code, http
 const ready = value => value ? 'READY' : 'BLOCKED';
 const cleanText = value => typeof value === 'string' ? value.trim().slice(0,160) : '';
 const nonnegative = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+// Directory eligibility is independent of schedule/freight/payment readiness.
+// Shared with full resolution so the lightweight list cannot advertise drafts.
+function catalogIdentity(store,definition,hasDefinition) {
+  const v1=Object.prototype.hasOwnProperty.call(store,'storeConfigVersion') || hasDefinition;
+  const validContract=!v1 || (store.storeConfigVersion===1 && definition.schemaVersion===1);
+  const active=validContract && Boolean(cleanText(store.nome)) && store.ativo!==false && store.ativa!==false &&
+    !['inactive','inativo','draft','incomplete'].includes(String(store.status || '').toLowerCase()) && (!v1 || store.ativo===true);
+  return {v1,active,category:cleanText(definition.catalog?.category) || (!v1?'Delivery':''),catalogEnabled:!v1 || definition.catalog?.enabled===true};
+}
 function publicSchedule(config = {}) {
   const schedule = {};
   for (const day of ['sun','mon','tue','wed','thu','fri','sat']) {
@@ -22,10 +31,7 @@ function createStoreResolver({db, getAvailability, loadPaymentConfig}) {
     const [storeSnap, configSnap, storefrontSnap] = await db.getAll(...[root, `${root}/configuracoes/config`, `${root}/configuracoes/storefront`].map(p=>db.doc(p)));
     if (!storeSnap.exists) throw error('STORE_NOT_FOUND',404);
     const store = storeSnap.data() || {}, config = configSnap.data() || {}, definition = storefrontSnap.data() || {};
-    const v1 = Object.prototype.hasOwnProperty.call(store,'storeConfigVersion') || storefrontSnap.exists;
-    const validContract = !v1 || (store.storeConfigVersion === 1 && definition.schemaVersion === 1);
-    const active = validContract && Boolean(cleanText(store.nome)) && store.ativo !== false && store.ativa !== false &&
-      !['inactive','inativo','draft','incomplete'].includes(String(store.status || '').toLowerCase()) && (!v1 || store.ativo === true);
+    const {v1,active,category:storeCategory,catalogEnabled}=catalogIdentity(store,definition,storefrontSnap.exists);
     let channel = null;
     if (channelId) {
       const snap = await db.doc(`${root}/canais/${channelId}`).get();
@@ -33,8 +39,8 @@ function createStoreResolver({db, getAvailability, loadPaymentConfig}) {
       if (!snap.exists || data?.enabled !== true || data.storeId !== storeId) throw error('CHANNEL_UNAVAILABLE',404);
       channel = {id:channelId, name:cleanText(data.name), catalogCategory:cleanText(data.catalogCategory)};
     }
-    const category = channel?.catalogCategory || cleanText(definition.catalog?.category) || (!v1 ? 'Delivery' : '');
-    const catalog = active && Boolean(category) && (!v1 || definition.catalog?.enabled === true);
+    const category = channel?.catalogCategory || storeCategory;
+    const catalog = active && Boolean(category) && catalogEnabled;
     const availability = getAvailability(config);
     const scheduleReady = active && availability !== 'CONFIG_UNAVAILABLE' &&
       (!v1 || getAvailability({...config,manualOverride:{mode:'auto'}}) !== 'CONFIG_UNAVAILABLE');
@@ -84,19 +90,24 @@ function createStoreResolver({db, getAvailability, loadPaymentConfig}) {
     if (cursor && !validId(cursor)) throw error('INVALID_CURSOR',400);
     let query = db.collection('lojas').orderBy('__name__').limit(20);
     if (cursor) query = query.startAfter(cursor);
-    const snapshots = await query.get(), stores = [];
-    for (const doc of snapshots.docs) {
-      const config = await publicConfig({storeId:doc.id});
-      if (config.active && config.catalog.enabled) {
-        stores.push({storeId:config.storeId,name:config.name});
-        const channels = await db.collection(`lojas/${doc.id}/canais`).where('listed','==',true).limit(20).get();
-        for (const channel of channels.docs) {
-          try {const c = await publicConfig({storeId:doc.id,channelId:channel.id});
-            stores.push({storeId:c.storeId,name:c.channel.name,channelId:c.channel.id});
-          } catch { /* Invalid/inactive channels are not advertised. */ }
-        }
+    const snapshots = await query.get();
+    const definitions=snapshots.docs.length ? await db.getAll(...snapshots.docs.map(doc=>db.doc(`lojas/${doc.id}/configuracoes/storefront`))) : [];
+    // At most20 channel queries concurrently, already bounded by the existing
+    // directory page. No config/payment/freight reads or per-channel rereads.
+    const pages=await Promise.all(snapshots.docs.map(async(doc,index)=>{
+      if(!validId(doc.id)) return [];
+      const store=doc.data() || {},definition=definitions[index];
+      const identity=catalogIdentity(store,definition.data() || {},definition.exists);
+      if(!identity.active || !identity.category || !identity.catalogEnabled) return [];
+      const entries=[{storeId:doc.id,name:cleanText(store.nome)}];
+      const channels=await db.collection(`lojas/${doc.id}/canais`).where('listed','==',true).limit(20).get();
+      for(const channel of channels.docs) {
+        const data=channel.data();
+        if(validId(channel.id) && data?.enabled===true && data.storeId===doc.id)entries.push({storeId:doc.id,name:cleanText(data.name),channelId:channel.id});
       }
-    }
+      return entries;
+    }));
+    const stores=pages.flat();
     return {stores,nextCursor:snapshots.docs.length === 20 ? snapshots.docs.at(-1).id : null};
   }
   return {resolve,publicConfig,list};

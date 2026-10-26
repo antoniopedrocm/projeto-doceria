@@ -41,9 +41,9 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
           setView({kind:isCustomerPath(window.location.pathname)?'customer-login':'public'});
           return;
         }
-        const capabilities=await resolveCapabilities(auth.currentUser);
-        storePerfMark('T3');
+        const applyCapabilities=capabilities=>{
         if(!current() || capabilities.uid!==uid) return;
+        storePerfMark('T3');
         if(window.location.pathname.startsWith('/admin/customer-preview/') && !capabilities.isStaff) {
           state.activeContext=null;setView({kind:'admin-denied'});return;
         }
@@ -57,6 +57,11 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
         if(context==='staff' && isCustomerPath(window.location.pathname)) window.history.replaceState(null,'','/');
         setView({kind:context,uid,capabilities,contextGeneration:state.contextGeneration,
           message:requested && requested!==context?'Este contexto não está autorizado para sua conta.':''});
+        };
+        const capabilities=await resolveCapabilities(auth.currentUser,{onStaffResolved:capabilities=>{
+          if(target==='staff') applyCapabilities(capabilities);
+        }});
+        applyCapabilities(capabilities);
       } catch {
         if(current()) {state.activeContext=null;setView({kind:'blocked'});}
       }
@@ -83,7 +88,7 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
   if(view.kind==='blocked') return <main className="p-8"><p role="alert">Não foi possível autorizar o acesso. Recarregue ou entre novamente.</p><button onClick={logout}>Sair</button></main>;
   if(view.kind==='admin-denied') return <main className="p-8"><p role="alert">Acesso administrativo não autorizado.</p></main>;
   if(view.kind==='staff') return <StaffApplication key={`${view.uid}:staff:${view.contextGeneration}`} staffUid={view.uid}
-    canOpenCustomer={view.capabilities.isCustomer} onCustomerContext={openCustomer} onLogout={logout} onStaffAccessLost={revalidateStaff}/>;
+    staffProfile={view.capabilities.staff} canOpenCustomer={view.capabilities.isCustomer} onCustomerContext={openCustomer} onLogout={logout} onStaffAccessLost={revalidateStaff}/>;
   if(['customer','customer-login','onboarding'].includes(view.kind)) return <CustomerShell key={`${view.uid || 'login'}:customer:${view.contextGeneration || 0}`}
     onCustomerResolved={view.kind==='onboarding'?openCustomer:undefined} sessionAuth={auth} uid={view.uid || null} canOpenStaff={view.capabilities?.isStaff===true} onStaffContext={openStaff} onLogout={logout} sessionMessage={view.message}/>;
   return <>{view.message && <p role="alert">{view.message}</p>}<StaffApplication onLogout={logout}/></>;

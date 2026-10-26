@@ -1,7 +1,10 @@
 import AdminCustomerPreview from './customer/AdminCustomerPreview';
 import {storePerfMark,storePerfEvent,storePerfRequest,storePerfPaint} from './performance/storeBootstrapPerf';
 import {canPreviewCustomer,previewPermissionDetails,previewTarget} from './customer/adminPreviewAccess';
-import StorefrontLinks from './storefront/StorefrontLinks';
+import PaginaInicial from './storefront/CrmHome';
+import StoreSelector from './stores/StoreSelector';
+import {staffDirectoryKey,reconcileStoreSelection} from './stores/staffDirectory';
+import {storeDeadline} from './stores/storeRequests';
 import {normalizeRole, isActiveStaffProfile} from './customer/staffRole';
 import {createCapabilityResolver} from './customer/userCapabilities';
 import {logoutCanonicalSession} from './customer/customerRuntime';
@@ -24,7 +27,7 @@ import {findOrderDraft, validateFiscalOrder, createFiscalOrderActions} from './f
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
   Search, Bell, Menu, User as UserIcon, Settings, LogOut, Plus, Heart,
-  Clock, Edit, Trash2, Eye, X, Save, MessageCircle, Cake, Gift, ChevronLeft, ChevronRight, Printer, Home, Store, BookOpen, Instagram, MapPin, Image as ImageIcon, MessageSquare, VolumeX, ArrowUpCircle, ArrowDownCircle, Banknote, PackagePlus, Ticket,
+  Clock, Edit, Trash2, Eye, X, Save, MessageCircle, Cake, Gift, ChevronLeft, ChevronRight, Printer, Home, Store, BookOpen, MapPin, Image as ImageIcon, MessageSquare, VolumeX, ArrowUpCircle, ArrowDownCircle, Banknote, PackagePlus, Ticket,
   Key, ArrowLeftRight, FileText, AlertTriangle, RefreshCw, CheckCircle, Download, Copy,
   UserX, UserCheck // Ícones de status de usuário
 } from 'lucide-react';
@@ -3656,7 +3659,7 @@ const Relatorios = ({ data, user, availableStores, storeInfoMap }) => {
 
 
 // Componente principal
-function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomerContext, onLogout = logoutCanonicalSession, onStaffAccessLost }) {
+function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustomer = false, onCustomerContext, onLogout = logoutCanonicalSession, onStaffAccessLost }) {
   useEffect(()=>{storePerfMark('shell-interactive');},[]);
   // Leaving a shell is not logout, but its foreground alarm must stop.
   useEffect(() => () => audioManager.stopAlarmSound(), []);
@@ -3666,14 +3669,14 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
 
   const [currentPage, setCurrentPage] = usePersistentState('currentPage', 'pagina-inicial');
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(()=>staffProfile?.auth?.uid===staffUid?staffProfile:null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showLogin, setShowLogin] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [passwordResetEmail, setPasswordResetEmail] = useState("");
   const [passwordResetMessage, setPasswordResetMessage] = useState("");
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(!staffProfile);
   const [stopAlarmFn, setStopAlarmFn] = useState(null);
   const [isAlarmPlaying, setIsAlarmPlaying] = useState(false);
   const [hasNewPendingOrders, setHasNewPendingOrders] = useState(false);
@@ -3699,6 +3702,11 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
 
   const [availableStores, setAvailableStores] = useState([]);
   const [storeInfoMap, setStoreInfoMap] = useState({});
+  const [directoryNames,setDirectoryNames]=useState({});
+  const [directoryStatus,setDirectoryStatus]=useState('loading');
+  const [directoryContextKey,setDirectoryContextKey]=useState(null);
+  const [directoryRetry,setDirectoryRetry]=useState(0);
+  const storeAccessKey=staffDirectoryKey(user);
   useEffect(()=>{if(user?.auth?.uid)storePerfMark('staff-shell-ready');},[user?.auth?.uid]);
   useEffect(()=>{
     if(!user || !availableStores.length)return;
@@ -3709,8 +3717,8 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
     return storePerfPaint('T9');
   },[user,availableStores]);
   useEffect(()=>{
-    if(availableStores.length && availableStores.every(id=>Object.prototype.hasOwnProperty.call(storeInfoMap,id)))return storePerfPaint('store-names-rendered');
-  },[availableStores,storeInfoMap]);
+    if(availableStores.length && availableStores.every(id=>Object.prototype.hasOwnProperty.call(directoryNames,id) || Object.prototype.hasOwnProperty.call(storeInfoMap,id)))return storePerfPaint('store-names-rendered');
+  },[availableStores,storeInfoMap,directoryNames]);
   const [selectedStoreId, setSelectedStoreId] = usePersistentState('selectedStoreId', null);
   const [showStoreManager, setShowStoreManager] = useState(false);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
@@ -3971,6 +3979,8 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
           const storeData = response.storeData || { nome: trimmedName };
 
           setAvailableStores((prev) => (prev.includes(createdStoreId) ? prev : [...prev, createdStoreId]));
+          setDirectoryNames(previous=>({...previous,[createdStoreId]:trimmedName}));
+          setDirectoryStatus('ready');
           setStoreInfoMap((prev) => ({
             ...prev,
             [createdStoreId]: { ...(prev[createdStoreId] || {}), ...storeData }
@@ -5113,11 +5123,12 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
 
     const goToAuthenticatedPage = () => {
       setShowLogin(false);
-      setCurrentPage((prevPage) => (!prevPage || prevPage === 'pagina-inicial' ? 'dashboard' : prevPage));
+      setCurrentPage((prevPage) => (!prevPage ? 'dashboard' : prevPage));
     };
 
     const loadAuthenticatedUserData = async authUser => {
-      const profile = await loadCurrentStaffProfile(authUser);
+      // The gate revalidates this server-derived profile on every canonical token event.
+      const profile = staffProfile?.auth?.uid===authUser.uid && isActiveStaffProfile(staffProfile.profile) ? staffProfile : null;
       if (!profile) { const error = new Error('Perfil administrativo não autorizado.'); error.code = CLIENT_ADMIN_ACCESS_DENIED; throw error; }
       return profile;
     };
@@ -5209,7 +5220,7 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
       isMounted = false;
       unsubscribe();
     };
-  }, [stopAlarm, setCurrentPage, staffUid, onStaffAccessLost]);
+  }, [stopAlarm, setCurrentPage, staffUid, staffProfile, onStaffAccessLost, setSelectedStoreId]);
 
     useEffect(() => {
       const uid = user?.auth?.uid;
@@ -5264,66 +5275,31 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
       }, () => applyTransferProfile({permissions: {'entre-lojas': false}}, false));
     }, [user?.auth?.uid]);
     useEffect(() => {
-        let isMounted = true;
-
-        const loadStoresForUser = async () => {
-            if (!user) {
-                if (isMounted) {
-                    setAvailableStores([]);
-                    setStoreInfoMap({});
-                    storeCollectionsDataRef.current = {};
-                    setSelectedStoreId(null);
-                }
-                return;
-            }
-
-            try {
-                let storeIds = [];
-
-                storePerfMark('T4');storePerfEvent('staff-directory-start');
-                if (user.role === ROLE_OWNER && user.canAccessAllStores) {
-                    storePerfMark('T5');
-                    const snapshot = await storePerfRequest('staff-directory-query',()=>getDocs(collection(db, 'lojas')));
-                    storePerfMark('T6');
-                    storeIds = snapshot.docs.map((docSnap) => docSnap.id);
-                } else {
-                    storePerfMark('T5');storePerfMark('T6');storePerfEvent('staff-directory-membership');
-                    storeIds = user.lojaIds && user.lojaIds.length ? user.lojaIds : (user.lojaId ? [user.lojaId] : []);
-                }
-
-                storePerfMark('T7');
-                if (!isMounted) return;
-
-                setAvailableStores(storeIds);
-
-                setSelectedStoreId((prevSelected) => {
-                    if (user.role === ROLE_OWNER) {
-                        if (prevSelected === STORE_ALL_KEY) return STORE_ALL_KEY;
-                        if (prevSelected && storeIds.includes(prevSelected)) return prevSelected;
-                        return STORE_ALL_KEY;
-                    }
-
-                    const preferredStoreId = user.lojaId && storeIds.includes(user.lojaId)
-                        ? user.lojaId
-                        : (storeIds.length ? storeIds[0] : null);
-
-                    if (prevSelected && storeIds.includes(prevSelected)) return prevSelected;
-                    return preferredStoreId;
-                });
-            } catch (error) {
-                console.error('Erro ao carregar lojas do usuário:', error);
-                if (isMounted) {
-                    setAvailableStores([]);
-                }
-            }
-        };
-
-        loadStoresForUser();
-
-        return () => {
-            isMounted = false;
-        };
-    }, [user, setSelectedStoreId]);
+      let active=true;
+      setDirectoryContextKey(storeAccessKey);setAvailableStores([]);setDirectoryNames({});setStoreInfoMap({});
+      if(!storeAccessKey) {
+        setDirectoryStatus('idle');storeCollectionsDataRef.current={};setSelectedStoreId(null);
+        return ()=>{active=false;};
+      }
+      const access=JSON.parse(storeAccessKey);
+      setDirectoryStatus('loading');storePerfMark('T4');storePerfEvent('staff-directory-start');
+      (async()=>{
+        try {
+          let ids=access.ids,names={};storePerfMark('T5');
+          if(access.role===ROLE_OWNER && access.all) {
+            const snapshot=await storeDeadline(storePerfRequest('staff-directory-query',()=>getDocs(collection(db,'lojas'))));
+            storePerfMark('T6');ids=snapshot.docs.map(d=>d.id);
+            names=Object.fromEntries(snapshot.docs.map(d=>[d.id,typeof d.data().nome==='string'?d.data().nome.trim():d.id]));
+          } else {storePerfMark('T6');storePerfEvent('staff-directory-membership');}
+          storePerfMark('T7');if(!active)return;
+          setDirectoryNames(names);setAvailableStores(ids);setDirectoryStatus('ready');
+          setSelectedStoreId(previous=>reconcileStoreSelection(previous,ids,access,STORE_ALL_KEY));
+        } catch {
+          if(active){setDirectoryStatus('error');setAvailableStores([]);setSelectedStoreId(null);}
+        }
+      })();
+      return ()=>{active=false;};
+    },[storeAccessKey,directoryRetry,setSelectedStoreId]);
 
     useEffect(() => {
         let active = true;
@@ -5560,75 +5536,7 @@ function StaffApplication({ staffUid = null, canOpenCustomer = false, onCustomer
     });
   }, [allMenuItems, currentUserRole, user]);
 
-  const ImageSlider = ({ images, onImageClick }) => {
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const nextSlide = useCallback(() => {
-        setCurrentIndex((prevIndex) => (prevIndex + 1) % images.length);
-    }, [images.length]);
-    useEffect(() => {
-        const timer = setInterval(nextSlide, 5000);
-        return () => clearInterval(timer);
-    }, [nextSlide]);
-    return (
-        <div className="h-64 md:h-96 w-full m-auto relative group rounded-2xl overflow-hidden shadow-lg bg-pink-50/30">
-            <div
-                style={{ backgroundImage: `url(${images[currentIndex]})` }}
-                className="w-full h-full bg-center bg-contain bg-no-repeat duration-500 cursor-pointer"
-                onClick={() => onImageClick(images[currentIndex])}
-            ></div>
-        </div>
-    );
-  };
-
   // Componentes de Páginas
-  const PaginaInicial = () => {
-    const slideImages = [ '/slide/slide1.png', '/slide/slide2.png', '/slide/slide3.png' ];
-    return (
-      <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
-        <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Página Inicial</h1>
-            <p className="text-gray-600 mt-1">Seja bem-vindo à Ana Guimarães Doceria!</p>
-          </div>
-          <StorefrontLinks />
-        </div>
-        <ImageSlider images={slideImages} onImageClick={setLightboxImage} />
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">Sobre Nós</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                    <p className="text-gray-600 leading-relaxed mb-4">
-                        Somos uma doceria apaixonada por criar momentos doces e inesquecíveis. Cada bolo, torta e doce é feito com ingredientes de alta qualidade e muito carinho, pensando em levar mais sabor para o seu dia.
-                    </p>
-                    <div className="space-y-3">
-                        <a href="https://www.instagram.com/anaguimaraes.doceria/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-pink-600 font-semibold hover:underline">
-                            <Instagram size={20} /> @anaguimaraes.doceria
-                        </a>
-                        <a href="https://wa.me/5562991056075" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-green-600 font-semibold hover:underline">
-                            <MessageCircle size={20} /> (62) 99105-6075
-                        </a>
-                        <p className="flex items-center gap-2 text-gray-700">
-                            <MapPin size={20} /> Av. Comercial, 433 - Jardim Nova Esperanca, Goiânia - GO
-                        </p>
-                    </div>
-                    <div className="mt-4">
-                        <h3 className="font-bold text-lg mb-2">Horário de Funcionamento:</h3>
-                        <ul className="text-gray-600">
-                            <li>Segunda a Sexta: 09:30 – 18:30</li>
-                            <li>Sábado: 09:00 – 14:00</li>
-                            <li>Domingo: Fechado</li>
-                        </ul>
-                    </div>
-                </div>
-                <div>
-                    <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3821.890300951331!2d-49.3274707!3d-16.6725019!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x935ef50062f12789%3A0x5711296a03567da3!2sAna%20Guimar%C3%Aes%2d doceria!5e0!3m2!1spt-BR!2sbr!4v1661282662551!5m2!1spt-BR!2sbr" width="100%" height="300" style={{border:0}} allowFullScreen="" loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="rounded-lg shadow-md" title="Localização da Doceria"></iframe>
-                </div>
-            </div>
-        </div>
-      </div>
-    );
-  };
-
   const MeuEspaco = ({ user, resolveActiveStoreForWrite, currentStoreIdForDisplay, storeInfoMap = {} }) => {
     const now = new Date();
     const initialDay = toDateInputValue(now);
@@ -21593,12 +21501,12 @@ const handleSubmit = async (e) => {
   }, [selectStoreById, setCurrentPage]);
 
   const renderCurrentPage = () => {
-    if (authLoading || (loading && user)) {
+    if (authLoading || (loading && user && currentPage!=='pagina-inicial')) {
       return (<div className="flex h-full w-full items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-pink-500"></div></div>);
     }
 
     switch (currentPage) {
-      case 'pagina-inicial': return <PaginaInicial />;
+      case 'pagina-inicial': return <PaginaInicial onImageClick={setLightboxImage} />;
       case 'dashboard': return userHasPermission('dashboard') ? <Dashboard
                                         handleStopAndSnoozeAlarm={handleStopAndSnoozeAlarm}
                                         handleReactivateAlarm={reactivateAlarmForCurrentContext}
@@ -21608,13 +21516,13 @@ const handleSubmit = async (e) => {
                                         hasNewPendingOrders={hasNewPendingOrders}
                                         alarmPauseMinutes={resolvedAlarmPauseMinutes}
                                         // --- REMOVIDO: unlockAudio e audioUnlocked ---
-                                        /> : <PaginaInicial />;
-      case 'clientes': return userHasPermission('clientes') ? <Clientes /> : <PaginaInicial />;
-      case 'produtos': return userHasPermission('produtos') ? <Produtos /> : <PaginaInicial />;
-      case 'pedidos': return userHasPermission('pedidos') ? <Pedidos /> : <PaginaInicial />;
-      case 'entre-lojas': return userHasPermission('entre-lojas') ? <EntreLojas /> : <PaginaInicial />;
-      case 'agenda': return userHasPermission('agenda') ? <Agenda /> : <PaginaInicial />;
-      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} availableStores={availableStores} storeInfoMap={storeInfoMap} /> : <PaginaInicial />;
+                                        /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'clientes': return userHasPermission('clientes') ? <Clientes /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'produtos': return userHasPermission('produtos') ? <Produtos /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'pedidos': return userHasPermission('pedidos') ? <Pedidos /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'entre-lojas': return userHasPermission('entre-lojas') ? <EntreLojas /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'agenda': return userHasPermission('agenda') ? <Agenda /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'fornecedores': return userHasPermission('fornecedores') ? <Fornecedores data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} updateStock={updateStock} currentUser={user} availableStores={availableStores} storeInfoMap={storeInfoMap} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'relatorios': return userHasPermission('relatorios') ? (
         <Relatorios
           data={data}
@@ -21622,7 +21530,7 @@ const handleSubmit = async (e) => {
           availableStores={availableStores}
           storeInfoMap={storeInfoMap}
         />
-      ) : <PaginaInicial />;
+      ) : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'meu-espaco': return userHasPermission('meu-espaco') ? (
         <MeuEspaco
           user={user}
@@ -21630,15 +21538,15 @@ const handleSubmit = async (e) => {
           currentStoreIdForDisplay={currentStoreIdForDisplay}
           storeInfoMap={storeInfoMap}
         />
-      ) : <PaginaInicial />;
-      case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
-      case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial />;
-      case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
-      case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial />;
-      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} /> : <PaginaInicial />;
-      case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial />;
-      case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial />;
-      default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial />;
+      ) : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial onImageClick={setLightboxImage} />;
     }
   };
 
@@ -21694,74 +21602,10 @@ const handleSubmit = async (e) => {
             </button>
 
             <div className="flex-1 flex items-center justify-center md:justify-start">
-                {user && (
-                    user.role === ROLE_OWNER ? (
-                        <div className="flex items-center gap-3 flex-wrap">
-                            {availableStores.length > 0 && (
-                                <>
-                                    <span className="text-sm text-gray-500 hidden sm:block">Visão:</span>
-                                    <select value={currentStoreIdForDisplay || ''} onChange={handleStoreChange} className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500">
-                                        <option value={STORE_ALL_KEY}>Visão Geral</option>
-                                        {availableStores.map(storeId => (
-                                            <option key={storeId} value={storeId}>{storeInfoMap[storeId]?.nome || storeId}</option>
-                                        ))}
-                                    </select>
-                                </>
-                            )}
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => setShowStoreManager(true)}
-                                className="hidden sm:flex items-center gap-2"
-                            >
-                                <Plus className="w-4 h-4" />
-                                Adicionar Loja
-                            </Button>
-                            <button
-                                type="button"
-                                onClick={() => setShowStoreManager(true)}
-                                className="sm:hidden inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 text-pink-600 hover:bg-pink-50 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                                title="Adicionar Loja"
-                            >
-                                <Plus className="w-5 h-5" />
-                                <span className="sr-only">Adicionar Loja</span>
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-3 flex-wrap">
-                            {availableStores.length > 0 ? (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm text-gray-500 hidden sm:block">Loja:</span>
-                                    <select value={currentStoreIdForDisplay || ''} onChange={handleStoreChange} className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-500">
-                                        {availableStores.map(storeId => (
-                                            <option key={storeId} value={storeId}>{storeInfoMap[storeId]?.nome || storeId}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            ) : (
-                                <span className="text-sm text-gray-500 hidden sm:block">Nenhuma loja cadastrada</span>
-                            )}
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => setShowStoreManager(true)}
-                                className="hidden sm:flex items-center gap-2"
-                            >
-                                <Plus className="w-4 h-4" />
-                                Adicionar Loja
-                            </Button>
-                            <button
-                                type="button"
-                                onClick={() => setShowStoreManager(true)}
-                                className="sm:hidden inline-flex items-center justify-center p-2 rounded-lg border border-gray-300 text-pink-600 hover:bg-pink-50 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                                title="Adicionar Loja"
-                            >
-                                <Plus className="w-5 h-5" />
-                                <span className="sr-only">Adicionar Loja</span>
-                            </button>
-                        </div>
-                    )
-                )}
+                {user && <StoreSelector owner={user.role===ROLE_OWNER} allKey={STORE_ALL_KEY}
+                  stores={availableStores} names={{...directoryNames,...Object.fromEntries(Object.entries(storeInfoMap).filter(([,info])=>info?.nome).map(([id,info])=>[id,info.nome]))}}
+                  selected={currentStoreIdForDisplay} status={directoryContextKey===storeAccessKey?directoryStatus:'loading'} onChange={handleStoreChange}
+                  onRetry={()=>setDirectoryRetry(value=>value+1)} canCreate={canCreateStores} onCreate={()=>setShowStoreManager(true)}/>}
             </div>
             <div className="flex items-center gap-4">
                                 {user && (
