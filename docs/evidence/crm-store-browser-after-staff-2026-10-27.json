@@ -1,0 +1,64 @@
+{
+  "source": "User-supplied normal/hard reload reports; user explicitly confirmed these new captures are authenticated Staff. Original complete resource arrays remain in the conversation; this evidence summarizes transport entries.",
+  "variant": "optimized-a87a7072",
+  "runtimeCommit": "a23912fccc5f548d3927de0b42ac17da3162112b",
+  "viewport": {"width":1920,"height":945},
+  "normalReload": {
+    "navigationType":"reload",
+    "marksMs":{"T0":0,"T1":7.4,"T2":475.3,"T3":1562,"home-links-started":1573.8,"shell-interactive":1574.1,"staff-shell-ready":1574.1,"T4":1620,"T5":1620,"T6":1828.7,"T7":1828.9,"T8":1843.1,"T9":1843.1,"store-names-rendered":1843.1,"home-links-rendered":2516.3},
+    "intervalsMs":{"T1_T0":7.4,"T2_T1":467.9,"T3_T2":1086.7,"T5_T4":0,"T6_T5":208.7,"T7_T6":0.2,"T8_T7":14.2,"T9_T0":1843.1,"shell_T0":1574.1,"names_T0":1843.1,"homeLinks_T0":2516.3,"homeLinks_load_to_render":942.5},
+    "eventCounts":{"staff-user":1,"staff-custom-profile":1,"public-links-start":1,"staff-directory-start":1,"staff-directory-query":1,"store-company":3,"public-links-response":1,"customer-capability":1},
+    "events":[
+      {"name":"staff-user","atMs":1359.4,"durationMs":183.4,"documents":1},
+      {"name":"staff-custom-profile","atMs":1561.4,"durationMs":201.9,"documents":1},
+      {"name":"public-links-start","atMs":1573.8},
+      {"name":"staff-directory-start","atMs":1620},
+      {"name":"staff-directory-query","atMs":1828.2,"durationMs":207.9,"documents":3},
+      {"name":"store-company","atMs":2373.6,"durationMs":541.6,"documents":1},
+      {"name":"store-company","atMs":2374.6,"durationMs":542.6,"documents":1},
+      {"name":"store-company","atMs":2375.5,"durationMs":543.4,"documents":1},
+      {"name":"public-links-response","atMs":2507,"durationMs":933.1,"documents":4,"status":200},
+      {"name":"customer-capability","atMs":2762.1,"durationMs":1200}
+    ],
+    "selectedResourceTimings":[
+      {"kind":"main-bundle","startMs":305.2,"durationMs":0,"transferBytes":0,"encodedBodyBytes":339666},
+      {"kind":"public-store-list","startMs":1884.2,"durationMs":932.2,"transferBytes":0,"encodedBodyBytes":0},
+      {"kind":"customer-capability","startMs":2018.7,"durationMs":1052.3,"transferBytes":0,"encodedBodyBytes":0}
+    ]
+  },
+  "hardReload": {
+    "navigationType":"reload",
+    "labelSource":"User identified Ctrl+Shift+R; Navigation Timing type alone does not distinguish it",
+    "marksMs":{"T0":0,"T1":1754.7,"T2":2166.1,"T3":3154,"home-links-started":3166.5,"shell-interactive":3166.8,"staff-shell-ready":3166.9,"T4":3202.9,"T5":3203,"T6":3418.9,"T7":3419.2,"T8":3438,"T9":3438.1,"store-names-rendered":3438.1,"home-links-rendered":4296.4},
+    "intervalsMs":{"T1_T0":1754.7,"T2_T1":411.4,"T3_T2":987.9,"T5_T4":0.1,"T6_T5":215.9,"T7_T6":0.3,"T8_T7":18.8,"T9_T0":3438.1,"shell_T0":3166.8,"names_T0":3438.1,"homeLinks_T0":4296.4,"homeLinks_load_to_render":1129.9},
+    "eventCounts":{"staff-user":1,"staff-custom-profile":1,"public-links-start":1,"staff-directory-start":1,"staff-directory-query":1,"store-company":3,"public-links-response":1,"customer-capability":1},
+    "events":[
+      {"name":"staff-user","atMs":2921.7,"durationMs":210.7,"documents":1},
+      {"name":"staff-custom-profile","atMs":3153.1,"durationMs":231.3,"documents":1},
+      {"name":"public-links-start","atMs":3166.6},
+      {"name":"staff-directory-start","atMs":3203},
+      {"name":"staff-directory-query","atMs":3417.9,"durationMs":214.8,"documents":3},
+      {"name":"store-company","atMs":4286.6,"durationMs":863.3,"documents":1},
+      {"name":"store-company","atMs":4287.4,"durationMs":864.1,"documents":1},
+      {"name":"store-company","atMs":4288.2,"durationMs":864.9,"documents":1},
+      {"name":"public-links-response","atMs":4292.1,"durationMs":1125.4,"documents":4,"status":200},
+      {"name":"customer-capability","atMs":4438.8,"durationMs":1284.8}
+    ],
+    "selectedResourceTimings":[
+      {"kind":"main-bundle","startMs":320.6,"durationMs":1742.9,"transferBytes":339966,"encodedBodyBytes":339666},
+      {"kind":"public-store-list","startMs":3492.3,"durationMs":930.6,"transferBytes":0,"encodedBodyBytes":0},
+      {"kind":"customer-capability","startMs":3575.7,"durationMs":1186.9,"transferBytes":0,"encodedBodyBytes":0}
+    ]
+  },
+  "interpretation": {
+    "authenticatedStaffTimelinePresent":true,
+    "publicRequestsEachReload":1,
+    "staffDirectoryQueriesEachReload":1,
+    "staffProfileReadsEachReload":1,
+    "customProfileReadsEachReload":1,
+    "customerNoLongerBlocksShellOrSelector":true,
+    "namesRenderBeforeCompanyDetails":true,
+    "performanceMetricAcceptance":"PASS for a23912fc",
+    "notClaimed":["Independent cold-start timing", "Fast3G", "Functional selection/refresh acceptance", "Console free of errors", "Visual screenshot", "store-selection-v2 deployed/accepted by these older reports"]
+  }
+}

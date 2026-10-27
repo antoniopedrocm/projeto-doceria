@@ -177,3 +177,64 @@ Todos os cinco corpos depois foram idênticos entre si, SHA256 `658fab925c6b02cb
 **PENDENTE somente a comparação/aceite do navegador nesta correção**, incluindo T0–T9 depois, contagens reais de requests depois, cold/hard/normal reload e condições throttled quando disponíveis; não converter teste local ou tempo HTTP em tempo da UI. Solicitado ao usuário um bloco consolidado com JSON normal/hard reload e verificação de Visão Geral↔loja, seleção preservada e controles/atalhos utilizáveis. Variant esperado: `optimized-a87a7072`.
 
 Nenhum browser/print novo foi executado nesta retomada, nem login/logout Staff global, cadastro/loja/pedido/SMS/WhatsApp/pagamento/reembolso. PROD intacta. Fase9=75%; Fase11=100%; Fase12=100% histórico; Global=95,00%; Fase13=0%/NÃO INICIADA. **Performance: implementada, testada e publicada DEV; homologação visual/métrica final PENDENTE.**
+
+## Relatórios normal/hard recebidos — contexto Staff não comprovado
+
+Evidência integral fornecida pelo usuário em27/10/2026: `docs/evidence/crm-store-browser-after-reported-2026-10-27.json`, viewport1920×945, variant optimized-a87a7072.
+
+| Coleta | Atalho início→render | GET público | Requisições | T3–T9/Staff |
+| --- | --- | --- | --- | --- |
+| Normal |753ms |748,3ms/HTTP200 |1 |Ausentes |
+| Hard, conforme rótulo do usuário |990,6ms |973,5ms/HTTP200 |1 |Ausentes |
+
+Não há staff-user, staff-custom-profile, customer-capability, staff-directory-start/query nem transportes Firestore. O mark shell-interactive638,3/1594,3ms também é emitido pelo StaffApplication público: **não comprova shell Staff autenticado**. T2 significa callback Auth pronto, não usuário autenticado. Código do gate permite a página pública quando UID é ausente/anônimo ou preparação canônica pede reentrada/conflito; o relatório não distingue esses motivos. Não diagnosticar logout/regressão de Auth sem evidência.
+
+Os números validam somente os atalhos públicos observados. Não publicar comparação “Staff2148→638ms” nem “seletor2504ms→zero”, e não usar1 GET sem atividade Staff como prova remota de ausência de remount sob updates do CRM. Solicitada confirmação se seletor Visão/Loja e menus administrativos estavam visíveis. **Homologação Staff permanece PENDENTE**, inclusive seleção/refresh, erro/retry no contexto e condições throttled.
+
+## Correção complementar: preferência de loja no refresh
+
+Durante a conferência, encontrado problema determinístico separado da ausência de eventos Staff: ApplicationGate limpa a chave compartilhada selectedStoreId ao restaurar UID; usePersistentState lia justamente essa chave. A reconciliação correta com IDs permitidos não recuperava o valor já apagado pelo gate. Isso antecede a otimização e impediria o critério de refresh preservando loja.
+
+Correção mínima: reutilizar usePersistentState com chave `staff-store-selection-v1:{UID canônico Staff}`. Somente ID de navegação, na sessionStorage da aba, sem lista, roles, permissions, configurações ou credenciais. Limpeza de rascunhos compartilhados/privados e guard canônico permanecem iguais. Outro UID usa outra chave, Guest não consulta a preferência Staff, e resposta atual do diretório continua descartando loja fora do escopo. Não migrar a chave global histórica sem dono conhecido; seleção deve ser refeita uma vez na nova versão. Preferência não é autoridade e não concede acesso a loja.
+
+Diagnóstico passa a variant `optimized-store-selection-v2` para diferenciar a versão. APIs/Functions/readiness comercial, Auth DEFAULT, FCM, cart, Customer e percentuais não mudam.94/94 React em9 suítes,21/21 Auth/cache/cross-tab/FCM PASS; lint0 erros/65 avisos anteriores, nenhum novo; diff-check PASS. Regressões backend30 e emulada1 reutilizadas de a23912fc sem alteração backend. Build/publicação Hosting serão registrados após conclusão real; nenhuma API precisa ser republicada.
+
+## Coletas Staff corretas recebidas — comparação técnica PASS
+
+Usuário confirmou explicitamente que as duas primeiras coletas estavam sem autenticação e enviou novas coletas autenticadas, normal/hard, da versão a23912fc. Evidências `docs/evidence/crm-store-browser-after-staff-2026-10-27.json` e `docs/evidence/crm-store-browser-comparison-2026-10-27.json`. Não era evidência de regressão de Auth; não houve alteração de Auth para fazer aparecer Staff.
+
+| Métrica | Antes normal(ms) | Depois normal(ms) | Depois hard(ms) | Redução normal |
+| --- | --- | --- | --- | --- |
+| T1−T0 |3,1 |7,4 |1754,7 | — |
+| T2−T1 |423,7 |467,9 |411,4 | — |
+| T3−T2 |1719,4 |1086,7 |987,9 |36,80% |
+| T5−T4 |0,1 |0 |0,1 | — |
+| T6−T5 |141,8 |208,7 |215,9 | — |
+| T7−T6 |0,1 |0,2 |0,3 | — |
+| T8−T7 |15,1 |14,2 |18,8 | — |
+| T9−T0: seletor habilitado |2504,3 |1843,1 |3438,1 |**26,40%** |
+| Shell−T0 |2148,2 |1574,1 |3166,8 |**26,72%** |
+| Nomes−T0 |2953,9 |1843,1 |3438,1 |**37,60%** |
+| Atalhos: início→render |10641 |942,5 |1129,9 |**91,14%** |
+
+Comparação normal com normal, sem alegar rede idêntica ou baseline hard anterior. Query Firestore em si passou de141,8 para208,7ms: não ficou mais rápida; a melhora vem da retirada de dependências, duplicações e uso antecipado dos nomes. Hard reload contém download main1742,9ms; não comparar seu total com o baseline normal em cache como regressão de Auth. T0 continua o script no head, não início da navegação.
+
+Nos dois relatórios Staff: **users2→1; customProfiles2→1; diretório2→1; GET público4→1**. Company3→3, mantidos em paralelo para detalhes, sem bloquear os nomes. No normal, nomes/seletor1843,1ms e shell1574,1ms antecedem company2373,6–2375,5ms e Customer2762,1ms; no hard, nomes3438,1ms e shell3166,8ms antecedem company4286,6–4288,2ms e Customer4438,8ms. A conclusão posterior de Customer não reiniciou o diretório/atalhos. Isso confirma remotamente o desacoplamento, sem interpretar transportes multiplexados como fatura de reads.
+
+**Performance a23912fc: comparação técnica normal/hard PASS.** Preferência por UID8f6dbdb4 é correção complementar ainda em entrega; esses relatórios anteriores não homologam seu refresh. Não pedir repetição das duas coletas de performance já válidas. Restam aceite funcional de Geral↔loja/refresh/controles na nova versão e teste remoto throttled, se disponível. Console livre de erro e screenshots não foram fornecidos/não são presumidos.
+
+### Entrega complementar8f6dbdb4 — pronta, Hosting bloqueado novamente
+
+- Commit funcional **8f6dbdb4ab45aed06d3d9c0f6fa273f823252a27**, push DEV concluído. Apenas App/chave de preferência/helper/testes e rótulo de diagnóstico alterados. Não muda capabilities, Auth/persistência Firebase ou APIs/backend. Primeira seleção deve ser refeita após upgrade porque não se migra preferência global sem dono conhecido.
+- Build completo PASS, main.dcc5c4ad.js435,88kB gzip (+36bytes),4 avisos native-audio/metadados conhecidos.94/94 React,21/21 sessão/cache/FCM/cross-tab, lint0 erros/65 avisos anteriores, diff-check PASS. Nenhum teste/backend/provider financeiro repetido sem necessidade. Staging `.deploy-crm-store-baseline-8f6dbdb4`,59 arquivos;10 fontes do sourcemap conferidas localmente, incluindo App e helper de preferência. Verificação remota será executada após publicação, sem confundir fonte do build com arquivo já publicado.
+- **Tentativa somente Hosting falhou antes de upload/release**, Authentication Error e erro secundário de resolução de site; nova consulta hosting:sites:list também falhou. Diagnóstico confirmou mesma conta configurada no worktree/staging e ausência de override FIREBASE_TOKEN, sem imprimir identidade/credenciais. A mensagem genérica não prova se é expiração ou bloqueio de rede; não apresentar FirebaseError.status como status HTTP real do provider. Nenhuma nova Function/Rule/índice/Storage/PROD foi publicada.
+- **Último runtime remoto comprovado permanece a23912fc** (API+Hosting,59/59 hashes), com melhoria técnica Staff já comprovada.8f6dbdb4 permanece **PENDENTE de publicação/aceite de seleção após refresh**. Pedido de liberação CLI/firewall/reauth enviado, sem nova autorização financeira/SMS e sem repetir a coleta Staff já aprovada tecnicamente.
+
+Com acesso restabelecido, executar somente:
+
+```powershell
+Set-Location -LiteralPath 'C:\Users\antonio.pedro\Projeto\projeto-doceria-main\infinitepay-auth-worktree\.deploy-crm-store-baseline-8f6dbdb4'
+npx -y firebase-tools@15.34.1 deploy --project crmdoceria-9959e --only hosting --non-interactive
+```
+
+Depois conferir59 hashes/cache e validar apenas seleção Geral↔loja e refresh na variant optimized-store-selection-v2; teste throttled pode ser agrupado, sem novo cadastro/loja/pedido/SMS/pagamento. Não repetir normal/hard completos só por preferência de loja. Fase9=75%, Global=95,00%, Fase13=0%/NÃO INICIADA.

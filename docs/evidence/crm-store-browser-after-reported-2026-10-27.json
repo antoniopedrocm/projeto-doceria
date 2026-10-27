@@ -1,0 +1,71 @@
+{
+  "source": "User-supplied normal and hard reload reports, 2026-10-27",
+  "interpretation": {
+    "staffComparisonAccepted": false,
+    "sessionState": "USER_CONFIRMED_NOT_AUTHENTICATED",
+    "reason": "Both reports have no T3-T9, staff-shell-ready, store-names-rendered, Staff reads, directory events or Firestore transports. shell-interactive is also emitted by the public StaffApplication and is not proof of authenticated Staff.",
+    "pending": null,
+    "followup": "User confirmed the first captures were not authenticated and supplied new Staff reports, recorded separately in crm-store-browser-after-staff-2026-10-27.json.",
+    "notClaimed": ["Staff shell improvement", "Authenticated selector timing", "Staff directory request count improvement", "Selection persistence acceptance", "Fast 3G", "Console free of errors", "Authentication regression"]
+  },
+  "normalReload": {
+    "schema": 1,
+    "variant": "optimized-a87a7072",
+    "scope": "DEV browser, opt-in; no identity or document payload",
+    "navigationType": "reload",
+    "viewport": {"width":1920,"height":945},
+    "marksMs": {"T0":0,"T1":3.1,"T2":113.1,"shell-interactive":638.3,"home-links-started":677.7,"home-links-rendered":1430.7},
+    "intervalsMs": {"T1_T0":3.1,"T2_T1":110,"T3_T2":null,"T5_T4":null,"T6_T5":null,"T7_T6":null,"T8_T7":null,"T9_T0":null,"shell_T0":638.3,"names_T0":null,"homeLinks_T0":1430.7,"homeLinks_load_to_render":753},
+    "eventCounts": {"public-links-start":1,"public-links-response":1},
+    "events": [
+      {"name":"public-links-start","atMs":677.8},
+      {"name":"public-links-response","atMs":1426.1,"durationMs":748.3,"documents":4,"status":200}
+    ],
+    "resourceTimings": [
+      {"kind":"firebase-compat-bootstrap","startMs":335,"durationMs":0,"transferBytes":0,"encodedBodyBytes":5761},
+      {"kind":"firebase-compat-bootstrap","startMs":335,"durationMs":0,"transferBytes":0,"encodedBodyBytes":35500},
+      {"kind":"firebase-compat-bootstrap","startMs":335.1,"durationMs":0,"transferBytes":0,"encodedBodyBytes":84162},
+      {"kind":"firebase-compat-bootstrap","startMs":335.1,"durationMs":0,"transferBytes":0,"encodedBodyBytes":12218},
+      {"kind":"firebase-compat-bootstrap","startMs":335.2,"durationMs":0,"transferBytes":0,"encodedBodyBytes":3161},
+      {"kind":"firebase-compat-bootstrap","startMs":335.2,"durationMs":0,"transferBytes":0,"encodedBodyBytes":303},
+      {"kind":"main-bundle","startMs":335.2,"durationMs":0,"transferBytes":0,"encodedBodyBytes":339666},
+      {"kind":"public-store-list","startMs":1016.9,"durationMs":747.8,"transferBytes":0,"encodedBodyBytes":0}
+    ],
+    "notes": [
+      "T0 is the diagnostic script in the HTML head, not network navigationStart.",
+      "Logical Firestore operations and HTTP transports are different counts; streams can multiplex reads.",
+      "Cross-origin resource byte sizes may be zero without Timing-Allow-Origin.",
+      "No throttling profile inferred; label normal/Fast 3G manually."
+    ]
+  },
+  "hardReload": {
+    "schema": 1,
+    "variant": "optimized-a87a7072",
+    "scope": "DEV browser, opt-in; no identity or document payload",
+    "navigationType": "reload",
+    "viewport": {"width":1920,"height":945},
+    "marksMs": {"T0":0,"T1":1065.3,"T2":1114.6,"shell-interactive":1594.3,"home-links-started":1661,"home-links-rendered":2651.6},
+    "intervalsMs": {"T1_T0":1065.3,"T2_T1":49.3,"T3_T2":null,"T5_T4":null,"T6_T5":null,"T7_T6":null,"T8_T7":null,"T9_T0":null,"shell_T0":1594.3,"names_T0":null,"homeLinks_T0":2651.6,"homeLinks_load_to_render":990.6},
+    "eventCounts": {"public-links-start":1,"public-links-response":1},
+    "events": [
+      {"name":"public-links-start","atMs":1661.2},
+      {"name":"public-links-response","atMs":2634.6,"durationMs":973.5,"documents":4,"status":200}
+    ],
+    "resourceTimings": [
+      {"kind":"firebase-compat-bootstrap","startMs":252.2,"durationMs":527.5,"transferBytes":6061,"encodedBodyBytes":5761},
+      {"kind":"firebase-compat-bootstrap","startMs":252.4,"durationMs":685.9,"transferBytes":35800,"encodedBodyBytes":35500},
+      {"kind":"firebase-compat-bootstrap","startMs":252.4,"durationMs":1061.5,"transferBytes":84462,"encodedBodyBytes":84162},
+      {"kind":"firebase-compat-bootstrap","startMs":252.5,"durationMs":537.5,"transferBytes":3461,"encodedBodyBytes":3161},
+      {"kind":"firebase-compat-bootstrap","startMs":252.5,"durationMs":548.1,"transferBytes":12518,"encodedBodyBytes":12218},
+      {"kind":"firebase-compat-bootstrap","startMs":252.6,"durationMs":378.5,"transferBytes":603,"encodedBodyBytes":303},
+      {"kind":"main-bundle","startMs":252.6,"durationMs":1026,"transferBytes":339966,"encodedBodyBytes":339666},
+      {"kind":"public-store-list","startMs":1917.4,"durationMs":972.4,"transferBytes":0,"encodedBodyBytes":0}
+    ],
+    "notes": [
+      "T0 is the diagnostic script in the HTML head, not network navigationStart.",
+      "Logical Firestore operations and HTTP transports are different counts; streams can multiplex reads.",
+      "Cross-origin resource byte sizes may be zero without Timing-Allow-Origin.",
+      "No throttling profile inferred; label normal/Fast 3G manually."
+    ]
+  }
+}

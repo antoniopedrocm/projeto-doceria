@@ -1,0 +1,114 @@
+{
+  "scope": "Authenticated normal vs normal comparison; hard reload provided without a matching before-hard baseline",
+  "rows": [
+    {
+      "metric": "T1_T0",
+      "beforeMs": 3.1,
+      "afterNormalMs": 7.4,
+      "afterHardMs": 1754.7,
+      "normalReductionPercent": -138.71
+    },
+    {
+      "metric": "T2_T1",
+      "beforeMs": 423.7,
+      "afterNormalMs": 467.9,
+      "afterHardMs": 411.4,
+      "normalReductionPercent": -10.43
+    },
+    {
+      "metric": "T3_T2",
+      "beforeMs": 1719.4,
+      "afterNormalMs": 1086.7,
+      "afterHardMs": 987.9,
+      "normalReductionPercent": 36.8
+    },
+    {
+      "metric": "T5_T4",
+      "beforeMs": 0.1,
+      "afterNormalMs": 0,
+      "afterHardMs": 0.1,
+      "normalReductionPercent": 100
+    },
+    {
+      "metric": "T6_T5",
+      "beforeMs": 141.8,
+      "afterNormalMs": 208.7,
+      "afterHardMs": 215.9,
+      "normalReductionPercent": -47.18
+    },
+    {
+      "metric": "T7_T6",
+      "beforeMs": 0.1,
+      "afterNormalMs": 0.2,
+      "afterHardMs": 0.3,
+      "normalReductionPercent": -100
+    },
+    {
+      "metric": "T8_T7",
+      "beforeMs": 15.1,
+      "afterNormalMs": 14.2,
+      "afterHardMs": 18.8,
+      "normalReductionPercent": 5.96
+    },
+    {
+      "metric": "T9_T0",
+      "beforeMs": 2504.3,
+      "afterNormalMs": 1843.1,
+      "afterHardMs": 3438.1,
+      "normalReductionPercent": 26.4
+    },
+    {
+      "metric": "shell_T0",
+      "beforeMs": 2148.2,
+      "afterNormalMs": 1574.1,
+      "afterHardMs": 3166.8,
+      "normalReductionPercent": 26.72
+    },
+    {
+      "metric": "names_T0",
+      "beforeMs": 2953.9,
+      "afterNormalMs": 1843.1,
+      "afterHardMs": 3438.1,
+      "normalReductionPercent": 37.6
+    },
+    {
+      "metric": "homeLinks_load_to_render",
+      "beforeMs": 10641,
+      "afterNormalMs": 942.5,
+      "afterHardMs": 1129.9,
+      "normalReductionPercent": 91.14
+    }
+  ],
+  "counts": {
+    "before": {
+      "staff-user": 2,
+      "staff-custom-profile": 2,
+      "customer-capability": 1,
+      "staff-directory-start": 2,
+      "staff-directory-query": 2,
+      "store-company": 3,
+      "public-links-start": 4,
+      "public-links-response": 4
+    },
+    "afterNormal": {
+      "staff-user": 1,
+      "staff-custom-profile": 1,
+      "public-links-start": 1,
+      "staff-directory-start": 1,
+      "staff-directory-query": 1,
+      "store-company": 3,
+      "public-links-response": 1,
+      "customer-capability": 1
+    },
+    "afterHard": {
+      "staff-user": 1,
+      "staff-custom-profile": 1,
+      "public-links-start": 1,
+      "staff-directory-start": 1,
+      "staff-directory-query": 1,
+      "store-company": 3,
+      "public-links-response": 1,
+      "customer-capability": 1
+    }
+  }
+}
