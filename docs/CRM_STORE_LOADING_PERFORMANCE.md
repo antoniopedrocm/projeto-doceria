@@ -148,3 +148,32 @@ Sem publicar outros targets ou projeto. Conferir hashes/headers e repetir probe 
 ### Limitação de automação nesta retomada
 
 O inventário Chrome voltou a responder, mas leituras DOM falharam com timeout de Emulation.setFocusEmulationEnabled. A alternativa oficial Computer Use nativa foi interrompida pela revisão automática por não conseguir confirmar a URL corrente com segurança. Nenhuma tentativa de contornar essa barreira; nenhuma medição/screenshot do browser foi inventada. Consultas HTTP e deploy por CLI autorizados são independentes desse bloqueio. A comparação do navegador continua dependendo da coleta manual após publicação.
+
+## Publicação DEV e medição HTTP depois — 27/10/2026
+
+- Usuário informou “logado e sem firewall”. Consulta autorizada hosting:sites:list voltou com success para crmdoceria-9959e. Worktree/branch corretos, sem alteração tracked, runtime HEAD idêntico a a23912fc;59 arquivos Hosting e45 runtimes revalidados contra o manifesto. Não repetir build/suítes já aprovados sem mudança de fonte.
+- Primeira retomada passou autenticação, mas a descoberta local das Functions excedeu o timeout padrão10s, antes do upload. Repetida com `FUNCTIONS_DISCOVERY_TIMEOUT=60` e NO_PROXY apenas para loopback no processo da CLI. Mecanismo confirmado no CLI15.34.1 e na documentação oficial Firebase, https://firebase.google.com/docs/functions/tips#avoid_deployment_timeouts_during_initialization (versão visível atualizada23/10/2026). Não alterou código, prazo de execução da Function, controles de acesso ou configurações PROD.
+- **api(us-central1), Node22/2ndGen: Successful update operation; Deploy complete; exit0.** Só api foi selecionada. Pacote238,57KB,45 runtimes previamente verificados; restante das Functions, Rules, índices e Storage não publicados. Aviso de firebase-functions antigo preservado, sem atualizar dependências nesta entrega.
+- **Hosting crmdoceria-9959e: release complete; Deploy complete; exit0**, após API PASS.59 arquivos. Conferência em27/10/2026 às03:14:44Z:59/59 SHA-256 iguais ao staging; rota opt-in também retorna HTML correto;10 fontes do build correspondentes. `main.3483dd59.js` SHA256 `210275f4cddb258967538cbeb932371fc7f0b66cb622b51baa40d5ee73c5338b`. HTML/SPA/bootstrap/worker revalidáveis; asset hashado `public,max-age=31536000,immutable`.
+- **Gate de acesso/publicação RESOLVIDO.** Evidências: `docs/evidence/crm-store-delivery-dev-2026-10-27.json` e `docs/evidence/crm-store-api-after-dev-2026-10-27.json`. A publicação contém runtime a23912fc; os commits documentais posteriores não exigem novo deploy.
+
+### Comparação HTTP pelo mesmo método
+
+Cinco GET públicos sequenciais, sem Auth/dados privados/operação financeira. Coleta depois em27/10/2026 às03:12:54Z, antes da conferência Hosting; API já atualizada. Primeira amostra não é classificada como cold start comprovado. Medições em dias diferentes, sem afirmar condições de rede idênticas ou SLA.
+
+| Amostra | Antes total(ms) | Depois total(ms) | Depois HTTP | Corpo/entradas |
+| --- | --- | --- | --- | --- |
+| 1 | 6366 | 3006 | 200 |299bytes/4 |
+| 2 | 2634 | 965 | 200 |299bytes/4 |
+| 3 | 2520 | 926 | 200 |299bytes/4 |
+| 4 | 2496 | 672 | 200 |299bytes/4 |
+| 5 | 2503 | 666 | 200 |299bytes/4 |
+| Mediana | **2520** | **926** | — | **redução observada63,25%** |
+
+Todos os cinco corpos depois foram idênticos entre si, SHA256 `658fab925c6b02cbe118acb16279d32d2b00513936d5a147446121d312eacc80`; campos de cada entrada restritos a storeId/name/channelId, sem configuração privada. Mesmo299bytes/4 entradas do baseline; sem afirmar igualdade de hash antes, que não foi registrado naquela coleta. Cache-Control de todas as respostas: `no-cache,max-age=0,must-revalidate`.
+
+### Homologação restante
+
+**PENDENTE somente a comparação/aceite do navegador nesta correção**, incluindo T0–T9 depois, contagens reais de requests depois, cold/hard/normal reload e condições throttled quando disponíveis; não converter teste local ou tempo HTTP em tempo da UI. Solicitado ao usuário um bloco consolidado com JSON normal/hard reload e verificação de Visão Geral↔loja, seleção preservada e controles/atalhos utilizáveis. Variant esperado: `optimized-a87a7072`.
+
+Nenhum browser/print novo foi executado nesta retomada, nem login/logout Staff global, cadastro/loja/pedido/SMS/WhatsApp/pagamento/reembolso. PROD intacta. Fase9=75%; Fase11=100%; Fase12=100% histórico; Global=95,00%; Fase13=0%/NÃO INICIADA. **Performance: implementada, testada e publicada DEV; homologação visual/métrica final PENDENTE.**

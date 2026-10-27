@@ -1,0 +1,63 @@
+{
+  "checkedAt": "2026-10-27T03:12:54.732Z",
+  "project": "crmdoceria-9959e",
+  "commit": "a23912fccc5f548d3927de0b42ac17da3162112b",
+  "scope": "Node HTTP probe; five sequential public directory GETs; not browser render timing or proven cold start",
+  "beforeDate": "2026-10-26T04:01:10.419Z",
+  "beforeMedianMs": 2520,
+  "afterMedianMs": 926,
+  "reductionPercent": 63.25,
+  "bodySha256": "658fab925c6b02cbe118acb16279d32d2b00513936d5a147446121d312eacc80",
+  "samples": [
+    {
+      "sample": 1,
+      "status": 200,
+      "ttfbMs": 3004,
+      "totalMs": 3006,
+      "bytes": 299,
+      "stores": 4,
+      "hasMore": false,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "sample": 2,
+      "status": 200,
+      "ttfbMs": 965,
+      "totalMs": 965,
+      "bytes": 299,
+      "stores": 4,
+      "hasMore": false,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "sample": 3,
+      "status": 200,
+      "ttfbMs": 926,
+      "totalMs": 926,
+      "bytes": 299,
+      "stores": 4,
+      "hasMore": false,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "sample": 4,
+      "status": 200,
+      "ttfbMs": 671,
+      "totalMs": 672,
+      "bytes": 299,
+      "stores": 4,
+      "hasMore": false,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "sample": 5,
+      "status": 200,
+      "ttfbMs": 665,
+      "totalMs": 666,
+      "bytes": 299,
+      "stores": 4,
+      "hasMore": false,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    }
+  ]
+}
