@@ -1,5 +1,8 @@
 // Stable access signature excludes unrelated Customer/schedule/notification data.
 // The values come from the server-validated Staff profile, never public-list.
+// A store ID is a navigation preference, not authority. Keep it per canonical
+// Staff UID so gate cleanup can still discard every shared/private Staff draft.
+export const staffStoreSelectionKey=uid=>uid?`staff-store-selection-v1:${uid}`:'selectedStoreId';
 export function staffDirectoryKey(user) {
   if(!user?.auth?.uid)return null;
   return JSON.stringify({uid:user.auth.uid,role:user.role,all:user.canAccessAllStores===true,

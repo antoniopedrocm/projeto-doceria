@@ -36,7 +36,7 @@
   const report=()=>{
     const navigation=performance.getEntriesByType('navigation')[0];
     const resourceTimings=performance.getEntriesByType('resource').map(entry=>({entry,kind:category(entry)})).filter(r=>r.kind).map(({entry,kind})=>({kind,startMs:round(entry.startTime),durationMs:round(entry.duration),transferBytes:entry.transferSize,encodedBodyBytes:entry.encodedBodySize}));
-    return {schema:1,variant:'optimized-a87a7072',scope:'DEV browser, opt-in; no identity or document payload',
+    return {schema:1,variant:'optimized-store-selection-v2',scope:'DEV browser, opt-in; no identity or document payload',
       navigationType:navigation?.type || null,viewport:{width:innerWidth,height:innerHeight},
       marksMs:Object.fromEntries(Object.entries(marks).map(([key,value])=>[key,round(value-marks.T0)])),
       intervalsMs:Object.fromEntries(Object.entries(measures).map(([label,[a,b]])=>[label,marks[a]!==undefined && marks[b]!==undefined?round(marks[b]-marks[a]):null])),

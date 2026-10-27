@@ -4,6 +4,7 @@ import ApplicationGate from './ApplicationGate';
 import {auth} from '../firebaseConfig';
 import {legacyAuth,prepareCanonicalSession,logoutCanonicalSession} from './customerRuntime';
 import {onIdTokenChanged} from 'firebase/auth';
+import {staffStoreSelectionKey} from '../stores/staffDirectory';
 jest.mock('../firebaseConfig',()=>({auth:{currentUser:null}}));
 jest.mock('./customerRuntime',()=>({legacyAuth:{currentUser:null},prepareCanonicalSession:jest.fn(async()=> 'READY'),syncSessionCart:jest.fn(async()=>{}),logoutCanonicalSession:jest.fn(async()=>{})}));
 jest.mock('firebase/auth',()=>({onIdTokenChanged:jest.fn()}));
@@ -89,6 +90,16 @@ test('Staff mounts before Customer lookup finishes, using gate profile; final du
   const shell=host.firstChild;
   await act(async()=>finish());
   expect(host.firstChild).toBe(shell);expect(host.textContent).toContain('Área do Cliente');
+});
+test('same-UID refresh keeps scoped store preference; UID switch clears drafts and never adopts another Staff preference',async()=>{
+  sessionStorage.setItem(staffStoreSelectionKey('a'),JSON.stringify('loja-a'));
+  sessionStorage.setItem(staffStoreSelectionKey('b'),JSON.stringify('loja-b'));
+  sessionStorage.setItem('selectedStoreId',JSON.stringify('foreign-global'));
+  sessionStorage.setItem('financeiro_startDate','private-a');
+  staff.mockImplementation(props=><div>CRM:{props.staffUid};Store:{props.staffUid?JSON.parse(sessionStorage.getItem(staffStoreSelectionKey(props.staffUid))):'none'}</div>);
+  await mount();await emit(identity('a'));expect(host.textContent).toContain('Store:loja-a');
+  expect(sessionStorage.getItem('selectedStoreId')).toBeNull();expect(sessionStorage.getItem('financeiro_startDate')).toBeNull();
+  await emit(null);await emit(identity('b'));expect(host.textContent).toContain('Store:loja-b');expect(host.textContent).not.toContain('loja-a');
 });
 test('provisional Staff cannot redirect a Customer route or restore an old UID after logout',async()=>{
   let late,finish;

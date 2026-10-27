@@ -3,7 +3,7 @@ import {storePerfMark,storePerfEvent,storePerfRequest,storePerfPaint} from './pe
 import {canPreviewCustomer,previewPermissionDetails,previewTarget} from './customer/adminPreviewAccess';
 import PaginaInicial from './storefront/CrmHome';
 import StoreSelector from './stores/StoreSelector';
-import {staffDirectoryKey,reconcileStoreSelection} from './stores/staffDirectory';
+import {staffDirectoryKey,reconcileStoreSelection,staffStoreSelectionKey} from './stores/staffDirectory';
 import {storeDeadline} from './stores/storeRequests';
 import {normalizeRole, isActiveStaffProfile} from './customer/staffRole';
 import {createCapabilityResolver} from './customer/userCapabilities';
@@ -3719,7 +3719,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
   useEffect(()=>{
     if(availableStores.length && availableStores.every(id=>Object.prototype.hasOwnProperty.call(directoryNames,id) || Object.prototype.hasOwnProperty.call(storeInfoMap,id)))return storePerfPaint('store-names-rendered');
   },[availableStores,storeInfoMap,directoryNames]);
-  const [selectedStoreId, setSelectedStoreId] = usePersistentState('selectedStoreId', null);
+  const [selectedStoreId, setSelectedStoreId] = usePersistentState(staffStoreSelectionKey(staffUid), null);
   const [showStoreManager, setShowStoreManager] = useState(false);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
 
