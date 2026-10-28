@@ -32,7 +32,7 @@
         ]
       },
       {
-        "regex": "^[/\\\\](|[^.]*|.*\\.html|[^/\\\\]+\\.(js|mjs|json))$",
+        "regex": "^[/\\\\](|[^.]*|.*\\.html|[^/\\\\]+\\.(js|mjs|json|css))$",
         "headers": [
           {
             "key": "Cache-Control",

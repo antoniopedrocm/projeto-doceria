@@ -71,3 +71,7 @@ O harness `crm/tests/customer-visual-review.cjs` bloqueia requisições fora do 
 - Lint dos arquivos React alterados PASS, sem erros/avisos de código. Diff-check PASS; entrega Hosting será registrada no checkpoint após conferência.
 
 **Estado:** implementação/revisão local concluídas; publicação Hosting DEV e homologação manual autenticada pendentes de registro. Não declarar aceitação visual DEV com base nas fixtures locais. Sem alteração dos percentuais formais.
+
+### Complemento de entrega: CSS público estável
+
+A auditoria do artefato encontrou `customer-area.css` fora do matcher explícito de revalidação (que cobria HTML/JS/MJS/JSON). Foi incluída apenas a extensão CSS de arquivos na raiz na mesma política no-cache/must-revalidate, evitando stylesheet antigo após reload. Assets hashados de static/css permanecem immutable, sem sobreposição de matchers. Teste no middleware real do Hosting confere status200, MIME text/css, corpo CSS e cache; não aceita fallback SPA como stylesheet. Nenhuma alteração de Service Worker, Auth ou API. O frontend compilado não muda por esse ajuste de configuração Hosting.
