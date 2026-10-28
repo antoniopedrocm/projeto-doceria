@@ -80,8 +80,35 @@ test('dual-role CRM action closes drawer without logout',async()=>{
 
 test('logout action closes the drawer while retaining the canonical logout contract',async()=>{
   await mount();await click('☰');await click('Sair');
-  expect(host.querySelector('aside').className).toBe('');expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
+  expect(host.querySelector('aside')).toBeNull();expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
   expect(logoutCanonicalSession).toHaveBeenCalledTimes(1);expect(controller.dispose).toHaveBeenCalled();
+});
+
+test.each(['/area-cliente','/minha-conta','/meus-pedidos'])('signed out %s has no private shell or indefinite loading',async path=>{
+  session.currentUser=null;window.history.replaceState(null,'',path);await mount({uid:null});
+  expect(host.querySelector('aside')).toBeNull();
+  expect(host.textContent).toContain('Entre com Google ou e-mail');
+  expect(host.textContent).not.toMatch(/Carregando sua conta|Meus Pedidos|Minha Conta|Sair/);
+  expect(controller.openAccount).not.toHaveBeenCalled();expect(controller.openOrder).not.toHaveBeenCalled();
+  expect(window.location.pathname).toBe(path);
+});
+
+test('pending logout removes private actions immediately, deduplicates and reports failure without a spinner',async()=>{
+  let fail;const out=jest.fn(()=>new Promise((_,reject)=>{fail=reject;}));
+  await mount({onLogout:out});const button=[...host.querySelectorAll('button')].find(b=>b.textContent==='Sair');
+  await act(async()=>{button.click();button.click();});
+  expect(out).toHaveBeenCalledTimes(1);expect(host.querySelector('aside')).toBeNull();
+  expect(host.textContent).toContain('Saindo da sua conta');
+  await act(async()=>fail(Error('offline')));
+  expect(host.textContent).toContain('Tentar sair novamente');expect(host.textContent).not.toContain('Saindo da sua conta');
+});
+
+test('late controller import cannot install private data after logout starts',async()=>{
+  let load,finish;const out=()=>new Promise(resolve=>{finish=resolve;});
+  await mount({loadController:()=>new Promise(resolve=>{load=resolve;}),onLogout:out});
+  await click('Sair');await act(async()=>load({installCustomerAccount:install}));
+  expect(install).not.toHaveBeenCalled();await act(async()=>finish());
+  expect(host.querySelector('aside')).toBeNull();expect(host.textContent).not.toContain('Carregando sua conta');
 });
 
 test('repeated open and close removes Escape and resize listeners, including unmount',async()=>{

@@ -69,6 +69,30 @@ test.each(['Sair Staff','Sair Customer'])('same logout from %s; Back cannot show
 test('old UID response after logout/login B is discarded',async()=>{
   let finish;resolver.mockImplementation(u=>u.uid==='a'?new Promise(done=>{finish=done;}):Promise.resolve(caps('b',false,true)));await mount();await emit(identity('a'));await emit(null);await emit(identity('b'));await act(async()=>finish(caps('a')));expect(host.textContent).toContain('Customer:b');expect(host.textContent).not.toContain('CRM:a');
 });
+
+test('Auth null removes private UI before pending legacy hydration completes',async()=>{
+  window.history.replaceState(null,'','/minha-conta');await mount();await emit(identity('a'));
+  prepareCanonicalSession.mockImplementation(()=>new Promise(()=>{}));
+  await emit(null);expect(host.textContent).toContain('Customer:login');
+  expect(host.textContent).not.toContain('Carregando acesso');expect(host.textContent).not.toContain('Customer:a');
+});
+
+test.each(['/area-cliente','/minha-conta','/meus-pedidos'])('logout from %s finishes at public Customer entry without rehydration',async path=>{
+  window.history.replaceState(null,'',path);await mount();await emit(identity('a'));
+  prepareCanonicalSession.mockImplementation(()=>new Promise(()=>{}));
+  await click('Sair Customer');expect(window.location.pathname).toBe('/area-cliente');
+  expect(host.textContent).toContain('Customer:login');expect(host.textContent).not.toContain('Carregando acesso');
+  await act(async()=>root.unmount());root=createRoot(host);await mount();await emit(null);
+  expect(host.textContent).toContain('Customer:login');expect(staff).not.toHaveBeenCalled();
+});
+
+test('signOut error keeps private UI removed and offers retry; null Auth still completes',async()=>{
+  window.history.replaceState(null,'','/meus-pedidos');await mount();await emit(identity('a'));
+  logoutCanonicalSession.mockRejectedValueOnce(Error('offline'));await click('Sair Customer');
+  expect(host.textContent).toContain('Não foi possível sair');expect(host.textContent).not.toContain('Customer:a');
+  logoutCanonicalSession.mockImplementationOnce(async()=>{auth.currentUser=null;throw Error('legacy cleanup');});
+  await click('Sair');expect(host.textContent).toContain('Customer:login');expect(window.location.pathname).toBe('/area-cliente');
+});
 test('old context response for SAME UID cannot replace newer route',async()=>{
   await mount();await emit(identity('a'));let finish;resolver.mockImplementationOnce(()=>new Promise(done=>{finish=done;}));await click('Área do Cliente');window.history.replaceState(null,'','/');await act(async()=>window.dispatchEvent(new PopStateEvent('popstate')));await act(async()=>finish(caps('a')));expect(host.textContent).toContain('CRM:a');expect(host.textContent).not.toContain('Customer:a');
 });

@@ -23,6 +23,11 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
       state.uid=uid;
       if(requested) state.requestedContext=requested;
       const current=()=>active && generation===state.generation && (auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null)===uid;
+      // Remove private UI on null Auth before any async cleanup/import.
+      if(!uid) {
+        state.activeContext=null;state.requestedContext=null;
+        setView({kind:isCustomerPath(window.location.pathname)?'customer-login':'public'});
+      }
       try {
         const preparation=await prepareCanonicalSession();
         if(!active || generation!==state.generation) return;
@@ -76,16 +81,31 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
   const openCustomer=useCallback(()=>changeContext('customer'),[changeContext]);
   const openStaff=useCallback(()=>changeContext('staff'),[changeContext]);
   const revalidateStaff=useCallback(()=>changeContext('staff'),[changeContext]);
-  const logout=useCallback(async()=>{
+  const logoutFlight=useRef(null);
+  const logout=useCallback(()=>{
+    if(logoutFlight.current) return logoutFlight.current;
     const state=control.current;state.generation++;state.contextGeneration++;state.activeContext=null;state.requestedContext=null;
     clearStaffUiState();
     setView({kind:'loading'});
-    await logoutCanonicalSession();
-    window.history.replaceState(null,'','/area-cliente');
-    await state.resolve?.();
+    logoutFlight.current=(async()=>{
+      try {await logoutCanonicalSession();}
+      catch {
+        if(auth.currentUser && !auth.currentUser.isAnonymous) {
+          setView({kind:'blocked',message:'Não foi possível sair da conta. Tente novamente.'});return;
+        }
+      }
+      // Ending logout does not require Customer or legacy-session hydration.
+      if(auth.currentUser && !auth.currentUser.isAnonymous) {
+        setView({kind:'blocked',message:'Não foi possível sair da conta. Tente novamente.'});return;
+      }
+      state.generation++;state.uid=null;
+      window.history.replaceState(null,'','/area-cliente');
+      setView({kind:'customer-login'});
+    })().finally(()=>{logoutFlight.current=null;});
+    return logoutFlight.current;
   },[]);
   if(view.kind==='loading') return <p role="status" className="p-8">Carregando acesso…</p>;
-  if(view.kind==='blocked') return <main className="p-8"><p role="alert">Não foi possível autorizar o acesso. Recarregue ou entre novamente.</p><button onClick={logout}>Sair</button></main>;
+  if(view.kind==='blocked') return <main className="p-8"><p role="alert">{view.message || 'Não foi possível autorizar o acesso. Recarregue ou entre novamente.'}</p><button onClick={logout}>Sair</button></main>;
   if(view.kind==='admin-denied') return <main className="p-8"><p role="alert">Acesso administrativo não autorizado.</p></main>;
   if(view.kind==='staff') return <StaffApplication key={`${view.uid}:staff:${view.contextGeneration}`} staffUid={view.uid}
     staffProfile={view.capabilities.staff} canOpenCustomer={view.capabilities.isCustomer} onCustomerContext={openCustomer} onLogout={logout} onStaffAccessLost={revalidateStaff}/>;

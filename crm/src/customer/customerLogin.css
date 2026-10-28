@@ -1,0 +1,7 @@
+.customer-shell.customer-login-shell{grid-template-columns:minmax(0,1fr)}
+.customer-login-shell>main{grid-column:1;display:flex;justify-content:center;align-items:flex-start}
+.customer-login-shell .customer-login-card{width:100%;max-width:520px;padding:28px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 3px #00000006}
+.customer-login-card>p{margin:16px 0;color:#4b5563}
+.customer-login-card>button,.customer-login-card>a{display:block;margin-top:16px;padding:12px 16px;border:1px solid #e5e7eb;border-radius:8px;min-height:44px;color:#be185d;font-weight:600;text-align:center;width:100%}
+.customer-login-card [data-signed-out]{display:grid;gap:12px;margin-top:20px}
+.customer-login-card [data-account-google],.customer-login-card [data-account-email]{min-height:44px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;font-weight:600}
