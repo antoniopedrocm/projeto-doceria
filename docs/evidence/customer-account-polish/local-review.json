@@ -1,0 +1,62 @@
+{
+  "scope": "LOCAL isolated Chrome; fictional data; no Firebase/Auth/SMS/payment requests",
+  "accountOnly": true,
+  "legacyPublicStylesheetSimulated": true,
+  "checks": [
+    {
+      "width": 320,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 375,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 390,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 430,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 768,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1024,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1366,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1920,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    }
+  ],
+  "screenshots": [
+    "mobile-account.png",
+    "desktop-account.png"
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "production": false
+}

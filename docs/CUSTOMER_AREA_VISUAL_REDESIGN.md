@@ -70,7 +70,7 @@ O harness `crm/tests/customer-visual-review.cjs` bloqueia requisições fora do 
 - Build PASS com quatro avisos conhecidos de sourcemap native-audio e Browserslist antigo. Main9031dc04.js437,70kB gzip: cerca de+1,61kB frente a436,09kB; CSS12,63kB, cerca de+984bytes. Sem dependência runtime nova.
 - Lint dos arquivos React alterados PASS, sem erros/avisos de código. Diff-check PASS; entrega Hosting será registrada no checkpoint após conferência.
 
-**Estado atual:** implementação/testes/revisão local/publicação Hosting DEV concluídos. Homologação manual autenticada **PENDENTE**, solicitada ao usuário. Não declarar aceitação visual DEV com base nas fixtures locais. Sem alteração dos percentuais formais.
+**Estado atual (aceite recebido28/10):** usuário aprovou home, pedidos, detalhe, sidebar, topbar, identidade CRM e refresh Customer. Conteúdo de Minha Conta reprovado; ajuste visual pontual em CUSTOMER_ACCOUNT_VISUAL_POLISH.md. Não refazer nem pedir novamente a homologação das áreas aprovadas. Não inferir aceite de Minha Conta a partir de fixtures locais. Percentuais formais inalterados.
 
 ### Complemento de entrega: CSS público estável
 

@@ -1,0 +1,58 @@
+/* Critical presentation for CUSTOMER_SELF /minha-conta. Same CRM palette and
+   surfaces as the approved redesign; bundled with the app, not a lazy dialog CSS.
+   Every selector is scoped to the account host AND its profile screen. */
+.customer-self-account [data-message]:empty,.customer-self-account [data-profile] .customer-muted:empty{display:none}
+.customer-self-account [data-profile] .customer-account-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;max-width:1280px;width:100%;align-items:start}
+.customer-self-account [data-profile] .customer-panel{min-width:0;padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 3px #00000006}
+.customer-self-account [data-profile] .customer-panel h2{margin:0;color:#111827;font-size:18px;font-weight:600;line-height:1.4}
+.customer-self-account [data-profile] .customer-panel-heading{margin:0 0 24px}
+.customer-self-account [data-profile] .customer-panel-heading>p,.customer-self-account [data-profile] .customer-section-heading p{margin:6px 0 0;font-size:13px;color:#6b7280;line-height:1.6}
+.customer-self-account [data-profile] .customer-profile-card{display:grid;grid-template-columns:minmax(0,900px) minmax(0,1fr)}
+.customer-self-account [data-profile] .customer-profile-card>*{grid-column:1;min-width:0}
+.customer-self-account [data-profile] .customer-fields{display:grid;gap:20px;width:100%;max-width:900px}
+.customer-self-account [data-profile] .customer-fields label,.customer-self-account [data-profile] [data-address-form] label,.customer-self-account [data-profile] [data-password-security] label{display:flex;flex-direction:column;gap:8px;font-size:13px;font-weight:500;color:#374151}
+.customer-self-account [data-profile] input:not([type=checkbox]){display:block;box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:11px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font:inherit;color:#111827}
+.customer-self-account [data-profile] input[readonly]{background:#f9fafb;color:#6b7280}
+.customer-self-account [data-profile] .customer-security-note{display:flex;align-items:flex-start;gap:8px;margin:0;padding:10px 12px;border:1px solid #f3f4f6;border-radius:8px;background:#f9fafb;color:#6b7280;font-size:12px;line-height:1.6}
+.customer-self-account [data-profile] .customer-muted{margin:16px 0;color:#6b7280;font-size:12px;line-height:1.6}
+.customer-self-account [data-profile] .customer-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;min-height:44px;padding:10px 16px;margin:0;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font:inherit;font-size:13px;font-weight:600;line-height:1.4;text-decoration:none;white-space:normal;cursor:pointer}
+.customer-self-account [data-profile] .customer-button:hover{background:#f9fafb}
+.customer-self-account [data-profile] .customer-button-primary{border-color:#db2777;background:#db2777;color:#fff}
+.customer-self-account [data-profile] .customer-button-primary:hover{background:#be185d;border-color:#be185d}
+.customer-self-account [data-profile] .customer-button-danger{color:#b91c1c;border-color:#fee2e2;background:#fff}
+.customer-self-account [data-profile] .customer-button-danger:hover{background:#fef2f2}
+.customer-self-account [data-profile] .customer-profile-card>[data-save]{justify-self:end;margin-top:20px}
+.customer-self-account [data-profile] .customer-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:24px}
+.customer-self-account [data-profile] .customer-address-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:0;margin:0;list-style:none}
+.customer-self-account [data-profile] .customer-address-card{min-width:0;padding:20px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;overflow-wrap:anywhere}
+.customer-self-account [data-profile] .customer-address-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.customer-self-account [data-profile] .customer-address-heading h3{margin:0;font-size:15px;font-weight:600;color:#111827;line-height:1.4}
+.customer-self-account [data-profile] .customer-address-card p{margin:0;color:#6b7280;font-size:13px;line-height:1.7}
+.customer-self-account [data-profile] .customer-badge{display:inline-flex;align-items:center;padding:4px 9px;border-radius:6px;font-size:10px;font-weight:700;line-height:1.5;text-transform:uppercase;letter-spacing:.04em}
+.customer-self-account [data-profile] .customer-badge-success{background:#dcfce7;color:#166534}
+.customer-self-account [data-profile] .customer-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px}
+.customer-self-account [data-profile] .customer-actions .customer-button{padding:10px 14px}
+.customer-self-account [data-profile] [data-address-form]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:24px;padding:20px;border:1px solid #e5e7eb;border-radius:12px;background:#f9fafb}
+.customer-self-account [data-profile] [data-address-form]>h5,.customer-self-account [data-profile] [data-address-form]>.customer-profile-grid,.customer-self-account [data-profile] [data-address-form]>label:has([data-address-enderecoCompleto]){grid-column:1/-1}
+.customer-self-account [data-profile] [data-address-form] label:has([type=checkbox]){flex-direction:row;align-items:center;gap:8px}
+.customer-self-account [data-profile] .customer-profile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.customer-self-account [data-profile] [data-password-security]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-top:20px}
+.customer-self-account [data-profile] [data-password-security]>form{display:grid;gap:16px;align-content:start;margin:0}
+.customer-self-account [data-profile] :is([data-address-form],[data-password-security]) button{min-height:44px;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;text-decoration:none;font-weight:600}
+.customer-self-account [data-profile] [data-address-form] button[type=submit]{background:#db2777;color:#fff;border-color:#db2777}
+.customer-self-account [data-profile] button:disabled{opacity:.6;cursor:not-allowed}
+.customer-self-account [data-profile] .customer-profile-card h2::before,.customer-self-account [data-profile] .customer-addresses-panel h2::before{content:'';display:inline-block;vertical-align:-5px;width:22px;height:22px;margin-right:10px;background-repeat:no-repeat;background-size:contain}
+/* Static SVG strokes follow the installed Lucide UserRound / MapPin icons. */
+.customer-self-account [data-profile] .customer-profile-card h2::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23db2777' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='5'/%3E%3Cpath d='M20 21a8 8 0 0 0-16 0'/%3E%3C/svg%3E")}
+.customer-self-account [data-profile] .customer-addresses-panel h2::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23db2777' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z'/%3E%3Ccircle cx='12' cy='10' r='3'/%3E%3C/svg%3E")}
+@media(max-width:1100px){.customer-self-account [data-profile] .customer-address-list{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:767px){
+ .customer-self-account [data-profile] .customer-panel{padding:20px}
+ .customer-self-account [data-profile] .customer-account-grid{gap:20px}
+ .customer-self-account [data-profile] .customer-profile-card{grid-template-columns:minmax(0,1fr)}
+ .customer-self-account [data-profile] .customer-profile-card>[data-save]{justify-self:stretch}
+ .customer-self-account [data-profile] .customer-section-heading>[data-address-add]{width:100%}
+ .customer-self-account [data-profile] .customer-actions{gap:10px}
+ .customer-self-account [data-profile] .customer-actions .customer-button{flex:1 1 auto}
+ .customer-self-account [data-profile] [data-address-form],.customer-self-account [data-profile] .customer-profile-grid,.customer-self-account [data-profile] [data-password-security]{grid-template-columns:minmax(0,1fr)}
+}

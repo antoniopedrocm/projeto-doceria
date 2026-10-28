@@ -3,6 +3,7 @@ import {CUSTOMER_LINKS,customerRoute,menuDestination} from './customerContext';
 import {logoutCanonicalSession,runtimeFor,loadCustomerController} from './customerRuntime';
 import CustomerFrame,{CustomerHome} from './CustomerFrame';
 import {ArrowUpRight,Home,LogOut,ShoppingBag,UserRound} from 'lucide-react';
+import './customerAccount.css';
 
 export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCustomerResolved,onStaffContext,onLogout=logoutCanonicalSession,sessionMessage='',loadController=loadCustomerController}) {
   const [route,setRoute]=useState(()=>customerRoute(window.location.pathname,window.location.search));
@@ -49,6 +50,6 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
   return <CustomerFrame name={customer?.nome || ''} routeKey={route.path} links={<>{links}<button className="customer-signout" onClick={logout}><LogOut size={20} aria-hidden="true"/>Sair</button></>}>
     {(sessionMessage || message) && <p className={`customer-feedback${message.startsWith('Carregando')?' is-loading':''}`} role="status">{sessionMessage || message}</p>}
     {uid && route.screen==='home' && <CustomerHome name={customer?.nome} onMenu={returnToMenu} onOrders={()=>go('/meus-pedidos')} onProfile={()=>go('/minha-conta')}/>}
-    <div ref={host} hidden={Boolean(uid && route.screen==='home' && customer)} />
+    <div ref={host} className={route.screen==='profile'?'customer-self-account':undefined} hidden={Boolean(uid && route.screen==='home' && customer)} />
   </CustomerFrame>;
 }

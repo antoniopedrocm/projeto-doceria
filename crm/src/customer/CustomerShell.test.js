@@ -161,3 +161,10 @@ test('order detail keeps Meus Pedidos highlighted without changing the detail UR
   expect([...host.querySelectorAll('aside button')].find(button=>button.textContent==='Meus Pedidos').getAttribute('aria-current')).toBe('page');
   expect(window.location.pathname).toBe('/meus-pedidos/order-a');
 });
+test('account presentation scope exists only on Minha Conta and never changes controller identity or URL restoration',async()=>{
+  await mount();expect(host.querySelector('.customer-self-account')).toBeNull();
+  await click('Minha Conta');expect(host.querySelector('.customer-self-account')).not.toBeNull();
+  expect(window.location.pathname).toBe('/minha-conta');const installed=install.mock.calls.length;
+  await click('Meus Pedidos');expect(host.querySelector('.customer-self-account')).toBeNull();
+  expect(install).toHaveBeenCalledTimes(installed);expect(logoutCanonicalSession).not.toHaveBeenCalled();
+});

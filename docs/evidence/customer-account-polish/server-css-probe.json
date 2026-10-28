@@ -1,0 +1,18 @@
+[
+  {
+    "path": "/customer-area.css",
+    "status": 200,
+    "type": "text/css; charset=utf-8",
+    "cache": "no-cache, max-age=0, must-revalidate",
+    "sha256": "488e2b8585b5a25725029a1ff4d784d69e4cdd29fd700dfca06352b4573e3002",
+    "hasProfileCards": true
+  },
+  {
+    "path": "/customer-area.css?v=20261006-customer-reorder",
+    "status": 200,
+    "type": "text/css; charset=utf-8",
+    "cache": "no-cache, max-age=0, must-revalidate",
+    "sha256": "488e2b8585b5a25725029a1ff4d784d69e4cdd29fd700dfca06352b4573e3002",
+    "hasProfileCards": true
+  }
+]
