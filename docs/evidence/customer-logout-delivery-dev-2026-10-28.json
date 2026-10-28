@@ -76,7 +76,7 @@
   "build": "PASS with four preexisting native-audio sourcemap warnings and outdated browser compatibility datasets",
   "lint": "PASS, zero code warnings/errors",
   "diffCheck": "PASS",
-  "authenticatedDevLogoutAcceptance": "PENDING manual verification on Minha Conta and Meus Pedidos",
+  "authenticatedDevLogoutAcceptance": "PASS — user-confirmed manual DEV acceptance on 2026-10-28",
   "previousVisualGatesUnchanged": true,
   "formalProgress": {
     "phase9": "75%",
@@ -503,5 +503,18 @@
       "same": true,
       "cache": "no-cache, max-age=0, must-revalidate"
     }
-  ]
+  ],
+  "manualAcceptance": {
+    "status": "PASS",
+    "source": "User reply to the focused DEV logout acceptance checklist",
+    "date": "2026-10-28",
+    "routes": [
+      "/minha-conta",
+      "/meus-pedidos"
+    ],
+    "publicEntry": "Google/email and return to menu; no private sidebar/menus or stuck loading",
+    "refresh": "Remains signed out",
+    "automatedAuthenticatedBrowserExecution": false,
+    "closure": "Documentation only; no new build, deploy or runtime change"
+  }
 }
