@@ -223,18 +223,22 @@ Nos dois relatórios Staff: **users2→1; customProfiles2→1; diretório2→1; 
 
 **Performance a23912fc: comparação técnica normal/hard PASS.** Preferência por UID8f6dbdb4 é correção complementar ainda em entrega; esses relatórios anteriores não homologam seu refresh. Não pedir repetição das duas coletas de performance já válidas. Restam aceite funcional de Geral↔loja/refresh/controles na nova versão e teste remoto throttled, se disponível. Console livre de erro e screenshots não foram fornecidos/não são presumidos.
 
-### Entrega complementar8f6dbdb4 — pronta, Hosting bloqueado novamente
+### Entrega complementar8f6dbdb4 — Hosting DEV publicado e conferido
 
 - Commit funcional **8f6dbdb4ab45aed06d3d9c0f6fa273f823252a27**, push DEV concluído. Apenas App/chave de preferência/helper/testes e rótulo de diagnóstico alterados. Não muda capabilities, Auth/persistência Firebase ou APIs/backend. Primeira seleção deve ser refeita após upgrade porque não se migra preferência global sem dono conhecido.
 - Build completo PASS, main.dcc5c4ad.js435,88kB gzip (+36bytes),4 avisos native-audio/metadados conhecidos.94/94 React,21/21 sessão/cache/FCM/cross-tab, lint0 erros/65 avisos anteriores, diff-check PASS. Nenhum teste/backend/provider financeiro repetido sem necessidade. Staging `.deploy-crm-store-baseline-8f6dbdb4`,59 arquivos;10 fontes do sourcemap conferidas localmente, incluindo App e helper de preferência. Verificação remota será executada após publicação, sem confundir fonte do build com arquivo já publicado.
 - **Tentativa somente Hosting falhou antes de upload/release**, Authentication Error e erro secundário de resolução de site; nova consulta hosting:sites:list também falhou. Diagnóstico confirmou mesma conta configurada no worktree/staging e ausência de override FIREBASE_TOKEN, sem imprimir identidade/credenciais. A mensagem genérica não prova se é expiração ou bloqueio de rede; não apresentar FirebaseError.status como status HTTP real do provider. Nenhuma nova Function/Rule/índice/Storage/PROD foi publicada.
-- **Último runtime remoto comprovado permanece a23912fc** (API+Hosting,59/59 hashes), com melhoria técnica Staff já comprovada.8f6dbdb4 permanece **PENDENTE de publicação/aceite de seleção após refresh**. Pedido de liberação CLI/firewall/reauth enviado, sem nova autorização financeira/SMS e sem repetir a coleta Staff já aprovada tecnicamente.
+- Antes da retomada, o runtime remoto comprovado era a23912fc (API+Hosting,59/59 hashes), com melhoria técnica Staff já comprovada.8f6dbdb4 aguardava publicação/aceite de seleção após refresh. Foi solicitado acesso CLI/firewall/reauth, sem nova autorização financeira/SMS e sem repetir a coleta Staff já aprovada tecnicamente.
 
-Com acesso restabelecido, executar somente:
+Comando da publicação Hosting DEV executada após restabelecer o acesso:
 
 ```powershell
 Set-Location -LiteralPath 'C:\Users\antonio.pedro\Projeto\projeto-doceria-main\infinitepay-auth-worktree\.deploy-crm-store-baseline-8f6dbdb4'
 npx -y firebase-tools@15.34.1 deploy --project crmdoceria-9959e --only hosting --non-interactive
 ```
 
-Depois conferir59 hashes/cache e validar apenas seleção Geral↔loja e refresh na variant optimized-store-selection-v2; teste throttled pode ser agrupado, sem novo cadastro/loja/pedido/SMS/pagamento. Não repetir normal/hard completos só por preferência de loja. Fase9=75%, Global=95,00%, Fase13=0%/NÃO INICIADA.
+O bloqueio acima é histórico e foi superado em27/10/2026 após o usuário confirmar acesso CLI liberado. A consulta de sites voltou a funcionar; o deploy **somente Hosting** concluiu upload/finalização/release com exit0 no staging DEV associado explicitamente a crmdoceria-9959e. API permanece em a23912fc; nenhuma Function/Rule/índice foi republicada.
+
+Verificação remota **59/59 hashes PASS**,10 fontes de sourcemap conferidas. Main `static/js/main.dcc5c4ad.js`, SHA256 `2482087868adb8b0aa942fdc1f2d8212305a232f0a02af380b048ad4ead8cc8c`, cache immutable; HTML/entradas estáveis revalidáveis. Evidência: `evidence/crm-store-preference-delivery-dev-2026-10-27.json`. Runtime atual: Hosting8f6dbdb4/APIa23912fc. Nenhum novo build foi necessário: o artefato previamente validado foi publicado sem alteração.
+
+**Gate de publicação RESOLVIDO; aceite funcional v2 PENDENTE.** Validar apenas seleção Geral↔loja e refresh na variant optimized-store-selection-v2; escolher a loja uma vez depois de carregar v2 porque a preferência antiga sem UID não é migrada. Teste throttled pode ser agrupado, sem novo cadastro/loja/pedido/SMS/pagamento. Não repetir normal/hard completos só por preferência de loja. Fase9=75%, Global=95,00%, Fase13=0%/NÃO INICIADA.
