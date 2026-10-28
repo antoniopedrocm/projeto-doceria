@@ -2141,3 +2141,10 @@ O checkpoint de 2026-09-14 altera somente o rascunho local da autenticação Goo
 - Percentuais preservados: Fase9=75%, Fase11/12=100%, Global=95,00%, Fase13=0%/NÃO INICIADA. Nenhum PROD, SMS, pedido, pagamento, WhatsApp ou alteração InfinitePay.
 
 - Atualização de qualidade: build completo PASS/exit0, main.f0e6572f.js436,09kB gzip (+209bytes), quatro avisos native-audio conhecidos; diff-check PASS. Workspace absoluto/projeto DEV conferidos. Correção pronta para commit/push e somente Hosting; nenhuma API/Rule/configuração Cloud modificada. Aceite remoto das seções ainda pendente, sem repetir métricas Staff já homologadas.
+
+### 2026-10-27 — CRM seção após refresh: correção publicada no DEV
+
+- Commit funcional **3dc11bc10858225e2a26658f04a72b3f0b3f9028**, push DEV concluído. Deploy **somente Hosting** em crmdoceria-9959e, release/Deploy complete/exit0. API preservada em a23912fc; nenhuma Function/Rule/índice/configuração Auth publicada.
+- **59/59 hashes remotos,11 fontes de sourcemap e cache PASS**; main.f0e6572f.js SHA25617f14a44d8c32dabd8476bbba30e9041dcc28c30b99362f785536f5fad8bd51f. Evidência docs/evidence/crm-section-refresh-delivery-dev-2026-10-27.json.115 React+22 Auth/cache/FCM/cross-tab PASS; build/lint/diff PASS,65 avisos lint preexistentes e quatro native-audio conhecidos.
+- Gate publicação RESOLVIDO. **Aceite de loja v2 PASS; aceite de seção v3 PENDENTE:** solicitado Ctrl+R em Nota Fiscal, Clientes, Financeiro e Página Inicial preservando loja e Geral↔loja. Sem repetir medições normal/hard já válidas. Segurança de seção inválida/revogada, UID diferente/Guest e hidratação tardia coberta localmente. Não declarar requisito inteiro concluído antes da homologação remota.
+- Fase9=75%; Fase11/12=100% histórico; Global=95,00%; Fase13=0%/NÃO INICIADA. Nenhum PROD/WhatsApp/SMS/pedido/pagamento ou alteração InfinitePay.
