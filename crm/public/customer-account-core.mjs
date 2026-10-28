@@ -7,7 +7,7 @@ import {createCustomerOrderHistory} from './customer-orders-view.mjs?v=20261015-
 import {createCustomerReorderView} from './customer-reorder-view.mjs';
 import {createStoredCartBridge} from './reorder-cart.mjs';
 
-export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onLogout=()=>{}, notify=()=>{}, createAccountButton=true, showCheckoutAddressAction=true,reorderCart=null,host=null,onRoute=()=>{},navigateToMenu=url=>window.location.assign(url),runtime}) {
+export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onLogout=()=>{}, notify=()=>{}, createAccountButton=true, showCheckoutAddressAction=true,reorderCart=null,host=null,onRoute=()=>{},onMenu=null,navigateToMenu=url=>window.location.assign(url),runtime}) {
   const {auth,functions,httpsCallable,GoogleAuthProvider,createUserWithEmailAndPassword,sendEmailVerification,sendPasswordResetEmail,signInWithEmailAndPassword,signInWithPopup,onAuthStateChanged,signOut,updateProfile,EmailAuthProvider,reauthenticateWithCredential,verifyBeforeUpdateEmail,updatePassword,reload,logout=()=>signOut(auth)}=runtime;
   let disposed=false;
   const closeAccount=()=>{if(host) onRoute('home');else dialog.close();};
@@ -40,9 +40,9 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
       <button type="button" data-customer-route="profile">Meu Perfil</button>
       <button type="button" data-area-logout>Sair</button>
     </nav>
-    <section data-profile hidden aria-labelledby="customer-profile-heading"><h3 id="customer-profile-heading" data-profile-heading tabindex="-1" class="font-bold mb-3">Meu Perfil</h3>
-    <h4 class="font-bold">Dados pessoais</h4><label class="block">Meu nome<input data-name autocomplete="name" maxlength="120" required class="border rounded p-2 w-full"></label><label class="block mt-2">Celular com DDD<input data-profile-phone type="tel" autocomplete="tel" required class="border rounded p-2 w-full"></label><p data-phone-state class="text-sm text-gray-700 mt-2"></p><label class="block mt-2">Data de nascimento<input data-birthdate type="date" autocomplete="bday" class="border rounded p-2 w-full"></label><p data-created-state class="text-sm text-gray-700"></p><button data-save type="button" class="border rounded p-2 my-2">Salvar dados</button>
-    <h4 class="font-bold mt-4">Meus Endereços</h4><ul data-addresses class="space-y-2 my-2"></ul><button data-address-add type="button" class="text-pink-700 underline">Adicionar endereço</button>
+    <section data-profile hidden aria-labelledby="customer-profile-heading"><div class="customer-page-heading"><span class="customer-eyebrow">SUA CONTA</span><h1 id="customer-profile-heading" data-profile-heading tabindex="-1">Minha Conta</h1><p>Gerencie seus dados pessoais e endereços.</p></div>
+    <div class="customer-account-grid"><section class="customer-panel customer-profile-card"><div class="customer-panel-heading"><h2>Meu Perfil</h2><p>Seus dados para um atendimento com carinho.</p></div><div class="customer-fields"><label>Nome<input data-name autocomplete="name" maxlength="120" required></label><label>Telefone<input data-profile-phone type="tel" autocomplete="tel" required readonly></label><p data-phone-state class="customer-security-note"></p><label>Data de nascimento<input data-birthdate type="date" autocomplete="bday"></label></div><p data-created-state class="customer-muted"></p><button data-save type="button" class="customer-button customer-button-primary">Salvar alterações</button></section>
+    <section class="customer-panel customer-addresses-panel"><div class="customer-section-heading"><div><h2>Meus Endereços</h2><p>Os lugares onde nossas delícias chegam até você.</p></div><button data-address-add type="button" class="customer-button customer-button-secondary">+ Novo endereço</button></div><ul data-addresses class="customer-address-list"></ul>
     <form data-address-form hidden class="space-y-2 mt-3"><h5 data-address-title class="font-bold">Adicionar endereço</h5>
       <label class="block">Apelido<input data-address-nickname required maxlength="60" autocomplete="off"></label>
       <label class="block">Endereço completo<input data-address-enderecoCompleto required maxlength="300" autocomplete="street-address"></label>
@@ -56,14 +56,14 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
       <div class="customer-profile-grid"><label>Latitude<input data-address-lat type="number" step="any" min="-90" max="90" required></label><label>Longitude<input data-address-lng type="number" step="any" min="-180" max="180" required></label></div>
       <label><input data-address-isDefault type="checkbox"> Endereço padrão</label>
       <button type="submit" class="border rounded p-2">Salvar endereço</button><button data-address-cancel type="button" class="underline">Cancelar</button>
-    </form><button data-address type="button" class="text-pink-700 underline block mt-2">Usar endereço no pedido</button>
-    <h4 class="font-bold mt-4">Segurança da Conta</h4><p data-provider-state></p><p data-email-state class="text-sm text-gray-700"></p><button data-verify-email type="button" class="text-pink-700 underline" hidden>Reenviar verificação de e-mail</button><button data-refresh-email type="button" class="underline block">Atualizar verificação</button>
+    </form><button data-address type="button" class="customer-button customer-button-secondary">Usar endereço no pedido</button></section>
+    <section class="customer-panel customer-security-card"><div class="customer-panel-heading"><h2>Segurança da Conta</h2><p>Informações de acesso e verificação.</p></div><p data-provider-state></p><p data-email-state class="customer-muted"></p><div class="customer-actions"><button data-verify-email type="button" class="customer-button customer-button-secondary" hidden>Reenviar verificação de e-mail</button><button data-refresh-email type="button" class="customer-button customer-button-secondary">Atualizar verificação</button></div>
     <section data-password-security hidden><form data-change-email class="space-y-2 mt-3"><label class="block">Novo e-mail<input data-new-email type="email" required autocomplete="email"></label><label class="block">Senha atual<input data-email-current-password type="password" required autocomplete="current-password"></label><button type="submit" class="border rounded p-2">Alterar e-mail</button></form>
     <form data-change-password class="space-y-2 mt-3"><label class="block">Senha atual<input data-current-password type="password" required autocomplete="current-password"></label><label class="block">Nova senha<input data-new-password type="password" minlength="6" required autocomplete="new-password"></label><label class="block">Confirmar nova senha<input data-confirm-password type="password" minlength="6" required autocomplete="new-password"></label><button type="submit" class="border rounded p-2">Alterar senha</button></form><button data-profile-reset type="button" class="underline">Esqueci minha senha</button></section>
-    <h3 class="font-bold mt-4">Formas de Pagamento</h3><p>Seus cartões são armazenados com segurança pela InfinitePay. Você poderá salvar, selecionar, adicionar ou remover cartões durante o pagamento.</p><p class="text-sm text-gray-600 mt-2">🔒 Gerenciado pela InfinitePay</p></section>
-    <section data-orders-panel hidden aria-labelledby="customer-orders-heading"><h3 id="customer-orders-heading" data-orders-heading tabindex="-1" class="font-bold mb-3">Meus Pedidos</h3>
-    <section data-reorder-panel hidden aria-live="polite"></section><div data-orders-list><button data-history type="button" class="underline">Atualizar pedidos</button><p data-orders-message role="status" aria-live="polite" class="my-2"></p><ul data-orders class="space-y-3 my-2"></ul><button data-orders-more type="button" hidden>Carregar mais</button></div>
-    <section data-order-detail hidden><button data-order-back type="button">Voltar aos pedidos</button><h4 data-order-detail-heading tabindex="-1">Detalhe do pedido</h4><p data-order-detail-message role="status" aria-live="polite"></p><div data-order-detail-content></div></section></section>
+    </section><section class="customer-panel customer-payment-info"><div class="customer-panel-heading"><h2>Formas de Pagamento</h2></div><p>Seus cartões são armazenados com segurança pela InfinitePay. Você poderá salvar, selecionar, adicionar ou remover cartões durante o pagamento.</p><p class="customer-security-note">Gerenciado pela InfinitePay</p></section></div></section>
+    <section data-orders-panel hidden aria-labelledby="customer-orders-heading"><div class="customer-page-heading"><span class="customer-eyebrow">SEU HISTÓRICO</span><h1 id="customer-orders-heading" data-orders-heading tabindex="-1">Meus Pedidos</h1><p>Acompanhe seus pedidos e consulte seu histórico.</p></div>
+    <section data-reorder-panel hidden aria-live="polite"></section><div data-orders-list><button data-history type="button" class="customer-button customer-button-secondary">Atualizar pedidos</button><p data-orders-message role="status" aria-live="polite" class="customer-order-message"></p><ul data-orders class="customer-orders-list"></ul><button data-orders-more type="button" class="customer-button customer-button-secondary" hidden>Carregar mais</button></div>
+    <section data-order-detail hidden><button data-order-back type="button" class="customer-button customer-button-secondary">← Voltar para Meus Pedidos</button><h2 data-order-detail-heading tabindex="-1" class="customer-detail-title">Detalhe do pedido</h2><p data-order-detail-message role="status" aria-live="polite" class="customer-order-message"></p><div data-order-detail-content></div></section></section>
     </section>
     <button data-logout type="button" class="text-gray-600 underline mt-5" hidden>Sair</button>`;
   if(host){dialog.querySelector('form[method=dialog]').remove();host.append(dialog);}else document.body.append(dialog);
@@ -79,7 +79,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
 
   const el = name => dialog.querySelector(`[data-${name}]`);
   const emailEl = name => emailDialog.querySelector(`[data-${name}]`);
-  const message = text => {el('message').textContent = text;};
+  const message = text => {el('message').textContent = text;if(host){el('message').className='customer-feedback';el('message').classList.toggle('is-loading',text.startsWith('Carregando'));}};
   const emailMessage = (text, isError=false) => {const target=emailEl('email-message');target.textContent=text;target.classList.toggle('text-red-600',isError);target.classList.toggle('text-gray-700',!isError);};
   const navigation = createCustomerAreaNavigation({
     getSession: () => ({user: auth.currentUser, customer: current, ownerUid: currentUid}),
@@ -118,6 +118,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     cart:reorderCart || createStoredCartBridge({storage:window.sessionStorage,navigate:navigateToMenu,getUid:()=>auth.currentUser?.uid}),
     onExpired:()=>authState.invalidate(),onCartOpen:()=>closeAccount()});
   orderHistory=createCustomerOrderHistory({panel:el('orders-panel'),call,
+    onMenu,
     snapshot:orderSession,isCurrent:orderSessionCurrent,onReorder:reorder.start,onClear:reorder.clear,
     onExpired:()=>authState.invalidate()});
   const busy = (button, fn) => async event => {event?.preventDefault();button.disabled=true;try {await fn();} catch(e) {message(customerAuthErrorMessage(e));} finally {button.disabled=false;}};
@@ -147,7 +148,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
     if (nextCustomer && !authState.publish(snapshot)) return;
     current=nextCustomer;currentUid=current ? snapshot.uid : null;navigation.navigate(current ? requestedRoute : 'login');el('signed-out').hidden=true;el('phone').hidden=!!current;el('logout').hidden=!!current;
     if (!current) {el('new-name').value=data.nome || auth.currentUser.displayName || '';message('Informe seu celular de contato para concluir seu cadastro.');return;}
-    onSession(current);message(`Olá, ${current.nome}.`);el('name').value=current.nome;el('profile-phone').value=current.telefone || '';el('birthdate').value=current.aniversario || '';
+    onSession(current);message(host?'':`Olá, ${current.nome}.`);el('name').value=current.nome;el('profile-phone').value=current.telefone || '';el('birthdate').value=current.aniversario || '';
     el('profile-phone').readOnly=true;el('phone-state').textContent='A troca do telefone exige um fluxo próprio de verificação para proteger seu cadastro.';
     el('created-state').textContent=current.createdAt ? `Conta criada em ${new Date(current.createdAt).toLocaleDateString('pt-BR')}` : '';
     el('email-state').textContent=current.email?`${current.email} — ${current.emailVerified?'Verificado':'Não verificado'}`:'E-mail não informado.';
@@ -206,10 +207,15 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
   }
   function renderAddresses() {
     el('addresses').replaceChildren();
-    for(const address of current.enderecos || []) {
-      const item=document.createElement('li');item.className='border rounded p-2';
-      const text=document.createElement('p');text.textContent=`${address.nickname || 'Endereço'}: ${address.enderecoCompleto || address}${address.isDefault?' — Padrão':''}`;item.append(text);
-      const action=(label,fn)=>{const button=document.createElement('button');button.type='button';button.className='underline mr-3';button.textContent=label;button.onclick=busy(button,fn);item.append(button);};
+    for(const [index,address] of (current.enderecos || []).entries()) {
+      const item=document.createElement('li');item.className='customer-address-card';
+      const heading=document.createElement('div');heading.className='customer-address-heading';
+      const title=document.createElement('h3');title.textContent=address.nickname || address.nomeEndereco || `Endereço ${index+1}`;heading.append(title);
+      if(address.isDefault){const badge=document.createElement('span');badge.className='customer-badge customer-badge-success';badge.textContent='Padrão';heading.append(badge);}item.append(heading);
+      const lines=[address.street?[address.street,address.semNumero?'S/N':address.number].filter(Boolean).join(', '):address.enderecoCompleto || (typeof address==='string'?address:''),address.neighborhood,[address.city,address.state].filter(Boolean).join(' - '),address.cep?`CEP ${address.cep}`:''];
+      for(const line of lines.filter(Boolean)){const text=document.createElement('p');text.textContent=line;item.append(text);}
+      const actions=document.createElement('div');actions.className='customer-actions';item.append(actions);
+      const action=(label,fn)=>{const button=document.createElement('button');button.type='button';button.className=`customer-button ${label==='Excluir'?'customer-button-danger':'customer-button-secondary'}`;button.textContent=label;button.onclick=busy(button,fn);actions.append(button);};
       action('Editar',()=>editAddress(address));
       action('Excluir',async()=>{if(await profileCall('customerDeleteAddress',{addressId:address.id})){el('address-form').hidden=true;editingAddressId=null;message('Endereço excluído.');}});
       if(!address.isDefault) action('Definir como padrão',async()=>{if(await profileCall('customerSetDefaultAddress',{addressId:address.id})) message('Endereço padrão atualizado.');});

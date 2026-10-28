@@ -14,10 +14,10 @@ beforeEach(()=>{
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();jest.clearAllMocks();});
 // eslint-disable-next-line testing-library/no-unnecessary-act
 const mount=()=>act(async()=>root.render(<AdminCustomerPreview sessionAuth={session} uid="admin" target="alias" onExit={exit} makeProvider={()=>api} loadOrders={loadOrders}/>));
-const click=label=>act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent===label).click());
+const click=label=>act(async()=>[...host.querySelectorAll('button')].find(b=>label==='☰'?b.getAttribute('aria-label')==='Abrir menu do cliente':b.textContent===label).click());
 test('home reutiliza frame, banner permanente e navegação; sem menu, logout Customer ou checkout executável',async()=>{
   await mount();expect(host.textContent).toContain('Olá, Cliente!');expect(host.textContent).toContain('Somente leitura. Nenhuma ação será realizada em nome do cliente.');
-  expect(document.title).toContain('Visualizando como Cliente');expect([...host.querySelectorAll('button')].find(b=>b.textContent==='Ir ao Cardápio').disabled).toBe(true);
+  expect(document.title).toContain('Visualizando como Cliente');expect([...host.querySelectorAll('button')].some(b=>/cardápio|Fazer um Pedido/i.test(b.textContent))).toBe(false);
   expect(host.textContent).not.toMatch(/Comprar Novamente|Ir para o CRM/);expect(host.querySelector('input')).toBeNull();expect(session.currentUser.uid).toBe('admin');
   await click('Minha Conta');expect(window.location.pathname).toBe('/admin/customer-preview/alias/profile');expect(host.textContent).toContain('Casa da minha Mãe');expect(host.textContent).toContain('Padrão');
   expect([...host.querySelectorAll('button')].find(b=>b.textContent.startsWith('Salvar dados')).disabled).toBe(true);

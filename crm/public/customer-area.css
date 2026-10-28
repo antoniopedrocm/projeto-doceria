@@ -48,3 +48,96 @@
   .customer-area-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .customer-area-dialog { padding: 1rem; }
 }
+
+/* Embedded Customer pages and administrative read-only preview share the CRM
+   palette/spacing. Keep dialog-only constraints above for the checkout modal. */
+.customer-shell .customer-area-dialog>[data-message]:empty{display:none}
+.customer-shell [data-orders-panel]:has(>[data-order-detail]:not([hidden]))>.customer-page-heading{display:none}
+.customer-shell .customer-panel{min-width:0;background:white;border:1px solid #e5e7eb;border-radius:16px;padding:24px;box-shadow:0 1px 3px #00000006}
+.customer-shell .customer-panel h2{font-size:17px;font-weight:600;color:#111827;margin:0}
+.customer-shell .customer-panel-heading{margin-bottom:24px}
+.customer-shell .customer-panel-heading>p,.customer-shell .customer-section-heading p{color:#6b7280;font-size:13px;margin-top:5px}
+.customer-shell .customer-account-grid{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.35fr);gap:24px;align-items:start}
+.customer-shell .customer-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+.customer-shell .customer-fields{display:grid;gap:18px}
+.customer-shell :is(.customer-fields,[data-address-form],[data-password-security]) label{display:flex;flex-direction:column;gap:7px;color:#374151;font-size:13px;font-weight:500}
+.customer-shell .customer-area-dialog input:not([type=checkbox]){width:100%;min-width:0;min-height:44px;padding:10px 12px;background:white;border:1px solid #d1d5db;border-radius:8px;font:inherit;color:#111827}
+.customer-shell .customer-area-dialog input[readonly]{background:#f9fafb;color:#6b7280;cursor:default}
+.customer-shell .customer-area-dialog input:focus{border-color:#db2777}
+.customer-shell .customer-muted{font-size:12px;color:#6b7280;margin:16px 0}
+.customer-shell .customer-security-note{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#6b7280;background:#f9fafb;border:1px solid #f3f4f6;border-radius:8px;padding:10px 12px;margin:0 0 2px}
+.customer-shell .customer-security-note:before{content:'\1F512';flex:none;font-size:12px}
+.customer-shell .customer-profile-card>[data-save]{margin-top:8px}
+.customer-shell .customer-area-dialog .customer-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 16px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;font:inherit;font-size:13px;font-weight:600;text-decoration:none;line-height:1.4;margin:0;cursor:pointer;white-space:normal}
+.customer-shell .customer-area-dialog .customer-button:hover{background:#f9fafb;border-color:#d1d5db}
+.customer-shell .customer-area-dialog .customer-button-primary{background:#db2777;color:#fff;border-color:#db2777}
+.customer-shell .customer-area-dialog .customer-button-primary:hover{background:#be185d;border-color:#be185d}
+.customer-shell .customer-area-dialog .customer-button-danger{color:#b91c1c;border-color:#fee2e2;background:#fff}
+.customer-shell .customer-area-dialog .customer-button-danger:hover{background:#fef2f2}
+.customer-shell .customer-area-dialog button:disabled{opacity:.6;cursor:not-allowed}
+.customer-shell .customer-address-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:14px;margin:0;padding:0;list-style:none}
+.customer-shell .customer-address-card{min-width:0;padding:18px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;overflow-wrap:anywhere}
+.customer-shell .customer-address-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.customer-shell .customer-address-heading h3{font-size:14px;font-weight:600;color:#111827;margin:0}
+.customer-shell .customer-address-card p{color:#6b7280;font-size:13px;line-height:1.6;margin:0}
+.customer-shell .customer-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px}
+.customer-shell .customer-address-card .customer-button{padding:8px 10px;font-size:12px}
+.customer-shell .customer-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;max-width:100%;border-radius:6px;font-size:11px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.customer-shell .customer-badge-success{background:#dcfce7;color:#166534}
+.customer-shell .customer-badge-warning{background:#fef3c7;color:#92400e}
+.customer-shell .customer-badge-danger{background:#fee2e2;color:#991b1b}
+.customer-shell .customer-badge-neutral{background:#f3f4f6;color:#4b5563}
+.customer-shell .customer-badge-info{background:#dbeafe;color:#1e40af}
+.customer-shell [data-address-form]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:20px;margin-top:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px}
+.customer-shell [data-address-form]>h5,.customer-shell [data-address-form]>.customer-profile-grid,.customer-shell [data-address-form]>label:has([data-address-enderecoCompleto]){grid-column:1/-1}
+.customer-shell [data-address-form]>label:has([type=checkbox]){flex-direction:row;align-items:center;gap:8px}
+.customer-shell [data-address-form] button{border:1px solid #d1d5db;background:white;min-height:44px;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:600}
+.customer-shell [data-address-form] button[type=submit]{background:#db2777;color:white;border-color:#db2777}
+.customer-shell .customer-security-card,.customer-shell .customer-payment-info{min-width:0}
+.customer-shell [data-password-security]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-top:20px}
+.customer-shell [data-password-security]>form{display:grid;align-content:start;gap:14px;margin:0}
+.customer-shell [data-password-security] button{min-height:44px;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;text-decoration:none}
+.customer-shell .customer-payment-info>p{color:#6b7280;font-size:13px;line-height:1.7}
+.customer-shell .customer-payment-info>.customer-security-note{margin-top:16px}
+.customer-shell .customer-orders-list{display:grid;gap:16px;list-style:none;padding:0;margin:20px 0}
+.customer-shell .customer-order-card{padding:22px;background:white;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 3px #00000006;overflow-wrap:anywhere}
+.customer-shell .customer-order-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 20px;align-items:start}
+.customer-shell .customer-order-summary h3{font-size:15px;font-weight:600;color:#111827;margin:0}
+.customer-shell .customer-order-summary .customer-order-amount{font-size:18px;font-weight:700;color:#111827;text-align:right}
+.customer-shell .customer-order-meta{color:#6b7280;font-size:12px;margin-top:6px;line-height:1.7}
+.customer-shell .customer-order-badges{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.customer-shell .customer-order-products{padding-top:14px;border-top:1px solid #f3f4f6;color:#6b7280;font-size:13px}
+.customer-shell .customer-order-message:empty{display:none}
+.customer-shell .customer-order-message{padding:14px 16px;margin:16px 0;border:1px solid #e5e7eb;background:white;border-radius:10px;color:#6b7280}
+.customer-shell [aria-busy=true]>.customer-order-message:before{content:'';display:inline-block;vertical-align:middle;width:14px;height:14px;margin-right:10px;border:2px solid #fbcfe8;border-top-color:#db2777;border-radius:50%;animation:customer-spin .8s linear infinite}
+.customer-shell .customer-empty-state{grid-column:1/-1;padding:48px 24px;text-align:center;color:#6b7280;background:white;border:1px dashed #d1d5db;border-radius:16px}
+.customer-shell .customer-empty-state h3{font-size:17px;color:#374151;font-weight:600;margin:0 0 8px}
+.customer-shell .customer-empty-state .customer-button{margin-top:20px}
+.customer-shell .customer-detail-title{margin:24px 0 16px;font-size:20px;font-weight:600;color:#111827}
+.customer-shell .customer-detail-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr);gap:24px;align-items:start;margin-top:24px}
+.customer-shell .customer-detail-grid>.customer-panel{box-shadow:0 1px 3px #00000006}
+.customer-shell .customer-detail-items{grid-row:span 3}
+.customer-shell .customer-detail-items>ul{margin:8px 0 0;list-style:none;padding:0}
+.customer-shell .customer-detail-items li{padding:16px 0;border-bottom:1px solid #f3f4f6}
+.customer-shell .customer-detail-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 16px}
+.customer-shell .customer-detail-item h4{font-weight:600;color:#374151;margin:0}
+.customer-shell .customer-detail-item p{grid-column:1;font-size:12px;color:#6b7280}
+.customer-shell .customer-detail-item strong{grid-column:2;grid-row:1/3;color:#374151;align-self:center}
+.customer-shell [data-order-detail-content] .customer-totals{display:grid;grid-template-columns:1fr auto;gap:12px;margin:20px 0 0}
+.customer-shell .customer-totals dt,.customer-shell .customer-totals dd{color:#6b7280;font-size:13px;margin:0}
+.customer-shell .customer-totals dt:last-of-type,.customer-shell .customer-totals dd:last-of-type{border-top:1px solid #e5e7eb;padding-top:16px;margin-top:4px;font-size:20px;font-weight:700;color:#111827}
+.customer-shell .customer-readonly-data{display:grid;gap:16px;margin:0}
+.customer-shell .customer-readonly-data dt{font-size:12px;color:#6b7280;margin-bottom:4px}
+.customer-shell .customer-readonly-data dd{font-size:14px;color:#374151;margin:0;overflow-wrap:anywhere}
+@media(max-width:1100px){.customer-shell .customer-account-grid{grid-template-columns:1fr}.customer-shell .customer-detail-grid{grid-template-columns:1fr}.customer-shell .customer-detail-items{grid-row:auto}}
+@media(max-width:767px){
+ .customer-shell .customer-panel{padding:20px}.customer-shell .customer-account-grid,.customer-shell .customer-detail-grid{gap:18px}
+ .customer-shell .customer-address-list{grid-template-columns:1fr}
+ .customer-shell .customer-section-heading{gap:14px}.customer-shell .customer-section-heading>.customer-button{width:100%}
+ .customer-shell [data-address-form],.customer-shell [data-password-security]{grid-template-columns:1fr}
+ .customer-shell .customer-profile-grid{grid-template-columns:1fr;gap:16px}
+ .customer-shell .customer-order-card{padding:18px}.customer-shell .customer-order-summary{grid-template-columns:minmax(0,1fr)}
+ .customer-shell .customer-order-summary .customer-order-amount{text-align:left;font-size:17px}
+ .customer-shell .customer-actions{gap:8px}.customer-shell .customer-address-card .customer-actions>.customer-button{flex:1 1 auto}
+ .customer-shell .customer-empty-state{padding:32px 20px}
+}

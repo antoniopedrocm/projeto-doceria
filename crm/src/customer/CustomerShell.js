@@ -2,6 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {CUSTOMER_LINKS,customerRoute,menuDestination} from './customerContext';
 import {logoutCanonicalSession,runtimeFor,loadCustomerController} from './customerRuntime';
 import CustomerFrame,{CustomerHome} from './CustomerFrame';
+import {ArrowUpRight,Home,LogOut,ShoppingBag,UserRound} from 'lucide-react';
 
 export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCustomerResolved,onStaffContext,onLogout=logoutCanonicalSession,sessionMessage='',loadController=loadCustomerController}) {
   const [route,setRoute]=useState(()=>customerRoute(window.location.pathname,window.location.search));
@@ -17,6 +18,7 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
       const runtime=runtimeFor(sessionAuth);
       const navigate=url=>{const target=new URL(url,window.location.origin);window.location.assign(target.pathname+target.search);};
       controller=module.installCustomerAccount({host:host.current,runtime,createAccountButton:false,showCheckoutAddressAction:false,
+        onMenu:()=>window.location.assign(menuDestination(sessionStorage)),
         onSession:value=>{if(active && sessionAuth.currentUser?.uid===uid) {setCustomer(value);setMessage('');if(value?.accountLinked) onCustomerResolved?.();}},
         onLogout:()=>{if(active){setCustomer(null);setMessage('Entre com Google ou e-mail para acessar sua conta.');}},
         onRoute:value=>{if(active && value==='home' && routeRef.current.screen!=='home') go('/area-cliente');},
@@ -42,9 +44,10 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
   const logout=async()=>{setCustomer(null);manager.current?.dispose();manager.current=null;await onLogout();};
   const returnToMenu=()=>{window.location.assign(menuDestination(sessionStorage,sessionAuth.app.name==='[DEFAULT]'));};
   const openStaff=()=>{onStaffContext?.();};
-  const links=<>{CUSTOMER_LINKS.map(link=><button key={link.path} aria-current={route.path===link.path?'page':undefined} onClick={()=>go(link.path)}>{link.label}</button>)}<button onClick={returnToMenu}>Voltar ao Cardápio</button>{canOpenStaff && <button onClick={openStaff}>Ir para o CRM</button>}</>;
-  return <CustomerFrame routeKey={route.path} links={<>{links}<button onClick={logout}>Sair</button></>}>
-    <p role="status">{sessionMessage || message}</p>
+  const icons=[Home,UserRound,ShoppingBag];
+  const links=<>{CUSTOMER_LINKS.map((link,index)=>{const Icon=icons[index];return <button key={link.path} aria-current={route.path===link.path || (link.path==='/meus-pedidos' && route.screen==='orders')?'page':undefined} onClick={()=>go(link.path)}><Icon size={20} aria-hidden="true"/>{link.label}</button>;})}<button onClick={returnToMenu}><ShoppingBag size={20} aria-hidden="true"/>Voltar ao Cardápio</button>{canOpenStaff && <button onClick={openStaff}><ArrowUpRight size={20} aria-hidden="true"/>Ir para o CRM</button>}</>;
+  return <CustomerFrame name={customer?.nome || ''} routeKey={route.path} links={<>{links}<button className="customer-signout" onClick={logout}><LogOut size={20} aria-hidden="true"/>Sair</button></>}>
+    {(sessionMessage || message) && <p className={`customer-feedback${message.startsWith('Carregando')?' is-loading':''}`} role="status">{sessionMessage || message}</p>}
     {uid && route.screen==='home' && <CustomerHome name={customer?.nome} onMenu={returnToMenu} onOrders={()=>go('/meus-pedidos')} onProfile={()=>go('/minha-conta')}/>}
     <div ref={host} hidden={Boolean(uid && route.screen==='home' && customer)} />
   </CustomerFrame>;

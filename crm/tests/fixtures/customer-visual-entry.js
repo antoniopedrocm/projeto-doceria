@@ -1,0 +1,10 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import CustomerShell from '../../src/customer/CustomerShell';
+import AdminCustomerPreview from '../../src/customer/AdminCustomerPreview';
+import {customer,order,sessionAuth,call} from './customer-visual-runtime';
+import '../../src/index.css';
+const provider={start:async()=>({customer}),profile:async()=>({customer}),addresses:async()=>({addresses:customer.enderecos}),call,current:()=>true,end:async()=>{window.fixtureEnded=true;}};
+const preview=window.location.pathname.startsWith('/admin/');
+createRoot(document.getElementById('root')).render(preview?<AdminCustomerPreview sessionAuth={sessionAuth} uid="visual-user" target="visual-customer" onExit={()=>{window.fixtureExit=true;}} makeProvider={()=>provider} loadOrders={()=>import(/* webpackIgnore: true */ '/customer-orders-view.mjs')}/>:<CustomerShell sessionAuth={sessionAuth} uid="visual-user" canOpenStaff={new URLSearchParams(window.location.search).has('dual')} onStaffContext={()=>{window.fixtureStaff=true;}}/>);
+window.visualFixture={customer,order};

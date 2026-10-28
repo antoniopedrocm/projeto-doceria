@@ -12,7 +12,7 @@ afterEach(async()=>{await act(async()=>root.unmount());host.remove();jest.clearA
 // Direct ReactDOM rendering needs act; this helper does not use Testing Library.
 // eslint-disable-next-line testing-library/no-unnecessary-act
 const mount=(props={})=>act(async()=>root.render(<CustomerShell uid="a" sessionAuth={session} loadController={async()=>({installCustomerAccount:install})} {...props}/>));
-async function click(label){await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent===label).click());}
+async function click(label){const aria={'☰':'Abrir menu do cliente','Minha conta ▾':'Abrir menu da conta'}[label];await act(async()=>[...host.querySelectorAll('button')].find(b=>aria?b.getAttribute('aria-label')===aria:b.textContent===label).click());}
 test('sidebar e menu superior têm apenas opções Customer, incluindo drawer mobile',async()=>{await mount();expect(CUSTOMER_LINKS.map(x=>x.label)).toEqual(['Página Inicial','Minha Conta','Meus Pedidos']);expect(host.textContent).not.toMatch(/Dashboard|Configurações|Financeiro|Produtos|Clientes/);await click('Minha conta ▾');expect(host.querySelector('[aria-label="Menu do usuário Customer"]')).not.toBeNull();await click('☰');expect(host.querySelector('aside').className).toBe('is-open');});
 test('URL administrativa é substituída e nunca vira painel Customer',async()=>{window.history.replaceState(null,'','/configuracoes');await mount();expect(window.location.pathname).toBe('/area-cliente');expect(controller.openAccount).not.toHaveBeenCalled();});
 test('perfil, histórico e detalhe reutilizam controlador aprovado sem tocar carrinho',async()=>{sessionStorage.setItem('checkoutState_v1','{"storeId":"ana-guimaraes-doceria-garavelo","cart":[{"id":"x"}]}');await mount();await click('Minha Conta');expect(window.location.pathname).toBe('/minha-conta');expect(controller.openAccount).toHaveBeenCalledWith('profile');await click('Meus Pedidos');expect(controller.openAccount).toHaveBeenCalledWith('orders');expect(sessionStorage.getItem('checkoutState_v1')).toContain('"id":"x"');});
@@ -131,4 +131,33 @@ test('resizing from mobile to desktop dismisses transient drawer without touchin
   expect(host.querySelector('aside nav')).not.toBeNull();expect(host.querySelector('aside').className).toBe('');
   expect(host.querySelector('.customer-drawer-backdrop')).toBeNull();
   expect(document.body.style.overflow).toBe(overflow);expect(document.body.style.position).toBe(position);
+});
+
+test.each(['/area-cliente','/minha-conta','/meus-pedidos','/meus-pedidos/order-a?store=store-a'])('refresh keeps Customer route %s with the redesigned frame',async path=>{
+  window.history.replaceState(null,'',path);await mount();
+  await act(async()=>root.unmount());root=createRoot(host);await mount();
+  expect(window.location.pathname+window.location.search).toBe(path);
+  expect(host.querySelector('.customer-brand img').getAttribute('src')).toBe('/logotipo.png');
+  expect(host.querySelector('a.customer-skip-link').getAttribute('href')).toBe('#customer-main');
+});
+test('account menu uses Customer identity and dismisses with Escape while restoring keyboard focus',async()=>{
+  await mount();await act(async()=>install.mock.calls[0][0].onSession({nome:'Ana Oliveira',accountLinked:true}));
+  expect(host.querySelector('.customer-avatar').textContent).toBe('AO');await click('Minha conta ▾');
+  expect(host.querySelector('[aria-label="Menu do usuário Customer"]').textContent).toContain('Ana Oliveira');
+  await act(async()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})));
+  expect(host.querySelector('[aria-label="Menu do usuário Customer"]')).toBeNull();
+  expect(document.activeElement).toBe(host.querySelector('[aria-label="Abrir menu da conta"]'));
+});
+test('mobile drawer cycles keyboard focus without exposing Staff actions to Customer-only',async()=>{
+  await mount();await click('☰');const toggle=host.querySelector('[aria-label="Abrir menu do cliente"]');
+  const last=[...host.querySelectorAll('aside button')].at(-1);last.focus();
+  await act(async()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',cancelable:true})));
+  expect(document.activeElement).toBe(toggle);
+  await act(async()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,cancelable:true})));
+  expect(document.activeElement).toBe(last);expect(host.textContent).not.toContain('Ir para o CRM');
+});
+test('order detail keeps Meus Pedidos highlighted without changing the detail URL',async()=>{
+  window.history.replaceState(null,'','/meus-pedidos/order-a?store=store-a');await mount();
+  expect([...host.querySelectorAll('aside button')].find(button=>button.textContent==='Meus Pedidos').getAttribute('aria-current')).toBe('page');
+  expect(window.location.pathname).toBe('/meus-pedidos/order-a');
 });

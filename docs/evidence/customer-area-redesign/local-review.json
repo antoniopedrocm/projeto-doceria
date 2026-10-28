@@ -1,0 +1,213 @@
+{
+  "scope": "LOCAL isolated Chrome; fictional data; no Firebase/Auth/SMS/payment requests",
+  "checks": [
+    {
+      "width": 320,
+      "screen": "home",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 320,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 320,
+      "screen": "orders",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 320,
+      "screen": "detail",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 375,
+      "screen": "home",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 375,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 375,
+      "screen": "orders",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 375,
+      "screen": "detail",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 390,
+      "screen": "home",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 390,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 390,
+      "screen": "orders",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 390,
+      "screen": "detail",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 430,
+      "screen": "home",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 430,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 430,
+      "screen": "orders",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 430,
+      "screen": "detail",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 768,
+      "screen": "home",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 768,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 768,
+      "screen": "orders",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 768,
+      "screen": "detail",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1024,
+      "screen": "home",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1024,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1024,
+      "screen": "orders",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1024,
+      "screen": "detail",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1366,
+      "screen": "home",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1366,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1366,
+      "screen": "orders",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1366,
+      "screen": "detail",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1920,
+      "screen": "home",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1920,
+      "screen": "account",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1920,
+      "screen": "orders",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1920,
+      "screen": "detail",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    }
+  ],
+  "screenshots": [
+    "mobile-home.png",
+    "mobile-account.png",
+    "mobile-orders.png",
+    "mobile-detail.png",
+    "desktop-home.png",
+    "desktop-account.png",
+    "desktop-orders.png",
+    "desktop-detail.png",
+    "mobile-drawer.png",
+    "mobile-admin-preview.png",
+    "desktop-admin-preview.png"
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "production": false
+}

@@ -10,6 +10,28 @@ const user = (uid = 'uid-a', provider = 'password') => ({uid, isAnonymous: false
 const customer = (id = 'a') => ({id, accountLinked: true, nome: `Cliente ${id}`, telefone: '62999991234', enderecos: []});
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+test('visual address cards preserve saved labels, default badge and safe text without additional reads',async t=>{
+  const addresses=[{id:'named',nomeEndereco:'Casa da minha Mãe',enderecoCompleto:'Endereço de teste',isDefault:true},{id:'old',enderecoCompleto:'Outro endereço de teste'},{id:'untrusted',nickname:'<img src=x onerror=alert(1)>',enderecoCompleto:'Texto'}];
+  const f=await fixture({embedded:true,backend:async name=>name==='customerAccount'?{customer:{...customer(),enderecos:addresses}}:{orders:[]}});t.after(f.close);
+  await f.api.openAccount('profile');
+  const cards=f.el('addresses').querySelectorAll('.customer-address-card');assert.equal(cards.length,3);
+  assert.equal(cards[0].querySelector('h3').textContent,'Casa da minha Mãe');assert.equal(cards[0].querySelector('.customer-badge').textContent,'Padrão');
+  assert.equal(cards[1].querySelector('h3').textContent,'Endereço 2');assert.equal(cards[2].querySelector('img'),null);
+  assert.equal(f.el('profile-phone').readOnly,true);assert.equal(f.el('save').textContent,'Salvar alterações');
+  assert.ok(f.calls.every(c=>c.name==='customerAccount'));assert.ok(cards[0].querySelectorAll('button.customer-button').length>=2);
+});
+
+test('redesigned order detail preserves historical totals and clears the identifying heading on logout',async t=>{
+  const historical={id:'historic',storeId:'store-a',number:'42',status:'CONFIRMED',payment_status:'PAID',subtotal:40,desconto:3,frete:5,total:42,modalidade:'entrega',endereco:'Endereço snapshot de teste',itens:[{nome:'Produto histórico',quantity:2,preco:20,total:40}]};
+  const f=await fixture({embedded:true,backend:async name=>name==='customerAccount'?{customer:customer()}:name==='customerOrders'?{orders:[historical]}:{order:historical}});t.after(f.close);
+  await f.api.openOrder({storeId:'store-a',orderId:'historic'});
+  assert.equal(f.el('order-detail-heading').textContent,'Pedido #42');
+  assert.equal(f.el('order-detail-content').querySelectorAll('.customer-detail-grid>.customer-panel').length,4);
+  assert.match(f.el('order-detail-content').textContent,/Produto histórico/);assert.match(f.el('order-detail-content').textContent,/Endereço snapshot de teste/);
+  assert.equal(f.el('order-detail-content').querySelectorAll('.customer-totals dt').length,4);
+  await f.el('area-logout').onclick({preventDefault(){}});assert.equal(f.el('order-detail-heading').textContent,'Detalhe do pedido');assert.equal(f.el('order-detail-content').textContent,'');
+});
+
 async function fixture({embedded=false,waitForReady=true,initialUser = user(), sdk = {}, backend = async (name, auth) =>
   name === 'customerAccount' ? {customer: customer(auth.currentUser?.uid || 'a')} : {orders: []}} = {}) {
   const {isCustomerIdentity, createCustomerAreaNavigation} = await import('../crm/public/customer-area.mjs');
