@@ -45,4 +45,12 @@ Reprodução: `node tests/customer-visual-review.cjs --account-only --legacy-css
 
 ## Estado
 
-Implementação e revisão local de Minha Conta concluídas. Entrega Hosting DEV e novo aceite pontual ainda pendentes de registro. Solicitar somente Minha Conta em1920×889 e390×800 +Ctrl+R; não pedir novamente home/pedidos/detalhe/preview. Na homologação não salvar/editar/excluir dados reais, não enviar SMS nem fazer pedido/pagamento. PROD intacta.
+Implementação, revisão local e publicação Hosting DEV concluídas. Novo aceite pontual de Minha Conta **PENDENTE**, solicitado somente em1920×889 e390×800 +Ctrl+R; não pedir novamente home/pedidos/detalhe/preview. Na homologação não salvar/editar/excluir dados reais, não enviar SMS nem fazer pedido/pagamento. PROD intacta.
+
+## Entrega DEV —28/10/2026
+
+- Commit funcional **4a8a01be27bef15b9003c5d54ba9e1cfa9f467a0**, push branch DEV concluído. Deploy somente Hosting crmdoceria-9959e, predeploy/workspace absolutos confirmados, release/Deploy complete/exit0. API preservada em a23912fc; sem deploy de Functions/Rules/índices/Auth.
+-59/59 hashes remotos PASS,15 fontes de sourcemap (14 JS+CSS de Minha Conta) e50 arquivos públicos conferidos. Os públicos permanecem inalterados. Verificação de escopo por Git confirmou somente CustomerShell.js/customerAccount.css como runtime modificado desde65da1106; testes e docs separados desse inventário. Nenhuma fixture em runtime.
+-Mainc09d57a9.js SHA256 `1d7748ba9c106aa47d8b2ce32981428c460c56ddd36c034948f7bbbd9de3e08f`; CSSmain.fe3e7680 SHA256 `599f1fd62857d9a563e6e8b61da67b3ef7fd6b1e31431936927b74fbded82825`. Hashados immutable e entradas estáveis revalidáveis, cache PASS. [Evidência remota](evidence/customer-account-polish-delivery-dev-2026-10-28.json).
+-Build/lint/diff e163 testes PASS (83 React+71 controladores/isolamento+9 Auth/cache).8 larguras locais e capturas desktop/mobile revisadas com stylesheet público antigo simulado. Sem usar essas fixtures como aceite autenticado DEV.
+- Gate publicação resolvido; gate visual exclusivo Minha Conta aguarda o usuário. Aceites anteriores preservados; nenhum pedido de nova homologação das outras telas. Percentuais/PROD/financeiro/SMS/WhatsApp intactos.
