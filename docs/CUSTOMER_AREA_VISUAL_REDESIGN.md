@@ -70,8 +70,16 @@ O harness `crm/tests/customer-visual-review.cjs` bloqueia requisições fora do 
 - Build PASS com quatro avisos conhecidos de sourcemap native-audio e Browserslist antigo. Main9031dc04.js437,70kB gzip: cerca de+1,61kB frente a436,09kB; CSS12,63kB, cerca de+984bytes. Sem dependência runtime nova.
 - Lint dos arquivos React alterados PASS, sem erros/avisos de código. Diff-check PASS; entrega Hosting será registrada no checkpoint após conferência.
 
-**Estado:** implementação/revisão local concluídas; publicação Hosting DEV e homologação manual autenticada pendentes de registro. Não declarar aceitação visual DEV com base nas fixtures locais. Sem alteração dos percentuais formais.
+**Estado atual:** implementação/testes/revisão local/publicação Hosting DEV concluídos. Homologação manual autenticada **PENDENTE**, solicitada ao usuário. Não declarar aceitação visual DEV com base nas fixtures locais. Sem alteração dos percentuais formais.
 
 ### Complemento de entrega: CSS público estável
 
 A auditoria do artefato encontrou `customer-area.css` fora do matcher explícito de revalidação (que cobria HTML/JS/MJS/JSON). Foi incluída apenas a extensão CSS de arquivos na raiz na mesma política no-cache/must-revalidate, evitando stylesheet antigo após reload. Assets hashados de static/css permanecem immutable, sem sobreposição de matchers. Teste no middleware real do Hosting confere status200, MIME text/css, corpo CSS e cache; não aceita fallback SPA como stylesheet. Nenhuma alteração de Service Worker, Auth ou API. O frontend compilado não muda por esse ajuste de configuração Hosting.
+
+## Entrega DEV verificada —27/10/2026
+
+- UI: commit **7a57344ba52d16b787b31495202ac2d63ad0d041**; complemento Hosting/cache: **d9085e36a66b823bb909506b939dc8a86ea6d8d8**. Ambos enviados à branch DEV.
+- Deploy somente Hosting, projeto explícito crmdoceria-9959e e staging `.deploy-crm-store-baseline-d9085e36`; predeploy confirmou caminho/ambiente, upload/release concluídos, exit0. Nenhuma Function/Rule/índice/Cloud Auth publicada. API continua a23912fc.
+- **59/59 hashes remotos PASS**,14 fontes de sourcemap e50 arquivos públicos correspondentes à fonte aprovada. Nenhuma fixture no bundle/artefato. Main9031dc04.js SHA256 `c965a51a8e3fda8cc0ba0b1e8daa8bd1aa1492dbba959a7424232a56e659f74a`; CSSmain.bdc1ecea SHA256 `76b164011025b8eac52482abad62c66824c15aed14029ddf79aac27f43c6b381`.
+- Cache remoto PASS: mainJS/CSS hashados immutable; HTML, módulos públicos, worker e customer-area.css revalidáveis. Evidência: [entrega remota](evidence/customer-area-redesign-delivery-dev-2026-10-27.json). Diff-check PASS; fontes/proteções e percentuais preservados.
+- Solicitado aceite autenticado em1920×889 e390×800 para4 telas, refresh e readonly/dual-role, sem alteração de dados nem SMS/recompra/pedido/pagamento. Esse aceite continua pendente; não é inferido dos hashes ou das capturas LOCAL.
