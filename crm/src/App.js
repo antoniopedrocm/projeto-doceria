@@ -4,6 +4,7 @@ import {canPreviewCustomer,previewPermissionDetails,previewTarget} from './custo
 import PaginaInicial from './storefront/CrmHome';
 import StoreSelector from './stores/StoreSelector';
 import {staffDirectoryKey,reconcileStoreSelection,staffStoreSelectionKey} from './stores/staffDirectory';
+import useStaffSection,{reconcileStaffSection} from './stores/useStaffSection';
 import {storeDeadline} from './stores/storeRequests';
 import {normalizeRole, isActiveStaffProfile} from './customer/staffRole';
 import {createCapabilityResolver} from './customer/userCapabilities';
@@ -3668,7 +3669,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
 
-  const [currentPage, setCurrentPage] = usePersistentState('currentPage', 'pagina-inicial');
+  const [currentPage, setCurrentPage] = useStaffSection(staffUid);
   const [user, setUser] = useState(()=>staffProfile?.auth?.uid===staffUid?staffProfile:null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21438,7 +21439,6 @@ const handleSubmit = async (e) => {
     );
   }, []);
 
-  const PlaceholderPage = ({ title }) => (<div className="p-6"><h1 className="text-3xl font-bold text-pink-600">{title}</h1><p>Em desenvolvimento...</p></div>);
   const userHasPermission = useCallback((menuId) => {
     if (!user) return menuId === 'pagina-inicial';
 
@@ -21459,6 +21459,15 @@ const handleSubmit = async (e) => {
 
     return Boolean(normalizedPermissions[permissionKey]);
   }, [allMenuItems, user]);
+
+  const authorizedPage=reconcileStaffSection(currentPage,MENU_PERMISSION_KEYS,userHasPermission);
+  useEffect(()=>{
+    // Do not overwrite the restored section while Auth is still hydrating.
+    // Render uses authorizedPage immediately, so revoked/invalid sections never mount.
+    if(!authLoading && user?.auth?.uid===staffUid && currentPage!==authorizedPage) {
+      setCurrentPage(authorizedPage);
+    }
+  },[authLoading,user?.auth?.uid,staffUid,currentPage,authorizedPage,setCurrentPage]);
 
   const canCreateStores = useMemo(() => {
     if (!user) return false;
@@ -21501,11 +21510,11 @@ const handleSubmit = async (e) => {
   }, [selectStoreById, setCurrentPage]);
 
   const renderCurrentPage = () => {
-    if (authLoading || (loading && user && currentPage!=='pagina-inicial')) {
+    if (authLoading || (loading && user && authorizedPage!=='pagina-inicial')) {
       return (<div className="flex h-full w-full items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-pink-500"></div></div>);
     }
 
-    switch (currentPage) {
+    switch (authorizedPage) {
       case 'pagina-inicial': return <PaginaInicial onImageClick={setLightboxImage} />;
       case 'dashboard': return userHasPermission('dashboard') ? <Dashboard
                                         handleStopAndSnoozeAlarm={handleStopAndSnoozeAlarm}
@@ -21546,7 +21555,7 @@ const handleSubmit = async (e) => {
       case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial onImageClick={setLightboxImage} />;
-      default: return user ? <PlaceholderPage title={allMenuItems.find(i=>i.id===currentPage)?.label || "Página"} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      default: return <PaginaInicial onImageClick={setLightboxImage} />;
     }
   };
 

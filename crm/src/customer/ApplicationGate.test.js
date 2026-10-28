@@ -5,6 +5,7 @@ import {auth} from '../firebaseConfig';
 import {legacyAuth,prepareCanonicalSession,logoutCanonicalSession} from './customerRuntime';
 import {onIdTokenChanged} from 'firebase/auth';
 import {staffStoreSelectionKey} from '../stores/staffDirectory';
+import useStaffSection,{staffSectionKey} from '../stores/useStaffSection';
 jest.mock('../firebaseConfig',()=>({auth:{currentUser:null}}));
 jest.mock('./customerRuntime',()=>({legacyAuth:{currentUser:null},prepareCanonicalSession:jest.fn(async()=> 'READY'),syncSessionCart:jest.fn(async()=>{}),logoutCanonicalSession:jest.fn(async()=>{})}));
 jest.mock('firebase/auth',()=>({onIdTokenChanged:jest.fn()}));
@@ -111,6 +112,27 @@ test('provisional Staff cannot redirect a Customer route or restore an old UID a
   await act(async()=>late());expect(staff).not.toHaveBeenCalled();
   await emit(null);await act(async()=>{late();finish();});
   expect(host.textContent).toContain('Customer:login');expect(staff).not.toHaveBeenCalled();
+});
+
+test.each(['nota-fiscal','clientes','financeiro','pagina-inicial'])('canonical gate restoration keeps section %s through Customer completion, token renewal and refresh',async section=>{
+  sessionStorage.setItem(staffSectionKey('a'),JSON.stringify(section));
+  sessionStorage.setItem(staffStoreSelectionKey('a'),JSON.stringify('store-a'));
+  sessionStorage.setItem('currentPage',JSON.stringify('foreign-global'));
+  function Navigation(props){const [page]=useStaffSection(props.staffUid);return <div>CRM:{props.staffUid};Section:{page}</div>;}
+  staff.mockImplementation(props=><Navigation {...props}/>);
+  let finish;
+  resolver.mockImplementation(async(u,{onStaffResolved})=>{
+    onStaffResolved(caps(u.uid,true,false));
+    return new Promise(done=>{finish=()=>done(caps(u.uid));});
+  });
+  await mount();await emit(identity('a'));expect(host.textContent).toContain(`Section:${section}`);
+  await act(async()=>finish());expect(host.textContent).toContain(`Section:${section}`);
+  await emit(identity('a'));expect(host.textContent).toContain(`Section:${section}`);await act(async()=>finish());
+  await act(async()=>root.unmount());root=createRoot(host);await mount();await emit(identity('a'));
+  expect(host.textContent).toContain(`Section:${section}`);await act(async()=>finish());
+  expect(sessionStorage.getItem('currentPage')).toBeNull();
+  expect(JSON.parse(sessionStorage.getItem(staffStoreSelectionKey('a')))).toBe('store-a');
+  expect(auth.currentUser.uid).toBe('a');expect(logoutCanonicalSession).not.toHaveBeenCalled();
 });
 
 test('two tabs may keep different contexts; canonical logout invalidates both',async()=>{
