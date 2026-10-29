@@ -48,17 +48,18 @@ const runCheckout = async (phone, consent, {freightConfig = {}, checkout = {}} =
   const collection = (name) => ({doc: (id = 'order-test') => ref(`${name}/${id}`)});
   const context = {
     app: {post: (_, fn) => {handler = fn;}}, buildCheckoutWhatsApp, ...core,
+    CHECKOUT_MODES: {GUEST:'guest',PHONE:'legacy_phone',STRONG:'strong_auth'},
     // Trusted distance double, independent of the production browser/provider.
     resolveFreightDistance: async () => checkout.distanciaFreteKm ?? 2,
     requireStoreId: () => 'loja-teste', getStoreConfigDoc: () => ref('config'), assertStoreOpen: () => {},
     FieldValue: {serverTimestamp: () => 'SERVER'},
     admin: {firestore: {FieldValue: {serverTimestamp: () => 'SERVER'}}},
     createHttpError: (httpStatus, message) => Object.assign(new Error(message), {httpStatus}),
-    logger: {error: () => {}},
+    logger: {error: (...args) => { if (args[1] instanceof ReferenceError) throw args[1]; }},
     db: {doc: ref, collection, runTransaction: async (fn) => {
       const result = await fn({
         get: async (documentRef) => ({exists: true, data: () => documentRef.id === 'config'
-          ? {frete: {lat: -16.6, lng: -49.3, valorPorKm: 2.5, ...freightConfig}} : {nome: 'Bolo', preco: 10, estoque: 4}}),
+          ? {frete: {lat: -16.6, lng: -49.3, valorPorKm: 2.5, valorMinimoFrete: 0, ...freightConfig}} : {nome: 'Bolo', preco: 10, estoque: 4}}),
         set: (_, data) => {order = data;}, update: () => {},
       });
       committed = true;
@@ -85,7 +86,7 @@ const runCheckout = async (phone, consent, {freightConfig = {}, checkout = {}} =
 
 test('checkout persiste metadados junto do pedido e preserva telefone e total', async () => {
   const {order, status, response} = await runCheckout('(62) 99123-4567', {accepted: true, version: CONSENT_VERSION});
-  assert.equal(status, 200);
+  assert.equal(status, 200, JSON.stringify(response));
   assert.equal(response.ok, true);
   assert.equal(order.telefone, '(62) 99123-4567');
   assert.equal(order.total, 25);
@@ -126,7 +127,7 @@ test('telefone inválido, recusa e checkout legado continuam criando pedido', as
     ['62991234567', {accepted: false, version: CONSENT_VERSION}], ['62991234567', undefined],
   ]) {
     const {order, status, response} = await runCheckout(phone, consent);
-    assert.equal(status, 200);
+    assert.equal(status, 200, JSON.stringify(response));
     assert.equal(response.ok, true);
     if (phone === 'inválido') assert.equal(order.whatsappConfirmation.phoneE164, null);
     else assert.equal(order.whatsappConfirmation.consent.granted, false);
@@ -162,6 +163,7 @@ for (const menu of ['matriz', 'garavelo', 'festa']) {
           const context = vm.createContext({
             document, window: {addEventListener: () => {}, open: () => {}, valorFrete: 0},
             chargedFreight: () => 0, checkoutHeaders: async () => ({}), retainAuthenticatedCustomer: () => null,
+            checkoutIdentity: {get:()=>({token:null})}, savedAddressFields:()=>({}),
             cart: [{id: 'bolo', preco: 10, quantity: 1, nome: 'Bolo'}], appliedCupom: null,
             STORE_ID: 'loja-teste', API_BASE_URL: 'https://example.invalid', WHATSAPP_NUMBER: '5562000000000',
             storeIsOpenNow: true, currentClient: null, pendingOrderDetails: {},

@@ -1816,7 +1816,9 @@ app.post("/checkout/confirmar", async (req, res) => {
   const descontoInformado = Number(req.body?.desconto ?? 0);
   const origem = typeof req.body?.origem === 'string' ? req.body.origem : 'Cardapio Online';
   const status = 'Pendente';
-  const online = pagamento.forma === 'Online';
+  const paymentMode = pagamento.mode;
+  const explicitPaymentMode = paymentMode !== undefined;
+  const online = paymentMode === 'ONLINE_NOW' || (!explicitPaymentMode && pagamento.forma === 'Online');
 
   if (!itens.length) {
     return res.status(400).json({ok: false, message: 'Adicione ao menos um item ao pedido.'});
@@ -1827,6 +1829,8 @@ app.post("/checkout/confirmar", async (req, res) => {
   }
 
   try {
+    if (explicitPaymentMode && !['ONLINE_NOW', 'AGREED_LATER'].includes(paymentMode)) throw paymentError('Escolha de pagamento inválida.',400);
+    if (explicitPaymentMode && pagamento.forma !== (online ? 'Online' : 'A combinar')) throw paymentError('Escolha de pagamento inconsistente.',400);
     const whatsappConfirmation = buildCheckoutWhatsApp({phone: cliente.telefone,
       consent: req.body?.whatsappConsent, serverTimestamp: () => FieldValue.serverTimestamp()});
     let paymentConfig, paymentId, ownerUid, orderRef, fingerprint, buyerEmail, checkoutCustomerId;
@@ -1843,7 +1847,7 @@ app.post("/checkout/confirmar", async (req, res) => {
       cliente.id=checkoutIdentity.mode===CHECKOUT_MODES.PHONE?checkoutIdentity.legacyCustomerId:null;
       if(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.phoneHash && hashForPrivacy(normalizePhoneNumber(cliente.telefone))!==checkoutIdentity.phoneHash) throw paymentError('Identifique novamente o celular deste checkout.',403);
     }
-    if(online) {
+    if(online || explicitPaymentMode) {
       const token=await checkoutToken(req);ownerUid=token.uid;buyerEmail=token.email;
       checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
       let account;
@@ -1855,9 +1859,9 @@ app.post("/checkout/confirmar", async (req, res) => {
       checkoutCustomerId=account.customer?.id;
       if(!checkoutCustomerId || cliente.id!==checkoutCustomerId) throw paymentError('Entre em sua conta de cliente para pagar online.',403);
       if(!/^[a-zA-Z0-9_-]{16,100}$/.test(req.body?.idempotencyKey || '')) throw paymentError('Identificador do pedido inválido.',400);
-      paymentConfig=await checkoutPayments.config(lojaId);
+      if(online) paymentConfig=await checkoutPayments.config(lojaId);
       paymentId=crypto.createHash('sha256').update(ownerUid+':'+lojaId+':'+req.body.idempotencyKey).digest('hex');
-      fingerprint=crypto.createHash('sha256').update(JSON.stringify({cliente,itens,cupom,subtotal,delivery:req.body.delivery,descontoInformado})).digest('hex');
+      fingerprint=crypto.createHash('sha256').update(JSON.stringify({cliente,itens,cupom,subtotal,delivery:req.body.delivery,descontoInformado,...(explicitPaymentMode ? {paymentMode} : {})})).digest('hex');
       orderRef=db.collection('lojas').doc(lojaId).collection('pedidos').doc(paymentId);
     }
     const orderId = await db.runTransaction(async (transaction) => {
@@ -1867,6 +1871,15 @@ app.post("/checkout/confirmar", async (req, res) => {
         if(checkoutIdentity.mode===CHECKOUT_MODES.STRONG) checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
         else if(online || ownerUid) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
         if(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.legacyCustomerId) cliente.id=await customerRegistry.resolveId(checkoutIdentity.legacyCustomerId,transaction);
+      }
+      if(explicitPaymentMode) {
+        const existing=await transaction.get(orderRef);
+        if(existing.exists && (existing.get('checkoutFingerprint')!==fingerprint || existing.get('ownerUid')!==ownerUid || existing.get('clienteId')!==checkoutCustomerId)) throw paymentError('O pedido já foi enviado com outros dados. Consulte o pedido existente.',409);
+        if(existing.exists && !online) {
+          const saved=existing.data();
+          assertFreightClaims(req.body,saved,cliente.endereco==='Retirar na Loja');
+          return {id:existing.id,subtotal:saved.subtotal,desconto:saved.desconto,valorFrete:saved.valorFrete,total:saved.total,tipoFrete:saved.tipoFrete,freteACombinar:saved.freteACombinar,whatsappPhoneStatus:saved.whatsappConfirmation?.phoneStatus};
+        }
       }
       if(online) {
         const prior=await transaction.get(db.collection('checkoutPayments').doc(paymentId));
@@ -2034,7 +2047,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         clienteSnap = await transaction.get(clienteRef);
       }
 
-      if (online && (!clienteSnap?.exists || clienteRef.id!==checkoutCustomerId || !ownsCustomer(clienteSnap.data(),ownerUid))) throw paymentError('Cadastro de cliente não autorizado para pagamento online.',403);
+      if ((online || explicitPaymentMode) && (!clienteSnap?.exists || clienteRef.id!==checkoutCustomerId || !ownsCustomer(clienteSnap.data(),ownerUid))) throw paymentError('Cadastro de cliente não autorizado para este checkout.',403);
       if (checkoutIdentity.mode===CHECKOUT_MODES.STRONG && clienteSnap?.data()?.authOwnerUid && !ownsCustomer(clienteSnap.data(),ownerUid)) throw paymentError('Entre na conta vinculada ao cadastro.',403);
       const customerCoupons=couponCode && clienteSnap?.exists?await customerRegistry.couponState(clienteRef.id,transaction):null;
       if (online && customerCoupons?.used.includes(couponCode)) throw paymentError('Você já utilizou este cupom.');
@@ -2061,7 +2074,8 @@ app.post("/checkout/confirmar", async (req, res) => {
         clienteEndereco: cliente.endereco || '',
         telefone: cliente.telefone,
         whatsappConfirmation,
-        formaPagamento: pagamento.forma || pagamento.formaPagamento || '',
+        formaPagamento: explicitPaymentMode ? (online ? 'Online' : 'A combinar') : pagamento.forma || pagamento.formaPagamento || '',
+        ...(explicitPaymentMode ? {paymentMode,paymentMethod:null,...(!online ? {paymentStatus:'PENDING'} : {}),ownerUid,checkoutFingerprint:fingerprint} : {}),
         itens: validatedItems,
         subtotal: subtotalFinal,
         desconto: descontoFinal,

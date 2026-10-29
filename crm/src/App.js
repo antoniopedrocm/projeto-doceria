@@ -24,6 +24,7 @@ import OrderPaymentStatus from './components/orders/OrderPaymentStatus';
 import OrderStatusBadge from './components/orders/OrderStatusBadge';
 import {getOrderStatusLabel} from './utils/orderStatus';
 import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
+import FiscalOrderPaymentField from './components/FiscalOrderPaymentField';
 import {findOrderDraft, validateFiscalOrder, createFiscalOrderActions} from './fiscalOrderActions';
 import {
   LayoutDashboard, Users, ShoppingCart, Package, Calendar, Truck, DollarSign, BarChart3,
@@ -18626,7 +18627,7 @@ const handleSubmit = async (e) => {
 
     const requestOrderValidation = async (order, save = true) => {
       const result = await validateFiscalOrder({order, draft: findOrderDraft(invoices, order.id),
-        model: modelOverride, operationCfop, save,
+        model: modelOverride, operationCfop, save, paymentMethodLabel: fiscalPaymentByOrder[order.id],
         call: async (name, payload) => (await httpsCallable(functions, name)(callablePayload(payload))).data || {}});
       setValidationByOrder((prev) => ({ ...prev, [order.id]: result }));
       return result;
@@ -20110,11 +20111,15 @@ const handleSubmit = async (e) => {
       }
     };
 
+    const [fiscalPaymentByOrder, setFiscalPaymentByOrder] = useState({});
     const orderColumns = [
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.slice(0, 8) || '-'}</span> },
       { header: 'Cliente', key: 'clienteNome' },
       { header: 'Total', render: (row) => <span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span> },
       { header: 'Data', render: (row) => formatDateTime(row.createdAt) },
+      { header: 'Forma de pagamento', render: (row) => <FiscalOrderPaymentField order={row} Select={Select} options={ORDER_PAYMENT_OPTIONS}
+        value={fiscalPaymentByOrder[row.id]} disabled={isReadOnly || Boolean(busyOrderId)}
+        onChange={(event) => {setFiscalPaymentByOrder((prev) => ({...prev,[row.id]:event.target.value}));setValidationByOrder((prev) => ({...prev,[row.id]:{ok:false}}));}} /> },
       { header: 'Nota', render: (row) => {
         const invoice = invoicesByOrderId.get(row.id);
         if (!invoice) return <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Pendente</span>;
@@ -20752,7 +20757,8 @@ const handleSubmit = async (e) => {
               </Select>
               <Input label="Nome do cliente na nota" value={orderEditForm.clienteNome || ''} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, clienteNome: event.target.value }))} required />
               <Input label="Telefone" value={orderEditForm.telefone || ''} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, telefone: event.target.value }))} />
-              <Select label="Forma de pagamento" value={orderEditForm.formaPagamento || DEFAULT_ORDER_PAYMENT_METHOD} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, formaPagamento: event.target.value }))}>
+              <Select label="Forma de pagamento" disabled={Boolean(orderToEditBeforeInvoice?.paymentMode || orderToEditBeforeInvoice?.paymentId)} value={orderEditForm.formaPagamento || DEFAULT_ORDER_PAYMENT_METHOD} onChange={(event) => setOrderEditDraft((prev) => ({ ...prev, formaPagamento: event.target.value }))}>
+                {orderEditForm.formaPagamento && !ORDER_PAYMENT_OPTIONS.includes(orderEditForm.formaPagamento) && <option value={orderEditForm.formaPagamento}>{orderEditForm.formaPagamento}</option>}
                 {ORDER_PAYMENT_OPTIONS.map((option) => <option key={option}>{option}</option>)}
               </Select>
               <div className="md:col-span-2">

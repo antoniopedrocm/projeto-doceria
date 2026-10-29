@@ -74,7 +74,7 @@ const selectIdentity=async(mode,context=null,bearer=token,storeId=store)=>{
     body:JSON.stringify({storeId,mode,checkoutIdentityToken:context})});
   return {status:r.status,data:await r.json()};
 };
-const send=async (b,bearer=token)=>{const value={...b};if(b.pagamento.forma!=='Online') delete value.checkoutIdentityToken;const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer},body:JSON.stringify(value)});return {status:r.status,data:await r.json()};};
+const send=async (b,bearer=token)=>{const value={...b};if(b.pagamento.forma!=='Online' && !b.pagamento.mode) delete value.checkoutIdentityToken;const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer},body:JSON.stringify(value)});return {status:r.status,data:await r.json()};};
 
 test('SMS válido libera endereço mas token Firebase forte antigo e grant NÃO autorizam pagamento online',async()=>{
   const {createCheckoutIdentity}=require('./checkout-identity'),{createAddressVerification}=require('./address-verification');
@@ -417,6 +417,39 @@ test('HTTP reserva limite de cupom entre compras concorrentes e libera após exp
   assert.equal(retry.status,200,JSON.stringify(retry));
 });
 
+test('escolhas autenticadas: combinar é pendente, sem método/gateway, estoque/cupom uma vez em duplo envio',async()=>{
+  const selected=await selectIdentity('strong_auth');assert.equal(selected.status,200);
+  const product=db.doc(`lojas/${store}/produtos/choice-fixture`),coupon=db.doc(`lojas/${store}/configuracoes/config/cupons/choice-fixture`);
+  await product.set({nome:'Produto escolha fictício',ativo:true,status:'Ativo',preco:10,estoque:5});
+  await coupon.set({codigo:'CHOICE',status:'Ativo',limiteUso:5,usos:0,tipoDesconto:'fixo',valor:1});
+  const previousLinks=links;
+  const b={...body(),checkoutIdentityToken:selected.data.token,idempotencyKey:require('node:crypto').randomUUID(),
+    itens:[{produtoId:product.id,quantity:1,preco:10}],pagamento:{mode:'AGREED_LATER',forma:'A combinar',paymentMethod:'PIX',payment_status:'PAID'},cupom:{codigo:'CHOICE'},whatsappConsent:{accepted:false,version:'order-confirmation-v1'}};
+  const results=await Promise.all([send(b),send(b)]);
+  results.forEach(result=>assert.equal(result.status,200,JSON.stringify(result)));
+  assert.equal(results[0].data.id,results[1].data.id);
+  const ref=db.doc(`lojas/${store}/pedidos/${results[0].data.id}`),order=(await ref.get()).data();
+  assert.equal(order.paymentMode,'AGREED_LATER');assert.equal(order.paymentMethod,null);assert.equal(order.paymentStatus,'PENDING');assert.equal(order.payment_status,undefined);assert.equal(order.status,'Pendente');assert.equal(order.paymentId,undefined);
+  assert.equal(order.formaPagamento,'A combinar');assert.equal(order.total,9);assert.equal(order.clienteId,customerId);
+  assert.equal((await product.get()).get('estoque'),4);assert.equal((await coupon.get()).get('usos'),1);
+  assert.equal((await db.doc('checkoutPayments/'+ref.id).get()).exists,false);
+  assert.equal(links,previousLinks);assert.equal((await send(b)).data.id,ref.id);
+  const changed=await send({...b,pagamento:{mode:'ONLINE_NOW',forma:'Online'}});assert.equal(changed.status,409);assert.equal(links,previousLinks);
+  for(const mode of ['guest','legacy_phone']) {
+    const weak=await selectIdentity(mode);
+    const denied=await send({...b,checkoutIdentityToken:weak.data.token,idempotencyKey:require('node:crypto').randomUUID()});
+    assert.equal(denied.status,403,JSON.stringify(denied));
+  }
+});
+test('ONLINE_NOW mantém checkout online; método só vem da confirmação do provedor',async()=>{
+  const selected=await selectIdentity('strong_auth');
+  const b={...body(),checkoutIdentityToken:selected.data.token,idempotencyKey:require('node:crypto').randomUUID(),pagamento:{mode:'ONLINE_NOW',forma:'Online'}};
+  await db.doc(`lojas/${store}/produtos/product`).update({estoque:10});
+  const previous=links,result=await send(b);assert.equal(result.status,200,JSON.stringify(result));assert.equal(links,previous+1);
+  const order=(await db.doc(`lojas/${store}/pedidos/${result.data.id}`).get()).data();
+  assert.equal(order.paymentMode,'ONLINE_NOW');assert.equal(order.paymentMethod,null);assert.equal(order.payment_status,'PENDING');
+  assert.equal((await send(b)).data.id,result.data.id);assert.equal(links,previous+1);
+});
 test('HTTP distingue loja fechada de configuração operacional indisponível',async()=>{
   const configRef=db.doc(`lojas/${store}/configuracoes/config`);
   const originalConfig=(await configRef.get()).data();

@@ -8,7 +8,7 @@ export function findOrderDraft(invoices, orderId) {
     .sort((a, b) => time(b) - time(a))[0] || null;
 }
 
-export async function validateFiscalOrder({order, draft, model, operationCfop, save, call}) {
+export async function validateFiscalOrder({order, draft, model, operationCfop, save, call, paymentMethodLabel}) {
   const selectedModel = [55, 65].includes(Number(model)) ? Number(model) : null;
   if (!save && !draft && !selectedModel) {
     throw new Error('Selecione NF-e ou NFC-e antes de checar os requisitos do pedido.');
@@ -17,6 +17,10 @@ export async function validateFiscalOrder({order, draft, model, operationCfop, s
     throw new Error('Este pedido já possui rascunho de outro modelo. Abra Editar para continuar nesse rascunho.');
   }
   let draftId = draft?.id;
+  if (order.paymentMode === 'AGREED_LATER' && !order.paymentMethod) {
+    if (!save || !paymentMethodLabel) throw new Error('Selecione a Forma de pagamento real e use Salvar e Validar. A seleção não registra recebimento.');
+    await call('fiscalResolveOrderPaymentMethod', {orderId:order.id,paymentMethodLabel});
+  }
   if (save) {
     const saved = await call('fiscalSaveDraft', {
       orderId: order.id, model: selectedModel, operationCfop,

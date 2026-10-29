@@ -597,7 +597,7 @@
                     <div class="flex justify-between text-lg font-bold border-t pt-2 mt-2"><span>Total a pagar:</span><span id="payment-total" class="text-pink-600">R$ 0,00</span></div>
                 </div>
                 <p class="text-gray-600 mb-4">Selecione como você prefere pagar.</p>
-                <select id="payment-method-select" class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white">
+                <select id="payment-method-select" aria-label="Forma de pagamento" aria-describedby="payment-choice-help" class="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white">
                     <option value="" disabled selected>Escolha uma opção...</option>
                     <option value="Cartão de Crédito">Cartão de Crédito</option>
                     <option value="Cartão de Débito">Cartão de Débito</option>
@@ -605,6 +605,7 @@
                     <option value="Pix">Pix</option>
                     <option value="Link de Pagamento">Link de Pagamento</option>
                 </select>
+                <p id="payment-choice-help" hidden class="text-sm text-gray-600 mt-3" aria-live="polite"></p>
                 <p id="payment-error" class="text-red-500 text-sm mt-2 hidden"></p>
                 <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
                     <input id="platform-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="platform-whatsapp-consent-help">
@@ -1214,6 +1215,7 @@
         import {createPhoneAddressManager} from './address-management.mjs';
         import {createSmsRecaptcha} from './address-verification-firebase.mjs';
         import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
+        import {paymentSelection, resetPaymentChoice} from './checkout-payment-choice.mjs';
         import {fetchPublicStore} from './store-public-config.mjs';
         import {STORE_AVAILABILITY, getStoreAvailabilityMessage} from './store-availability.mjs';
         let publicStore = await window.publicStoreReady;
@@ -3227,6 +3229,7 @@
 		}
 
         async function handlePlatformOrder() {
+            if (confirmOrderButton.disabled) return;
             if (!paymentMethodSelect.value) {
                 paymentError.textContent = 'Selecione uma forma de pagamento.';
                 paymentError.classList.remove('hidden');
@@ -3238,7 +3241,9 @@
 
             try {
                 ensureCheckoutNotBlocked(pendingOrderDetails);
-                const finalOrderDetails = { ...pendingOrderDetails, formaPagamento: paymentMethodSelect.value };
+                const selection = paymentSelection(paymentMethodSelect.value, checkoutIdentity.isStrong());
+                if (selection.mode === 'ONLINE_NOW' && paymentMethodSelect.selectedOptions[0]?.disabled) throw new Error('Pagamento online indisponível nesta loja. Tente novamente ou escolha Combinar Pagamento.');
+                const finalOrderDetails = { ...pendingOrderDetails, formaPagamento: selection.forma, paymentMode: selection.mode };
                 await finalizeOrder(finalOrderDetails, finalOrderDetails.clienteId, true);
             } catch (error) {
                 console.error('Erro ao confirmar pedido:', error);
@@ -3280,9 +3285,10 @@
                     endereco: clientInfo.clienteEndereco,
                     telefone: clientInfo.telefone,
                 },
-                ...(online ? {idempotencyKey:paymentAttempt(),delivery:{pickup:clientInfo.clienteEndereco==='Retirar na Loja',address:isPlatform ? pendingOrderDetails?.address : {cep:document.getElementById('guest-address-zip')?.value,street:document.getElementById('guest-address-street')?.value,number:document.getElementById('guest-address-no-number')?.checked ? 'S/N' : document.getElementById('guest-address-number')?.value,neighborhood:document.getElementById('guest-address-neighborhood')?.value,complement:document.getElementById('guest-address-complement')?.value},lat:(isPlatform ? window.currentLatLng : window.guestCurrentLatLng)?.lat,lng:(isPlatform ? window.currentLatLng : window.guestCurrentLatLng)?.lng}} : {}),
+                ...(online || clientInfo.paymentMode ? {idempotencyKey:paymentAttempt(),delivery:{pickup:clientInfo.clienteEndereco==='Retirar na Loja',address:isPlatform ? pendingOrderDetails?.address : {cep:document.getElementById('guest-address-zip')?.value,street:document.getElementById('guest-address-street')?.value,number:document.getElementById('guest-address-no-number')?.checked ? 'S/N' : document.getElementById('guest-address-number')?.value,neighborhood:document.getElementById('guest-address-neighborhood')?.value,complement:document.getElementById('guest-address-complement')?.value},lat:(isPlatform ? window.currentLatLng : window.guestCurrentLatLng)?.lat,lng:(isPlatform ? window.currentLatLng : window.guestCurrentLatLng)?.lng}} : {}),
                 pagamento: {
                     forma: clientInfo.formaPagamento,
+                    ...(clientInfo.paymentMode ? {mode: clientInfo.paymentMode} : {}),
                 },
                 itens: cart.map(item => ({ produtoId: item.id, nome: item.nome, quantity: item.quantity, preco: item.preco })),
                 subtotal,
@@ -3348,6 +3354,7 @@
                 pendingOrderDetails = {};
                 removeCupom();
                 clearCheckoutState();
+                if (clientInfo.paymentMode === 'AGREED_LATER') {sessionStorage.removeItem('doceria-payment-pending');resetPaymentChoice(paymentMethodSelect);}
                 renderCart();
                 resetWhatsAppConsent();
                 if (whatsappConsent.accepted && responseData.whatsappPhoneStatus === 'invalid') {

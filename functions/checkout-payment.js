@@ -166,9 +166,9 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
           !!(current.expiresAt && current.expiresAt.toMillis()<=now());
         settleReservation(tx,db,admin,held,!requiresReview);
         tx.create(receiptRef,{paymentId:id,...evidence,outcome:requiresReview?'REVIEW':'CONFIRMED',createdAt:timestamp()});
-        tx.update(ref,{payment_status:'PAID',requiresReview,transactionNsu,slug,paidAt:timestamp(),
+        tx.update(ref,{payment_status:'PAID',requiresReview,transactionNsu,slug,captureMethod:result.capture_method,paidAt:timestamp(),
           ...(held ? {'reservation.state':requiresReview?'RELEASED':'CONSUMED'} : {})});
-        tx.update(order.ref,{payment_status:'PAID',requiresReview,order_status:requiresReview?'CANCELLED':'CONFIRMED',status:requiresReview?'Pagamento em conferência':'Pendente',formaPagamento:result.capture_method==='pix'?'Pix online':'Cartão online',paidAt:timestamp()});
+        tx.update(order.ref,{payment_status:'PAID',requiresReview,order_status:requiresReview?'CANCELLED':'CONFIRMED',status:requiresReview?'Pagamento em conferência':'Pendente',formaPagamento:result.capture_method==='pix'?'Pix online':'Cartão online',paymentMethod:result.capture_method==='pix'?'PIX':'CREDIT_CARD',paymentMethodSource:'provider/infinitepay',paymentMethodResolvedAt:timestamp(),paidAt:timestamp()});
         return {ok:true,payment_status:'PAID',requiresReview};
     });
   }

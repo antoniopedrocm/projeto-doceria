@@ -1,7 +1,7 @@
 import {auth} from './firebaseClientConfig.js?v=20261015-persistence';
 import {apiBaseUrl} from './checkout-environment.js';
 import {isLinkedCustomer} from './customer-session.mjs';
-/* global location */
+import {syncPaymentChoices} from './checkout-payment-choice.mjs';
 const key='doceria-payment-pending';
 export async function checkoutHeaders(online=false,identity=null) {
   await auth.authStateReady();
@@ -21,11 +21,11 @@ export function paymentAttempt() {
 export function redirectToPayment(data) {
   const prior=JSON.parse(sessionStorage.getItem(key) || '{}');
   sessionStorage.setItem(key,JSON.stringify({...prior,paymentId:data.paymentId}));
-  if(data.payment_status==='PAID') {location.href=`./payment-return.html?order_nsu=${encodeURIComponent(data.paymentId)}`;return;}
+  if(data.payment_status==='PAID') {window.location.href=`./payment-return.html?order_nsu=${encodeURIComponent(data.paymentId)}`;return;}
   if(!data.checkoutUrl) throw new Error('Seu pedido está aguardando confirmação. Consulte Minha Conta.');
   const url=new URL(data.checkoutUrl);
   if(url.protocol!=='https:' || !(url.hostname==='infinitepay.io'||url.hostname.endsWith('.infinitepay.io'))) throw new Error('Link de pagamento inválido.');
-  location.assign(url.href);
+  window.location.assign(url.href);
 }
 let onlineEnabled=false;
 export function syncOnlinePaymentOption(customer,strong=false) {
@@ -33,11 +33,7 @@ export function syncOnlinePaymentOption(customer,strong=false) {
   const guest=document.getElementById('guest-payment-method');
   guest?.querySelector('option[value="Online"]')?.remove();
   if(!select) return;
-  const option=select.querySelector('option[value="Online"]');
-  if(!onlineEnabled || !strong || !isLinkedCustomer(customer)) {
-    if(select.value==='Online') select.value='';
-    option?.remove();
-  } else if(!option) select.add(new Option('Pagar online — Pix ou cartão','Online'));
+  syncPaymentChoices(select, strong && isLinkedCustomer(customer), onlineEnabled);
 }
 export async function enableOnlinePayment(storeId,getCustomer=()=>null,isStrong=()=>false) {
   try {

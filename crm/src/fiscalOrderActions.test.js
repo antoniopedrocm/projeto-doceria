@@ -12,6 +12,20 @@ test('setas checam pedido sem criar rascunho nem emitir', async () => {
   expect(call.mock.calls).toEqual([['fiscalValidateOrder', {orderId: order.id, modelOverride: 55, operationCfop: '5101'}]]);
   expect(result.draftId).toBeUndefined();
 });
+test('Combinar Pagamento exige seleção; checar não resolve nem grava; salvar usa método antes do rascunho', async () => {
+  const agreed={...order,paymentMode:'AGREED_LATER',paymentMethod:null};
+  await expect(validate({order:agreed,save:true})).rejects.toThrow('Forma de pagamento');expect(call).not.toHaveBeenCalled();
+  await expect(validate({order:agreed,save:false,paymentMethodLabel:'Dinheiro'})).rejects.toThrow('Salvar e Validar');expect(call).not.toHaveBeenCalled();
+  call.mockResolvedValueOnce({ok:true}).mockResolvedValueOnce({draftId:draft.id}).mockResolvedValueOnce({ok:true});
+  await validate({order:agreed,save:true,paymentMethodLabel:'Dinheiro'});
+  expect(call.mock.calls.map(c=>c[0])).toEqual(['fiscalResolveOrderPaymentMethod','fiscalSaveDraft','fiscalCheckDraft']);
+  expect(call.mock.calls[0][1]).toEqual({orderId:order.id,paymentMethodLabel:'Dinheiro'});
+});
+test('método online não dispara resolução manual', async () => {
+  call.mockResolvedValue({ok:true});
+  await validate({order:{...order,paymentMode:'ONLINE_NOW',paymentMethod:'PIX'},save:false,paymentMethodLabel:'Dinheiro'});
+  expect(call.mock.calls[0][0]).toBe('fiscalValidateOrder');
+});
 
 test('setas checam o ID do rascunho existente sem salvá-lo', async () => {
   call.mockResolvedValue({ok: true});

@@ -1,0 +1,49 @@
+{
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "project": "crmdoceria-9959e",
+  "baseCommit": "cb9f273ce47008f3a175162cc215afe2da66db10",
+  "tests": {
+    "fiscalUnits": {
+      "pass": 30,
+      "fail": 0
+    },
+    "checkoutRegression": {
+      "pass": 59,
+      "fail": 0
+    },
+    "checkoutAndFiscalIntegration": {
+      "pass": 28,
+      "fail": 0
+    },
+    "financialAndRules": {
+      "pass": 27,
+      "fail": 0
+    },
+    "react": {
+      "pass": 28,
+      "fail": 0
+    }
+  },
+  "build": "PASS; existing native-audio sourcemap/Browserslist warnings",
+  "lint": {
+    "result": "PASS",
+    "appErrors": 0,
+    "appWarnings": 65,
+    "baselineWarnings": 65,
+    "newWarnings": 0,
+    "otherChangedFilesErrors": 0
+  },
+  "diffCheck": "PASS",
+  "mainBundle": {
+    "path": "static/js/main.505441d2.js",
+    "beforeGzipBytes": 439588,
+    "afterGzipBytes": 440033
+  },
+  "localVisualCases": 6,
+  "manualDevAcceptance": "PENDING",
+  "realPayment": false,
+  "realInvoice": false,
+  "sms": false,
+  "whatsapp": false,
+  "production": false
+}
