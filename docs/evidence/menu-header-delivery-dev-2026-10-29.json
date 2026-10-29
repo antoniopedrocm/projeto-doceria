@@ -121,7 +121,7 @@
   "build": "PASS with four preexisting native-audio sourcemap warnings and outdated browser compatibility datasets",
   "lint": "PASS, zero code errors/warnings",
   "diffCheck": "PASS",
-  "devMenuHeaderAcceptance": "PENDING manual Matriz/Garavelo desktop/mobile verification",
+  "devMenuHeaderAcceptance": "PASS — user-confirmed manual DEV acceptance on 2026-10-29",
   "localVisualEvidence": "docs/evidence/menu-header; isolated fictional data, font fallback and local cart SVG; not authenticated DEV evidence",
   "previousVisualGatesUnchanged": true,
   "formalProgress": {
@@ -555,5 +555,28 @@
     "scriptBlocksUnchanged": 7,
     "generatedAliasesIdentical": 3,
     "headerOnlyClassesAndCss": true
+  },
+  "manualAcceptance": {
+    "status": "PASS",
+    "source": "User response to focused DEV menu header acceptance checklist",
+    "date": "2026-10-29",
+    "stores": [
+      "ana-guimaraes-doceria-matriz",
+      "ana-guimaraes-doceria-garavelo"
+    ],
+    "viewports": [
+      "desktop",
+      "390x800"
+    ],
+    "scope": [
+      "Central redundant name removed",
+      "Logo and Nosso Cardápio preserved",
+      "Account/cart alignment and categories preserved",
+      "Cart opens/closes without item changes",
+      "Minha Conta navigation and browser return",
+      "Correct store query retained"
+    ],
+    "automatedRemoteVisualExecution": false,
+    "closure": "Documentation only; no new build/deploy/runtime change"
   }
 }
