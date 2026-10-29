@@ -2237,3 +2237,10 @@ O usuário informou que não havia botão/opção de salvar cartão no checkout 
 ## Checkpoint —29/10/2026: header dos cardápios sem nome central redundante
 
 Removida na origem compartilhada bootstrapPublicStore a criação do parágrafo central com nome da loja/canal; config/name/storeId preservados. Header do template único com ações à direita e espaçamento compacto; aliases gerados idênticos, nenhuma regra por loja. [Relatório](MENU_HEADER_VISUAL_ADJUSTMENT.md).25 testes existentes PASS e12 revisões locais de rota/largura, com4 capturas fictícias desktop/mobile. Build/lint/publicação serão registrados; aceite específico DEV PENDENTE. Escopo visual Hosting, sem carrinho/checkout/Auth/backend/InfinitePay/SMS/WhatsApp/PROD. Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%; demais gates preservados.
+
+
+### Entrega técnica —29/10/2026, header dos cardápios
+
+Commit funcional **0f4154a7f3b90284697dc13ac15272eb664085b6**, push DEV concluído. Deploy somente Hosting crmdoceria-9959e, predeploy/workspace absolutos conferidos, release/Deploy complete/exit0.59/59 hashes remotos PASS,17 fontes de sourcemap e50 públicos conferidos.5 rotas públicas (genéricos Matriz/Garavelo e3 aliases) retornam HTML canônico correto e revalidável; duas leituras públicas de configuração DEV retornam os storeIds solicitados. Cache immutable dos bundles hashados preservado; JS/CSS principais inalterados. [Evidência](evidence/menu-header-delivery-dev-2026-10-29.json).
+
+25 testes PASS,12 revisões locais PASS,4 capturas fictícias; comparação DOM confirmou7 scripts e todo markup fora do header intactos, aliases idênticos. Build/lint/diff PASS (build com avisos preexistentes). Sem Functions/Rules/backend/Auth/checkout/financeiro, dados ou mensagens alterados. **Aceite visual DEV específico PENDENTE** para Matriz/Garavelo, desktop/mobile390×800, conta/carrinho e preservação de loja. Demais gates/percentuais preservados: Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%. PROD intacta.

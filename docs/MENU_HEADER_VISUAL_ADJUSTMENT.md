@@ -24,4 +24,11 @@ Sem alteração de scripts de carrinho, checkout, Customer Auth, Área do Client
 
 ## Entrega
 
-Commit/push/Hosting DEV e hashes serão registrados após conclusão. Aceite visual DEV específico **PENDENTE**: Matriz/Garavelo em desktop e390×800; ausência do nome central, logo/título/conta/carrinho/categorias preservados, conta/carrinho e `?store=` corretos. Não criar pedido, pagamento, SMS ou alterar dados reais. Não reabrir aceites de outras páginas.
+Commit/push/Hosting DEV concluídos e hashes conferidos, conforme entrega abaixo. Aceite visual DEV específico **PENDENTE**: Matriz/Garavelo em desktop e390×800; ausência do nome central, logo/título/conta/carrinho/categorias preservados, conta/carrinho e `?store=` corretos. Não criar pedido, pagamento, SMS ou alterar dados reais. Não reabrir aceites de outras páginas.
+
+
+### Entrega técnica —29/10/2026, header dos cardápios
+
+Commit funcional **0f4154a7f3b90284697dc13ac15272eb664085b6**, push DEV concluído. Deploy somente Hosting crmdoceria-9959e, predeploy/workspace absolutos conferidos, release/Deploy complete/exit0.59/59 hashes remotos PASS,17 fontes de sourcemap e50 públicos conferidos.5 rotas públicas (genéricos Matriz/Garavelo e3 aliases) retornam HTML canônico correto e revalidável; duas leituras públicas de configuração DEV retornam os storeIds solicitados. Cache immutable dos bundles hashados preservado; JS/CSS principais inalterados. [Evidência](evidence/menu-header-delivery-dev-2026-10-29.json).
+
+25 testes PASS,12 revisões locais PASS,4 capturas fictícias; comparação DOM confirmou7 scripts e todo markup fora do header intactos, aliases idênticos. Build/lint/diff PASS (build com avisos preexistentes). Sem Functions/Rules/backend/Auth/checkout/financeiro, dados ou mensagens alterados. **Aceite visual DEV específico PENDENTE** para Matriz/Garavelo, desktop/mobile390×800, conta/carrinho e preservação de loja. Demais gates/percentuais preservados: Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%. PROD intacta.
