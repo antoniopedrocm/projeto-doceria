@@ -266,6 +266,8 @@ test('Google oculta alterações locais de senha/e-mail e política InfinitePay 
   assert.equal(f.el('password-security').hidden,true);assert.equal(f.el('verify-email').hidden,true);
   assert.match(f.el('provider-state').textContent,/Google vinculada/);
   assert.match(f.el('profile').textContent,/Gerenciado pela InfinitePay/);
+  assert.match(f.el('profile').textContent,/Não armazenamos os dados do seu cartão/);
+  assert.doesNotMatch(f.el('profile').querySelector('.customer-payment-info').textContent,/salvar|selecionar|adicionar|remover cartões/i);
   assert.equal(f.el('profile').querySelector('input[name="card"], input[name="cvv"]'),null);
 });
 

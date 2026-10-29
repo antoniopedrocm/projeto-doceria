@@ -2,6 +2,12 @@
 
 Ambiente exclusivo: worktree `C:\Users\antonio.pedro\Projeto\projeto-doceria-main\infinitepay-auth-worktree`, branch `feature/infinitepay-customer-auth`, Firebase `crmdoceria-9959e`. PROD não autorizada. Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%, preservados.
 
+## Decisão atual — resposta do suporte e aprovação do usuário
+
+**Caso encerrado como limitação do Checkout Integrado**, conforme resposta do suporte InfinitePay encaminhada pelo usuário em29/10/2026. O suporte informou que salvamento/preenchimento automático de cartão não está disponível no produto `api.checkout.infinitepay.io/links`, não há toggle ou campo de payload para habilitá-lo e a ausência da opção é o comportamento esperado. Essa confirmação é atribuída ao e-mail fornecido pelo usuário; não é resultado de consulta privada automatizada ao provedor.
+
+O usuário aprovou manter a integração atual, retirar a promessa de cartões salvos da Área do Cliente, preservar o prefill canônico e adiar a funcionalidade para uma melhoria futura. Não criar wallet/tokenização/proxy PCI, não migrar para outro produto/provedor e não enviar feedback/mensagem automaticamente. O artigo genérico de Link de Pagamento não é contrato de disponibilidade desse recurso no Checkout Integrado. As etapas abaixo preservam o histórico técnico da investigação.
+
 ## Resultado do caso informado
 
 Foram encontrados os dois pedidos exatos:
@@ -29,7 +35,7 @@ Foram encontrados os dois pedidos exatos:
 
 Anterior: payment_status=PAID, recibo outcome=CONFIRMED, captureMethod=credit_card, amount=100 e paidAmount=105, transactionNsu/slug do recibo iguais aos do pagamento. A reconciliação existente só produz CONFIRMED após a resposta verificada com success=true/paid=true, valor e método válidos. A resposta bruta paid=true não é persistida: essa conclusão vem do contrato de reconciliação e recibo local, não de nova consulta ao provedor. Novo: PENDING/linkState=READY, sem recibo de aprovação. A falta de transação/slug enquanto ainda não aprovado não prova defeito de reconhecimento.
 
-**Não foi encontrada divergência relevante de identidade entre estes dois links. A causa do cartão não reaparecer permanece indeterminada.** Em29/10/2026, o usuário esclareceu que não havia botão/opção de salvar o cartão no primeiro checkout. Registrar como ausência de oferta observada pelo cliente, não como recusa ou falha dele em confirmar uma opção visível. Nosso banco não expõe o estado de salvamento/OTP do provedor. Próximo passo: confirmar com a InfinitePay a disponibilidade/aplicabilidade do recurso nesse Checkout Integrado e por que a opção não apareceu, usando os dois IDs, sem dados de cartão ou códigos. Nenhuma mensagem foi enviada ao suporte.
+**Não foi encontrada divergência relevante de identidade entre estes dois links. O suporte esclareceu que o recurso não existe no Checkout Integrado usado nesses pedidos.** O relato de ausência do botão é coerente com essa limitação; não atribuir o problema ao cliente por recusar ou não confirmar salvamento. Nosso banco não expõe o estado de outros produtos do provedor. A dúvida específica de disponibilidade está encerrada pela resposta recebida, sem novo pagamento ou envio automático de mensagem ao suporte.
 
 ## Base oficial e limites
 
@@ -79,3 +85,12 @@ Roteiro técnico para validação com o provedor (preparado, não enviado):
 3. Existe registro interno de oferta/consentimento/ativação para a transação anterior e qual fluxo deveria ser mostrado no link436a7309…? Resposta somente sobre estado do recurso, sem PAN/CVV/validade ou códigos.
 
 Fechamento deste complemento somente documental: sem novo teste financeiro, consulta ao provedor privado, contato com suporte, alteração de runtime, build ou deploy. Correção anterior da origem do prefill permanece implantada; sua homologação local não equivale a resolver a oferta de cartões salvos da InfinitePay. Percentuais/PROD preservados.
+
+
+## Implementação da decisão aprovada —29/10/2026
+
+Estado atual substitui as hipóteses e o roteiro de consulta das etapas históricas acima: limitação do produto confirmada pelo suporte, decisão aprovada pelo usuário. Mantido Checkout Integrado atual e prefill canônico de465f0040; nenhuma mudança de Auth, pagamento, webhook/payment_check/estoque/cupom ou provider. Texto de Formas de Pagamento alterado para: “Seus pagamentos online são realizados no ambiente seguro da InfinitePay. Não armazenamos os dados do seu cartão.” Removida a promessa de salvar/selecionar/adicionar/remover cartões. Layout e handlers intactos.
+
+**Backlog: cartão salvo — ADIADO / melhoria futura dependente de suporte oficial no Checkout Integrado.** Não é bug aberto nem requisito de implementação local nesta entrega. Uma futura avaliação de troca de produto/provedor exige escopo e decisão próprios, com revalidação de pedidos/idempotência/webhooks/conciliação. A correção de prefill permanece útil para contato/preenchimento de dados e não habilita cartões salvos.
+
+A resposta sobre cartões não encerra pendências de eventos/reembolso da Fase9 nem autoriza PROD. Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%. Não houve submissão ao canal de feedback, contato com suporte, pagamento, SMS ou WhatsApp por ferramentas. A entrega de texto será somente Hosting DEV, com validação DOM e conferência do arquivo publicado; não requer repetir homologação visual completa das páginas já aprovadas.

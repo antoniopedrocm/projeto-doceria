@@ -506,7 +506,7 @@
   "realSms": false,
   "whatsApp": false,
   "production": false,
-  "observedCaseCause": "Undetermined; consistent buyer identity; user reports no save-card option was shown; provider feature availability/applicability needs confirmation",
+  "observedCaseCause": "Provider product limitation, as confirmed in InfinitePay support email supplied by the user on 2026-10-29: saved cards/autofill are unavailable in Integrated Checkout",
   "formalProgress": {
     "phase9": "75%",
     "phase11": "100%",
@@ -522,5 +522,18 @@
     "providerState": "Unknown; no private provider query or new financial test",
     "supportContacted": false,
     "followUpScope": "Documentation only; no build/deploy/runtime change"
+  },
+  "providerClarification": {
+    "date": "2026-10-29",
+    "source": "InfinitePay support email supplied by user; not an automated private provider lookup",
+    "product": "Integrated Checkout POST /links",
+    "savedCardsSupported": false,
+    "activationToggle": false,
+    "activationPayloadField": false,
+    "accountRestrictionReported": false,
+    "status": "Case closed as product limitation",
+    "decision": "Keep current integration and canonical prefill; remove saved-card promises; defer capability to future official support",
+    "userApproved": true,
+    "feedbackSubmitted": false
   }
 }
