@@ -1,0 +1,517 @@
+{
+  "project": "crmdoceria-9959e",
+  "commit": "465f0040e584d666304ee62b98d233698e054352",
+  "scope": "functions:api only",
+  "changedRuntime": [
+    "functions/index.js",
+    "functions/payment-prefill.js"
+  ],
+  "tests": {
+    "unit": 26,
+    "httpEmulator": 20,
+    "total": 46,
+    "negativeControl": {
+      "passed": 19,
+      "failedExpected": 1
+    }
+  },
+  "syntaxCheck": "PASS, CommonJS index.js/payment-prefill.js",
+  "lint": "PASS",
+  "diffCheck": "PASS",
+  "sourceBefore": {
+    "project": "crmdoceria-9959e",
+    "mode": "before",
+    "state": "ACTIVE",
+    "updateTime": "2026-10-27T03:11:28.209014450Z",
+    "runtime": "nodejs22",
+    "revision": "api-00064-xux",
+    "sourceFiles": [
+      {
+        "file": "index.js",
+        "sha256": "0bc639f477d1ba43242255801d85486fbd0dfd6469a148a5ec357738f6b1a908",
+        "matchesExpected": true
+      },
+      {
+        "file": "payment-prefill.js",
+        "sha256": "eb2eb3c80140a2c95592da5f5996ebe662110a588b4fb8df2a3c3c570f4b8e34",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-payment.js",
+        "sha256": "d60646dfedff66606f8e487e5c7783dc58a33391503ab8a62df1d5697ea96860",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-phone.js",
+        "sha256": "fad853247d3ac6fcc25804a7cd5e969d990ec5620716955857ac1ad7f6b6ce90",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-auth.js",
+        "sha256": "444b4877db3fa78898e8b91d75f412256888ceaa679e487993198bb22c11c77b",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-registry.js",
+        "sha256": "102111c5ce23e3e283cd07a1c382373373a353534a5ab8fb0ba4239f47b0df0c",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-identity.js",
+        "sha256": "2c084f81c7afbd63f1ee6febfa3ae2ee63dd454ef133747f8de404c390df543c",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-reservation.js",
+        "sha256": "10cf6ac1b0496a3e9ffac1fa71c3a26edfea89177644fe18501a19bfbde00ea4",
+        "matchesExpected": true
+      },
+      {
+        "file": "payment-signal-policy.js",
+        "sha256": "f7f2aab5a8e433994175758ecc8257c3bc44abb91891ebf7ab228ef52404b87c",
+        "matchesExpected": true
+      }
+    ],
+    "allMatch": true,
+    "writes": 0,
+    "providerCalls": 0,
+    "production": false
+  },
+  "sourceAfter": {
+    "project": "crmdoceria-9959e",
+    "mode": "after",
+    "state": "ACTIVE",
+    "updateTime": "2026-10-29T17:29:16.441324762Z",
+    "runtime": "nodejs22",
+    "revision": "api-00065-vey",
+    "sourceFiles": [
+      {
+        "file": "address-verification-provider.js",
+        "sha256": "dac2186eb7264bd7af7fe68b53935d7d3022de20635232eb990711b20ed8cefa",
+        "matchesExpected": true
+      },
+      {
+        "file": "address-verification.js",
+        "sha256": "3a3cd69d96dbbb8fc37b64929055f1653530891efd7473df2f0a651e6d8e8fa6",
+        "matchesExpected": true
+      },
+      {
+        "file": "admin-customer-preview.js",
+        "sha256": "961bb8e4ffe45d786ff336447a3bf27fc8c99f0ba0f873e70d10a32519316bb0",
+        "matchesExpected": true
+      },
+      {
+        "file": "caixa-core.js",
+        "sha256": "0345c9160e91f9ded5f8611093a03650451cec713ac0506e8f165c287d5122f4",
+        "matchesExpected": true
+      },
+      {
+        "file": "caixa.js",
+        "sha256": "2fbc2c7b7bc9f4bbee40c651fba7a0d47379b5ef9c285762d803a9166094a8df",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-addresses.js",
+        "sha256": "ddd35c26976a142095418cdb87f6194d46f4bc268b0f2dbd8d25a692517cd803",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-auth.js",
+        "sha256": "444b4877db3fa78898e8b91d75f412256888ceaa679e487993198bb22c11c77b",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-identity.js",
+        "sha256": "2c084f81c7afbd63f1ee6febfa3ae2ee63dd454ef133747f8de404c390df543c",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-notification.js",
+        "sha256": "4316c97969103a91f62d2c8b8113b92604df4a8d58a77a17cf4de8e3ade5fefc",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-payment.js",
+        "sha256": "d60646dfedff66606f8e487e5c7783dc58a33391503ab8a62df1d5697ea96860",
+        "matchesExpected": true
+      },
+      {
+        "file": "checkout-reservation.js",
+        "sha256": "10cf6ac1b0496a3e9ffac1fa71c3a26edfea89177644fe18501a19bfbde00ea4",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-migration-plan.js",
+        "sha256": "58821a5a46e2730eb008b8ab81bfb363e62b1d3adc978b1d560fb620c3096369",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-migration-writes.js",
+        "sha256": "8f9fdb2c7bd6f488fef1f4def6592aed7393f926c9d2861e0e03d16d2975ec89",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-orders.js",
+        "sha256": "324440712b8306975680300c47b5c1fd2268b851df6e3413f88b776874fea6b3",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-ownership.js",
+        "sha256": "b32ac07555ad13f610d17887a44c2247bb688d1ccf6fcb80fb6a927af70315fb",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-phone-claim.js",
+        "sha256": "f76980c6bedb0695ca34af1b5e9807e817ef063ce3ebf7784d11b48928a159fd",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-phone.js",
+        "sha256": "fad853247d3ac6fcc25804a7cd5e969d990ec5620716955857ac1ad7f6b6ce90",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-registry.js",
+        "sha256": "102111c5ce23e3e283cd07a1c382373373a353534a5ab8fb0ba4239f47b0df0c",
+        "matchesExpected": true
+      },
+      {
+        "file": "customer-reorder.js",
+        "sha256": "3db44e64f818c29911006b3f52ebda6c60ad75fa60605c68b07b4022caa15314",
+        "matchesExpected": true
+      },
+      {
+        "file": "entre-lojas.js",
+        "sha256": "c8ea6892eb5bd592d4201029bb466bc13b5c4e84149e8b2ab034522f2b2ac284",
+        "matchesExpected": true
+      },
+      {
+        "file": "fiscal-permissions.js",
+        "sha256": "d3eff810fc6972de629ef1089226a10a62fc7130c80699ab3059f1682b2388f9",
+        "matchesExpected": true
+      },
+      {
+        "file": "fiscal.js",
+        "sha256": "d4e955ad078c739f145c6ee1818a53c668bf1f2e771065c8844330a939eb5157",
+        "matchesExpected": true
+      },
+      {
+        "file": "freight-core.js",
+        "sha256": "85f2aba23f92486a253a6a05cde95f4549db979e7a19d364fbcd992b526c990e",
+        "matchesExpected": true
+      },
+      {
+        "file": "freight-distance.js",
+        "sha256": "960794a5fb62d10c27a985cd64ae5d898405f98717928b4f03c3d69d259b9971",
+        "matchesExpected": true
+      },
+      {
+        "file": "index.js",
+        "sha256": "d958414eccd57a36ed9ebefc7dd9e214209b43252beee40dea88854b4ad89adb",
+        "matchesExpected": true
+      },
+      {
+        "file": "infinitepay-diagnostics.js",
+        "sha256": "2771476e77b13bcb8c137854f8b0db68d0f544aebf2bbbd5b0e153996fb7921b",
+        "matchesExpected": true
+      },
+      {
+        "file": "new-order-notifications.js",
+        "sha256": "f20503f2d90a93aa118fb792bcd7f8f15ad7add071692e9e38cc065ab0cc98aa",
+        "matchesExpected": true
+      },
+      {
+        "file": "package-lock.json",
+        "sha256": "1caa0695496180e8985a365d4b37e33c363dd66683c3c444baa82021d1dc46ec",
+        "matchesExpected": true
+      },
+      {
+        "file": "package.json",
+        "sha256": "04b93d785eb24f46243ef65b8ce6e3cf5993b208caa11250b4abf5b1295d0512",
+        "matchesExpected": true
+      },
+      {
+        "file": "payment-prefill.js",
+        "sha256": "671529789f81ad54677dd9273db48f77e7f4a179cd5f7a0bb2cb84fbe4d21890",
+        "matchesExpected": true
+      },
+      {
+        "file": "payment-settings.js",
+        "sha256": "0f1ef6e6c4024e889d193c8a94345fc7378f151ac45756ffd1a3604513786afb",
+        "matchesExpected": true
+      },
+      {
+        "file": "payment-signal-policy.js",
+        "sha256": "f7f2aab5a8e433994175758ecc8257c3bc44abb91891ebf7ab228ef52404b87c",
+        "matchesExpected": true
+      },
+      {
+        "file": "recaptcha-enterprise.js",
+        "sha256": "23bdb620f8d18b06716d97bdfb9162bf766e80538cbcd5cf74d8a6f82b719a12",
+        "matchesExpected": true
+      },
+      {
+        "file": "store-config.js",
+        "sha256": "d9cdc5181d0d1d0b713645deecbce863145f15b482b09fc1332e55572d36c6b2",
+        "matchesExpected": true
+      },
+      {
+        "file": "user-status-core.js",
+        "sha256": "58fb6cfbaeddbb05bc627a99878e3baaf3e337c0cf7b766a80b135ff98daf1a5",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp-access.js",
+        "sha256": "3f69d064f2b4d4172cc1e051899d30ec09a5aa7299178b1b3e417acb4d8d4529",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp-admin.js",
+        "sha256": "1801275333a64bd47e823be07e7911c9d31e4e44b91cb6845a066d040f8a91ab",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp-checkout.js",
+        "sha256": "3dc00d4e0f85b0c7ff4483f137d4e55111a46c3a118da01a50b5b53ce99b9c9c",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp-client.js",
+        "sha256": "180ff93258e953e41e13199dde10a44c8c6b5f4dc2eec69a02e2136193fb5ff4",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp-config.js",
+        "sha256": "e9c11432339933b2d210f4a7f208c6003040df0cde5e51e19812c46d459a9547",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp-history.js",
+        "sha256": "291da7d9915d918d58e488a6be76a4f7ad5d6dca966935d706be2ee2cf0a0d36",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp-order-summary.js",
+        "sha256": "30ac2b24229911c03d7eca02b75357245cab474071fe7a10bc9732038360588f",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp-webhook.js",
+        "sha256": "36d353ccacb827852701fe26cc2eeff3366ba1d4dbea554a273561007de05d2c",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp-worker.js",
+        "sha256": "528b333e4639ce4c2154d67bd7565e304d979939ace5d5fb4cff2e30b69c1fbc",
+        "matchesExpected": true
+      },
+      {
+        "file": "whatsapp.js",
+        "sha256": "d10a95460f2d2f3907fd0ece677e88ec1e69a987498efe7f55f006164957dd96",
+        "matchesExpected": true
+      }
+    ],
+    "allMatch": true,
+    "writes": 0,
+    "providerCalls": 0,
+    "production": false
+  },
+  "runtimeFilesVerified": 45,
+  "sourceFiles": [
+    {
+      "path": "address-verification-provider.js",
+      "sha256": "dac2186eb7264bd7af7fe68b53935d7d3022de20635232eb990711b20ed8cefa"
+    },
+    {
+      "path": "address-verification.js",
+      "sha256": "3a3cd69d96dbbb8fc37b64929055f1653530891efd7473df2f0a651e6d8e8fa6"
+    },
+    {
+      "path": "admin-customer-preview.js",
+      "sha256": "961bb8e4ffe45d786ff336447a3bf27fc8c99f0ba0f873e70d10a32519316bb0"
+    },
+    {
+      "path": "caixa-core.js",
+      "sha256": "0345c9160e91f9ded5f8611093a03650451cec713ac0506e8f165c287d5122f4"
+    },
+    {
+      "path": "caixa.js",
+      "sha256": "2fbc2c7b7bc9f4bbee40c651fba7a0d47379b5ef9c285762d803a9166094a8df"
+    },
+    {
+      "path": "checkout-addresses.js",
+      "sha256": "ddd35c26976a142095418cdb87f6194d46f4bc268b0f2dbd8d25a692517cd803"
+    },
+    {
+      "path": "checkout-auth.js",
+      "sha256": "444b4877db3fa78898e8b91d75f412256888ceaa679e487993198bb22c11c77b"
+    },
+    {
+      "path": "checkout-identity.js",
+      "sha256": "2c084f81c7afbd63f1ee6febfa3ae2ee63dd454ef133747f8de404c390df543c"
+    },
+    {
+      "path": "checkout-notification.js",
+      "sha256": "4316c97969103a91f62d2c8b8113b92604df4a8d58a77a17cf4de8e3ade5fefc"
+    },
+    {
+      "path": "checkout-payment.js",
+      "sha256": "d60646dfedff66606f8e487e5c7783dc58a33391503ab8a62df1d5697ea96860"
+    },
+    {
+      "path": "checkout-reservation.js",
+      "sha256": "10cf6ac1b0496a3e9ffac1fa71c3a26edfea89177644fe18501a19bfbde00ea4"
+    },
+    {
+      "path": "customer-migration-plan.js",
+      "sha256": "58821a5a46e2730eb008b8ab81bfb363e62b1d3adc978b1d560fb620c3096369"
+    },
+    {
+      "path": "customer-migration-writes.js",
+      "sha256": "8f9fdb2c7bd6f488fef1f4def6592aed7393f926c9d2861e0e03d16d2975ec89"
+    },
+    {
+      "path": "customer-orders.js",
+      "sha256": "324440712b8306975680300c47b5c1fd2268b851df6e3413f88b776874fea6b3"
+    },
+    {
+      "path": "customer-ownership.js",
+      "sha256": "b32ac07555ad13f610d17887a44c2247bb688d1ccf6fcb80fb6a927af70315fb"
+    },
+    {
+      "path": "customer-phone-claim.js",
+      "sha256": "f76980c6bedb0695ca34af1b5e9807e817ef063ce3ebf7784d11b48928a159fd"
+    },
+    {
+      "path": "customer-phone.js",
+      "sha256": "fad853247d3ac6fcc25804a7cd5e969d990ec5620716955857ac1ad7f6b6ce90"
+    },
+    {
+      "path": "customer-registry.js",
+      "sha256": "102111c5ce23e3e283cd07a1c382373373a353534a5ab8fb0ba4239f47b0df0c"
+    },
+    {
+      "path": "customer-reorder.js",
+      "sha256": "3db44e64f818c29911006b3f52ebda6c60ad75fa60605c68b07b4022caa15314"
+    },
+    {
+      "path": "entre-lojas.js",
+      "sha256": "c8ea6892eb5bd592d4201029bb466bc13b5c4e84149e8b2ab034522f2b2ac284"
+    },
+    {
+      "path": "fiscal-permissions.js",
+      "sha256": "d3eff810fc6972de629ef1089226a10a62fc7130c80699ab3059f1682b2388f9"
+    },
+    {
+      "path": "fiscal.js",
+      "sha256": "d4e955ad078c739f145c6ee1818a53c668bf1f2e771065c8844330a939eb5157"
+    },
+    {
+      "path": "freight-core.js",
+      "sha256": "85f2aba23f92486a253a6a05cde95f4549db979e7a19d364fbcd992b526c990e"
+    },
+    {
+      "path": "freight-distance.js",
+      "sha256": "960794a5fb62d10c27a985cd64ae5d898405f98717928b4f03c3d69d259b9971"
+    },
+    {
+      "path": "index.js",
+      "sha256": "d958414eccd57a36ed9ebefc7dd9e214209b43252beee40dea88854b4ad89adb"
+    },
+    {
+      "path": "infinitepay-diagnostics.js",
+      "sha256": "2771476e77b13bcb8c137854f8b0db68d0f544aebf2bbbd5b0e153996fb7921b"
+    },
+    {
+      "path": "new-order-notifications.js",
+      "sha256": "f20503f2d90a93aa118fb792bcd7f8f15ad7add071692e9e38cc065ab0cc98aa"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "1caa0695496180e8985a365d4b37e33c363dd66683c3c444baa82021d1dc46ec"
+    },
+    {
+      "path": "package.json",
+      "sha256": "04b93d785eb24f46243ef65b8ce6e3cf5993b208caa11250b4abf5b1295d0512"
+    },
+    {
+      "path": "payment-prefill.js",
+      "sha256": "671529789f81ad54677dd9273db48f77e7f4a179cd5f7a0bb2cb84fbe4d21890"
+    },
+    {
+      "path": "payment-settings.js",
+      "sha256": "0f1ef6e6c4024e889d193c8a94345fc7378f151ac45756ffd1a3604513786afb"
+    },
+    {
+      "path": "payment-signal-policy.js",
+      "sha256": "f7f2aab5a8e433994175758ecc8257c3bc44abb91891ebf7ab228ef52404b87c"
+    },
+    {
+      "path": "recaptcha-enterprise.js",
+      "sha256": "23bdb620f8d18b06716d97bdfb9162bf766e80538cbcd5cf74d8a6f82b719a12"
+    },
+    {
+      "path": "store-config.js",
+      "sha256": "d9cdc5181d0d1d0b713645deecbce863145f15b482b09fc1332e55572d36c6b2"
+    },
+    {
+      "path": "user-status-core.js",
+      "sha256": "58fb6cfbaeddbb05bc627a99878e3baaf3e337c0cf7b766a80b135ff98daf1a5"
+    },
+    {
+      "path": "whatsapp-access.js",
+      "sha256": "3f69d064f2b4d4172cc1e051899d30ec09a5aa7299178b1b3e417acb4d8d4529"
+    },
+    {
+      "path": "whatsapp-admin.js",
+      "sha256": "1801275333a64bd47e823be07e7911c9d31e4e44b91cb6845a066d040f8a91ab"
+    },
+    {
+      "path": "whatsapp-checkout.js",
+      "sha256": "3dc00d4e0f85b0c7ff4483f137d4e55111a46c3a118da01a50b5b53ce99b9c9c"
+    },
+    {
+      "path": "whatsapp-client.js",
+      "sha256": "180ff93258e953e41e13199dde10a44c8c6b5f4dc2eec69a02e2136193fb5ff4"
+    },
+    {
+      "path": "whatsapp-config.js",
+      "sha256": "e9c11432339933b2d210f4a7f208c6003040df0cde5e51e19812c46d459a9547"
+    },
+    {
+      "path": "whatsapp-history.js",
+      "sha256": "291da7d9915d918d58e488a6be76a4f7ad5d6dca966935d706be2ee2cf0a0d36"
+    },
+    {
+      "path": "whatsapp-order-summary.js",
+      "sha256": "30ac2b24229911c03d7eca02b75357245cab474071fe7a10bc9732038360588f"
+    },
+    {
+      "path": "whatsapp-webhook.js",
+      "sha256": "36d353ccacb827852701fe26cc2eeff3366ba1d4dbea554a273561007de05d2c"
+    },
+    {
+      "path": "whatsapp-worker.js",
+      "sha256": "528b333e4639ce4c2154d67bd7565e304d979939ace5d5fb4cff2e30b69c1fbc"
+    },
+    {
+      "path": "whatsapp.js",
+      "sha256": "d10a95460f2d2f3907fd0ece677e88ec1e69a987498efe7f55f006164957dd96"
+    }
+  ],
+  "hostingDeployed": false,
+  "firestoreDocumentWrites": 0,
+  "realPaymentCreated": false,
+  "providerCalls": 0,
+  "realSms": false,
+  "whatsApp": false,
+  "production": false,
+  "observedCaseCause": "Undetermined; no identity discrepancy in stored snapshots; saved-card consent/OTP needs provider-side validation",
+  "formalProgress": {
+    "phase9": "75%",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%"
+  }
+}

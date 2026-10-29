@@ -56,4 +56,11 @@ Runtime alterado apenas em `functions/index.js` (uma linha de origem do prefill)
 - CommonJS sem etapa de compilação: node --check dos dois arquivos de runtime PASS. Lint dos quatro arquivos alterados PASS; diff-check PASS. Não foi necessário rebuild/Hosting do frontend.
 - Zero pagamentos/links/OTP/SMS/WhatsApp reais criados pela auditoria; zero escritas nos documentos DEV. Testes escrevem somente nos emuladores demo.
 
-Commit, push e deploy necessário somente de functions:api serão registrados após conclusão. O comportamento de cartões salvos do provedor permanece dependente da confirmação de consentimento/OTP; não será criado pagamento real para tentar homologá-lo.
+Commit, push e deploy necessário somente de functions:api concluídos e conferidos, conforme entrega abaixo. O comportamento de cartões salvos do provedor permanece dependente da confirmação de consentimento/OTP; não será criado pagamento real para tentar homologá-lo.
+
+
+### Entrega técnica —29/10/2026, prefill canônico
+
+Commit **465f0040e584d666304ee62b98d233698e054352**, push DEV concluído. Deploy somente **functions:api(us-central1)** em crmdoceria-9959e, predeploy/workspace conferidos, atualização/Deploy complete/exit0. Fonte do artefato Cloud lida após publicação:45/45 arquivos de runtime iguais ao staging, estado ACTIVE, revisão api-00065-vey. Apenas index.js/payment-prefill.js diferem do baseline; checkout-payment.js/payment_check/webhook/estados/reservas/cupom/Auth permanecem com a mesma fonte. [Evidência](evidence/infinitepay-prefill-delivery-dev-2026-10-29.json).46 testes PASS, controle negativo comprovado, syntax/lint/diff PASS. Sem rebuild/deploy Hosting, Rules ou outras Functions; sem reescrever pedidos/links existentes e sem teste financeiro real.
+
+**Auditoria e correção da origem do prefill CONCLUÍDAS.** O caso dos dois pedidos continua sem divergência de identidade: ambos C02/Matriz, mesmo telefone E.164/nome/e-mail/handle e flags. Falta validar com cliente/InfinitePay o salvamento/OTP do cartão; isso não é inferível do banco e não foi simulado como concluído. OTP do provedor não concede Auth, histórico ou pagamento na nossa aplicação. Sem contato externo com suporte ou envio de mensagens. Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%, PROD intacta.
