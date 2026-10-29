@@ -20,7 +20,7 @@ test('bootstrap genérico e alias usam o mesmo endpoint público sem login ou Fi
   for(const pathname of ['/cardapio','/cardapio-festa']) {
     const dom=new JSDOM('<header></header><div id="loading-message"></div>');
     const result=await bootstrapPublicStore({location:{pathname,search:pathname==='/cardapio'?'?store=loja-futura-teste':''},document:dom.window.document,fetchImpl:async url=>{calls.push(url);return {ok:true,json:async()=>config};}});
-    assert.equal(result.storeId,config.storeId);assert.ok(dom.window.document.querySelector('header').textContent.includes('Loja futura'));dom.window.close();
+    assert.equal(result.storeId,config.storeId);assert.equal(result.name,'Loja futura');assert.equal(dom.window.document.querySelector('header').textContent,'');dom.window.close();
   }
   assert.match(calls[0],/storeId=loja-futura-teste/);assert.match(calls[1],/alias=cardapio-festa/);
 });

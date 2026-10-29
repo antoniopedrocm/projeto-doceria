@@ -1,0 +1,158 @@
+{
+  "scope": "LOCAL real header/template/bootstrap/controller; fictional catalog/runtime; cart handlers extracted unchanged; font fallback and local SVG icon substitute (deployed icon unchanged)",
+  "checks": [
+    {
+      "width": 390,
+      "menu": "matriz",
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "headerHeight": 72,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 390,
+      "menu": "garavelo",
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "headerHeight": 72,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 390,
+      "menu": "future",
+      "storeId": "loja-futura-teste",
+      "headerHeight": 72,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 390,
+      "menu": "alias-matriz",
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "headerHeight": 72,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 390,
+      "menu": "alias-garavelo",
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "headerHeight": 72,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 390,
+      "menu": "alias-festa",
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "headerHeight": 72,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 1920,
+      "menu": "matriz",
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "headerHeight": 74,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 1920,
+      "menu": "garavelo",
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "headerHeight": 74,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 1920,
+      "menu": "future",
+      "storeId": "loja-futura-teste",
+      "headerHeight": 74,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 1920,
+      "menu": "alias-matriz",
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "headerHeight": 74,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 1920,
+      "menu": "alias-garavelo",
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "headerHeight": 74,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    },
+    {
+      "width": 1920,
+      "menu": "alias-festa",
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "headerHeight": 74,
+      "noStoreTitle": true,
+      "noHorizontalOverflow": true,
+      "noHeaderOverlap": true,
+      "accountNavigation": true,
+      "cartOpenClose": true,
+      "storeAndCartPreserved": true
+    }
+  ],
+  "screenshots": [
+    "mobile-matriz.png",
+    "mobile-garavelo.png",
+    "desktop-matriz.png",
+    "desktop-garavelo.png"
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "production": false
+}

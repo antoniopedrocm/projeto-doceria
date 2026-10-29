@@ -304,6 +304,22 @@
 				scroll-padding-top: 140px !important;
 			}
 		}
+
+        /* Shared menu header: brand at left, account/cart together at right. */
+        .menu-header-row { gap: 12px; }
+        .menu-header-brand { min-width: 0; flex-shrink: 1; }
+        .menu-header-row #customer-account-button { margin-left: auto; flex-shrink: 0; white-space: nowrap; }
+        .menu-header-row #cart-button { flex-shrink: 0; }
+        @media (min-width: 769px) {
+            header .menu-header-row { padding-top: 0; padding-bottom: 0; }
+        }
+        @media (max-width: 768px) {
+            header .menu-header-row { padding: 0; }
+            header .menu-header-brand { flex-direction: column; align-items: flex-start; gap: 3px; }
+            header .menu-header-brand img { width: 120px; height: auto; max-height: 24px !important; }
+            header .menu-header-brand h1 { font-size: 14px !important; line-height: 20px; margin: 0 !important; }
+            .menu-header-row #customer-account-button { padding: 8px 10px; font-size: 13px; }
+        }
 	</style>
 
         <!-- Google Maps API -->
@@ -320,8 +336,8 @@
 <body class="bg-pink-50">
     <!-- CABEÇALHO -->
     <header class="bg-white shadow-md sticky top-0 z-20">
-        <div class="container mx-auto px-3 py-4 flex justify-between items-center">
-            <a href="https://www.anaguimaraesdoceria.com.br" class="flex items-center space-x-4">
+        <div class="menu-header-row container mx-auto px-3 py-4 flex justify-between items-center">
+            <a href="https://www.anaguimaraesdoceria.com.br" class="menu-header-brand flex items-center space-x-4">
                 <img src="/logotipo.png" alt="Logotipo" class="h-10">
                 <h1 class="text-2xl font-bold text-pink-600">Nosso Cardápio</h1>
             </a>

@@ -551,3 +551,8 @@ Commit **465f0040e584d666304ee62b98d233698e054352**, push DEV concluído. Deploy
 ## Complemento —29/10/2026: oferta de cartão salvo não apareceu
 
 O usuário informou que não havia botão/opção de salvar cartão no checkout anterior. Atualizada a auditoria para não atribuir o caso à ausência de consentimento voluntário ou OTP não confirmado por descuido. Identidade dos dois pedidos segue consistente; causa da ausência da oferta e estado de salvamento continuam desconhecidos. Próximo passo é validar com a InfinitePay disponibilidade/aplicabilidade do recurso no Checkout Integrado dessa conta e motivo da não exibição, sem dados PCI. [Relatório e roteiro não enviado](INFINITEPAY_RECURRING_PREFILL_AUDIT.md). Nenhum contato externo, pagamento, SMS/WhatsApp, build, deploy ou runtime alterado neste complemento. Correção do prefill permanece publicada, sem afirmar que resolveu a função de cartões salvos. Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%, PROD intacta.
+
+
+## Checkpoint —29/10/2026: header dos cardápios sem nome central redundante
+
+Removida na origem compartilhada bootstrapPublicStore a criação do parágrafo central com nome da loja/canal; config/name/storeId preservados. Header do template único com ações à direita e espaçamento compacto; aliases gerados idênticos, nenhuma regra por loja. [Relatório](MENU_HEADER_VISUAL_ADJUSTMENT.md).25 testes existentes PASS e12 revisões locais de rota/largura, com4 capturas fictícias desktop/mobile. Build/lint/publicação serão registrados; aceite específico DEV PENDENTE. Escopo visual Hosting, sem carrinho/checkout/Auth/backend/InfinitePay/SMS/WhatsApp/PROD. Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%; demais gates preservados.

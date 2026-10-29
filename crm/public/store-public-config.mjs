@@ -31,8 +31,6 @@ export async function bootstrapPublicStore({location=window.location, document=w
       await load(); return null;
     }
     const config=await fetchPublicStore(storeId ? {storeId,channelId} : {alias}, {fetchImpl});
-    const title=document.createElement('p');title.textContent=config.channel?.name || config.name;
-    title.className='text-center font-bold p-3';document.querySelector('header')?.append(title);
     if(!config.active || !config.catalog.enabled) throw Object.assign(Error('STORE_INACTIVE'),{code:'STORE_INACTIVE'});
     return config;
   } catch(e) {
