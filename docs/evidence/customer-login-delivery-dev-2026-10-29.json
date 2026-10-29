@@ -77,7 +77,7 @@
   "build": "PASS with four preexisting native-audio sourcemap warnings and outdated browser compatibility datasets",
   "lint": "PASS, zero errors; one preexisting no-loop-func warning in address handler",
   "diffCheck": "PASS",
-  "authenticatedDevLoginAcceptance": "PENDING manual login and visual verification",
+  "authenticatedDevLoginAcceptance": "PASS — user-confirmed manual DEV acceptance on 2026-10-29",
   "localVisualEvidence": "docs/evidence/customer-login-redesign; isolated fictional runtime, not authenticated DEV evidence",
   "previousVisualGatesUnchanged": true,
   "formalProgress": {
@@ -510,5 +510,25 @@
     "version": "15.32.0",
     "transport": "Node --use-system-ca, TLS validated",
     "initialAttempt": "Previous cached CLI15.34.1 was incomplete; failed before deployment"
+  },
+  "manualAcceptance": {
+    "status": "PASS",
+    "source": "User reply to the focused DEV entry acceptance checklist",
+    "date": "2026-10-29",
+    "route": "/area-cliente",
+    "viewports": [
+      "1920x889",
+      "390x800"
+    ],
+    "scope": [
+      "Direct Email/password fields and branded card",
+      "Password recovery guidance with empty Email; no real recovery sent",
+      "Usual Customer login and redirect",
+      "Return to menu",
+      "No clipping, horizontal overflow or unnecessary internal scroll"
+    ],
+    "loginMethod": "Not specified by user; no claim that both providers were manually tested",
+    "automatedAuthenticatedBrowserExecution": false,
+    "closure": "Documentation only; no new build, deploy or runtime change"
   }
 }
