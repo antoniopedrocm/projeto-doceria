@@ -1,7 +1,30 @@
 .customer-shell.customer-login-shell{grid-template-columns:minmax(0,1fr)}
-.customer-login-shell>main{grid-column:1;display:flex;justify-content:center;align-items:flex-start}
-.customer-login-shell .customer-login-card{width:100%;max-width:520px;padding:28px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 3px #00000006}
+.customer-login-shell>main{grid-column:1;display:flex;justify-content:center;align-items:center;min-height:calc(100dvh - 64px);padding:40px 24px}
+.customer-login-shell .customer-login-card{width:100%;max-width:448px;min-width:0;padding:32px;background:#fff;border:1px solid #e5e7eb;border-radius:20px;box-shadow:0 8px 32px #11182708,0 1px 3px #11182704}
+.customer-login-heading{margin-bottom:24px}
+.customer-login-heading h1{font-size:24px;letter-spacing:-.025em}
+.customer-login-heading p{margin-top:10px;font-size:14px;color:#6b7280;line-height:1.6}
 .customer-login-card>p{margin:16px 0;color:#4b5563}
-.customer-login-card>button,.customer-login-card>a{display:block;margin-top:16px;padding:12px 16px;border:1px solid #e5e7eb;border-radius:8px;min-height:44px;color:#be185d;font-weight:600;text-align:center;width:100%}
-.customer-login-card [data-signed-out]{display:grid;gap:12px;margin-top:20px}
-.customer-login-card [data-account-google],.customer-login-card [data-account-email]{min-height:44px;border:1px solid #e5e7eb;border-radius:8px;padding:12px;font-weight:600}
+.customer-login-card [data-message]:empty,.customer-login-card [data-email-message]:empty{display:none}
+.customer-login-card [data-message],.customer-login-card [data-email-message]{font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.customer-login-card [data-login-form],.customer-login-card [data-register-form]{display:grid;gap:16px}
+.customer-login-card [data-login-form]>*,.customer-login-card [data-register-form]>*{margin:0}
+.customer-login-card label{display:grid;gap:7px;color:#374151;font-size:14px;font-weight:500;min-width:0}
+.customer-shell.customer-login-shell .customer-login-card .customer-inline-login input{display:block;box-sizing:border-box;width:100%;min-width:0;height:48px;border:1px solid #d1d5db;border-radius:12px;padding:12px 14px;background:#fff;color:#111827;font-size:16px;font-weight:400;transition:border-color .15s,box-shadow .15s}
+.customer-login-card input::placeholder{color:#9ca3af}
+.customer-login-card input:focus{outline:none;border-color:#db2777;box-shadow:0 0 0 3px #fce7f3}
+.customer-login-card [data-forgot]{justify-self:start;color:#be185d;font-size:14px;min-height:32px;text-decoration:none}
+.customer-login-card [data-forgot]:hover{text-decoration:underline}
+.customer-login-card .customer-login-primary,.customer-login-card [data-register-form]>button:not([type]){display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:12px 16px;border:1px solid #db2777;border-radius:12px;background:#db2777;color:#fff;font-size:15px;font-weight:600;box-shadow:0 2px 4px #db277714}
+.customer-login-card .customer-login-primary:hover{background:#be185d;border-color:#be185d}
+.customer-login-divider{display:flex;align-items:center;gap:12px;color:#6b7280;font-size:13px;margin:20px 0}
+.customer-login-divider::before,.customer-login-divider::after{content:'';height:1px;background:#e5e7eb;flex:1}
+.customer-login-card [data-account-google]{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;border:1px solid #d1d5db;border-radius:12px;padding:12px 16px;color:#374151;background:#fff;font-size:15px;font-weight:600;box-shadow:0 1px 2px #1118270d}
+.customer-login-card [data-account-google]:hover{background:#f9fafb}
+.customer-login-card [data-account-google] svg{width:20px;height:20px;flex:none}
+.customer-login-card [data-show-register],.customer-login-card [data-show-login]{display:block;min-height:32px;margin:12px auto 0;font-size:13px;color:#6b7280;text-decoration:none}
+.customer-login-card [data-show-register]:hover,.customer-login-card [data-show-login]:hover{color:#be185d;text-decoration:underline}
+.customer-login-card>button,.customer-login-card>a{display:block;width:100%;min-height:44px;margin-top:20px;padding:10px 16px;border:1px solid #e5e7eb;border-radius:10px;color:#be185d;font-size:14px;font-weight:600;text-align:center}
+.customer-login-card>.customer-login-back{border:0;border-top:1px solid #f3f4f6;border-radius:0;margin-top:20px;padding-top:20px;color:#6b7280}
+.customer-login-card>.customer-login-back:hover{color:#be185d}
+@media(max-width:767px){.customer-login-shell>main{padding:24px 16px}.customer-login-shell .customer-login-card{padding:24px;border-radius:16px}.customer-login-heading h1{font-size:24px}}

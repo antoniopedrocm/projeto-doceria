@@ -3,10 +3,10 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),assert=require('node:assert/strict');
 const webpack=require('../node_modules/webpack');
 const {execFileSync}=require('node:child_process');
-const accountOnly=process.argv.includes('--account-only'),legacyCss=process.argv.includes('--legacy-css');
+const accountOnly=process.argv.includes('--account-only'),loginOnly=process.argv.includes('--login-only'),legacyCss=process.argv.includes('--legacy-css');
 const crm=path.resolve(__dirname,'..'),root=path.resolve(crm,'..');
 const output=fs.mkdtempSync(path.join(os.tmpdir(),'doceria-customer-visual-'));
-const evidence=path.join(root,accountOnly?'docs/evidence/customer-account-polish':'docs/evidence/customer-area-redesign');fs.mkdirSync(evidence,{recursive:true});
+const evidence=path.join(root,loginOnly?'docs/evidence/customer-login-redesign':accountOnly?'docs/evidence/customer-account-polish':'docs/evidence/customer-area-redesign');fs.mkdirSync(evidence,{recursive:true});
 const {chromium}=require(path.join(process.env.CUSTOMER_VISUAL_PLAYWRIGHT_DIR || path.join(os.tmpdir(),'doceria-customer-visual-tools'),'node_modules/playwright'));
 const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(file=>fs.existsSync(file));
 assert.ok(chrome,'No installed browser found');
@@ -22,6 +22,7 @@ webpack({mode:'development',context:crm,entry:path.join(__dirname,'fixtures/cust
  if(error || stats.hasErrors()){console.error(error || stats.toString({all:false,errors:true}));process.exitCode=1;return;}
  const server=http.createServer((req,res)=>{
   const url=new URL(req.url,'http://localhost');let file;
+  if(loginOnly && url.pathname==='/cardapio'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><html><body><h1>Cardápio fictício local</h1></body></html>');return;}
   if(url.pathname==='/fixture.js')file=path.join(output,'fixture.js');
   else if(/\.(mjs|css|png)$/.test(url.pathname))file=path.join(crm,'public',path.basename(url.pathname));
   if(file && fs.existsSync(file)){res.setHeader('Content-Type',file.endsWith('.png')?'image/png':file.endsWith('.css')?'text/css':'text/javascript');res.end(fs.readFileSync(file));return;}
@@ -36,12 +37,22 @@ webpack({mode:'development',context:crm,entry:path.join(__dirname,'fixtures/cust
   const screens=[['home','/area-cliente','Olá, Ana!'],['account','/minha-conta','Minha Conta'],['orders','/meus-pedidos','Meus Pedidos'],['detail','/meus-pedidos/visual-order?store=visual-store','Pedido #1042']];
   for(const width of [320,375,390,430,768,1024,1366,1920]){
    await page.setViewportSize({width,height:width===1920?889:800});
-   for(const [name,url,heading] of accountOnly?screens.filter(([name])=>name==='account'):screens){
+   for(const [name,url,heading] of loginOnly?[['login','/area-cliente?login=1','Área do Cliente']]:accountOnly?screens.filter(([name])=>name==='account'):screens){
     await page.goto(origin+url);await page.getByRole('heading',{name:heading,exact:name!=='home'}).first().waitFor();
     await page.waitForFunction(()=>document.querySelector('.customer-area-dialog') && !document.querySelector('[data-message]')?.textContent.startsWith('Carregando'));
     if(name==='orders')await page.getByRole('button',{name:'Ver pedido',exact:true}).waitFor();
     if(name==='detail')await page.getByRole('heading',{name:'Itens do pedido',exact:true}).waitFor();
-    const sizes=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,inner:[...document.querySelectorAll('.customer-shell main,.customer-shell .customer-area-dialog')].map(el=>({overflow:getComputedStyle(el).overflowY,maxHeight:getComputedStyle(el).maxHeight}))}));
+    if(loginOnly){
+      const loginForm=page.locator('[data-login-form]');
+      await loginForm.getByLabel('Email',{exact:true}).waitFor();await loginForm.getByLabel('Senha',{exact:true}).waitFor();
+      for(const label of ['Entrar com email','Esqueci a senha','Entrar com Google','Voltar ao Cardápio'])assert.ok(await page.getByRole('button',{name:label,exact:true}).isVisible());
+      assert.equal(await page.locator('aside').count(),0);assert.equal(await page.locator('dialog[open]').count(),0);
+      const geometry=await page.evaluate(()=>{const nodes=[...document.querySelectorAll('.customer-login-card input,.customer-login-card button:not([hidden])')].filter(el=>el.getClientRects().length);return nodes.map(el=>({label:el.textContent || el.type,left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,height:el.getBoundingClientRect().height}));});
+      assert.ok(geometry.every(el=>el.left>=0 && el.right<=width+1),JSON.stringify(geometry));
+      const email=loginForm.getByLabel('Email',{exact:true});await email.focus();await page.keyboard.press('Tab');assert.ok(await loginForm.getByLabel('Senha',{exact:true}).evaluate(el=>document.activeElement===el));
+      await page.evaluate(()=>document.activeElement?.blur());
+    }
+    const sizes=await page.evaluate(()=>({width:window.innerWidth,scroll:document.documentElement.scrollWidth,inner:[...document.querySelectorAll('.customer-shell main,.customer-shell .customer-area-dialog')].map(el=>({overflow:getComputedStyle(el).overflowY,maxHeight:getComputedStyle(el).maxHeight}))}));
     assert.ok(sizes.scroll<=width+1,`${name} horizontal overflow at ${width}: ${sizes.scroll}`);assert.ok(sizes.inner.every(s=>!['scroll','auto'].includes(s.overflow)),`${name} inner scroll at ${width}`);
     if(accountOnly){
       const styles=await page.evaluate(()=>{
@@ -52,23 +63,29 @@ webpack({mode:'development',context:crm,entry:path.join(__dirname,'fixtures/cust
       assert.equal(styles.cardBackground,'rgb(255, 255, 255)','Profile needs a white card even with legacy public CSS');assert.ok(styles.cardRadius>=12 && styles.cardPadding>=20);assert.equal(styles.saveBackground,'rgb(219, 39, 119)');assert.ok(styles.saveHeight>=44);assert.ok(styles.actionGap>=8);assert.ok(styles.fieldsWidth<=901);assert.ok(styles.addressBorder>=1);assert.notEqual(styles.badgeBackground,'rgba(0, 0, 0, 0)');
     }
     checks.push({width,screen:name,horizontalOverflow:false,mainInternalScroll:false});
-    if(width===390 || width===1920){await page.evaluate(()=>scrollTo(0,0));await page.mouse.move(width-2,10);const file=`${width===390?'mobile':'desktop'}-${name}.png`;await page.screenshot({path:path.join(evidence,file),fullPage:true});screenshots.push(file);}
+    if(width===390 || width===1920){await page.evaluate(()=>window.scrollTo(0,0));await page.mouse.move(width-2,10);const file=`${width===390?'mobile':'desktop'}-${name}.png`;await page.screenshot({path:path.join(evidence,file),fullPage:true});screenshots.push(file);}
     if(width===390){await page.reload();await page.getByRole('heading',{name:heading,exact:name!=='home'}).first().waitFor();assert.equal(new URL(page.url()).pathname,new URL(origin+url).pathname);}
+    if(loginOnly && width===390){
+      await page.evaluate(()=>window.sessionStorage.setItem('checkoutState_v1',JSON.stringify({storeId:'visual-store',cart:[{id:'visual-item',quantity:2}]})));
+      await page.getByRole('button',{name:'Voltar ao Cardápio',exact:true}).click();await page.waitForURL(url=>url.pathname==='/cardapio');
+      assert.equal(new URL(page.url()).searchParams.get('store'),'visual-store');
+      assert.equal(await page.evaluate(()=>JSON.parse(window.sessionStorage.getItem('checkoutState_v1')).cart[0].quantity),2);
+    }
    }
   }
-  if(!accountOnly){
+  if(!accountOnly && !loginOnly){
   await page.setViewportSize({width:390,height:800});await page.goto(origin+'/area-cliente');await page.getByRole('heading',{name:/Olá, Ana/}).waitFor();
-  await page.evaluate(()=>scrollTo(0,0));await page.getByRole('button',{name:'Abrir menu do cliente'}).click();await page.evaluate(()=>scrollTo(0,0));await page.mouse.move(388,10);await page.screenshot({path:path.join(evidence,'mobile-drawer.png'),fullPage:false});screenshots.push('mobile-drawer.png');await page.keyboard.press('Escape');
+  await page.evaluate(()=>window.scrollTo(0,0));await page.getByRole('button',{name:'Abrir menu do cliente'}).click();await page.evaluate(()=>window.scrollTo(0,0));await page.mouse.move(388,10);await page.screenshot({path:path.join(evidence,'mobile-drawer.png'),fullPage:false});screenshots.push('mobile-drawer.png');await page.keyboard.press('Escape');
   assert.equal(await page.getByRole('button',{name:'Ir para o CRM',exact:true}).count(),0);
   await page.goto(origin+'/area-cliente?dual=1');await page.getByRole('button',{name:'Abrir menu do cliente'}).click();await page.getByRole('button',{name:'Ir para o CRM',exact:true}).click();assert.equal(await page.evaluate(()=>window.fixtureStaff),true);
   for(const width of [390,1920]){
    await page.setViewportSize({width,height:width===390?800:889});await page.goto(origin+'/admin/customer-preview/visual-customer/profile');await page.getByRole('heading',{name:'Minha Conta',exact:true}).waitFor();
    assert.ok(await page.getByRole('region',{name:'Visualização administrativa'}).isVisible());assert.equal(await page.locator('input').count(),0);
-   await page.evaluate(()=>scrollTo(0,0));await page.mouse.move(width-2,10);const file=`${width===390?'mobile':'desktop'}-admin-preview.png`;await page.screenshot({path:path.join(evidence,file),fullPage:true});screenshots.push(file);
+   await page.evaluate(()=>window.scrollTo(0,0));await page.mouse.move(width-2,10);const file=`${width===390?'mobile':'desktop'}-admin-preview.png`;await page.screenshot({path:path.join(evidence,file),fullPage:true});screenshots.push(file);
   }
   }
   assert.deepEqual(external,[],'Unexpected external request');assert.deepEqual(errors,[],'Browser errors');
-  const result={scope:'LOCAL isolated Chrome; fictional data; no Firebase/Auth/SMS/payment requests',accountOnly,legacyPublicStylesheetSimulated:legacyCss,checks,screenshots,errors,externalRequests:external,production:false};
+  const result={scope:'LOCAL isolated Chrome; fictional data; no Firebase/Auth/SMS/payment requests',accountOnly,loginOnly,...(loginOnly?{backToMenuWithStoreAndCart:'PASS',keyboardEmailToPassword:'PASS'}:{}),legacyPublicStylesheetSimulated:legacyCss,checks,screenshots,errors,externalRequests:external,production:false};
   fs.writeFileSync(path.join(evidence,'local-review.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify({checks:checks.length,screenshots:screenshots.length,errors,externalRequests:external}));
  }catch(error){console.error(error.stack);console.error(JSON.stringify({errors,external}));if(page)console.error((await page.locator('body').innerText()).slice(0,2500));process.exitCode=1;}
  finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}

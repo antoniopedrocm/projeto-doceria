@@ -22,7 +22,7 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
       if(!active || retired.current) return;
       const runtime=runtimeFor(sessionAuth);
       const navigate=url=>{const target=new URL(url,window.location.origin);window.location.assign(target.pathname+target.search);};
-      controller=module.installCustomerAccount({host:host.current,runtime,createAccountButton:false,showCheckoutAddressAction:false,
+      controller=module.installCustomerAccount({host:host.current,runtime,createAccountButton:false,showCheckoutAddressAction:false,inlineLogin:!uid,
         onMenu:()=>window.location.assign(menuDestination(sessionStorage)),
         onSession:value=>{if(active && !retired.current && sessionAuth.currentUser?.uid===uid) {setCustomer(value);setMessage('');if(value?.accountLinked) onCustomerResolved?.();}},
         onLogout:()=>{if(active && !retired.current){setCustomer(null);setMessage('Entre com Google ou e-mail para acessar sua conta.');}},
@@ -61,15 +61,14 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
   if(!uid || logoutState!=='idle') return <div className="customer-shell customer-login-shell">
     <header className="customer-topbar"><div className="customer-brand"><img src="/logotipo.png" alt="Ana Guimarães Doceria"/><span>Área do Cliente</span></div></header>
     <main id="customer-main"><section className="customer-login-card" aria-labelledby="customer-login-heading">
-      <h1 id="customer-login-heading">Área do Cliente</h1>
+      <div className="customer-login-heading"><h1 id="customer-login-heading">Área do Cliente</h1><p>Acesse sua conta para acompanhar seus pedidos e cuidar dos seus dados.</p></div>
       {logoutState==='pending'?<p role="status">Saindo da sua conta…</p>:<>
-        <p>Entre com Google ou e-mail para acessar sua conta.</p>
-        {(sessionMessage || message) && <p role="status">{sessionMessage || message}</p>}
+        {(sessionMessage || message) && (sessionMessage || message)!=='Entre com Google ou e-mail para acessar sua conta.' && <p role="status">{sessionMessage || message}</p>}
         {logoutState==='error' && <button type="button" onClick={logout}>Tentar sair novamente</button>}
         {logoutState==='complete' && <a href="/area-cliente">Entrar na minha conta</a>}
       </>}
       <div ref={host} hidden={logoutState!=='idle'}/>
-      <button type="button" onClick={returnToMenu}>Voltar ao Cardápio</button>
+      <button type="button" className="customer-login-back" onClick={returnToMenu}>Voltar ao Cardápio</button>
     </section></main>
   </div>;
   const icons=[Home,UserRound,ShoppingBag];

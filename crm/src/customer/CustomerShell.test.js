@@ -87,7 +87,8 @@ test('logout action closes the drawer while retaining the canonical logout contr
 test.each(['/area-cliente','/minha-conta','/meus-pedidos'])('signed out %s has no private shell or indefinite loading',async path=>{
   session.currentUser=null;window.history.replaceState(null,'',path);await mount({uid:null});
   expect(host.querySelector('aside')).toBeNull();
-  expect(host.textContent).toContain('Entre com Google ou e-mail');
+  expect(host.textContent).toContain('Acesse sua conta');
+  expect(install.mock.calls[0][0].inlineLogin).toBe(true);
   expect(host.textContent).not.toMatch(/Carregando sua conta|Meus Pedidos|Minha Conta|Sair/);
   expect(controller.openAccount).not.toHaveBeenCalled();expect(controller.openOrder).not.toHaveBeenCalled();
   expect(window.location.pathname).toBe(path);

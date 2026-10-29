@@ -1,0 +1,65 @@
+{
+  "scope": "LOCAL isolated Chrome; fictional data; no Firebase/Auth/SMS/payment requests",
+  "accountOnly": false,
+  "loginOnly": true,
+  "backToMenuWithStoreAndCart": "PASS",
+  "keyboardEmailToPassword": "PASS",
+  "legacyPublicStylesheetSimulated": false,
+  "checks": [
+    {
+      "width": 320,
+      "screen": "login",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 375,
+      "screen": "login",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 390,
+      "screen": "login",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 430,
+      "screen": "login",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 768,
+      "screen": "login",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1024,
+      "screen": "login",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1366,
+      "screen": "login",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    },
+    {
+      "width": 1920,
+      "screen": "login",
+      "horizontalOverflow": false,
+      "mainInternalScroll": false
+    }
+  ],
+  "screenshots": [
+    "mobile-login.png",
+    "desktop-login.png"
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "production": false
+}
