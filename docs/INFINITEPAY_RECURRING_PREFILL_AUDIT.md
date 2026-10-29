@@ -94,3 +94,12 @@ Estado atual substitui as hipóteses e o roteiro de consulta das etapas históri
 **Backlog: cartão salvo — ADIADO / melhoria futura dependente de suporte oficial no Checkout Integrado.** Não é bug aberto nem requisito de implementação local nesta entrega. Uma futura avaliação de troca de produto/provedor exige escopo e decisão próprios, com revalidação de pedidos/idempotência/webhooks/conciliação. A correção de prefill permanece útil para contato/preenchimento de dados e não habilita cartões salvos.
 
 A resposta sobre cartões não encerra pendências de eventos/reembolso da Fase9 nem autoriza PROD. Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%. Não houve submissão ao canal de feedback, contato com suporte, pagamento, SMS ou WhatsApp por ferramentas. A entrega de texto será somente Hosting DEV, com validação DOM e conferência do arquivo publicado; não requer repetir homologação visual completa das páginas já aprovadas.
+
+
+### Entrega da decisão —29/10/2026: informação de pagamento corrigida
+
+Commit **c1f594c377135f6a83bf4dea6493ee4a419d965a**, push DEV concluído. Deploy somente Hosting crmdoceria-9959e, predeploy/workspace conferidos, release/Deploy complete/exit0.59/59 hashes remotos,17 fontes de sourcemap e50 públicos conferidos; JS/CSS principais, header e outras páginas preservados. Verificação de fronteira confirmou que o controlador difere apenas pela substituição do parágrafo aprovado. Novo texto publicado: “Seus pagamentos online são realizados no ambiente seguro da InfinitePay. Não armazenamos os dados do seu cartão.” [Evidência](evidence/infinitepay-saved-card-policy-dev-2026-10-29.json).
+
+54 testes PASS; build/diff PASS e lint sem erros (1 aviso preexistente no-loop-func no controlador; build mantém avisos native-audio/Browserslist). Teste DOM real com SDK simulado confirma informação e ausência de promessa de gerenciamento de cartões. Não alegar captura visual autenticada; esta alteração textual foi validada pelo DOM e bytes do módulo publicado, sem repetir aceite das páginas aprovadas.
+
+**Decisão aprovada CONCLUÍDA no DEV:** integração mantida, prefill canônico mantido, expectativa de cartão salvo removida e investigação encerrada como limitação informada pelo suporte. Cartão salvo fica adiado no backlog; nenhuma carteira local, migração ou mensagem/feedback ao provedor. Pendências financeiras da Fase9 seguem abertas. Sem Functions/Rules/Auth/backend, dados, pagamento, SMS ou WhatsApp alterados; PROD intacta. Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%.
