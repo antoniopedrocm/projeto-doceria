@@ -506,12 +506,21 @@
   "realSms": false,
   "whatsApp": false,
   "production": false,
-  "observedCaseCause": "Undetermined; no identity discrepancy in stored snapshots; saved-card consent/OTP needs provider-side validation",
+  "observedCaseCause": "Undetermined; consistent buyer identity; user reports no save-card option was shown; provider feature availability/applicability needs confirmation",
   "formalProgress": {
     "phase9": "75%",
     "phase11": "100%",
     "phase12": "100%",
     "global": "95,00%",
     "phase13": "0%"
+  },
+  "userReportedSaveOption": {
+    "date": "2026-10-29",
+    "source": "User response in this chat",
+    "reported": "No button/option to save the card was shown in the previous checkout",
+    "interpretation": "Do not attribute the issue to the user declining or failing to confirm a visible save option",
+    "providerState": "Unknown; no private provider query or new financial test",
+    "supportContacted": false,
+    "followUpScope": "Documentation only; no build/deploy/runtime change"
   }
 }

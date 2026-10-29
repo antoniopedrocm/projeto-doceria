@@ -29,7 +29,7 @@ Foram encontrados os dois pedidos exatos:
 
 Anterior: payment_status=PAID, recibo outcome=CONFIRMED, captureMethod=credit_card, amount=100 e paidAmount=105, transactionNsu/slug do recibo iguais aos do pagamento. A reconciliação existente só produz CONFIRMED após a resposta verificada com success=true/paid=true, valor e método válidos. A resposta bruta paid=true não é persistida: essa conclusão vem do contrato de reconciliação e recibo local, não de nova consulta ao provedor. Novo: PENDING/linkState=READY, sem recibo de aprovação. A falta de transação/slug enquanto ainda não aprovado não prova defeito de reconhecimento.
 
-**Não foi encontrada divergência relevante de identidade entre estes dois links. A causa do cartão não reaparecer permanece indeterminada.** Não é possível concluir pelo nosso banco se houve consentimento de salvamento, OTP concluído ou ativação do recurso na interface do provedor. Próximo passo: validar esse estado com o cliente/InfinitePay usando os dois IDs, sem enviar dados de cartão ou códigos. Nenhuma mensagem foi enviada ao suporte.
+**Não foi encontrada divergência relevante de identidade entre estes dois links. A causa do cartão não reaparecer permanece indeterminada.** Em29/10/2026, o usuário esclareceu que não havia botão/opção de salvar o cartão no primeiro checkout. Registrar como ausência de oferta observada pelo cliente, não como recusa ou falha dele em confirmar uma opção visível. Nosso banco não expõe o estado de salvamento/OTP do provedor. Próximo passo: confirmar com a InfinitePay a disponibilidade/aplicabilidade do recurso nesse Checkout Integrado e por que a opção não apareceu, usando os dois IDs, sem dados de cartão ou códigos. Nenhuma mensagem foi enviada ao suporte.
 
 ## Base oficial e limites
 
@@ -64,3 +64,18 @@ Commit, push e deploy necessário somente de functions:api concluídos e conferi
 Commit **465f0040e584d666304ee62b98d233698e054352**, push DEV concluído. Deploy somente **functions:api(us-central1)** em crmdoceria-9959e, predeploy/workspace conferidos, atualização/Deploy complete/exit0. Fonte do artefato Cloud lida após publicação:45/45 arquivos de runtime iguais ao staging, estado ACTIVE, revisão api-00065-vey. Apenas index.js/payment-prefill.js diferem do baseline; checkout-payment.js/payment_check/webhook/estados/reservas/cupom/Auth permanecem com a mesma fonte. [Evidência](evidence/infinitepay-prefill-delivery-dev-2026-10-29.json).46 testes PASS, controle negativo comprovado, syntax/lint/diff PASS. Sem rebuild/deploy Hosting, Rules ou outras Functions; sem reescrever pedidos/links existentes e sem teste financeiro real.
 
 **Auditoria e correção da origem do prefill CONCLUÍDAS.** O caso dos dois pedidos continua sem divergência de identidade: ambos C02/Matriz, mesmo telefone E.164/nome/e-mail/handle e flags. Falta validar com cliente/InfinitePay o salvamento/OTP do cartão; isso não é inferível do banco e não foi simulado como concluído. OTP do provedor não concede Auth, histórico ou pagamento na nossa aplicação. Sem contato externo com suporte ou envio de mensagens. Fase9=75%, Fase11=100%, Fase12=100%, Global=95,00%, Fase13=0%, PROD intacta.
+
+
+### Complemento do usuário —29/10/2026: opção de salvamento não apresentada
+
+Relato: “não tinha o botão/opção de salvar o cartão”. Evidência declarada pelo usuário, não captura automatizada da interface da InfinitePay. Não se conclui que o cartão foi salvo, nem que o cliente recusou salvar. O estado interno do provedor continua desconhecido; permanece comprovada somente a consistência da identidade nos nossos registros.
+
+A ajuda oficial descreve oferta de salvamento no Link de Pagamento e diz que não exige ativação pelo lojista. Isso não explica a ausência relatada no checkout específico e não constitui confirmação de disponibilidade/eligibilidade para esta transação do Checkout Integrado. A documentação pública da API consultada não fornece contrato para listar cartões ou forçar a oferta via parâmetro saveCard. Não adicionar flags não documentadas, carteira ou tokenização própria.
+
+Roteiro técnico para validação com o provedor (preparado, não enviado):
+
+1. O salvamento nativo documentado para Link de Pagamento está disponível para links desta conta gerados por POST /links no Checkout Integrado?
+2. No pedido f8b651b1…, aprovado com cartão, por que a opção não foi apresentada? Há condição de elegibilidade/interface aplicável a esse pagamento ou ao prefill customer? Não afirmar antecipadamente nenhuma dessas hipóteses.
+3. Existe registro interno de oferta/consentimento/ativação para a transação anterior e qual fluxo deveria ser mostrado no link436a7309…? Resposta somente sobre estado do recurso, sem PAN/CVV/validade ou códigos.
+
+Fechamento deste complemento somente documental: sem novo teste financeiro, consulta ao provedor privado, contato com suporte, alteração de runtime, build ou deploy. Correção anterior da origem do prefill permanece implantada; sua homologação local não equivale a resolver a oferta de cartões salvos da InfinitePay. Percentuais/PROD preservados.
