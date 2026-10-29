@@ -1,0 +1,199 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-29T17:14:27.295Z",
+  "mode": "READ_ONLY",
+  "databaseEdition": "STANDARD",
+  "customerCount": 18,
+  "paymentCount": 10,
+  "queryLimit": 250,
+  "truncatedPossible": false,
+  "settings": [
+    {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "configurationExists": true,
+      "enabled": true,
+      "sendCustomerDataEffective": true,
+      "explicitSendCustomerData": true
+    },
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "configurationExists": true,
+      "enabled": true,
+      "sendCustomerDataEffective": true,
+      "explicitSendCustomerData": true
+    },
+    {
+      "storeId": "apfood",
+      "configurationExists": false,
+      "enabled": false,
+      "sendCustomerDataEffective": null,
+      "explicitSendCustomerData": null
+    }
+  ],
+  "c02": {
+    "canonicalStatus": "CANONICAL",
+    "normalizedPhonePresent": true,
+    "allPhoneFieldsAgree": true,
+    "strongOwnerCount": 3,
+    "aliasCount": 4
+  },
+  "groups": [
+    {
+      "canonicalCustomerReference": "C02",
+      "paymentCount": 10,
+      "distinctSentPhoneCount": 1,
+      "missingPhoneCount": 0,
+      "mismatchCount": 0
+    }
+  ],
+  "payments": [
+    {
+      "paymentReference": "PAY_c1a90df48d",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-13T01:32:51.249Z",
+      "paymentStatus": "PAID",
+      "linkState": "READY",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    },
+    {
+      "paymentReference": "PAY_97453cdd88",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-18T05:03:12.353Z",
+      "paymentStatus": "EXPIRED",
+      "linkState": "READY",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    },
+    {
+      "paymentReference": "PAY_c75bc94c31",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-29T17:08:02.463Z",
+      "paymentStatus": "PENDING",
+      "linkState": "READY",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    },
+    {
+      "paymentReference": "PAY_13e38f7add",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-11T13:14:52.925Z",
+      "paymentStatus": "EXPIRED",
+      "linkState": "READY",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    },
+    {
+      "paymentReference": "PAY_b41cb9294d",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-11T00:04:49.488Z",
+      "paymentStatus": "EXPIRED",
+      "linkState": "READY",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    },
+    {
+      "paymentReference": "PAY_6ab666daeb",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-12T18:56:48.383Z",
+      "paymentStatus": "PAID",
+      "linkState": "READY",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    },
+    {
+      "paymentReference": "PAY_56076d4196",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-12T18:26:01.471Z",
+      "paymentStatus": "EXPIRED",
+      "linkState": "READY",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    },
+    {
+      "paymentReference": "PAY_82e2682f83",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-11T02:30:15.995Z",
+      "paymentStatus": "EXPIRED",
+      "linkState": "READY",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    },
+    {
+      "paymentReference": "PAY_f0ddbfb258",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-10T19:34:13.132Z",
+      "paymentStatus": "EXPIRED",
+      "linkState": "RECONCILIATION_REQUIRED",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    },
+    {
+      "paymentReference": "PAY_e5e152f843",
+      "canonicalCustomerReference": "C02",
+      "sourceWasAlias": false,
+      "createdAt": "2026-10-29T16:40:33.799Z",
+      "paymentStatus": "PAID",
+      "linkState": "READY",
+      "customerPresent": true,
+      "phonePresent": true,
+      "e164": true,
+      "phoneMatchesCurrentCanonical": true,
+      "namePresent": true,
+      "emailPresent": true
+    }
+  ],
+  "writes": 0,
+  "providerCalls": 0,
+  "production": false,
+  "limitations": [
+    "Stored prefill snapshots are not a provider request capture; READY link supports that create succeeded, but request body was not recorded",
+    "Provider saved-card consent/OTP state is not available to this application",
+    "No PCI value/schema-wide historical scan; persistence boundary audited in code"
+  ]
+}

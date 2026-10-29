@@ -1,0 +1,114 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-29T17:18:53.944Z",
+  "prior": {
+    "orderId": "f8b651b1c6259ba3509af7883b1473df5f6c895aa2b56ea709b5c6ad7c320760",
+    "paymentId": "f8b651b1c6259ba3509af7883b1473df5f6c895aa2b56ea709b5c6ad7c320760",
+    "canonicalCustomerReference": "C02",
+    "customerIdResolvesToCanonical": true,
+    "sourceWasAlias": false,
+    "storeId": "ana-guimaraes-doceria-matriz",
+    "orderNsu": "f8b651b1c6259ba3509af7883b1473df5f6c895aa2b56ea709b5c6ad7c320760",
+    "orderPathIdentityMatches": true,
+    "orderCustomerMatches": true,
+    "ownerApproved": true,
+    "createdAt": "2026-10-29T16:40:33.799Z",
+    "paymentStatus": "PAID",
+    "linkState": "READY",
+    "amount": 100,
+    "phonePresent": true,
+    "phoneFormat": "E.164 (+55...)",
+    "phoneMatchesCurrentCanonical": true,
+    "namePresent": true,
+    "emailPresent": true,
+    "customerFieldNames": [
+      "email",
+      "name",
+      "phone_number"
+    ],
+    "sendCustomerData": true,
+    "sendDeliveryAddress": true,
+    "address": {
+      "present": false,
+      "fields": []
+    },
+    "transactionPresent": true,
+    "slugPresent": true,
+    "receipts": [
+      {
+        "outcome": "CONFIRMED",
+        "captureMethod": "credit_card",
+        "amount": 100,
+        "paidAmount": 105,
+        "transactionMatches": true,
+        "slugMatches": true,
+        "createdAt": "2026-10-29T16:43:37.882Z"
+      }
+    ]
+  },
+  "next": {
+    "orderId": "436a7309fab910935aec0e5025be26764a547db326a7334e871ace8dbec6a7c4",
+    "paymentId": "436a7309fab910935aec0e5025be26764a547db326a7334e871ace8dbec6a7c4",
+    "canonicalCustomerReference": "C02",
+    "customerIdResolvesToCanonical": true,
+    "sourceWasAlias": false,
+    "storeId": "ana-guimaraes-doceria-matriz",
+    "orderNsu": "436a7309fab910935aec0e5025be26764a547db326a7334e871ace8dbec6a7c4",
+    "orderPathIdentityMatches": true,
+    "orderCustomerMatches": true,
+    "ownerApproved": true,
+    "createdAt": "2026-10-29T17:08:02.463Z",
+    "paymentStatus": "PENDING",
+    "linkState": "READY",
+    "amount": 100,
+    "phonePresent": true,
+    "phoneFormat": "E.164 (+55...)",
+    "phoneMatchesCurrentCanonical": true,
+    "namePresent": true,
+    "emailPresent": true,
+    "customerFieldNames": [
+      "email",
+      "name",
+      "phone_number"
+    ],
+    "sendCustomerData": true,
+    "sendDeliveryAddress": true,
+    "address": {
+      "present": false,
+      "fields": []
+    },
+    "transactionPresent": false,
+    "slugPresent": false,
+    "receipts": []
+  },
+  "comparison": {
+    "canonicalCustomerSame": true,
+    "sourceCustomerIdSame": true,
+    "storeSame": true,
+    "handleSame": true,
+    "apiKeyInCurrentProvider": false,
+    "endpointInCurrentProvider": "POST https://api.checkout.infinitepay.io/links",
+    "customerNameSame": true,
+    "customerEmailSame": true,
+    "customerEmailSameIgnoringCase": true,
+    "phoneExactSame": true,
+    "customerFlagsSame": true,
+    "deliveryFlagsSame": true,
+    "addressSame": true,
+    "redirectUrlSame": true,
+    "webhookUrlSame": true,
+    "amountSame": true,
+    "orderNsuSame": false
+  },
+  "previousCreditCardConfirmed": true,
+  "paidTrueRawStored": false,
+  "providerCalls": 0,
+  "writes": 0,
+  "production": false,
+  "limitations": [
+    "Creation payload reconstructed from persisted snapshot and current provider source; raw requests were intentionally not logged",
+    "No saved-card consent or provider OTP state exposed by integration",
+    "paid=true is established by successful local reconciliation contract and CONFIRMED receipt, not a stored raw response or new provider query",
+    "No PCI fields queried; name/email/phone and merchant values compared in memory, not emitted"
+  ]
+}

@@ -2049,7 +2049,7 @@ app.post("/checkout/confirmar", async (req, res) => {
           reservation:{state:'HELD',stock:stockUpdates.map(s=>({path:s.ref.path,quantity:s.quantity})),
             couponPath:cupomDocRef?.path || null,couponCode,
             customerPath:cupomDocRef && clienteSnap?.exists ? clienteRef.path : null},
-          ...paymentPrefill(paymentConfig,cliente,req.body.delivery,buyerEmail),
+          ...paymentPrefill(paymentConfig,clienteSnap.data(),req.body.delivery,buyerEmail),
           createdAt:FieldValue.serverTimestamp()
         });
       }

@@ -317,6 +317,33 @@ test('HTTP oculta erro upstream e mantém tentativa ambígua sem novo link ou re
   assert.equal(links,callsBefore+1);
   assert.equal((await stockRef.get()).data().estoque,stockBefore-1);
 });
+test('prefill recorrente usa Customer canônico via alias, ignora telefone/nome/PCI do browser e mantém o mesmo E.164',async()=>{
+  const {createHash}=require('node:crypto');
+  const identity=await admin.auth().verifyIdToken(token),aliasId='prefill-reviewed-alias';
+  const mapping=db.doc(`customerAuthIdentities/${digest('email_password',identity.uid)}`),prior=(await mapping.get()).data();
+  const alias=db.doc(`clientes/${aliasId}`),aliasMap=db.doc('integrations/customerRegistry/aliases/'+createHash('sha256').update(aliasId).digest('hex'));
+  await alias.set({canonicalStatus:'ALIAS',canonicalCustomerId:customerId,nome:'Nome antigo do alias',telefone:'62985007778'});
+  await aliasMap.set({state:'READY',customerId});await mapping.update({customerId:aliasId});
+  await db.doc(`lojas/${store}/produtos/canonical-prefill`).set({nome:'Produto prefill',ativo:true,status:'Ativo',preco:10,estoque:3});
+  const seen=[];
+  try {
+    const selected=await selectIdentity('strong_auth');assert.equal(selected.status,200);
+    for(const phone of ['62985007778','+5562985007778']) {
+      const b=body();b.checkoutIdentityToken=selected.data.token;b.idempotencyKey=require('node:crypto').randomUUID();
+      b.itens=[{produtoId:'canonical-prefill',quantity:1,preco:10}];
+      Object.assign(b.cliente,{nome:'Nome enviado pelo navegador',telefone:phone,email:'browser@example.test',cardNumber:'PCI_SENTINEL',CVV:'CVV_SENTINEL',cardToken:'TOKEN_SENTINEL'});
+      const result=await send(b);assert.equal(result.status,200,JSON.stringify(result));
+      const payload=linkBodies.at(-1),payment=(await db.doc(`checkoutPayments/${result.data.paymentId}`).get()).data();
+      const order=(await db.doc(payment.orderPath).get()).data();
+      assert.equal(payment.checkoutIdentity.customerId,customerId);assert.equal(order.clienteId,customerId);
+      assert.deepEqual(payload.customer,{name:'Cliente teste',phone_number:'+5562999991234',email:identity.email});
+      assert.deepEqual(payment.customer,payload.customer);assert.deepEqual(Object.keys(payload.customer).sort(),['email','name','phone_number']);
+      assert.doesNotMatch(JSON.stringify({payload,payment,order}),/PCI_SENTINEL|CVV_SENTINEL|TOKEN_SENTINEL/);
+      seen.push(payload.customer.phone_number);
+    }
+    assert.deepEqual(seen,['+5562999991234','+5562999991234']);
+  } finally {await mapping.set(prior);await alias.delete();await aliasMap.delete();}
+});
 test('HTTP rejeita quantidade duplicada/preço/frete manipulados',async()=>{
   const b=body();
   assert.equal((await send({...b,itens:[...b.itens,...b.itens],subtotal:20})).status,400);
