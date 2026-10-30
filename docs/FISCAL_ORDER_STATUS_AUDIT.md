@@ -40,6 +40,6 @@ Nenhuma API, Function, Rule, índice, Auth, payment_check, webhook, estoque, cup
 - 49 testes React: badges e controles/handlers fiscais, autoridade de método online e seleção obrigatória offline.
 - Nenhum pedido, pagamento, nota fiscal, SMS ou WhatsApp real foi criado; nenhum status do pedido real foi alterado para passar o teste.
 
-Build PASS (avisos preexistentes de sourcemap/native-audio e metadados de navegadores); lint PASS, 65 avisos preexistentes de App.js sem aviso novo; diff-check PASS. [Evidência local](evidence/fiscal-order-status-local.json). Publicação e commit: registrar após a entrega. Aceite manual fiscal continua pendente. Não iniciar Mercado Pago antes do aceite.
+Build PASS (avisos preexistentes de sourcemap/native-audio e metadados de navegadores); lint PASS, 65 avisos preexistentes de App.js sem aviso novo; diff-check PASS. [Evidência local](evidence/fiscal-order-status-local.json). Commit funcional **21fbd58d99ac94a9bdbcd8478cab060f1ffb49b5**, push na branch feature/infinitepay-customer-auth e **Hosting DEV publicado** (CLI exit 0). Verificação remota **60/60 hashes**, 23 fontes de sourcemap e 51 fontes públicas; revalidação de HTML e immutable em assets preservados. [Evidência Hosting](evidence/fiscal-order-status-hosting-dev.json). Nenhuma Function ou Rule publicada. Pedido real intacto. **Correção técnica entregue; homologação fiscal manual PENDENTE**. Aceite manual fiscal continua pendente. Não iniciar Mercado Pago antes do aceite.
 
 Percentuais preservados: Fase 9 75%; Fases 11/12 100%; Global 95,00%; Fase 13 0%.
