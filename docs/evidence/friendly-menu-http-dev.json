@@ -1,0 +1,58 @@
+{
+  "project": "crmdoceria-9959e",
+  "commit": "bacb754c450557af4ed6f91cef1a63861b12a2de",
+  "readOnly": true,
+  "checkedAt": "2026-10-30T03:04:36.998Z",
+  "routes": [
+    {
+      "path": "/cardapio-matriz",
+      "status": 200,
+      "templateMatches": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/cardapio-garavelo",
+      "status": 200,
+      "templateMatches": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/cardapio-festa",
+      "status": 200,
+      "templateMatches": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/cardapio-apfood",
+      "status": 200,
+      "templateMatches": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/cardapio-loja-que-nao-existe",
+      "status": 200,
+      "templateMatches": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/cardapio?store=ana-guimaraes-doceria-matriz",
+      "status": 200,
+      "templateMatches": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/cardapio?store=ana-guimaraes-doceria-garavelo",
+      "status": 200,
+      "templateMatches": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    },
+    {
+      "path": "/cardapio",
+      "status": 200,
+      "templateMatches": true,
+      "cache": "no-cache, max-age=0, must-revalidate"
+    }
+  ],
+  "passed": true,
+  "production": false
+}

@@ -1,0 +1,90 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-30T03:02:05.671Z",
+  "authenticated": false,
+  "readOnly": true,
+  "cases": [
+    {
+      "path": "/cardapio-matriz",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "status": 200,
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "direct": true,
+      "refresh": true,
+      "legacyReplace": true,
+      "publicCustomerRoundTrip": true,
+      "noHorizontalOverflow": true,
+      "pageErrorNames": []
+    },
+    {
+      "path": "/cardapio-garavelo",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "status": 200,
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "direct": true,
+      "refresh": true,
+      "legacyReplace": true,
+      "publicCustomerRoundTrip": true,
+      "noHorizontalOverflow": true,
+      "pageErrorNames": []
+    },
+    {
+      "path": "/cardapio-matriz",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "status": 200,
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "direct": true,
+      "refresh": true,
+      "legacyReplace": true,
+      "publicCustomerRoundTrip": true,
+      "noHorizontalOverflow": true,
+      "pageErrorNames": []
+    },
+    {
+      "path": "/cardapio-garavelo",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "status": 200,
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "direct": true,
+      "refresh": true,
+      "legacyReplace": true,
+      "publicCustomerRoundTrip": true,
+      "noHorizontalOverflow": true,
+      "pageErrorNames": []
+    },
+    {
+      "path": "/cardapio-festa",
+      "status": 200,
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "channelId": "festas",
+      "direct": true
+    },
+    {
+      "path": "/cardapio-apfood",
+      "status": 200,
+      "storeId": "apfood",
+      "channelId": null,
+      "direct": true
+    },
+    {
+      "path": "/cardapio-loja-que-nao-existe",
+      "status": 200,
+      "notFound": true,
+      "noStoreFallback": true
+    }
+  ],
+  "blockedMutations": 0,
+  "production": false
+}

@@ -36,7 +36,7 @@ Carrinho, catálogo, preços, estoque, frete, Auth, checkout, provider, SMS/What
 - 77 testes Node de rotas, bootstrap público, normalização, canonical, origem/login/logout, carrinho real/restauração/recompra e isolamento por loja/aba.
 - 78 testes React de home, links, CustomerShell e ApplicationGate, incluindo retorno amigável, sessão e guardas.
 - 51 regressões de grafo ESM, Auth canônico, controlador Customer, resolver público e middleware real do Hosting/cache. O teste do Hosting foi atualizado para fornecer o template reescrito e conferir os slugs novos/inválidos.
-- Build PASS; bundle principal `main.add8e33e.js`, 440,19 kB gzip (aproximadamente +263 B). Avisos preexistentes de native-audio/source maps e metadados de navegadores. Após o build, o comentário de globals do módulo público foi sincronizado como asset estático, sem mudança de lógica.
+- Build PASS; bundle principal `main.add8e33e.js`, 440,19 kB gzip (aproximadamente +263 B). Avisos preexistentes de native-audio/source maps e metadados de navegadores.
 - Lint sem erros; três avisos já existentes: dois do regex de controle da allowlist (fonte/cópia) e um da fixture de URL javascript rejeitada. Diff-check PASS.
 
 ### Débito de teste preexistente, fora da alteração de rotas
@@ -45,6 +45,8 @@ Carrinho, catálogo, preços, estoque, frete, Auth, checkout, provider, SMS/What
 
 ## Entrega e aceite
 
-Commit, push, Hosting DEV e verificação remota: registrar no checkpoint após publicação. Abertura direta/refresh/URL antiga e estado inválido serão conferidos no DEV. Aceite humano autenticado Matriz/Garavelo → Minha Conta → Voltar continua pendente até resposta do usuário; testes simulados não equivalem a esse aceite. Não é necessário criar pedido, pagamento ou enviar SMS/WhatsApp.
+Commit **bacb754c450557af4ed6f91cef1a63861b12a2de**, push e Hosting DEV concluídos. 60/60 hashes, 23 fontes de sourcemap e 51 fontes públicas verificados; oito URLs retornaram o mesmo template sem 404/cache agressivo. Chrome real conferiu Matriz/Garavelo em desktop 1920×889 e mobile 390×800: abertura direta, refresh, normalização por replace e ida/volta da entrada pública Customer PASS, sem overflow ou pageerror. Festas/ApFood e estado inválido também PASS. [Checkpoint e evidências](CHECKPOINT_FRIENDLY_MENU_URLS.md).
+
+Aceite humano autenticado Matriz/Garavelo → Minha Conta → Voltar continua pendente até resposta do usuário; Chrome foi executado sem autenticação, e testes simulados de login/logout não equivalem a esse aceite. Não é necessário criar pedido, pagamento ou enviar SMS/WhatsApp.
 
 Percentuais preservados: Fase 9 75%; Fases 11/12 100%; Global 95,00%; Fase 13 0%. Mercado Pago não implementado. Pendência fiscal anterior continua separada.
