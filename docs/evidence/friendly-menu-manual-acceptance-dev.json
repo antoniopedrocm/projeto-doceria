@@ -1,0 +1,28 @@
+{
+  "project": "crmdoceria-9959e",
+  "acceptedOn": "2026-10-30",
+  "timezone": "America/Sao_Paulo",
+  "source": "User reply to authenticated DEV acceptance request",
+  "answer": "PASS",
+  "functionalCommit": "bacb754c450557af4ed6f91cef1a63861b12a2de",
+  "acceptedScenarios": [
+    "Matriz: authenticated Customer account entry and return to /cardapio-matriz",
+    "Garavelo: authenticated Customer account entry and return to /cardapio-garavelo",
+    "Garavelo: logout and public return to /cardapio-garavelo"
+  ],
+  "status": "COMPLETED_AND_ACCEPTED_DEV",
+  "runtimeChangedForAcceptance": false,
+  "newDeployForAcceptance": false,
+  "realOrdersRequested": false,
+  "realPaymentsRequested": false,
+  "smsRequested": false,
+  "whatsappRequested": false,
+  "production": false,
+  "formalProgress": {
+    "phase9": "75%",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%"
+  }
+}

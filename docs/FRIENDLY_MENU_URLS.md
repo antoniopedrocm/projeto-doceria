@@ -47,6 +47,6 @@ Carrinho, catálogo, preços, estoque, frete, Auth, checkout, provider, SMS/What
 
 Commit **bacb754c450557af4ed6f91cef1a63861b12a2de**, push e Hosting DEV concluídos. 60/60 hashes, 23 fontes de sourcemap e 51 fontes públicas verificados; oito URLs retornaram o mesmo template sem 404/cache agressivo. Chrome real conferiu Matriz/Garavelo em desktop 1920×889 e mobile 390×800: abertura direta, refresh, normalização por replace e ida/volta da entrada pública Customer PASS, sem overflow ou pageerror. Festas/ApFood e estado inválido também PASS. [Checkpoint e evidências](CHECKPOINT_FRIENDLY_MENU_URLS.md).
 
-Aceite humano autenticado Matriz/Garavelo → Minha Conta → Voltar continua pendente até resposta do usuário; Chrome foi executado sem autenticação, e testes simulados de login/logout não equivalem a esse aceite. Não é necessário criar pedido, pagamento ou enviar SMS/WhatsApp.
+**Aceite humano autenticado PASS em 30/10/2026:** usuário confirmou Matriz/Garavelo → Minha Conta → Voltar ao mesmo slug e Garavelo → Sair → Voltar para /cardapio-garavelo. **URLs amigáveis concluídas e homologadas no DEV.** Esse aceite complementa o Chrome executado sem autenticação; não foram solicitados pedidos, pagamentos ou mensagens reais. Fechamento documental, sem alteração de runtime ou novo deploy.
 
 Percentuais preservados: Fase 9 75%; Fases 11/12 100%; Global 95,00%; Fase 13 0%. Mercado Pago não implementado. Pendência fiscal anterior continua separada.

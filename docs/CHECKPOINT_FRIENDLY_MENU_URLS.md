@@ -12,6 +12,8 @@ Chrome automatizado real no DEV, sem sessão autenticada: Matriz/Garavelo em **1
 
 A gravação inicial dos relatórios falhou por ENOSPC. A verificação HTTP/hashes foi repetida em memória com sucesso e preservada nos arquivos de evidência; o navegador concluiu os sete cenários e liberou espaço ao encerrar. Não houve alteração adicional de runtime, novo deploy ou limpeza de dados do usuário por esse incidente.
 
-Única pendência desta entrega: aceite humano autenticado Matriz/Garavelo → Minha Conta → login/logout quando aplicável → Voltar, sem pedido/pagamento/SMS/WhatsApp. Fluxo autenticado/grants continua coberto por testes simulados, sem alegar sessão real nesse teste Chrome. Não refazer a implementação nem o deploy sem defeito. A pendência fiscal do pedido e44896d8… permanece separada.
+**CONCLUÍDO E HOMOLOGADO NO DEV — 30/10/2026.** O usuário respondeu **PASS** ao aceite autenticado: Matriz/Garavelo → Minha Conta → Voltar ao mesmo slug; Garavelo → Sair → Voltar para /cardapio-garavelo. O aceite humano complementa a verificação Chrome sem autenticação, sem confundir suas evidências. Não foram solicitados pedido, pagamento, SMS ou WhatsApp reais.
+
+Nenhuma pendência de homologação desta entrega. Registrar este aceite somente em documentação; sem mudança de runtime ou novo deploy. O débito preexistente de catalog-session e a pendência fiscal do pedido e44896d8… permanecem separados.
 
 [Contrato e auditoria](FRIENDLY_MENU_URLS.md). Percentuais formais mantidos: Fase9 75%, Fase11/12 100%, Global 95,00%, Fase13 0%.
