@@ -45,3 +45,8 @@ Testes usam dados fictícios e provedores/serviço fiscal simulados. Auth/Firest
 Publicação limitada a Hosting e funções necessárias no DEV. Não publicar Rules, índices, triggers de estoque/WhatsApp ou schedulers. Preservar env vars de aplicação de cada função; nunca incluir valores na evidência. Verificar hashes do Hosting e fonte/revisões das funções após deploy.
 
 Aceite manual pendente após publicação: alternar as duas opções autenticadas e conferir helper/padrão sem confirmar compra/pagamento; conferir select fiscal em pedido a combinar elegível, caso disponível, sem emitir nota real. A execução dos fluxos financeiros/fiscais já é coberta por mocks/emuladores. Não enviar SMS/WhatsApp nem iniciar Mercado Pago.
+
+
+## Entrega técnica DEV
+
+Commit **2e5d735b** enviado e publicado: seis funções ACTIVE com fonte/configuração verificadas, novo callable anônimo 401 e Hosting **60/60 hashes**. Sem Rules/índices/triggers/schedulers publicados. [Checkpoint final](CHECKPOINT_AUTHENTICATED_PAYMENT_V1.md) e [evidência](evidence/authenticated-checkout-payment-v1-delivery-dev.json). Aceite manual continua pendente; não iniciar Mercado Pago antes dele. Percentuais formais preservados.

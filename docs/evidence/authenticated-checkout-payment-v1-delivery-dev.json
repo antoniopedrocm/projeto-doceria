@@ -1,0 +1,118 @@
+{
+  "recordedAt": "2026-10-30T01:52:07.551Z",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "project": "crmdoceria-9959e",
+  "runtimeCommit": "2e5d735bc33c5e866ddbc8883a2d1ced098c51be",
+  "push": "origin/feature/infinitepay-customer-auth",
+  "technicalDelivery": "COMPLETE",
+  "manualAcceptance": "PENDING",
+  "hosting": {
+    "filesMatched": 60,
+    "filesChecked": 60,
+    "cachePassed": true,
+    "sourcesVerified": 19,
+    "publicSourcesVerified": 51
+  },
+  "functions": [
+    {
+      "name": "api",
+      "state": "ACTIVE",
+      "revision": "api-00066-juj",
+      "updateTime": "2026-10-29T20:50:59.085768586Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalIssueInvoice",
+      "state": "ACTIVE",
+      "revision": "fiscalissueinvoice-00043-beq",
+      "updateTime": "2026-10-29T20:51:39.233701883Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalValidateOrder",
+      "state": "ACTIVE",
+      "revision": "fiscalvalidateorder-00041-cih",
+      "updateTime": "2026-10-29T20:51:46.405161163Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalIssueDraft",
+      "state": "ACTIVE",
+      "revision": "fiscalissuedraft-00005-buj",
+      "updateTime": "2026-10-30T01:46:37.772410308Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalCheckDraft",
+      "state": "ACTIVE",
+      "revision": "fiscalcheckdraft-00005-doy",
+      "updateTime": "2026-10-30T01:46:28.717258658Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalResolveOrderPaymentMethod",
+      "state": "ACTIVE",
+      "revision": "fiscalresolveorderpaymentmethod-00001-vaw",
+      "updateTime": "2026-10-30T01:46:23.643909658Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    }
+  ],
+  "anonymousFiscalDenied": 401,
+  "tests": {
+    "fiscalUnits": {
+      "pass": 30,
+      "fail": 0
+    },
+    "checkoutRegression": {
+      "pass": 59,
+      "fail": 0
+    },
+    "checkoutAndFiscalIntegration": {
+      "pass": 28,
+      "fail": 0
+    },
+    "financialAndRules": {
+      "pass": 27,
+      "fail": 0
+    },
+    "react": {
+      "pass": 28,
+      "fail": 0
+    }
+  },
+  "build": "PASS with preexisting warnings",
+  "lint": "PASS, zero errors; 65 preexisting App warnings, none added",
+  "diffCheck": "PASS",
+  "localVisualCases": 6,
+  "formalProgress": {
+    "phase9": "75%",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%"
+  },
+  "production": false,
+  "mercadoPago": false,
+  "realPayment": false,
+  "realInvoice": false,
+  "realSms": false,
+  "whatsApp": false
+}

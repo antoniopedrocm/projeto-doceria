@@ -1,0 +1,74 @@
+{
+  "checkedAt": "2026-10-30T01:48:21.644Z",
+  "project": "crmdoceria-9959e",
+  "commit": "2e5d735bc33c5e866ddbc8883a2d1ced098c51be",
+  "functions": [
+    {
+      "name": "api",
+      "state": "ACTIVE",
+      "revision": "api-00066-juj",
+      "updateTime": "2026-10-29T20:50:59.085768586Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalIssueInvoice",
+      "state": "ACTIVE",
+      "revision": "fiscalissueinvoice-00043-beq",
+      "updateTime": "2026-10-29T20:51:39.233701883Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalValidateOrder",
+      "state": "ACTIVE",
+      "revision": "fiscalvalidateorder-00041-cih",
+      "updateTime": "2026-10-29T20:51:46.405161163Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalIssueDraft",
+      "state": "ACTIVE",
+      "revision": "fiscalissuedraft-00005-buj",
+      "updateTime": "2026-10-30T01:46:37.772410308Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalCheckDraft",
+      "state": "ACTIVE",
+      "revision": "fiscalcheckdraft-00005-doy",
+      "updateTime": "2026-10-30T01:46:28.717258658Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalResolveOrderPaymentMethod",
+      "state": "ACTIVE",
+      "revision": "fiscalresolveorderpaymentmethod-00001-vaw",
+      "updateTime": "2026-10-30T01:46:23.643909658Z",
+      "runtime": "nodejs22",
+      "sourceFilesMatched": 48,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    }
+  ],
+  "anonymousFiscalDenied": 401,
+  "writesByVerifier": 0,
+  "realPayment": false,
+  "realInvoice": false,
+  "sms": false,
+  "whatsapp": false,
+  "production": false
+}
