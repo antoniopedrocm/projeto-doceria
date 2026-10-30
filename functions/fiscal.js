@@ -940,6 +940,9 @@ const createFiscalFunctions = ({
       if (!payment || payment.orderPath !== orderRef.path || payment.storeId !== lojaId || payment.payment_status !== 'PAID' || payment.requiresReview) {
         throw new HttpsError('failed-precondition','Concilie o pagamento online antes de emitir a nota.');
       }
+      if (!Number.isSafeInteger(payment.amount) || Math.round(Number(order.total)*100) !== payment.amount) {
+        throw new HttpsError('failed-precondition','Pedido alterado após pagamento confirmado. Concilie a diferença de valor antes de emitir a nota.');
+      }
       // Legacy paid records did not store captureMethod; their protected order label is retained.
       const capture = payment.captureMethod || ({'Pix online':'pix','Cartão online':'credit_card'}[order.formaPagamento]);
       order.paymentMethod = {pix:'PIX',credit_card:'CREDIT_CARD'}[capture] || null;
@@ -1274,6 +1277,7 @@ const createFiscalFunctions = ({
         transaction.get(counterRef),
       ]);
       const order = orderSnap.data() || {};
+      if (order.paymentId && order.payment_status === 'PAID' && Math.round(Number(order.total)*100) !== Math.round(Number(paymentResolution?.amount)*100)) throw new HttpsError('aborted','Total do pedido alterado durante a validação. Valide novamente.');
       const latestPayment = explicitFiscalPayment(order);
       if (latestPayment && latestPayment.methodCode !== paymentResolution?.methodCode) throw new HttpsError('aborted','Pagamento alterado durante a validação. Valide novamente.');
       if (order.fiscal?.authorizedInvoiceId) {

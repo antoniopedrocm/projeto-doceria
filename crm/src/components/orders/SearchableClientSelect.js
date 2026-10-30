@@ -4,7 +4,7 @@ import { filterClients } from '../../utils/clientSearch';
 
 const MAX_VISIBLE_CLIENTS = 100;
 
-const SearchableClientSelect = ({ clients = [], value = '', onChange, error = '' }) => {
+const SearchableClientSelect = ({ clients = [], value = '', onChange, error = '', disabled = false }) => {
   const inputId = useId();
   const listboxId = `${inputId}-listbox`;
   const inputRef = useRef(null);
@@ -28,6 +28,7 @@ const SearchableClientSelect = ({ clients = [], value = '', onChange, error = ''
   }, [searchTerm]);
 
   const openList = () => {
+    if (disabled) return;
     setSearchTerm('');
     setActiveIndex(0);
     setIsOpen(true);
@@ -74,6 +75,7 @@ const SearchableClientSelect = ({ clients = [], value = '', onChange, error = ''
       <div className="relative">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
         <input
+          disabled={disabled}
           ref={inputRef}
           id={inputId}
           type="text"
@@ -99,6 +101,7 @@ const SearchableClientSelect = ({ clients = [], value = '', onChange, error = ''
           className={`w-full rounded-xl border py-3 pl-12 pr-12 transition-all focus:border-transparent focus:ring-2 focus:ring-pink-500 ${error ? 'border-red-300' : 'border-gray-300'}`}
         />
         <button
+          disabled={disabled}
           type="button"
           aria-label={isOpen ? 'Fechar lista de clientes' : 'Abrir lista de clientes'}
           onMouseDown={(event) => event.preventDefault()}
@@ -117,7 +120,7 @@ const SearchableClientSelect = ({ clients = [], value = '', onChange, error = ''
 
       {error && <p id={`${inputId}-error`} className="text-sm text-red-600">{error}</p>}
 
-      {isOpen && (
+      {isOpen && !disabled && (
         <div
           id={listboxId}
           role="listbox"

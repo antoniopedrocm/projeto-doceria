@@ -1,0 +1,45 @@
+{
+  "fixtureOnly": true,
+  "authenticatedDev": false,
+  "source": "Actual App.js modal JSX and UI primitives, synthetic order, stubbed client/history display",
+  "appSha256": "024bca596b4b640b541a391faa9e5d4e34232362e3716a1518716d80add09b1c",
+  "cases": [
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "mode": "FULL",
+      "file": "full-1920.png",
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "mode": "STATUS",
+      "file": "status-1920.png",
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "mode": "FULL",
+      "file": "full-390.png",
+      "horizontalOverflow": false
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "mode": "STATUS",
+      "file": "status-390.png",
+      "horizontalOverflow": false
+    }
+  ],
+  "production": false
+}

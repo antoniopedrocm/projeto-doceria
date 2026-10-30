@@ -1,0 +1,116 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-30T12:11:38.005Z",
+  "tests": {
+    "financialFiscalRulesIntegration": 39,
+    "finalOrderEditIntegration": 13,
+    "react": 55,
+    "nodeSelectorsHandlersAndRealForm": 21,
+    "groupsOverlap": true,
+    "failed": 0
+  },
+  "build": {
+    "passed": true,
+    "main": "/static/js/main.45b40f01.js",
+    "css": "/static/css/main.436906ef.css",
+    "preexistingWarnings": [
+      "native-audio source maps",
+      "browser metadata"
+    ]
+  },
+  "lint": {
+    "app": {
+      "errors": 0,
+      "warnings": 65,
+      "baselineWarnings": 65,
+      "addedMessages": []
+    },
+    "files": [
+      {
+        "file": "crm\\src\\components\\orders\\OrderAdminHistory.js",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\src\\components\\orders\\OrderAdminHistory.test.js",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\src\\components\\orders\\SearchableClientSelect.js",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\src\\components\\orders\\SearchableClientSelect.test.js",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\src\\utils\\adminOrderEdit.js",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\src\\utils\\adminOrderEdit.test.js",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\tests\\full-order-edit-form.test.cjs",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\tests\\helpers\\order-edit-modal.cjs",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\tests\\online-order-status-handler.test.cjs",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      }
+    ]
+  },
+  "diffCheck": true,
+  "visualFixtures": "admin-order-full-edit/report.json",
+  "runtime": {
+    "newCallables": [
+      "adminOrderSave",
+      "adminOrderHistory"
+    ],
+    "fiscalExports": [
+      "fiscalIssueInvoice",
+      "fiscalValidateOrder",
+      "fiscalIssueDraft",
+      "fiscalCheckDraft"
+    ],
+    "apiProviderChanged": false,
+    "firestoreRulesChanged": false,
+    "authChanged": false
+  },
+  "realOrderWritten": false,
+  "realPayment": false,
+  "realInvoice": false,
+  "sms": false,
+  "whatsapp": false,
+  "production": false,
+  "manualAcceptance": "PENDING_FULL_ORDER_EDIT",
+  "formalProgress": {
+    "phase9": "75%",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%"
+  }
+}

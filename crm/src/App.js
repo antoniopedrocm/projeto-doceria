@@ -23,7 +23,9 @@ import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
 import OrderPaymentStatus from './components/orders/OrderPaymentStatus';
 import OrderStatusBadge from './components/orders/OrderStatusBadge';
 import {getOrderStatusLabel} from './utils/orderStatus';
-import {OPERATIONAL_ORDER_STATUSES, saveOnlineOrderStatus} from './utils/onlineOrderStatus.mjs';
+import {OPERATIONAL_ORDER_STATUSES} from './utils/onlineOrderStatus.mjs';
+import {adminOrderRequest} from './utils/adminOrderEdit';
+import OrderAdminHistory,{OrderPaymentAdjustment} from './components/orders/OrderAdminHistory';
 import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
 import FiscalOrderPaymentField from './components/FiscalOrderPaymentField';
 import {findOrderDraft, validateFiscalOrder, createFiscalOrderActions} from './fiscalOrderActions';
@@ -13399,6 +13401,9 @@ const [orderSyncNotice, setOrderSyncNotice] = useState('');
     const [statusFilter, setStatusFilter] = usePersistentState("pedidos_statusFilter", 'Todos');
     const [showModal, setShowModal] = useState(false);
     const [editingOrder, setEditingOrder] = useState(null);
+    const [orderEditMode,setOrderEditMode] = useState('FULL');
+    const orderEditRequestId = useRef(null);
+    const orderEditFlight = useRef(false);
     const [isSavingOrder, setIsSavingOrder] = useState(false);
     const [saveOrderError, setSaveOrderError] = useState('');
     const [clientSelectionError, setClientSelectionError] = useState('');
@@ -13529,7 +13534,7 @@ const [orderSyncNotice, setOrderSyncNotice] = useState('');
     }), [pedidosComNomes, searchTerm, startDateFilter, endDateFilter, statusFilter]);
 
     useEffect(() => {
-        if (!showModal || editingOrder?.paymentId || !formData.itens.length) return;
+        if (!showModal || editingOrder || !formData.itens.length) return;
 
         const { nextItems, changes, hasItemChanges } = reconcileOpenOrderWithLiveProducts(formData.itens);
         if (!changes.length) return;
@@ -13540,7 +13545,7 @@ const [orderSyncNotice, setOrderSyncNotice] = useState('');
         const message = `Atualizamos o pedido com dados recentes: ${changes.slice(0, 3).join(' ')}`;
         setOrderSyncNotice(message);
         debugCacheSync('Pedido aberto reconciliado com snapshot de produtos', { changes });
-    }, [showModal, editingOrder?.paymentId, formData.itens, reconcileOpenOrderWithLiveProducts]);
+    }, [showModal, editingOrder, formData.itens, reconcileOpenOrderWithLiveProducts]);
 const resetForm = () => {
         setEditingOrder(null);
         setSaveOrderError('');
@@ -13629,27 +13634,25 @@ const resetForm = () => {
 
 const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isSavingOrder) return;
-    if (editingOrder?.paymentId) {
+    if (isSavingOrder || orderEditFlight.current) return;
+    if (editingOrder) {
+        orderEditFlight.current=true;
         setIsSavingOrder(true);
         setSaveOrderError('');
         try {
             assertWritableRole();
-            const currentAuthUser = await ensureAuthenticatedUserForWrite();
+            await ensureAuthenticatedUserForWrite();
             const storeId = editingOrder.lojaId;
             if (!storeId || !resolveStoreIdsForView().includes(storeId) || !userHasPermission('pedidos')) {
                 throw new Error('Você não tem permissão para realizar esta ação nesta loja.');
             }
-            await saveOnlineOrderStatus({db, runTransaction,
-                orderRef: getStoreDocRef(storeId, 'pedidos', editingOrder.id),
-                logRef: doc(getStoreCollectionRef(storeId, 'logs')),
-                storeId, status: formData.status, expectedStatus: editingOrder.status,
-                adminUid: currentAuthUser.uid, timestamp: serverTimestamp});
+            await httpsCallable(functions,'adminOrderSave')(adminOrderRequest({order:editingOrder,form:formData,mode:orderEditMode,requestId:orderEditRequestId.current}));
             setShowModal(false);
             resetForm();
         } catch (error) {
             setSaveOrderError(mapCriticalWriteErrorMessage(error));
         } finally {
+            orderEditFlight.current=false;
             setIsSavingOrder(false);
         }
         return;
@@ -13706,10 +13709,14 @@ const handleSubmit = async (e) => {
     }
 };
 
-    const handleEdit = (order) => {
+    const handleEdit = (order,mode='FULL') => {
         setEditingOrder(order);
+        setOrderEditMode(mode);
+        orderEditRequestId.current=window.crypto.randomUUID();
+        setSaveOrderError('');
+        setOrderSyncNotice('');
         setClientSelectionError('');
-        if (order.paymentId) {
+        if (mode==='STATUS') {
             setSaveOrderError('');
             setOrderSyncNotice('');
             setFormData({...order});
@@ -13742,6 +13749,7 @@ const handleSubmit = async (e) => {
         setFormData({
             ...defaultOrderData,
             ...order,
+            itens:(order.itens || []).map(item=>({...item,id:getOrderItemProductId(item),quantity:getOrderItemQuantity(item)})),
             subtotal,
             desconto,
             total,
@@ -13753,8 +13761,8 @@ const handleSubmit = async (e) => {
         setShowModal(true);
     };
 
-    const columns = [ { header: "ID do Pedido", render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.substring(0, 8) || 'N/A'}</span> }, { header: "Cliente", key: "clienteNome" }, { header: "Total", render: (row) => <span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span> }, { header: "Data", render: (row) => { const date = getJSDate(row.createdAt); return date ? date.toLocaleDateString('pt-BR') : '-'; } }, { header: "Origem", key: "origem"}, { header: "Status", render: (row) => <OrderStatusBadge order={row} pendingSync={row._isPendingSync} className="px-3 py-1" /> } ];
-    const actions = [ { icon: Eye, label: "Ver", onClick: (row) => setViewingOrder(row) }, { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidos', row.id) }) } ];
+    const columns = [ { header: "ID do Pedido", render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.substring(0, 8) || 'N/A'}</span> }, { header: "Cliente", key: "clienteNome" }, { header: "Total", render: (row) => <div><span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span>{row.adminPaymentAdjustment?.state==='REVIEW_REQUIRED' && <p className="mt-1 text-xs font-medium text-amber-800">Diferença de pagamento a conciliar</p>}</div> }, { header: "Data", render: (row) => { const date = getJSDate(row.createdAt); return date ? date.toLocaleDateString('pt-BR') : '-'; } }, { header: "Origem", key: "origem"}, { header: "Status", render: (row) => <OrderStatusBadge order={row} pendingSync={row._isPendingSync} className="px-3 py-1" /> } ];
+    const actions = [ { icon: Eye, label: "Ver", onClick: (row) => setViewingOrder(row) }, { icon: Edit, label: "Editar Pedido", onClick: row=>handleEdit(row,'FULL') }, {icon:RefreshCw,label:'Atualizar Status',onClick:row=>handleEdit(row,'STATUS')}, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidos', row.id) }) } ];
 
     return (
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
@@ -13792,9 +13800,9 @@ const handleSubmit = async (e) => {
 
             <Table columns={columns} data={filteredOrders} actions={actions} />
 
-            <Modal isOpen={showModal} onClose={() => { if (!isSavingOrder) { setShowModal(false); resetForm(); } }} title={editingOrder?.paymentId ? "Atualizar status do pedido" : (editingOrder ? "Editar Pedido" : "Novo Pedido")} size="xl">
+            <Modal isOpen={showModal} onClose={() => { if (!isSavingOrder) { setShowModal(false); resetForm(); } }} title={editingOrder && orderEditMode==='STATUS' ? "Atualizar status do pedido" : (editingOrder ? "Editar Pedido" : "Novo Pedido")} size="xl">
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    {editingOrder?.paymentId ? <>
+                    {editingOrder && orderEditMode==='STATUS' ? <>
                         <p className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">Atualize somente o status operacional. Itens, valores e pagamento confirmado serão preservados. Esta ação não movimenta estoque nem realiza estorno.</p>
                         <Select label="Status operacional" value={formData.status} onChange={event => setFormData({...formData, status: event.target.value})} disabled={isSavingOrder} required>
                             {OPERATIONAL_ORDER_STATUSES.map(status => <option key={status}>{status}</option>)}
@@ -13802,7 +13810,8 @@ const handleSubmit = async (e) => {
                     </> : <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <SearchableClientSelect
-                            clients={data.clientes}
+                            clients={editingOrder && !data.clientes.some(client=>client.id===editingOrder.clienteId) ? [...data.clientes,{id:editingOrder.clienteId,nome:editingOrder.clienteNome || 'Cliente histórico'}] : data.clientes}
+                            disabled={Boolean(editingOrder?.ownerUid || editingOrder?.paymentId || editingOrder?.canonicalCustomerId)}
                             value={formData.clienteId}
                             error={clientSelectionError}
                             onChange={(selectedClient) => {
@@ -13822,7 +13831,8 @@ const handleSubmit = async (e) => {
                             <option value="Delivery">Delivery</option>
                             <option value="Festa">Festa</option>
                         </Select>
-                        <Select label="Forma de Pagamento" value={formData.formaPagamento} onChange={(e) => setFormData({...formData, formaPagamento: e.target.value})} required>
+                        <Select label="Forma de Pagamento" disabled={Boolean(editingOrder?.paymentId || editingOrder?.paymentMethodSource?.startsWith('provider/') || (editingOrder?.paymentStatus || editingOrder?.payment_status)==='PAID')} value={formData.formaPagamento} onChange={(e) => setFormData({...formData, formaPagamento: e.target.value})} required>
+                            {formData.formaPagamento && !ORDER_PAYMENT_OPTIONS.includes(formData.formaPagamento) && <option>{formData.formaPagamento}</option>}
                             {ORDER_PAYMENT_OPTIONS.map((option) => <option key={option}>{option}</option>)}
                         </Select>
                         {formData.categoria === 'Festa' && (
@@ -13859,7 +13869,7 @@ const handleSubmit = async (e) => {
                         </div>
                         <div className="space-y-2">
                           <h3 className="font-semibold">Itens no Pedido</h3>
-                          <div className="max-h-60 overflow-y-auto border rounded-lg p-2 space-y-1">{formData.itens.length === 0 ? <p className="text-sm text-gray-500 text-center p-4">Nenhum item</p> : formData.itens.map(item => (<div key={item.id} className="flex justify-between items-center p-2 rounded bg-pink-50"><span>{item.quantity}x {item.nome}</span><div className="flex items-center gap-2"><span className="text-sm">R$ {((item.preco || 0) * (item.quantity || 1)).toFixed(2)}</span><button type="button" onClick={() => handleRemoveItemFromOrder(item.id)} className="text-red-500"><Trash2 size={14}/></button></div></div>))}</div>
+                          <div className="max-h-60 overflow-y-auto border rounded-lg p-2 space-y-1">{formData.itens.length === 0 ? <p className="text-sm text-gray-500 text-center p-4">Nenhum item</p> : formData.itens.map(item => (<div key={item.id} className="flex flex-wrap justify-between gap-2 items-center p-2 rounded bg-pink-50"><span className="min-w-0">{item.nome}</span><div className="flex items-center gap-2"><input aria-label={`Quantidade de ${item.nome}`} type="number" min="1" max="1000" step="1" className="w-16 rounded-lg border px-2 py-1" value={item.quantity} onChange={event=>{const quantity=Number(event.target.value);setFormData(previous=>buildOrderWithTotals(previous,previous.itens.map(current=>current.id===item.id?{...current,quantity}:current)));}}/><span className="text-sm">R$ {((item.preco || 0) * (item.quantity || 1)).toFixed(2)}</span><button type="button" aria-label={`Remover ${item.nome}`} onClick={() => handleRemoveItemFromOrder(item.id)} className="text-red-500"><Trash2 size={14}/></button></div></div>))}</div>
                            <div className="text-right mt-2 space-y-1">
                                 <p className="text-sm text-gray-600">Subtotal: R$ {(formData.subtotal || 0).toFixed(2)}</p>
                                 { (formData.cupom || formData.desconto > 0) && <p className="text-sm text-red-600">Desconto: - R$ {(formData.cupom?.valorDesconto || formData.desconto || 0).toFixed(2)}</p>}
@@ -13878,6 +13888,8 @@ const handleSubmit = async (e) => {
                         </div>
                     </div>
                     </>}
+                    {editingOrder && orderEditMode==='FULL' && <><OrderPaymentAdjustment order={editingOrder} total={formData.total}/><p className="text-xs text-gray-500">Valores confirmados pelo provedor e ownership vinculado são protegidos. Alterações fiscais de pedido com nota autorizada ou em emissão são bloqueadas.</p></>}
+                    {editingOrder && <OrderAdminHistory order={editingOrder}/>}
 
                     {orderSyncNotice && <p role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">{orderSyncNotice}</p>}
                     {saveOrderError && (
@@ -14053,8 +14065,12 @@ const handleSubmit = async (e) => {
                                 </p>
                            </div>
 
+                            <OrderPaymentAdjustment order={viewingOrder}/>
+                            <OrderAdminHistory order={viewingOrder}/>
                             <WhatsAppOrderStatus key={`${viewingOrder.lojaId || effectiveStoreId}:${viewingOrder.id}`} storeId={viewingOrder.lojaId || effectiveStoreId} orderId={viewingOrder.id} />
                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
+                                 <Button variant="secondary" onClick={()=>{const order=viewingOrder;setViewingOrder(null);handleEdit(order,'FULL');}}>Editar Pedido</Button>
+                                 <Button variant="secondary" onClick={()=>{const order=viewingOrder;setViewingOrder(null);handleEdit(order,'STATUS');}}>Atualizar Status</Button>
                                  <Button
                                     onClick={handlePrint}
                                     variant="secondary"

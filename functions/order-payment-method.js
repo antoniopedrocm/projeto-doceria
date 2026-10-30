@@ -12,6 +12,9 @@ const fiscalChoices = Object.freeze({
 });
 function paymentFailure(message) {return Object.assign(new Error(message),{code:'failed-precondition'});}
 function explicitFiscalPayment(order) {
+  if (order.adminPaymentAdjustment?.state === 'REVIEW_REQUIRED' && order.adminPaymentAdjustment.differenceCents !== 0) {
+    throw paymentFailure('Pedido alterado após pagamento confirmado. Concilie a diferença de valor antes de emitir a nota.');
+  }
   if (order.paymentMethodSource?.startsWith('provider/') && (order.payment_status || order.paymentStatus) === 'PAID') {
     const code = {PIX:'17',CREDIT_CARD:'03',DEBIT_CARD:'04'}[order.paymentMethod];
     if (!code) throw paymentFailure('Método confirmado pelo provedor indisponível. Concilie o pagamento antes de emitir.');

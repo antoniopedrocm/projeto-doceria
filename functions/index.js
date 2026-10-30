@@ -425,6 +425,11 @@ const verifyManagementAccess = async (uid) => {
   throw new HttpsError('permission-denied', 'Você não tem permissão para realizar esta ação.');
 };
 
+const {createAdminOrderEdit,createOrderAuthorizer} = require('./admin-order-edit');
+const adminOrderEdit = createAdminOrderEdit({db, admin, HttpsError, authorize:createOrderAuthorizer({db,HttpsError,assertActiveUser,sanitizePermissions,extractStoreIds})});
+exports.adminOrderSave = onCall({region:'us-central1',timeoutSeconds:60},adminOrderEdit.save);
+exports.adminOrderHistory = onCall({region:'us-central1',timeoutSeconds:60},adminOrderEdit.history);
+
 const assertNotManagingSelf = (requesterUid, targetUid) => {
   if (targetUid && requesterUid === targetUid) {
     throw new HttpsError('permission-denied', 'Você não pode alterar o próprio perfil ou permissões.');

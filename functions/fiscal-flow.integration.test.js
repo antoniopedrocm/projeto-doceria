@@ -157,7 +157,7 @@ test('método do provider online chega automaticamente à NF e não pode ser sob
     const orderId='online-'+code,ref=db.doc(`lojas/${storeId}/pedidos/${orderId}`);
     await ref.set({status:'Finalizado',paymentMode:'ONLINE_NOW',payment_status:'PAID',paymentId:'mock-provider-payment-'+code,paymentMethod:method,paymentMethodSource:'provider/infinitepay',formaPagamento:'Dinheiro',clienteNome:'Maria',clienteDocumento:customer().document,clienteEnderecoFiscal:customer().address,
       itens:[{produtoId:'test-product',nome:'Brigadeiro',preco:10,quantity:2,fiscal:manualInvoice().items[0]}],total:20});
-    await db.doc('checkoutPayments/mock-provider-payment-'+code).set({orderPath:ref.path,storeId,payment_status:'PAID',captureMethod:method==='PIX'?'pix':'credit_card'});
+    await db.doc('checkoutPayments/mock-provider-payment-'+code).set({orderPath:ref.path,storeId,payment_status:'PAID',amount:2000,captureMethod:method==='PIX'?'pix':'credit_card'});
     await assert.rejects(invoke('fiscalResolveOrderPaymentMethod',{orderId,paymentMethodLabel:'Dinheiro'}),/não pode/);
     const saved=await invoke('fiscalSaveDraft',{orderId,model:55,operationCfop:'5101'});
     const ready=await invoke('fiscalCheckDraft',{draftId:saved.draftId});assert.equal(ready.ok,true,JSON.stringify(ready));
@@ -165,6 +165,15 @@ test('método do provider online chega automaticamente à NF e não pode ser sob
     assert.equal(transmissions.filter(t=>t.path==='/issue').at(-1).payload.invoice.payment.methodCode,code);
     assert.equal((await ref.get()).get('paymentMethod'),method);
   }
+});
+test('NF bloqueia total divergente do registro privado mesmo sem confiar no marcador da interface',async()=>{
+ const orderId='paid-amount-divergent',ref=db.doc(`lojas/${storeId}/pedidos/${orderId}`);
+ await ref.set({status:'Finalizado',paymentMode:'ONLINE_NOW',payment_status:'PAID',paymentId:'mock-divergent',paymentMethod:'PIX',paymentMethodSource:'provider/infinitepay',formaPagamento:'Pix online',clienteNome:'Maria',clienteDocumento:customer().document,clienteEnderecoFiscal:customer().address,itens:[{produtoId:'test-product',nome:'Brigadeiro',preco:10,quantity:2}],total:20,adminPaymentAdjustment:{state:'BALANCED',differenceCents:0}});
+ await db.doc('checkoutPayments/mock-divergent').set({orderPath:ref.path,storeId,payment_status:'PAID',amount:1000,captureMethod:'pix'});
+ const before=transmissions.filter(t=>t.path==='/issue').length;
+ await assert.rejects(invoke('fiscalIssueInvoice',{orderId,modelOverride:55}),/diferença de valor/);
+ const draft=await invoke('fiscalSaveDraft',{orderId,model:55});const checked=await invoke('fiscalCheckDraft',{draftId:draft.draftId});assert.equal(checked.ok,false);
+ assert.equal(transmissions.filter(t=>t.path==='/issue').length,before);
 });
 test('real Firestore transaction deduplicates clone, preserves original and leaves counters untouched', async () => {
   const sourceRef = db.collection('lojas').doc(storeId).collection('invoices').doc('original-clone-55');
