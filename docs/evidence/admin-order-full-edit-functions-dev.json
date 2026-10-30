@@ -1,0 +1,85 @@
+{
+  "project": "crmdoceria-9959e",
+  "commit": "15138ff39c2ae4da01bd3ca3750150a4014123ed",
+  "checkedAt": "2026-10-30T12:27:57.908Z",
+  "functions": [
+    {
+      "name": "fiscalIssueInvoice",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "revision": "fiscalissueinvoice-00044-vus",
+      "updateTime": "2026-10-30T12:22:36.286292723Z",
+      "runtimeFilesMatched": 49,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalValidateOrder",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "revision": "fiscalvalidateorder-00042-feh",
+      "updateTime": "2026-10-30T12:22:35.980074738Z",
+      "runtimeFilesMatched": 49,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalIssueDraft",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "revision": "fiscalissuedraft-00006-zus",
+      "updateTime": "2026-10-30T12:24:08.098302909Z",
+      "runtimeFilesMatched": 49,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "fiscalCheckDraft",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "revision": "fiscalcheckdraft-00006-nih",
+      "updateTime": "2026-10-30T12:24:22.494636889Z",
+      "runtimeFilesMatched": 49,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "adminOrderSave",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "revision": "adminordersave-00001-sig",
+      "updateTime": "2026-10-30T12:26:12.825630993Z",
+      "runtimeFilesMatched": 49,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "adminOrderHistory",
+      "state": "ACTIVE",
+      "runtime": "nodejs22",
+      "revision": "adminorderhistory-00001-put",
+      "updateTime": "2026-10-30T12:26:24.152758338Z",
+      "runtimeFilesMatched": 49,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    }
+  ],
+  "providerApiUnchanged": true,
+  "apiRevision": "api-00066-juj",
+  "anonymous": [
+    {
+      "name": "adminOrderSave",
+      "status": 401
+    },
+    {
+      "name": "adminOrderHistory",
+      "status": 401
+    }
+  ],
+  "writesByVerifier": 0,
+  "realPayment": false,
+  "realInvoice": false,
+  "sms": false,
+  "whatsapp": false,
+  "production": false
+}
