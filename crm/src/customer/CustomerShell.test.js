@@ -19,10 +19,10 @@ test('perfil, histórico e detalhe reutilizam controlador aprovado sem tocar car
 test('rota de detalhe passa IDs ao mesmo controlador com ownership server-side',async()=>{window.history.replaceState(null,'','/meus-pedidos/order-a?store=ana-guimaraes-doceria-garavelo');await mount();expect(controller.openOrder).toHaveBeenCalledWith(expect.objectContaining({orderId:'order-a',storeId:'ana-guimaraes-doceria-garavelo'}));});
 test('logout remove controlador e encerra ambas as sessões, sem apagar carrinho',async()=>{sessionStorage.setItem('checkoutState_v1','cart');await mount();await click('Sair');expect(controller.dispose).toHaveBeenCalled();expect(logoutCanonicalSession).toHaveBeenCalledTimes(1);expect(sessionStorage.getItem('checkoutState_v1')).toBe('cart');});
 test('montagem atrasada é descartada ao trocar Customer A por B',async()=>{let finish;await mount({loadController:()=>new Promise(resolve=>{finish=resolve;})});const load=jest.fn(async()=>({installCustomerAccount:install}));await mount({uid:'b',sessionAuth:{app:{name:'[DEFAULT]'},currentUser:{uid:'b'}},loadController:load});await act(async()=>finish({installCustomerAccount:jest.fn(()=>{throw Error('stale');})}));expect(install).toHaveBeenCalledTimes(1);});
-test('desempate de rotas recusa URLs arbitrárias e retorno respeita loja/sessão',()=>{expect(customerRoute('/financeiro').screen).toBe('home');expect(customerRoute('/meus-pedidos/id','?store=../bad').screen).toBe('home');sessionStorage.setItem('checkoutState_v1',JSON.stringify({storeId:'ana-guimaraes-doceria-garavelo'}));expect(menuDestination(sessionStorage,true)).toBe('/cardapio?store=ana-guimaraes-doceria-garavelo');});
+test('desempate de rotas recusa URLs arbitrárias e retorno respeita loja/sessão',()=>{expect(customerRoute('/financeiro').screen).toBe('home');expect(customerRoute('/meus-pedidos/id','?store=../bad').screen).toBe('home');sessionStorage.setItem('checkoutState_v1',JSON.stringify({storeId:'ana-guimaraes-doceria-garavelo'}));expect(menuDestination(sessionStorage,true)).toBe('/cardapio-garavelo');});
 
 test.each(['matriz','garavelo'])('origem %s sobrevive à saída, descarte privado e remontagem desautenticada',async store=>{
-  const destination='/cardapio?store=ana-guimaraes-doceria-'+store;
+  const destination='/cardapio-'+store;
   const assign=jest.fn(),location={pathname:'/area-cliente',search:'?returnTo='+encodeURIComponent(destination),origin:'http://localhost',assign};
   const navigation=jest.spyOn(window,'location','get').mockReturnValue(location);
   try {
@@ -37,7 +37,7 @@ test.each(['matriz','garavelo'])('origem %s sobrevive à saída, descarte privad
   } finally {navigation.mockRestore();}
 });
 test.each(['google.com','password'])('entrada/login %s e refresh conservam retorno público sem depender do Customer',async provider=>{
-  const destination='/cardapio?store=ana-guimaraes-doceria-garavelo&channel=festas';
+  const destination='/cardapio-garavelo?channel=festas';
   const assign=jest.fn(),location={pathname:'/area-cliente',search:'?returnTo='+encodeURIComponent(destination),origin:'http://localhost',assign};
   const navigation=jest.spyOn(window,'location','get').mockReturnValue(location);
   try {

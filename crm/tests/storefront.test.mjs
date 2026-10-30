@@ -16,13 +16,13 @@ test('nova loja navega genericamente, rejeita path inválido e mantém carrinho 
   assert.throws(()=>prepareReorder({order:{storeId:'loja-futura-teste',itens:[]},cart:{storeId:'outra',items:[{}]},mode:'add'}),/misturar lojas/);
 });
 test('bootstrap genérico e alias usam o mesmo endpoint público sem login ou Firestore',async()=>{
-  const calls=[],config={storeId:'loja-futura-teste',name:'Loja futura',active:true,catalog:{enabled:true},delivery:{available:false}};
+  const calls=[],config={storeId:'ana-guimaraes-doceria-matriz',channel:{id:'festas'},name:'Loja futura',active:true,catalog:{enabled:true},delivery:{available:false}};
   for(const pathname of ['/cardapio','/cardapio-festa']) {
     const dom=new JSDOM('<header></header><div id="loading-message"></div>');
-    const result=await bootstrapPublicStore({location:{pathname,search:pathname==='/cardapio'?'?store=loja-futura-teste':''},document:dom.window.document,fetchImpl:async url=>{calls.push(url);return {ok:true,json:async()=>config};}});
+    const result=await bootstrapPublicStore({location:{pathname,search:pathname==='/cardapio'?'?store=ana-guimaraes-doceria-matriz&channel=festas':''},document:dom.window.document,fetchImpl:async url=>{calls.push(url);return {ok:true,json:async()=>config};}});
     assert.equal(result.storeId,config.storeId);assert.equal(result.name,'Loja futura');assert.equal(dom.window.document.querySelector('header').textContent,'');dom.window.close();
   }
-  assert.match(calls[0],/storeId=loja-futura-teste/);assert.match(calls[1],/alias=cardapio-festa/);
+  for(const url of calls){assert.match(url,/storeId=ana-guimaraes-doceria-matriz/);assert.match(url,/channelId=festas/);assert.doesNotMatch(url,/alias=/);}
 });
 test('loja inexistente/inativa exibe estado seguro, sem redirecionar ou buscar Matriz',async()=>{
   const dom=new JSDOM('<header></header><div id="loading-message"></div>');let calls=0;

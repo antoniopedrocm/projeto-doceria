@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {CUSTOMER_RETURN_PATH_KEY,safeCustomerReturnPath,customerAreaEntryPath,customerMenuDestination} from '../src/storefront/storeRoutes.mjs';
 import {createCanonicalLogout} from '../public/canonical-session.mjs';
 const storage=()=>{const data=new Map();return {getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value),removeItem:key=>data.delete(key)};};
-const origin=store=>'/cardapio?store=ana-guimaraes-doceria-'+store;
+const origin=store=>'/cardapio-'+store;
 const incoming=path=>'?returnTo='+encodeURIComponent(path);
 for(const store of ['matriz','garavelo'])test(store+' → entrada → refresh/login → logout canônico → mesma origem, sem dados privados',async()=>{
-  const path=origin(store),tab=storage(),entry=customerAreaEntryPath({pathname:'/cardapio',search:path.slice(path.indexOf('?'))});
+  const path=origin(store),tab=storage(),entry=customerAreaEntryPath({pathname:path,search:''});
   assert.equal(entry,'/area-cliente'+incoming(path));
   assert.equal(customerMenuDestination(tab,entry.slice(entry.indexOf('?'))),path);
   tab.setItem('checkoutState_v1',JSON.stringify({storeId:'outra-loja',reorderOwnerUid:'customer-a',cart:[{id:'private-item'}]}));
@@ -24,7 +24,7 @@ test('abas Matriz e Garavelo são independentes e origem vence checkout antigo d
   assert.equal(customerMenuDestination(a),origin('matriz'));assert.equal(customerMenuDestination(b),origin('garavelo'));
 });
 test('aliases auditados e canais existentes são preservados sem inventar associação',()=>{
-  for(const name of ['matriz','garavelo','festa'])for(const ext of ['', '.html'])assert.equal(safeCustomerReturnPath('/cardapio-'+name+ext),'/cardapio-'+name+ext);
+  for(const name of ['matriz','garavelo','festa','apfood'])for(const ext of ['', '.html'])assert.equal(safeCustomerReturnPath('/cardapio-'+name+ext),'/cardapio-'+name);
   const path='/cardapio?store=loja-futura&channel=festas';assert.equal(safeCustomerReturnPath(path),path);
   assert.equal(customerMenuDestination(storage(),incoming(path)),path);
 });

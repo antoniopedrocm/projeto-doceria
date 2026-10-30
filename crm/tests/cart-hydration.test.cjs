@@ -67,7 +67,7 @@ test('hydration espera Auth real, mas não depende da resposta do perfil Custome
   f.finishProfile();
 });
 test('reload e loja futura restauram itens/contexto sem whitelist ou gravação vazia',async()=>{
-  for(const storeId of [matriz,'loja-futura-teste']){
+  for(const storeId of [matriz,garavelo,'loja-futura-teste']){
     const storage=storageFor(saved(storeId)),before=storage.getItem(KEY);
     for(let n=0;n<2;n++){const f=await page({storage,storeId});await f.mount();assert.equal(f.cart()[0].quantity,2);assert.deepEqual(f.pending(),saved().pendingOrderDetails);}
     assert.equal(storage.getItem(KEY),before);assert.equal(storage.writes.length,0);
@@ -81,7 +81,7 @@ test('substituir cross-store só grava após confirmar e hidrata catálogo/preç
     snapshot:()=>({uid:'a'}),isCurrent:()=>true,cart:createStoredCartBridge({storage,getUid:()=>'a',navigate:url=>{destination=url;}})});
   await view.start({id:'own',storeId:garavelo});assert.equal(storage.getItem(KEY),before);assert.equal(storage.writes.length,0);
   const button=[...panel.querySelectorAll('button')].find(b=>b.textContent==='Substituir e continuar');assert.ok(button);await button.onclick();
-  assert.equal(destination,'/cardapio?store='+garavelo);const state=JSON.parse(storage.getItem(KEY));assert.equal(state.storeId,garavelo);assert.deepEqual(state.pendingOrderDetails,{});assert.equal(storage.getItem('doceria-payment-pending'),null);
+  assert.equal(destination,'/cardapio-garavelo');const state=JSON.parse(storage.getItem(KEY));assert.equal(state.storeId,garavelo);assert.deepEqual(state.pendingOrderDetails,{});assert.equal(storage.getItem('doceria-payment-pending'),null);
   assert.deepEqual(state.cart,[{id:'g',produtoId:'g',nome:'Atual G',preco:9.9,quantity:2}]);assert.doesNotMatch(JSON.stringify(state),/HISTORIC|receipt|transaction/);
   const f=await page({storage,storeId:garavelo});await f.mount();assert.equal(f.cart()[0].preco,9.9);assert.equal(f.cart()[0].quantity,2);
 });

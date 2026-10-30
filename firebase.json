@@ -52,6 +52,10 @@
     ],
     "rewrites": [
       {
+        "source": "/cardapio-*",
+        "destination": "/cardapio.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

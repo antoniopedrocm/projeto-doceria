@@ -3,6 +3,18 @@ import {createRoot} from 'react-dom/client';
 import StorefrontLinks from './StorefrontLinks';
 import CrmHome from './CrmHome';
 jest.mock('../firebaseConfig',()=>({app:{options:{projectId:'demo-doceria-checkout'}}}));
+test('home usa URLs amigáveis para os destinos públicos aprovados',async()=>{
+  global.IS_REACT_ACT_ENVIRONMENT=true;const original=global.fetch;
+  const stores=[{storeId:'ana-guimaraes-doceria-matriz',name:'Matriz'},{storeId:'ana-guimaraes-doceria-garavelo',name:'Garavelo'},{storeId:'ana-guimaraes-doceria-matriz',channelId:'festas',name:'Festas'},{storeId:'apfood',name:'ApFood'}];
+  global.fetch=jest.fn(async()=>({ok:true,json:async()=>({stores,nextCursor:null})}));
+  const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+  try {
+    // eslint-disable-next-line testing-library/no-unnecessary-act
+    await act(async()=>root.render(<StorefrontLinks/>));
+    for(const slug of ['matriz','garavelo','festa','apfood'])expect(host.querySelector(`a[href="/cardapio-${slug}"]`)).not.toBeNull();
+    expect(host.querySelector('a[href*="store="]')).toBeNull();
+  } finally {await act(async()=>root.unmount());host.remove();global.fetch=original;}
+});
 test('home descobre loja/canal por dados e monta destino genérico',async()=>{
   global.IS_REACT_ACT_ENVIRONMENT=true;
   const original=global.fetch;

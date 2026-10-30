@@ -1,0 +1,50 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-30T02:58:49.773Z",
+  "tests": {
+    "routingAndCartNode": 77,
+    "customerAndHomeReact": 78,
+    "authHostingPublicRegression": 51,
+    "passed": true,
+    "preexistingCatalogSuite": {
+      "file": "functions/catalog-session.test.js",
+      "baseline": "78067024",
+      "failed": 21,
+      "passed": 6,
+      "reproducedOnBaseline": true,
+      "templates": {
+        "crm/public/cardapio-matriz.html": {
+          "normalizedSha256": "51273bc5ba75ee5ed8326cce40108b51a1396947de47ca2a1cd45e1576fb9aaf",
+          "sameAsBaseline": true
+        },
+        "crm/public/cardapio-garavelo.html": {
+          "normalizedSha256": "51273bc5ba75ee5ed8326cce40108b51a1396947de47ca2a1cd45e1576fb9aaf",
+          "sameAsBaseline": true
+        },
+        "crm/public/cardapio-festa.html": {
+          "normalizedSha256": "51273bc5ba75ee5ed8326cce40108b51a1396947de47ca2a1cd45e1576fb9aaf",
+          "sameAsBaseline": true
+        }
+      }
+    }
+  },
+  "build": {
+    "passed": true,
+    "main": "/static/js/main.add8e33e.js",
+    "gzipKb": 440.19
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 3,
+    "preexisting": true
+  },
+  "diffCheck": true,
+  "backendChanged": false,
+  "authChanged": false,
+  "businessRulesChanged": false,
+  "realOrders": false,
+  "realPayments": false,
+  "sms": false,
+  "whatsapp": false,
+  "production": false
+}

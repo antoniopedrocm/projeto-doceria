@@ -1,0 +1,81 @@
+{
+  "project": "crmdoceria-9959e",
+  "readOnly": true,
+  "checkedAt": "2026-10-30T02:46:22.797Z",
+  "results": [
+    {
+      "endpoint": "public-list",
+      "status": 200,
+      "stores": [
+        {
+          "storeId": "ana-guimaraes-doceria-garavelo",
+          "name": "Ana Guimarães Doceria"
+        },
+        {
+          "storeId": "ana-guimaraes-doceria-matriz",
+          "name": "Ana Guimarães Doceria"
+        },
+        {
+          "storeId": "ana-guimaraes-doceria-matriz",
+          "name": "Festas",
+          "channelId": "festas"
+        },
+        {
+          "storeId": "apfood",
+          "name": "ApFood"
+        }
+      ],
+      "nextCursor": null
+    },
+    {
+      "endpoint": "public-config?alias=cardapio-matriz",
+      "status": 200,
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "active": true,
+      "catalog": {
+        "enabled": true,
+        "category": "Delivery"
+      }
+    },
+    {
+      "endpoint": "public-config?alias=cardapio-garavelo",
+      "status": 200,
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "active": true,
+      "catalog": {
+        "enabled": true,
+        "category": "Delivery"
+      }
+    },
+    {
+      "endpoint": "public-config?alias=cardapio-festa",
+      "status": 200,
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "channel": {
+        "id": "festas",
+        "name": "Festas",
+        "catalogCategory": "Delivery"
+      },
+      "active": true,
+      "catalog": {
+        "enabled": true,
+        "category": "Delivery"
+      }
+    },
+    {
+      "endpoint": "public-config?alias=cardapio-apfood",
+      "status": 404,
+      "code": "STORE_NOT_FOUND"
+    },
+    {
+      "endpoint": "public-config?storeId=apfood",
+      "status": 200,
+      "storeId": "apfood",
+      "active": true,
+      "catalog": {
+        "enabled": true,
+        "category": "Delivery"
+      }
+    }
+  ]
+}

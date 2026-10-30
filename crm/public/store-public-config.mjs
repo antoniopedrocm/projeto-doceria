@@ -1,5 +1,6 @@
+/* global globalThis */
 import {apiBaseUrl} from './checkout-environment.js';
-import {storeMenuUrl} from './store-links.mjs';
+import {storeMenuUrl,resolvePublicMenuRoute} from './store-links.mjs';
 export {storeMenuUrl};
 export async function fetchPublicStore(input, {fetchImpl=fetch, base=apiBaseUrl}={}) {
   const query = new URLSearchParams(Object.entries(input).filter(([,v])=>v != null));
@@ -8,11 +9,11 @@ export async function fetchPublicStore(input, {fetchImpl=fetch, base=apiBaseUrl}
   if (!response.ok) throw Object.assign(new Error(data.code || 'STORE_CONFIG_UNAVAILABLE'),{code:data.code});
   return data;
 }
-export async function bootstrapPublicStore({location=window.location, document=window.document, fetchImpl=fetch}={}) {
-  const query = new URLSearchParams(location.search), storeId=query.get('store'), channelId=query.get('channel');
-  const alias = location.pathname.replace(/^\//,'').replace(/\.html$/,'');
+export async function bootstrapPublicStore({location=window.location, document=window.document, history=globalThis.window?.history, fetchImpl=fetch}={}) {
+  const route = resolvePublicMenuRoute(location);
   try {
-    if (!storeId && alias === 'cardapio') {
+    if (route.kind === 'not-found') throw Object.assign(Error('STORE_NOT_FOUND'),{code:'STORE_NOT_FOUND'});
+    if (route.kind === 'directory') {
       const panel=document.getElementById('loading-message');
       panel.replaceChildren();
       const title=document.createElement('h1'); title.textContent='Escolha uma loja'; panel.append(title);
@@ -30,8 +31,14 @@ export async function bootstrapPublicStore({location=window.location, document=w
       more.onclick=()=>load().catch(()=>{more.textContent='Não foi possível carregar as lojas.';});
       await load(); return null;
     }
-    const config=await fetchPublicStore(storeId ? {storeId,channelId} : {alias}, {fetchImpl});
+    const config=await fetchPublicStore({storeId:route.storeId,channelId:route.channelId}, {fetchImpl});
     if(!config.active || !config.catalog.enabled) throw Object.assign(Error('STORE_INACTIVE'),{code:'STORE_INACTIVE'});
+    if(config.storeId !== route.storeId || (config.channel?.id || null) !== route.channelId) throw Object.assign(Error('STORE_NOT_FOUND'),{code:'STORE_NOT_FOUND'});
+    // Same document and store context: no reload, push, cart reset or Auth change.
+    if (location.pathname + (location.search || '') !== route.canonicalPath) history?.replaceState(history.state || null,'',route.canonicalPath);
+    let canonical = document.querySelector('link[rel="canonical"]');
+    if (!canonical) {canonical=document.createElement('link');canonical.rel='canonical';document.head.append(canonical);}
+    canonical.setAttribute('href',route.canonicalPath);
     return config;
   } catch(e) {
     const panel=document.getElementById('loading-message');
