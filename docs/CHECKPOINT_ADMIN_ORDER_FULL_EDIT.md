@@ -4,10 +4,10 @@ DEV `crmdoceria-9959e`, branch `feature/infinitepay-customer-auth`, workspace `C
 
 ## Estado real
 
-**IMPLEMENTAÇÃO, VALIDAÇÃO LOCAL E PUBLICAÇÃO DEV CONCLUÍDAS; HOMOLOGAÇÃO AUTENTICADA DA EDIÇÃO COMPLETA PENDENTE.** Commit funcional **15138ff39c2ae4da01bd3ca3750150a4014123ed**, push concluído. Não refazer implementação, testes ou deploy sem defeito novo.
+**CONCLUÍDO E HOMOLOGADO NO DEV.** Usuário respondeu **PASS** à homologação autenticada da edição completa e do atalho separado. Commit funcional **15138ff39c2ae4da01bd3ca3750150a4014123ed**, push concluído. Não refazer implementação, testes ou deploy sem defeito novo.
 
 - Status-only anterior: **PASS visual**, conforme usuário; não é aceite final da edição completa.
-- Edição completa: formulário preservado como ação própria; endpoint administrativo transacional publicado e verificado; falta somente aceite autenticado.
+- Edição completa: formulário preservado como ação própria; endpoint administrativo transacional publicado e verificado; aceite autenticado **PASS**.
 - `functions/admin-order-edit.js`: gravação FULL/STATUS, autorização Staff por módulo/loja, histórico append-only sob pedido, idempotência/revisão, estoque por delta, proteção de ownership/método pago e divergência de valor.
 - `functions/index.js`: dois novos callables `adminOrderSave` e `adminOrderHistory`; nenhum endpoint financeiro/provedor alterado ou publicado.
 - `functions/order-payment-method.js` e `functions/fiscal.js`: proteção fiscal contra divergência de valor pago/total; publicados somente os quatro exports fiscais necessários, com configuração atual preservada.
@@ -23,12 +23,12 @@ Hosting DEV publicado de `.deploy-crm-store-baseline-15138ff3`: **60/60 hashes r
 
 Stages Functions `.deploy-admin-order-edit-15138ff3-1/2/3`; logs locais `%TEMP%/admin-order-edit-functions-deploy.log`, `%TEMP%/admin-order-edit-functions-verify.log`, `%TEMP%/admin-order-edit-hosting-deploy.log`, `%TEMP%/admin-order-edit-hosting-verify.log`. Configuração sensível permanece somente local, fora dos documentos e do Git.
 
-## Único passo restante
+## Homologação autenticada — PASS
 
-Aceite autenticado no CRM DEV: abrir pedido existente em **Editar Pedido**, confirmar formulário completo e seção Histórico de alterações, cancelar; abrir **Atualizar Status** como ação independente e cancelar. Conferir desktop/mobile e explicações dos campos protegidos quando aplicável. Não salvar/alterar pedido real, emitir nota, cobrar/pagar ou enviar SMS/WhatsApp apenas para homologar. As mutações e seus efeitos foram validados em fixtures/emuladores.
+Usuário respondeu **PASS** à solicitação consolidada: formulário completo e Histórico de alterações, ações Editar Pedido/Atualizar Status independentes, desktop/mobile 390×800 e proteções de cliente vinculado/método confirmado quando aplicáveis. Verificação somente visual/navegação, com cancelamento, sem solicitar mutações reais. As gravações e seus efeitos continuam comprovados pelos testes com fixtures/emuladores; o aceite humano não equivale a pagamento ou emissão fiscal real. [Aceite registrado](evidence/admin-order-full-edit-manual-acceptance-dev.json).
 
 Histórico pode estar vazio antes da primeira edição pela nova trilha; registros anteriores não são inventados nem migrados. A pendência fiscal/autenticada anterior não é encerrada automaticamente por esta entrega técnica.
 
-Não alterar o pedido real e44896d8… apenas para testar. Não declarar o workstream concluído com o aceite visual do modal de status.
+Não alterar o pedido real e44896d8… apenas para testar. Este fechamento se baseia no novo PASS autenticado da edição completa, além do PASS visual anterior do modal de status. Não há trabalho pendente neste ajuste; pendências fiscais anteriores permanecem separadas. Fechamento somente documental, sem runtime/build/deploy adicional.
 
 Percentuais formais preservados: **Fase9 75%, Fase11/12 100%, Global 95,00%, Fase13 0%**. Mercado Pago futuro. PROD intacta.

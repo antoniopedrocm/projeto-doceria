@@ -4,7 +4,7 @@ Ambiente exclusivo: `crmdoceria-9959e`. Workspace `C:/Users/antonio.pedro/Projet
 
 ## Decisão de produto e interface
 
-**Atualizar Status não substitui Editar Pedido.** O usuário aprovou somente o visual do atalho anterior. A restauração da edição completa é um requisito adicional, ainda dependente de aceite autenticado desta entrega.
+**Atualizar Status não substitui Editar Pedido.** O usuário aprovou somente o visual do atalho anterior. A restauração da edição completa recebeu posteriormente aceite autenticado **PASS**, registrado no checkpoint desta entrega.
 
 Lista e detalhe oferecem **Editar Pedido** e **Atualizar Status** separadamente. O formulário completo conserva cliente, status, categoria, forma de pagamento, observação, produtos, inclusão/remoção, quantidade explícita, desconto e data de entrega quando aplicável. Usa o modal e componentes existentes. Campos de ownership vinculado e método confirmado ficam bloqueados com explicação; a validação também acontece no servidor. Pedidos históricos não têm seus preços substituídos automaticamente pelo catálogo atual. Produto novo usa preço atual validado pelo backend.
 
@@ -52,4 +52,4 @@ Capturas locais [desktop completo](evidence/admin-order-full-edit/full-1920.png)
 
 Entrega/commit/hashes e aceite: registrar no [checkpoint](CHECKPOINT_ADMIN_ORDER_FULL_EDIT.md). Não declarar conclusão pelo PASS visual anterior do status-only. Sem mutação do pedido real para teste, pagamento/nota/SMS/WhatsApp reais, Mercado Pago ou PROD. Percentuais formais preservados: Fase9 75%, Fase11/12 100%, Global 95,00%, Fase13 0%.
 
-Publicação DEV verificada em 30/10/2026: commit funcional **15138ff3** enviado e publicado; seis funções ACTIVE, 49 arquivos de runtime conferidos por fonte, configuração fiscal preservada e API financeira inalterada. Hosting com 60/60 hashes, cache correto e fontes correspondentes. Evidências sanitizadas no checkpoint. **Homologação Staff da edição completa ainda pendente**; o PASS visual anterior continua restrito ao atalho de status.
+Publicação DEV verificada em 30/10/2026: commit funcional **15138ff3** enviado e publicado; seis funções ACTIVE, 49 arquivos de runtime conferidos por fonte, configuração fiscal preservada e API financeira inalterada. Hosting com 60/60 hashes, cache correto e fontes correspondentes. Evidências sanitizadas no checkpoint. **Homologação Staff da edição completa PASS**, conforme resposta explícita do usuário. [Aceite registrado](evidence/admin-order-full-edit-manual-acceptance-dev.json). O PASS visual anterior continua restrito ao atalho de status; o novo aceite fecha esta entrega. Sem novo runtime/deploy.

@@ -1,0 +1,32 @@
+{
+  "project": "crmdoceria-9959e",
+  "functionalCommit": "15138ff39c2ae4da01bd3ca3750150a4014123ed",
+  "deliveryDocumentationCommit": "456a4dbf",
+  "recordedAt": "2026-10-30T13:15:55.360Z",
+  "source": "Explicit user reply to consolidated Staff acceptance request",
+  "answer": "PASS",
+  "scope": [
+    "Full order edit form and history visible",
+    "Separate operational status action",
+    "Desktop and mobile 390x800",
+    "Linked customer and confirmed payment method protected when applicable"
+  ],
+  "requestedProcedure": "Open existing order, inspect and cancel both dialogs; no real mutation requested",
+  "functionalMutationEvidence": "Existing local tests/fixtures/emulators; not inferred from visual PASS",
+  "authenticatedDevAcceptance": "PASS",
+  "previousStatusOnlyVisualAcceptance": "PASS, distinct from this full-edit acceptance",
+  "realPayment": false,
+  "realInvoice": false,
+  "sms": false,
+  "whatsapp": false,
+  "production": false,
+  "closureChanges": "Documentation only; no runtime change or deployment",
+  "priorFiscalAcceptance": "Separate; not closed by this visual acceptance",
+  "formalProgress": {
+    "phase9": "75%",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%"
+  }
+}
