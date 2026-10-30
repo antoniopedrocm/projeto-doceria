@@ -4,6 +4,12 @@ import OrderStatusBadge from './OrderStatusBadge';
 import OrderPaymentStatus from './OrderPaymentStatus';
 import {getOrderStatusLabel} from '../../utils/orderStatus';
 
+test('status operacional fiscal é visível sem trocar o estado canônico confirmado', () => {
+  render({paymentId:'fixture',payment_status:'PAID',order_status:'CONFIRMED',status:'Finalizado'});
+  expect(container.textContent).toContain('Confirmado');
+  expect(container.textContent).toContain('Operacional: Finalizado');
+});
+
 let container;
 let root;
 beforeAll(() => { global.IS_REACT_ACT_ENVIRONMENT = true; });

@@ -23,6 +23,7 @@ import WhatsAppOrderStatus from './components/WhatsAppOrderStatus';
 import OrderPaymentStatus from './components/orders/OrderPaymentStatus';
 import OrderStatusBadge from './components/orders/OrderStatusBadge';
 import {getOrderStatusLabel} from './utils/orderStatus';
+import {OPERATIONAL_ORDER_STATUSES, saveOnlineOrderStatus} from './utils/onlineOrderStatus.mjs';
 import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
 import FiscalOrderPaymentField from './components/FiscalOrderPaymentField';
 import {findOrderDraft, validateFiscalOrder, createFiscalOrderActions} from './fiscalOrderActions';
@@ -13528,7 +13529,7 @@ const [orderSyncNotice, setOrderSyncNotice] = useState('');
     }), [pedidosComNomes, searchTerm, startDateFilter, endDateFilter, statusFilter]);
 
     useEffect(() => {
-        if (!showModal || !formData.itens.length) return;
+        if (!showModal || editingOrder?.paymentId || !formData.itens.length) return;
 
         const { nextItems, changes, hasItemChanges } = reconcileOpenOrderWithLiveProducts(formData.itens);
         if (!changes.length) return;
@@ -13539,7 +13540,7 @@ const [orderSyncNotice, setOrderSyncNotice] = useState('');
         const message = `Atualizamos o pedido com dados recentes: ${changes.slice(0, 3).join(' ')}`;
         setOrderSyncNotice(message);
         debugCacheSync('Pedido aberto reconciliado com snapshot de produtos', { changes });
-    }, [showModal, formData.itens, reconcileOpenOrderWithLiveProducts]);
+    }, [showModal, editingOrder?.paymentId, formData.itens, reconcileOpenOrderWithLiveProducts]);
 const resetForm = () => {
         setEditingOrder(null);
         setSaveOrderError('');
@@ -13628,6 +13629,31 @@ const resetForm = () => {
 
 const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSavingOrder) return;
+    if (editingOrder?.paymentId) {
+        setIsSavingOrder(true);
+        setSaveOrderError('');
+        try {
+            assertWritableRole();
+            const currentAuthUser = await ensureAuthenticatedUserForWrite();
+            const storeId = editingOrder.lojaId;
+            if (!storeId || !resolveStoreIdsForView().includes(storeId) || !userHasPermission('pedidos')) {
+                throw new Error('Você não tem permissão para realizar esta ação nesta loja.');
+            }
+            await saveOnlineOrderStatus({db, runTransaction,
+                orderRef: getStoreDocRef(storeId, 'pedidos', editingOrder.id),
+                logRef: doc(getStoreCollectionRef(storeId, 'logs')),
+                storeId, status: formData.status, expectedStatus: editingOrder.status,
+                adminUid: currentAuthUser.uid, timestamp: serverTimestamp});
+            setShowModal(false);
+            resetForm();
+        } catch (error) {
+            setSaveOrderError(mapCriticalWriteErrorMessage(error));
+        } finally {
+            setIsSavingOrder(false);
+        }
+        return;
+    }
     const selectedClient = data.clientes.find(client => String(client.id) === String(formData.clienteId));
     if (!selectedClient) { setClientSelectionError('Selecione um cliente cadastrado na lista.'); return; }
     setClientSelectionError('');
@@ -13683,6 +13709,13 @@ const handleSubmit = async (e) => {
     const handleEdit = (order) => {
         setEditingOrder(order);
         setClientSelectionError('');
+        if (order.paymentId) {
+            setSaveOrderError('');
+            setOrderSyncNotice('');
+            setFormData({...order});
+            setShowModal(true);
+            return;
+        }
         const subtotal = (order.itens || []).reduce((sum, item) => sum + ((item.preco || 0) * (item.quantity || 1)), 0);
         const desconto = order.cupom?.valorDesconto || order.desconto || 0;
         const total = calculateOrderTotal(order, subtotal, desconto);
@@ -13759,8 +13792,14 @@ const handleSubmit = async (e) => {
 
             <Table columns={columns} data={filteredOrders} actions={actions} />
 
-            <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingOrder ? "Editar Pedido" : "Novo Pedido"} size="xl">
+            <Modal isOpen={showModal} onClose={() => { if (!isSavingOrder) { setShowModal(false); resetForm(); } }} title={editingOrder?.paymentId ? "Atualizar status do pedido" : (editingOrder ? "Editar Pedido" : "Novo Pedido")} size="xl">
                 <form onSubmit={handleSubmit} className="space-y-6">
+                    {editingOrder?.paymentId ? <>
+                        <p className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">Atualize somente o status operacional. Itens, valores e pagamento confirmado serão preservados. Esta ação não movimenta estoque nem realiza estorno.</p>
+                        <Select label="Status operacional" value={formData.status} onChange={event => setFormData({...formData, status: event.target.value})} disabled={isSavingOrder} required>
+                            {OPERATIONAL_ORDER_STATUSES.map(status => <option key={status}>{status}</option>)}
+                        </Select>
+                    </> : <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <SearchableClientSelect
                             clients={data.clientes}
@@ -13838,6 +13877,7 @@ const handleSubmit = async (e) => {
                             <Button variant="secondary" onClick={handleApplyDiscount} className="w-full">Aplicar desconto</Button>
                         </div>
                     </div>
+                    </>}
 
                     {orderSyncNotice && <p role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">{orderSyncNotice}</p>}
                     {saveOrderError && (
@@ -13846,7 +13886,7 @@ const handleSubmit = async (e) => {
                         </div>
                     )}
 
-                    <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit" disabled={isSavingOrder}><Save className="w-4 h-4" />{isSavingOrder ? "Salvando..." : (editingOrder ? "Salvar Alterações" : "Criar Pedido")}</Button></div>
+                    <div className="flex justify-end gap-3 pt-4"><Button variant="secondary" type="button" disabled={isSavingOrder} onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button><Button type="submit" disabled={isSavingOrder}><Save className="w-4 h-4" />{isSavingOrder ? "Salvando..." : (editingOrder ? "Salvar Alterações" : "Criar Pedido")}</Button></div>
                 </form>
             </Modal>
             <Modal isOpen={!!viewingOrder} onClose={() => { setViewingOrder(null); setRideRequest(null); setRideFeedback(''); }} title="Detalhes do Pedido" size="lg">

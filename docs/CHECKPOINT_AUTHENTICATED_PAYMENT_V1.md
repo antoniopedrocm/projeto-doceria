@@ -5,9 +5,9 @@ Branch: feature/infinitepay-customer-auth. Firebase **crmdoceria-9959e (DEV)**. 
 
 ## Estado real na retomada e ponto final
 
-**Entrega técnica CONCLUÍDA no DEV. Aceite manual PENDENTE.** Não refazer implementação, testes aprovados ou deploy; não iniciar Mercado Pago antes do aceite.
+**Homologação em andamento: UI PASS; integração fiscal ainda PENDENTE.** O aceite trouxe um bloqueio na atualização operacional do pedido pago. A fila fiscal e o método do pagamento foram auditados; ver correção abaixo. Não iniciar Mercado Pago antes do aceite.
 
-Commit funcional **2e5d735bc33c5e866ddbc8883a2d1ced098c51be**, enviado ao origin. Nenhuma alteração de runtime após esse commit; a retomada concluiu apenas a publicação que faltava, a verificação remota e a documentação.
+Entrega original: commit funcional **2e5d735bc33c5e866ddbc8883a2d1ced098c51be**, enviado ao origin. Os itens seguintes registram a verificação dessa entrega original; a correção complementar tem registro separado abaixo.
 
 - Testes aprovados: 30 fiscais/unitários, 59 regressões, 28 integração checkout/fiscal, 27 contratos financeiros/Rules e 28 React. São grupos com regressões repetidas, não uma contagem de casos únicos.
 - Build PASS (avisos preexistentes native-audio/Browserslist). Lint sem erros: 65 avisos preexistentes de App.js, comparação com baseline sem aviso novo. Diff-check PASS.
@@ -24,9 +24,13 @@ ONLINE_NOW conserva o fluxo online atual e payment_status do provider. AGREED_LA
 
 Na Nota Fiscal, método ainda não definido exige seleção Staff em Salvar e Validar. Usa mappings existentes, persiste método/data/fonte/UID e audita, sem liquidar pagamento. Provedor confirmado é autoridade e não aceita override manual silencioso. Rascunhos e métodos históricos preservados na base fiscal efetivamente publicada.
 
-## Único próximo passo
+## Retorno da homologação e correção complementar
 
-Aceite manual DEV: confirmar padrão, alternância e helpers no checkout autenticado, sem confirmar pedido/pagamento; conferir o select fiscal em pedido a combinar elegível, caso disponível, sem salvar/emitir nota real. Capturas locais fictícias e testes não devem ser apresentados como aceite autenticado remoto. Registrar PASS/FAIL quando recebido; sem novo deploy na ausência de defeito.
+UI das duas opções e padrão aprovados pelo usuário. Não repetir esse aceite. O pedido real `e44896d8…`, Matriz, 29/10/2026 23:04:19 UTC−3, está ONLINE_NOW/PIX/PAID/CONFIRMED, mas operacionalmente Pendente e sem aprovação fiscal. A fila exige Finalizado/Aprovado ou aprovação explícita; não filtra paymentMethod. Data e loja estão corretas.
+
+Ao tentar atualizar o status no CRM, o usuário recebeu permission-denied. O modal de edição completa reconstruía itens e revalidava valores do pedido pago. As Rules corretamente recusam a alteração do snapshot financeiro. Implementada atualização operacional isolada, transacional e auditada no frontend, preservando essas Rules, o estoque já movimentado e o método do provider. [Diagnóstico e testes específicos](FISCAL_ORDER_STATUS_AUDIT.md). Deploy complementar somente Hosting; registrar commit e evidência após a publicação.
+
+Próximo aceite: conferir o novo formulário de status do pedido online sem emitir nota. A entrada efetiva na fila depende de o pedido ser legitimamente finalizado/aprovado; não alterar o pedido apenas para teste. Usar fixture local para provar essa passagem sem mutações reais. Seleção fiscal AGREED_LATER segue pendente de exemplo elegível/aceite, sem salvar ou emitir nota real. Capturas e testes fictícios não equivalem a aceite manual remoto.
 
 ## Percentuais formais
 

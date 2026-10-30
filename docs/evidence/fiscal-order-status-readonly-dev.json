@@ -1,0 +1,33 @@
+{
+  "project": "crmdoceria-9959e",
+  "readOnly": true,
+  "rulesRelease": "projects/crmdoceria-9959e/rulesets/54f77678-033f-44b9-a205-b2f8fd6278a6",
+  "rulesHash": "eff946105e5423ba386aebbee4de1ff5c89eaaaca70f9d7a05bd504076307c5d",
+  "localRulesHash": "eff946105e5423ba386aebbee4de1ff5c89eaaaca70f9d7a05bd504076307c5d",
+  "ruleMatch": true,
+  "orderId": "e44896d85c33a815b9bd2a6d0f47fcfc762aff42fd97f0a30f9ec62e1c628268",
+  "fields": {
+    "desconto": 0,
+    "formaPagamento": "Pix online",
+    "subtotal": 1,
+    "valorFrete": 0,
+    "status": "Pendente",
+    "paymentMode": "ONLINE_NOW",
+    "total": 1,
+    "paymentMethod": "PIX",
+    "order_status": "CONFIRMED",
+    "requiresReview": false,
+    "payment_status": "PAID"
+  },
+  "hasPaymentId": true,
+  "hasCoupon": false,
+  "items": [
+    {
+      "savedPrice": 1,
+      "savedQuantity": 1,
+      "livePrice": 1,
+      "liveStock": 5
+    }
+  ],
+  "production": false
+}

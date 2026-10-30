@@ -30,7 +30,7 @@ Parâmetros reconhecidos: store e channel, no máximo uma ocorrência de cada. c
 - 52 regressões Node: controlador Customer, Google/e-mail e entrada inline, limpeza de dados privados, sessão/carrinho canônicos.
 - 74 testes React: CustomerShell e ApplicationGate, incluindo clique real no botão após logout/remontagem, login/refresh e acesso direto desautenticado.
 - Lint direcionado: sem erros; aviso preexistente no-loop-func no controlador e avisos intencionais do validador de caracteres de controle/fixture de ataque javascript.
-- Build/diff-check e publicação: registrar no checkpoint após conclusão; nenhum teste cria pagamento, pedido, nota fiscal, SMS ou WhatsApp reais.
+- Build/diff-check PASS. Commit **3aad75090a1f7fe72707087171484289e737f20f**, push e Hosting DEV concluídos. Verificação remota **60/60 hashes**, 21 fontes de sourcemap e 51 fontes públicas; cache correto. [Evidência publicada](evidence/customer-menu-return-hosting-dev.json). Nenhum teste cria pagamento, pedido, nota fiscal, SMS ou WhatsApp reais.
 
 ## Aceite
 

@@ -1,0 +1,78 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-30T02:39:54.674Z",
+  "scope": "CRM paid order operational status only",
+  "tests": {
+    "unitAndFiscalSelectors": 18,
+    "realCrmHandlers": 4,
+    "emulatorIntegration": 28,
+    "react": 49,
+    "failed": 0,
+    "emulatorProject": "demo-doceria-checkout"
+  },
+  "build": {
+    "passed": true,
+    "main": "static/js/main.baa59ca7.js",
+    "warnings": [
+      "preexisting native-audio source maps",
+      "outdated browser metadata"
+    ]
+  },
+  "lint": {
+    "app": {
+      "errors": 0,
+      "warnings": 65,
+      "baselineWarnings": 65,
+      "addedMessages": []
+    },
+    "otherFiles": [
+      {
+        "file": "crm/src/utils/onlineOrderStatus.mjs",
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "file": "crm/src/components/orders/OrderStatusBadge.js",
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "file": "crm/src/components/orders/OrderStatusBadge.test.js",
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "file": "crm/tests/fiscal-eligibility-audit.test.cjs",
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "file": "crm/tests/online-order-status.test.mjs",
+        "errors": 0,
+        "warnings": 0
+      },
+      {
+        "file": "crm/tests/online-order-status-handler.test.cjs",
+        "errors": 0,
+        "warnings": 0
+      }
+    ]
+  },
+  "diffCheck": true,
+  "rulesChanged": false,
+  "backendChanged": false,
+  "realOrderWritten": false,
+  "realPayment": false,
+  "realInvoice": false,
+  "sms": false,
+  "whatsapp": false,
+  "production": false,
+  "formalProgress": {
+    "phase9": "75%",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%"
+  },
+  "manualFiscalAcceptance": "PENDING"
+}
