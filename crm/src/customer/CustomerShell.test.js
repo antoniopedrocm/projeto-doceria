@@ -21,6 +21,41 @@ test('logout remove controlador e encerra ambas as sessões, sem apagar carrinho
 test('montagem atrasada é descartada ao trocar Customer A por B',async()=>{let finish;await mount({loadController:()=>new Promise(resolve=>{finish=resolve;})});const load=jest.fn(async()=>({installCustomerAccount:install}));await mount({uid:'b',sessionAuth:{app:{name:'[DEFAULT]'},currentUser:{uid:'b'}},loadController:load});await act(async()=>finish({installCustomerAccount:jest.fn(()=>{throw Error('stale');})}));expect(install).toHaveBeenCalledTimes(1);});
 test('desempate de rotas recusa URLs arbitrárias e retorno respeita loja/sessão',()=>{expect(customerRoute('/financeiro').screen).toBe('home');expect(customerRoute('/meus-pedidos/id','?store=../bad').screen).toBe('home');sessionStorage.setItem('checkoutState_v1',JSON.stringify({storeId:'ana-guimaraes-doceria-garavelo'}));expect(menuDestination(sessionStorage,true)).toBe('/cardapio?store=ana-guimaraes-doceria-garavelo');});
 
+test.each(['matriz','garavelo'])('origem %s sobrevive à saída, descarte privado e remontagem desautenticada',async store=>{
+  const destination='/cardapio?store=ana-guimaraes-doceria-'+store;
+  const assign=jest.fn(),location={pathname:'/area-cliente',search:'?returnTo='+encodeURIComponent(destination),origin:'http://localhost',assign};
+  const navigation=jest.spyOn(window,'location','get').mockReturnValue(location);
+  try {
+    sessionStorage.setItem('checkoutState_v1',JSON.stringify({storeId:'outra-loja',cart:[{id:'private'}]}));
+    await mount({onLogout:async()=>{sessionStorage.removeItem('checkoutState_v1');session.currentUser=null;}});
+    await click('Sair');expect(sessionStorage.getItem('checkoutState_v1')).toBeNull();
+    location.search='';
+    // Native ReactDOM unmount is intentional, not a Testing Library render.
+    // eslint-disable-next-line testing-library/no-unnecessary-act
+    await act(async()=>root.render(null));await mount({uid:null});
+    expect(host.querySelector('aside')).toBeNull();await click('Voltar ao Cardápio');expect(assign).toHaveBeenLastCalledWith(destination);
+  } finally {navigation.mockRestore();}
+});
+test.each(['google.com','password'])('entrada/login %s e refresh conservam retorno público sem depender do Customer',async provider=>{
+  const destination='/cardapio?store=ana-guimaraes-doceria-garavelo&channel=festas';
+  const assign=jest.fn(),location={pathname:'/area-cliente',search:'?returnTo='+encodeURIComponent(destination),origin:'http://localhost',assign};
+  const navigation=jest.spyOn(window,'location','get').mockReturnValue(location);
+  try {
+    session.currentUser=null;await mount({uid:null});
+    session.currentUser={uid:'a',providerData:[{providerId:provider}]};await mount();
+    location.search='';
+    // eslint-disable-next-line testing-library/no-unnecessary-act
+    await act(async()=>root.render(null));await mount();
+    await click('Voltar ao Cardápio');expect(assign).toHaveBeenLastCalledWith(destination);
+    expect(logoutCanonicalSession).not.toHaveBeenCalled();
+  } finally {navigation.mockRestore();}
+});
+test('acesso direto sem origem retorna à home pública e não ao diretório genérico',async()=>{
+  const assign=jest.fn(),navigation=jest.spyOn(window,'location','get').mockReturnValue({pathname:'/area-cliente',search:'',origin:'http://localhost',assign});
+  try {session.currentUser=null;await mount({uid:null});await click('Voltar ao Cardápio');expect(assign).toHaveBeenCalledWith('/');}
+  finally {navigation.mockRestore();}
+});
+
 test('erro tardio da rota anterior não altera a sessão Customer seguinte',async()=>{let reject;controller.openAccount.mockImplementation(()=>new Promise((_,no)=>{reject=no;}));await mount();await click('Meus Pedidos');const rejectA=reject;await mount({uid:'b',sessionAuth:{app:{name:'[DEFAULT]'},currentUser:{uid:'b'}}});await act(async()=>rejectA(Error('private-a')));expect(host.textContent).not.toContain('Não foi possível carregar esta página.');expect(host.textContent).not.toContain('private-a');});
 
 test('dual-role gets CRM action in drawer and account menu; Customer-only never does',async()=>{const open=jest.fn();await mount({canOpenStaff:true,onStaffContext:open});await click('☰');expect(host.querySelector('aside').textContent).toContain('Ir para o CRM');await click('Minha conta ▾');expect(host.querySelector('[aria-label="Menu do usuário Customer"]').textContent).toContain('Ir para o CRM');await click('Ir para o CRM');expect(open).toHaveBeenCalledTimes(1);await mount({canOpenStaff:false});expect(host.textContent).not.toContain('Ir para o CRM');});

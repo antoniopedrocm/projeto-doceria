@@ -43,7 +43,7 @@ async function fixture({user=identity(),linked=true,storeId='loja-futura-teste',
     destinations.push(link.href);event.preventDefault();
     const target=new URL(link.href);window.history.pushState(null,'',target.pathname+target.search);
   });
-  return {window,api,auth,user,calls,sessions,authCalls,destinations,state,entry,host,
+  return {window,api,auth,user,calls,sessions,authCalls,destinations,state,entry,host,entryPath:'/area-cliente?returnTo='+encodeURIComponent(url),
     dialog:window.document.querySelector('.customer-area-dialog'),
     async click(){entry().dispatchEvent(new window.MouseEvent('click',{bubbles:true,cancelable:true,button:0}));await tick();},
     close(){api.dispose();globalThis.document=previousDocument;globalThis.window=previousWindow;window.close();}};
@@ -57,10 +57,10 @@ for(const [name,storeId,url] of [
 ]) test(`header ${name} goes to Customer home without modal, auth change or cart/store mutation`,async t=>{
   const f=await fixture({storeId,url});t.after(f.close);
   const beforeCalls=f.calls.length,beforeSessions=f.sessions.length;
-  assert.equal(f.entry().tagName,'A');assert.equal(f.entry().getAttribute('href'),'/area-cliente');
+  assert.equal(f.entry().tagName,'A');assert.equal(f.entry().getAttribute('href'),f.entryPath);
   assert.equal(f.entry().textContent,'Minha Conta');
   await f.click();
-  assert.deepEqual(f.destinations,['https://example.test/area-cliente']);
+  assert.deepEqual(f.destinations,['https://example.test'+f.entryPath]);
   assert.equal(f.window.location.pathname,'/area-cliente');assert.equal(f.dialog.open,false);
   assert.equal(f.auth.currentUser,f.user);assert.deepEqual(f.authCalls,[]);
   assert.equal(f.calls.length,beforeCalls);assert.equal(f.sessions.length,beforeSessions);
@@ -73,13 +73,13 @@ test('existing modal button becomes a single accessible navigation link',async t
   assert.equal(f.window.document.querySelectorAll('#customer-account-button').length,1);
   const link=f.entry();assert.equal(link.tagName,'A');assert.equal(link.className,'preserved');
   assert.equal(link.hasAttribute('aria-haspopup'),false);assert.equal(link.hasAttribute('aria-expanded'),false);
-  assert.equal(link.getAttribute('href'),'/area-cliente');await f.click();assert.equal(f.dialog.open,false);
+  assert.equal(link.getAttribute('href'),f.entryPath);await f.click();assert.equal(f.dialog.open,false);
 });
 
 for(const width of [320,1440]) test(`same header navigation semantics at ${width} CSS px`,async t=>{
   const f=await fixture({width});t.after(f.close);
   assert.equal(f.window.innerWidth,width);assert.equal(f.entry().tagName,'A');
-  assert.equal(f.entry().getAttribute('href'),'/area-cliente');await f.click();assert.equal(f.dialog.open,false);
+  assert.equal(f.entry().getAttribute('href'),f.entryPath);await f.click();assert.equal(f.dialog.open,false);
 });
 
 for(const [label,user] of [['signed out',null],['anonymous',{...identity(),isAnonymous:true}],['legacy phone',identity('legacy','phone')]]) {

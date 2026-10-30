@@ -1,0 +1,39 @@
+{
+  "project": "crmdoceria-9959e",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "baseCommit": "3780673a41a3929adbe63f081b18f0519fabe62e",
+  "scope": "navigation only; Hosting only",
+  "runtimeFiles": [
+    "crm/public/customer-account-core.mjs",
+    "crm/public/store-links.mjs",
+    "crm/src/customer/CustomerShell.js",
+    "crm/src/customer/customerContext.js",
+    "crm/src/storefront/storeRoutes.mjs"
+  ],
+  "tests": {
+    "navigation": {
+      "pass": 26,
+      "fail": 0
+    },
+    "controllerLoginLogout": {
+      "pass": 52,
+      "fail": 0
+    },
+    "customerShellAndGate": {
+      "pass": 74,
+      "fail": 0
+    }
+  },
+  "build": "PASS with preexisting native-audio and browser dataset warnings",
+  "lint": {
+    "errors": 0,
+    "warnings": 4,
+    "details": "one preexisting no-loop-func; two intentional control-character validator warnings (canonical/public copy); one rejected javascript attack fixture"
+  },
+  "diffCheck": "PASS",
+  "manualDevAcceptance": "PENDING",
+  "production": false,
+  "realPayment": false,
+  "sms": false,
+  "whatsapp": false
+}

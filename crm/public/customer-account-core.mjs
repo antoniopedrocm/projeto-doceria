@@ -6,6 +6,7 @@ import {createCustomerProfileSecurity} from './customer-profile.mjs';
 import {createCustomerOrderHistory} from './customer-orders-view.mjs?v=20261015-fcm-delete';
 import {createCustomerReorderView} from './customer-reorder-view.mjs';
 import {createStoredCartBridge} from './reorder-cart.mjs';
+import {customerAreaEntryPath} from './store-links.mjs';
 
 export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onLogout=()=>{}, notify=()=>{}, createAccountButton=true, showCheckoutAddressAction=true,reorderCart=null,host=null,inlineLogin=false,onRoute=()=>{},onMenu=null,navigateToMenu=url=>window.location.assign(url),runtime}) {
   const {auth,functions,httpsCallable,GoogleAuthProvider,createUserWithEmailAndPassword,sendEmailVerification,sendPasswordResetEmail,signInWithEmailAndPassword,signInWithPopup,onAuthStateChanged,signOut,updateProfile,EmailAuthProvider,reauthenticateWithCredential,verifyBeforeUpdateEmail,updatePassword,reload,logout=()=>signOut(auth)}=runtime;
@@ -198,7 +199,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
       accountEntry=link;
     }
     // Header entry is navigation. Auth/onboarding stay with the canonical gate.
-    accountEntry.href='/area-cliente';
+    accountEntry.href=customerAreaEntryPath(window.location);
     accountEntry.removeAttribute('aria-haspopup');accountEntry.removeAttribute('aria-expanded');
   }
   // Embedded profile/history and checkout authentication still use this API.

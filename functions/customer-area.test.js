@@ -40,6 +40,7 @@ async function fixture({embedded=false,waitForReady=true,initialUser = user(), s
   const {createCustomerOrderHistory} = await import('../crm/public/customer-orders-view.mjs');
   const {createCustomerReorderView}=await import('../crm/public/customer-reorder-view.mjs');
   const {createStoredCartBridge}=await import('../crm/public/reorder-cart.mjs');
+  const {customerAreaEntryPath}=await import('../crm/public/store-links.mjs');
   const {createCustomerPhoneClaimView}=await import('../crm/public/customer-phone-claim.mjs');
   const dom = new JSDOM('<button id="customer-account-button">Minha Conta</button><button id="continue-google-button">Google</button>', {url: 'https://example.test/cardapio-matriz?store=matriz'});
   const {window} = dom;
@@ -51,7 +52,7 @@ async function fixture({embedded=false,waitForReady=true,initialUser = user(), s
   const host=embedded?window.document.createElement('main'):null;
   if(host) window.document.body.append(host);
   const context = vm.createContext({document: window.document, window, URL, console,
-    auth, functions: {}, isCustomerUser: isCustomerIdentity, createCustomerAreaNavigation, createCustomerAuthState, createCustomerProfileSecurity, createCustomerOrderHistory, createCustomerReorderView, createStoredCartBridge, createCustomerPhoneClaimView,
+    auth, functions: {}, isCustomerUser: isCustomerIdentity, createCustomerAreaNavigation, createCustomerAuthState, createCustomerProfileSecurity, createCustomerOrderHistory, createCustomerReorderView, createStoredCartBridge, createCustomerPhoneClaimView, customerAreaEntryPath,
     EmailAuthProvider: {credential:()=>({})}, reauthenticateWithCredential:async()=>{}, verifyBeforeUpdateEmail:async()=>{}, updatePassword:async()=>{},
     sendEmailVerification:async()=>{}, sendPasswordResetEmail:async()=>{}, reload:async()=>{}, ...sdk,
     customerAuthErrorMessage: error => error.message,
