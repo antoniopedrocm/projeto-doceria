@@ -636,7 +636,8 @@ match /lojas/{lojaId} {
     // - /lojas/{lojaId}/configuracoes/config
     // - /lojas/{lojaId}/configuracoes/frete
     allow get, list: if isPublicRead();
-    allow create, update, delete: if canStaffWrite();
+    // Storefront availability is saved through authorized, audited callables.
+    allow create, update, delete: if docId != 'storefront' && canStaffWrite();
 
     match /{subcollection}/{configDocId} {
       allow get, list: if subcollection == 'cupons'
@@ -747,7 +748,8 @@ match /lojas/{lojaId} {
   }
 
   match /{collection}/{document=**} {
-    allow read: if collection != 'ifood'
+    allow read: if collection != 'fulfillmentAudit'
+      && collection != 'ifood'
       && collection != 'fiscalConfig'
       && collection != 'caixas'
       && collection != 'conferenciasCaixa'
@@ -756,6 +758,8 @@ match /lojas/{lojaId} {
       && collection != 'configuracoesInternas'
       && canReadStoreCollection(lojaId, collection);
     allow write: if canStaffWrite()
+      && collection != 'fulfillmentAudit'
+      && collection != 'configuracoes'
       && collection != 'pedidos'
       && collection != 'ifood'
       && collection != 'fiscalConfig'

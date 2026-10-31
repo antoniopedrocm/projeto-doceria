@@ -1,0 +1,69 @@
+{
+  "fixtureOnly": true,
+  "authenticatedDev": false,
+  "component": "Actual FulfillmentSettings.js with synthetic authorized responses",
+  "componentSha256": "1b6493cb717592b6c3db157b3ec452886fd8b6f6662d992b1d393ec6bf36261f",
+  "cases": [
+    {
+      "mode": "matriz",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "matriz-1920.png",
+      "horizontalOverflow": false,
+      "errors": []
+    },
+    {
+      "mode": "garavelo",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "garavelo-1920.png",
+      "horizontalOverflow": false,
+      "errors": []
+    },
+    {
+      "mode": "pending",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "pending-1920.png",
+      "horizontalOverflow": false,
+      "errors": []
+    },
+    {
+      "mode": "matriz",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "matriz-390.png",
+      "horizontalOverflow": false,
+      "errors": []
+    },
+    {
+      "mode": "garavelo",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "garavelo-390.png",
+      "horizontalOverflow": false,
+      "errors": []
+    },
+    {
+      "mode": "pending",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "pending-390.png",
+      "horizontalOverflow": false,
+      "errors": []
+    }
+  ],
+  "production": false
+}

@@ -23,7 +23,7 @@ const {createWhatsAppWebhook} = require('./whatsapp-webhook');
 const {quoteFreight, totalWithFreight, validateFreightCoordinates,
   loadStoreFreightConfig, orderFreightSnapshot, assertFreightClaims} = require('./freight-core');
 const {resolveFreightDistance} = require('./freight-distance');
-const {createStoreResolver,mountStoreRoutes} = require('./store-config');
+const {createStoreResolver,mountStoreRoutes,assertFulfillment} = require('./store-config');
 const {createFiscalFunctions} = require('./fiscal');
 const {createCaixaFunctions} = require('./caixa');
 const {createEntreLojasFunctions} = require('./entre-lojas');
@@ -429,6 +429,10 @@ const {createAdminOrderEdit,createOrderAuthorizer} = require('./admin-order-edit
 const adminOrderEdit = createAdminOrderEdit({db, admin, HttpsError, authorize:createOrderAuthorizer({db,HttpsError,assertActiveUser,sanitizePermissions,extractStoreIds})});
 exports.adminOrderSave = onCall({region:'us-central1',timeoutSeconds:60},adminOrderEdit.save);
 exports.adminOrderHistory = onCall({region:'us-central1',timeoutSeconds:60},adminOrderEdit.history);
+const {createFulfillmentAdmin,createFulfillmentAuthorizer}=require('./store-fulfillment-admin');
+const fulfillmentAdmin=createFulfillmentAdmin({db,admin,HttpsError,authorize:createFulfillmentAuthorizer({db,HttpsError,assertActiveUser,sanitizePermissions,extractStoreIds})});
+exports.staffGetFulfillment=onCall({region:'us-central1',timeoutSeconds:30},fulfillmentAdmin.get);
+exports.staffSaveFulfillment=onCall({region:'us-central1',timeoutSeconds:30},fulfillmentAdmin.save);
 
 const assertNotManagingSelf = (requesterUid, targetUid) => {
   if (targetUid && requesterUid === targetUid) {
@@ -1673,6 +1677,7 @@ app.delete('/clientes/:id',async(req,res)=>{
 
 const quoteOrderFreight = async (transaction, storeId, primaryData, payload, pickup, address) => {
   try {
+    await assertFulfillment({db,storeId,pickup,read:ref=>transaction.get(ref)});
     const config = pickup ? {} : await loadStoreFreightConfig({
       db, storeId, primaryData, read: (ref) => transaction.get(ref),
     });

@@ -3,6 +3,7 @@ import {storePerfMark,storePerfEvent,storePerfRequest,storePerfPaint} from './pe
 import {canPreviewCustomer,previewPermissionDetails,previewTarget} from './customer/adminPreviewAccess';
 import PaginaInicial from './storefront/CrmHome';
 import StoreSelector from './stores/StoreSelector';
+import FulfillmentSettings from './stores/FulfillmentSettings';
 import {staffDirectoryKey,reconcileStoreSelection,staffStoreSelectionKey} from './stores/staffDirectory';
 import useStaffSection,{reconcileStaffSection} from './stores/useStaffSection';
 import {storeDeadline} from './stores/storeRequests';
@@ -12059,6 +12060,7 @@ const effectiveStoreName = useMemo(() => {
                     </div>
                 ) : (
                     <div className="mt-6 bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+                        <FulfillmentSettings key={effectiveStoreId} storeId={effectiveStoreId} />
                         <form onSubmit={handleSaveFreteConfig} className="space-y-4 max-w-lg">
                             <h3 className="text-xl font-bold text-gray-800">Configurações de Entrega</h3>
                             <p className="text-sm text-gray-500">

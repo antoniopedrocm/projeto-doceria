@@ -1218,6 +1218,7 @@
         import {paymentSelection, resetPaymentChoice} from './checkout-payment-choice.mjs';
         import {fetchPublicStore} from './store-public-config.mjs';
         import {STORE_AVAILABILITY, getStoreAvailabilityMessage} from './store-availability.mjs';
+        import {fulfillmentBanner} from './fulfillment-availability.mjs';
         let publicStore = await window.publicStoreReady;
         if (publicStore) {
         function resetWhatsAppConsent() {
@@ -2059,15 +2060,16 @@
             if (checkoutButton) checkoutButton.disabled = isUnavailable;
             if (checkoutButton) checkoutButton.classList.toggle('opacity-60', isUnavailable);
             if (checkoutButton) checkoutButton.classList.toggle('cursor-not-allowed', isUnavailable);
+            if (checkoutButton) checkoutButton.title = !storeIsOpenNow ? getStoreAvailabilityMessage(storeAvailability) : '';
+            if (continueGuestButton) {
+                continueGuestButton.disabled = !publicStore.delivery.available;
+                continueGuestButton.title = publicStore.delivery.available ? '' : 'Entrega indisponível nesta loja. Use a identificação para retirada, quando disponível.';
+            }
 
             if (storeStatusBanner) {
-                if (isUnavailable) {
-                    storeStatusBanner.textContent = noFulfillment ? 'Nenhuma modalidade de atendimento disponível nesta loja.' : getStoreAvailabilityMessage(storeAvailability);
-                    storeStatusBanner.classList.remove('hidden');
-                } else {
-                    storeStatusBanner.textContent = publicStore.delivery.available ? '' : 'Entrega indisponível. Retirada disponível.';
-                    storeStatusBanner.classList.toggle('hidden', publicStore.delivery.available);
-                }
+                const message = fulfillmentBanner(publicStore);
+                storeStatusBanner.textContent = message;
+                storeStatusBanner.classList.toggle('hidden', !message);
             }
         }
 
@@ -2114,6 +2116,7 @@
             });
 
             continueGuestButton.addEventListener('click', async () => {
+                if (!publicStore.delivery.available) {showToast('Entrega indisponível nesta loja.',true);return;}
                 if(!await selectWeakCheckout(CHECKOUT_MODES.GUEST)) return;
                 identificationModal.classList.add('hidden');
                 guestCheckoutModal.classList.remove('hidden');

@@ -24,7 +24,7 @@ const checkout = async ({storeId, configs, distance = 2, serverDistance = 2, pic
       update: (r, data) => writes.push({path: r.path, data}),
     }),
   };
-  const context = { ...core, resolveFreightDistance: async () => serverDistance,
+  const context = { ...core, assertFulfillment:require('./store-config').assertFulfillment, resolveFreightDistance: async () => serverDistance,
     CHECKOUT_MODES:require('./checkout-identity').MODES,
     buildCheckoutWhatsApp: require('./whatsapp-checkout').buildCheckoutWhatsApp, db, app: {post: (_url, fn) => { handler = fn; }},
     requireStoreId: () => storeId,
@@ -47,6 +47,8 @@ const checkout = async ({storeId, configs, distance = 2, serverDistance = 2, pic
 };
 
 const configs = {
+  'lojas/matriz': {nome:'Matriz'},
+  'lojas/garavelo': {nome:'Garavelo'},
   'lojas/matriz/configuracoes/config': {frete: {lat: -16.6, lng: -49.3, valorPorKm: 2.26, valorMinimoFrete: 0}},
   'lojas/garavelo/configuracoes/config': {frete: {lat: -16.7, lng: -49.4, valorPorKm: 3, valorMinimoFrete: 8, freteACombinar: true}},
 };
@@ -88,7 +90,7 @@ test('origem inválida impede salvar pedido e movimentar estoque', async () => {
 });
 
 test('retirada não depende de configuração de entrega', async () => {
-  const result = await checkout({storeId: 'matriz', configs: {}, pickup: true});
+  const result = await checkout({storeId: 'matriz', configs: {'lojas/matriz':{nome:'Matriz'}}, pickup: true});
   assert.equal(result.status, 200);
   assert.equal(result.body.tipoFrete, 'retirada');
   assert.equal(result.body.total, 59.4);
@@ -113,7 +115,7 @@ test('frete inferior/zero e distância adulterada são rejeitados antes de qualq
 });
 
 test('configuração de outra loja não permite confirmar frete sem configuração da loja solicitada', async () => {
-  const result = await checkout({storeId: 'matriz', configs: {'lojas/garavelo/configuracoes/config': configs['lojas/garavelo/configuracoes/config']}});
+  const result = await checkout({storeId: 'matriz', configs: {'lojas/matriz':{nome:'Matriz'},'lojas/garavelo/configuracoes/config': configs['lojas/garavelo/configuracoes/config']}});
   assert.equal(result.status, 400);
   assert.equal(result.writes.length, 0);
   assert.ok(result.reads.every(p => (p === 'lojas/matriz' || p.startsWith('lojas/matriz/'))));
@@ -131,9 +133,9 @@ test('zero legítimo é calculado pela configuração da própria loja', async (
  test('loja V1 não herda mínimo legado dentro da transação de checkout', async () => {
   const storeId='loja-futura-teste';
   const local={
-    ['lojas/'+storeId]:{storeConfigVersion:1,ativo:true},
+    ['lojas/'+storeId]:{nome:'Fixture',storeConfigVersion:1,ativo:true},
     ['lojas/'+storeId+'/configuracoes/config']:{frete:{lat:-16,lng:-49,valorPorKm:2}},
-    ['lojas/'+storeId+'/configuracoes/storefront']:{schemaVersion:1},
+    ['lojas/'+storeId+'/configuracoes/storefront']:{schemaVersion:1,catalog:{enabled:true,category:'Delivery'},delivery:{enabled:true},pickup:{enabled:true}},
   };
   const result=await checkout({storeId,configs:local});
   assert.equal(result.status,400);assert.equal(result.writes.length,0);

@@ -1,0 +1,84 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-31T18:49:45.224Z",
+  "readOnly": true,
+  "databaseEdition": "STANDARD",
+  "apiRevision": "api-00066-juj",
+  "stores": [
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "storeConfigVersion": 1,
+      "definition": {
+        "schemaVersion": 1,
+        "delivery": {
+          "enabled": true
+        },
+        "pickup": {
+          "enabled": true
+        },
+        "catalog": {
+          "category": "Delivery",
+          "enabled": true
+        }
+      },
+      "publicConfig": {
+        "active": true,
+        "pickup": {
+          "enabled": true
+        },
+        "delivery": {
+          "enabled": true,
+          "available": true
+        },
+        "readiness": {
+          "store": "READY",
+          "catalog": "READY",
+          "schedule": "READY",
+          "pickup": "READY",
+          "delivery": "READY",
+          "payment": "READY"
+        }
+      },
+      "deliveryReady": true,
+      "freightChanged": false
+    },
+    {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "storeConfigVersion": 1,
+      "definition": {
+        "catalog": {
+          "enabled": true,
+          "category": "Delivery"
+        },
+        "schemaVersion": 1,
+        "delivery": {
+          "enabled": false
+        },
+        "pickup": {
+          "enabled": true
+        }
+      },
+      "publicConfig": {
+        "active": true,
+        "pickup": {
+          "enabled": true
+        },
+        "delivery": {
+          "enabled": false,
+          "available": false
+        },
+        "readiness": {
+          "store": "READY",
+          "catalog": "READY",
+          "schedule": "READY",
+          "pickup": "READY",
+          "delivery": "BLOCKED",
+          "payment": "READY"
+        }
+      },
+      "deliveryReady": true,
+      "freightChanged": false
+    }
+  ],
+  "production": false
+}

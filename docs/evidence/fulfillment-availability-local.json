@@ -1,0 +1,69 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-31T19:02:19.571Z",
+  "tests": {
+    "node": 22,
+    "emulator": 29,
+    "react": 4,
+    "failed": 0
+  },
+  "lint": {
+    "app": {
+      "errors": 0,
+      "warnings": 65,
+      "baselineWarnings": 65,
+      "addedMessages": []
+    },
+    "files": [
+      {
+        "file": "crm\\src\\stores\\FulfillmentSettings.js",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\src\\stores\\FulfillmentSettings.test.js",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      },
+      {
+        "file": "crm\\tests\\fulfillment-availability.test.cjs",
+        "errors": 0,
+        "warnings": 0,
+        "messages": []
+      }
+    ]
+  },
+  "backendLint": {
+    "errors": 0,
+    "warnings": 0
+  },
+  "build": {
+    "passed": true,
+    "main": "/static/js/main.66d27a75.js",
+    "css": "/static/css/main.88401a71.css",
+    "sourcesVerified": true,
+    "existingWarnings": [
+      "native-audio sourcemaps",
+      "browser metadata"
+    ]
+  },
+  "diffCheck": true,
+  "visualFixtures": "fulfillment-availability/local-report.json",
+  "runtimeWrites": false,
+  "realOrder": false,
+  "realPayment": false,
+  "realInvoice": false,
+  "sms": false,
+  "whatsapp": false,
+  "production": false,
+  "manualAcceptance": "PENDING",
+  "formalProgress": {
+    "phase9": "75%",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%"
+  }
+}

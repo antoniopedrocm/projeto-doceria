@@ -13,6 +13,27 @@ function catalogIdentity(store,definition,hasDefinition) {
     !['inactive','inativo','draft','incomplete'].includes(String(store.status || '').toLowerCase()) && (!v1 || store.ativo===true);
   return {v1,active,category:cleanText(definition.catalog?.category) || (!v1?'Delivery':''),catalogEnabled:!v1 || definition.catalog?.enabled===true};
 }
+async function deliveryFreight({db,storeId,config,v1,read}) {
+  try {
+    const freight=await loadStoreFreightConfig({db,storeId,primaryData:config,...(read?{read}:{})});
+    if(freight.freteACombinar!==true) {
+      validateFreightCoordinates(freight);
+      if(!nonnegative(Number(freight.valorPorKm)) || freight.valorPorKm==null || freight.valorPorKm==='') return null;
+      if(v1 && !nonnegative(freight.valorMinimoFrete)) return null;
+    }
+    return freight;
+  } catch {return null;}
+}
+// Recheck the intent inside the order transaction, not only in HTTP middleware.
+async function assertFulfillment({db,storeId,pickup,read=ref=>ref.get()}) {
+  const root=`lojas/${storeId}`;
+  const [store,definition]=await Promise.all([read(db.doc(root)),read(db.doc(root+'/configuracoes/storefront'))]);
+  if(!store.exists)throw error('STORE_NOT_FOUND',404);
+  const data=definition.data() || {},identity=catalogIdentity(store.data() || {},data,definition.exists);
+  if(!identity.active)throw error('STORE_INACTIVE',403);
+  if(!identity.catalogEnabled || !identity.category)throw error('CATALOG_UNAVAILABLE');
+  if(identity.v1 && data[pickup?'pickup':'delivery']?.enabled!==true)throw error(pickup?'PICKUP_UNAVAILABLE':'DELIVERY_UNAVAILABLE');
+}
 function publicSchedule(config = {}) {
   const schedule = {};
   for (const day of ['sun','mon','tue','wed','thu','fri','sat']) {
@@ -46,18 +67,7 @@ function createStoreResolver({db, getAvailability, loadPaymentConfig}) {
       (!v1 || getAvailability({...config,manualOverride:{mode:'auto'}}) !== 'CONFIG_UNAVAILABLE');
     const pickup = catalog && (!v1 || definition.pickup?.enabled === true);
     const deliveryEnabled = active && (!v1 || definition.delivery?.enabled === true);
-    let freight = null;
-    if (deliveryEnabled) {
-      try {
-        freight = await loadStoreFreightConfig({db, storeId, primaryData:config});
-        if (freight.freteACombinar !== true) {
-          validateFreightCoordinates(freight);
-          if (!nonnegative(Number(freight.valorPorKm)) || freight.valorPorKm == null || freight.valorPorKm === '') throw error('FREIGHT_INVALID');
-          // Legacy minimum is preserved only for pre-V1 stores, never inherited by V1.
-          if (v1 && !nonnegative(freight.valorMinimoFrete)) throw error('FREIGHT_MINIMUM_REQUIRED');
-        }
-      } catch {freight = null;}
-    }
+    const freight = deliveryEnabled ? await deliveryFreight({db,storeId,config,v1}) : null;
     let payment = null;
     const onlineEnabled = active && (!v1 || definition.onlinePayment?.enabled === true);
     if (onlineEnabled) {try {payment = await loadPaymentConfig(storeId);} catch { /* fail closed per domain */ }}
@@ -146,4 +156,4 @@ function mountStoreRoutes(app, resolver) {
     } catch(e) {return sendError(res,e);}
   });
 }
-module.exports = {createStoreResolver,mountStoreRoutes,validId};
+module.exports = {createStoreResolver,mountStoreRoutes,validId,catalogIdentity,deliveryFreight,assertFulfillment};
