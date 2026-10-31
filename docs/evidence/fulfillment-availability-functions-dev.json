@@ -1,0 +1,45 @@
+{
+  "project": "crmdoceria-9959e",
+  "commit": "74a5c73245b7ae48f0b0b1f92a8934dcf4715707",
+  "checkedAt": "2026-10-31T19:08:51.372Z",
+  "functions": [
+    {
+      "name": "api",
+      "state": "ACTIVE",
+      "revision": "api-00067-lal",
+      "runtimeFilesMatched": 50
+    },
+    {
+      "name": "staffGetFulfillment",
+      "state": "ACTIVE",
+      "revision": "staffgetfulfillment-00001-nos",
+      "runtimeFilesMatched": 50
+    },
+    {
+      "name": "staffSaveFulfillment",
+      "state": "ACTIVE",
+      "revision": "staffsavefulfillment-00001-xaf",
+      "runtimeFilesMatched": 50
+    }
+  ],
+  "appEnvUnchanged": true,
+  "secretBindingsUnchanged": true,
+  "unrelatedFunctionsUnchanged": 137,
+  "rules": {
+    "matched": true,
+    "sha256": "032bb3fb3f407e6ee933694d8c55960d84d20021b68bdcd27efc5cfb499ac8f8",
+    "ruleset": "projects/crmdoceria-9959e/rulesets/bee37add-4f1d-4394-8096-65fc35f284f9"
+  },
+  "anonymous": [
+    {
+      "name": "staffGetFulfillment",
+      "status": 401
+    },
+    {
+      "name": "staffSaveFulfillment",
+      "status": 401
+    }
+  ],
+  "writesByVerifier": 0,
+  "production": false
+}
