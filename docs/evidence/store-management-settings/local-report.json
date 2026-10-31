@@ -1,0 +1,225 @@
+{
+  "fixtureOnly": true,
+  "authenticatedDev": false,
+  "source": "Actual Settings tab/page, quick selector and shared management plus actual App Modal/Button/Input; synthetic responses",
+  "componentSha256": "cb9d92681d5b401bf72f774f0213384db3561f652f17fe0d408feb3182a3f54a",
+  "cases": [
+    {
+      "mode": "owner-page",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "owner-page-1920.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "owner-menu",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "owner-menu-1920.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "create",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "create-1920.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "edit",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "edit-1920.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "deactivate",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "deactivate-1920.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "delete",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "delete-1920.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "owner-quick",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "owner-quick-1920.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "admin-page",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "admin-page-1920.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "admin-quick",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "admin-quick-1920.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "owner-page",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "owner-page-390.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "owner-menu",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "owner-menu-390.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "create",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "create-390.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "edit",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "edit-390.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "deactivate",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "deactivate-390.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "delete",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "delete-390.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "owner-quick",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "owner-quick-390.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "admin-page",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "admin-page-390.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    },
+    {
+      "mode": "admin-quick",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "admin-quick-390.png",
+      "pageOverflow": false,
+      "internalOverflow": false,
+      "mutationAttempts": 0,
+      "errors": []
+    }
+  ],
+  "production": false
+}

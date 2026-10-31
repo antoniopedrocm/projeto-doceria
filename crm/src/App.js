@@ -4,6 +4,7 @@ import {canPreviewCustomer,previewPermissionDetails,previewTarget} from './custo
 import PaginaInicial from './storefront/CrmHome';
 import StoreSelector from './stores/StoreSelector';
 import StoreManagementModal from './stores/StoreManagementModal';
+import StoreManagementSettings,{StoreManagementSettingsTab,canManageStoreSettings} from './stores/StoreManagementSettings';
 import FulfillmentSettings from './stores/FulfillmentSettings';
 import {staffDirectoryKey,reconcileStoreSelection,staffStoreSelectionKey,storeFriendlyName} from './stores/staffDirectory';
 import useStaffSection,{reconcileStaffSection} from './stores/useStaffSection';
@@ -10234,8 +10235,9 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
     );
   };
 
-	const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, deleteItem, availableStores, storeInfoMap, resolveActiveStoreForWrite, selectedStoreId, onOpenCashRecord }) => {
+	const Configuracoes = ({ user, setConfirmDelete, data, addItem, updateItem, deleteItem, availableStores, storeInfoMap, resolveActiveStoreForWrite, selectedStoreId, onOpenCashRecord, onSelectStore, onStoresSaved }) => {
     const [activeTab, setActiveTab] = usePersistentState('configuracoes_activeTab', 'users');
+    useEffect(()=>{if(activeTab==='gerenciar-lojas'&&!canManageStoreSettings(user))setActiveTab('users');},[activeTab,user,setActiveTab]);
 
     // States para Usuários
     const [usuarios, setUsuarios] = useState([]);
@@ -11464,6 +11466,7 @@ const effectiveStoreName = useMemo(() => {
 
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2">
                 <div className="flex flex-wrap gap-2">
+                    <StoreManagementSettingsTab user={user} activeTab={activeTab} onChange={setActiveTab}/>
                     <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'users' ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                         Usuários
                     </button>
@@ -11489,6 +11492,9 @@ const effectiveStoreName = useMemo(() => {
                 </div>
             </div>
 
+            {activeTab==='gerenciar-lojas'&&<StoreManagementSettings user={user} Modal={Modal} Button={Button} Input={Input}
+              onSelectStore={onSelectStore} allowAllOption={user?.role===ROLE_OWNER} allKey={STORE_ALL_KEY} currentStoreId={selectedStoreId}
+              onSaved={onStoresSaved} onConfigure={id=>{onSelectStore(id);setActiveTab('frete');}}/>}
             {activeTab === 'pagamentos' && <InfinitePaySettings key={effectiveStoreId || 'none'} functions={functions} storeId={effectiveStoreId} />}
             {activeTab === 'users' && (
 
@@ -21244,10 +21250,10 @@ const handleSubmit = async (e) => {
     }
   },[authLoading,user?.auth?.uid,staffUid,currentPage,authorizedPage,setCurrentPage]);
 
-  const canCreateStores = useMemo(() => {
-    if (!user) return false;
-    return user.manage_stores===true;
-  }, [user]);
+  const handleStoresSaved = result => {
+    if(Array.isArray(result.assignedStoreIds))setUser(previous=>({...previous,lojaIds:result.assignedStoreIds,lojaId:result.primaryStoreId}));
+    setDirectoryRetry(value=>value+1);
+  };
 
   const effectiveStoreId = useMemo(() => {
     if (!user) return null;
@@ -21327,7 +21333,7 @@ const handleSubmit = async (e) => {
       case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial onImageClick={setLightboxImage} />;
-      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} onSelectStore={selectStoreById} onStoresSaved={handleStoresSaved} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       default: return <PaginaInicial onImageClick={setLightboxImage} />;
@@ -21389,7 +21395,7 @@ const handleSubmit = async (e) => {
                 {user && <StoreSelector owner={user.role===ROLE_OWNER} allKey={STORE_ALL_KEY}
                   stores={availableStores} names={{...Object.fromEntries(Object.entries(storeInfoMap).filter(([,info])=>info?.nome).map(([id,info])=>[id,info.nome])),...directoryNames}}
                   selected={currentStoreIdForDisplay} status={directoryContextKey===storeAccessKey?directoryStatus:'loading'} onChange={handleStoreChange}
-                  onRetry={()=>setDirectoryRetry(value=>value+1)} onManage={()=>setShowStoreManager(true)} canCreate={canCreateStores} onCreate={()=>setShowStoreManager(true)}/>}
+                  onRetry={()=>setDirectoryRetry(value=>value+1)} onManage={()=>setShowStoreManager(true)}/>}
             </div>
             <div className="flex items-center gap-4">
                                 {user && (
@@ -21448,8 +21454,8 @@ const handleSubmit = async (e) => {
       </div>
 
       <StoreManagementModal isOpen={showStoreManager} onClose={()=>setShowStoreManager(false)} Modal={Modal} Button={Button} Input={Input}
-        canManage={canCreateStores} onSelectStore={selectStoreById} allowAllOption={user?.role===ROLE_OWNER} allKey={STORE_ALL_KEY} currentStoreId={currentStoreIdForDisplay}
-        onSaved={result=>{if(Array.isArray(result.assignedStoreIds))setUser(previous=>({...previous,lojaIds:result.assignedStoreIds,lojaId:result.primaryStoreId}));setDirectoryRetry(value=>value+1);}} onConfigure={id=>{selectStoreById(id);setCurrentPage('configuracoes');}} />
+        canManage={false} selectionOnly={true} onSelectStore={selectStoreById} allowAllOption={user?.role===ROLE_OWNER} allKey={STORE_ALL_KEY} currentStoreId={currentStoreIdForDisplay}
+        onSaved={handleStoresSaved} onConfigure={id=>{selectStoreById(id);setCurrentPage('configuracoes');}} />
 
       <Modal isOpen={showLogin} onClose={() => {setShowLogin(false); setLoginError(''); setPasswordResetMessage({ text: '', type: '' });}} title={showPasswordReset ? "Recuperar Senha" : "Login"} size="sm">
         {showPasswordReset ? (

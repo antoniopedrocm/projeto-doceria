@@ -1,0 +1,18 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-31T21:21:26.136Z",
+  "authorization": "explicit-human-approval-in-this-chat",
+  "accountIdentifiersOmitted": true,
+  "beforeRole": "admin",
+  "afterRole": "dono",
+  "updatedFields": [
+    "role"
+  ],
+  "storesAndPermissionsUnchanged": true,
+  "customProfileUnchanged": true,
+  "firebaseAuthUntouched": true,
+  "auditCollection": "storeManagementAudit",
+  "auditId": "owner-role-correction-08af8aa5-b32a-4af3-a03e-b1f8e1cbb87e",
+  "storeMutations": 0,
+  "production": false
+}

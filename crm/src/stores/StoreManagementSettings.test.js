@@ -1,0 +1,23 @@
+import React,{act} from 'react';
+import {createRoot} from 'react-dom/client';
+import {httpsCallable} from 'firebase/functions';
+import StoreManagementSettings,{StoreManagementSettingsTab} from './StoreManagementSettings';
+import StoreManagementModal from './StoreManagementModal';
+jest.mock('firebase/functions',()=>({httpsCallable:jest.fn()}));
+jest.mock('../firebaseConfig',()=>({functions:{}}));
+let host,root;
+const rows=[{storeId:'fixture-store',nome:'Loja de teste',legalName:'Loja de teste',kind:'STORE',status:'ACTIVE',revision:0},{storeId:'apfood',nome:'ApFood',kind:'LEGACY',status:'ACTIVE'}];
+const Button=({variant,size,children,...props})=><button {...props}>{children}</button>;
+const Input=({label,...props})=><label>{label}<input {...props}/></label>;
+const Modal=({isOpen,children})=>isOpen?<div role="dialog">{children}</div>:null;
+const props={Modal,Button,Input,onSelectStore:jest.fn(),onSaved:jest.fn(),onConfigure:jest.fn(),allowAllOption:true,allKey:'__all__'};
+const button=text=>[...host.querySelectorAll('button')].find(b=>b.textContent===text);
+// eslint-disable-next-line testing-library/no-unnecessary-act
+const draw=element=>act(async()=>root.render(element));
+beforeEach(()=>{global.IS_REACT_ACT_ENVIRONMENT=true;host=document.createElement('div');document.body.append(host);root=createRoot(host);httpsCallable.mockImplementation((_f,name)=>name==='storeManagementRead'?async data=>({data:data.storeId?{manage_stores:true,store:{...rows[0],menuSlug:'cardapio-fixture',ready:false,readiness:{basic:true,catalog:false},definition:{catalog:{enabled:false,category:''},onlinePayment:{enabled:false}}}}:{manage_stores:true,stores:rows}}):jest.fn());});
+afterEach(async()=>{await act(async()=>root.unmount());host.remove();jest.clearAllMocks();});
+test('Dono sees Settings tab and + Nova Loja; page reuses management without a modal',async()=>{const change=jest.fn();await draw(<><StoreManagementSettingsTab user={{manage_stores:true}} activeTab="users" onChange={change}/><StoreManagementSettings {...props} user={{manage_stores:true}}/></>);await act(async()=>button('Gerenciar Lojas').click());expect(change).toHaveBeenCalledWith('gerenciar-lojas');expect(host.querySelector('[role=dialog]')).toBeNull();expect(host.textContent).toContain('Crie e administre as unidades');expect(button('+ Nova Loja')).toBeDefined();await act(async()=>button('+ Nova Loja').click());expect(button('Criar rascunho')).toBeDefined();await act(async()=>button('Cancelar').click());expect(button('+ Nova Loja')).toBeDefined();});
+test.each(['admin','gerente','atendente'])('%s never sees the structural tab/page, including legacy normalized Dono label',async role=>{const user={role:role==='admin'?'dono':role,manage_stores:false};await draw(<><StoreManagementSettingsTab user={user}/><StoreManagementSettings {...props} user={user}/></>);expect(host.textContent).toBe('');expect(httpsCallable).not.toHaveBeenCalled();});
+test('quick modal is selection-only even for Dono; General and legacy never gain actions',async()=>{await draw(<StoreManagementModal {...props} isOpen={true} canManage={true} selectionOnly={true}/>);expect(button('+ Nova Loja')).toBeUndefined();expect(host.querySelector('details')).toBeNull();expect(host.querySelectorAll('button')).toHaveLength(3);expect(host.textContent).toContain('Visão Geral');expect(host.textContent).toContain('Legado');});
+test('opening/canceling edit does not mutate and store configuration navigation works in embedded mode',async()=>{await draw(<StoreManagementSettings {...props} user={{manage_stores:true}}/>);await act(async()=>button('Editar').click());expect(button('Salvar alterações')).toBeDefined();await act(async()=>button('Abrir Configurações').click());expect(props.onConfigure).toHaveBeenCalledWith('fixture-store');expect(httpsCallable.mock.calls.every(([,name])=>name==='storeManagementRead')).toBe(true);});
+test('server denial keeps + Nova Loja hidden even with forged UI capability',async()=>{httpsCallable.mockImplementation(()=>async()=>({data:{manage_stores:false,stores:rows}}));await draw(<StoreManagementSettings {...props} user={{manage_stores:true}}/>);expect(button('+ Nova Loja')).toBeUndefined();expect(host.querySelector('details')).toBeNull();expect(host.querySelector('[role=alert]').textContent).toContain('não está autorizado');});

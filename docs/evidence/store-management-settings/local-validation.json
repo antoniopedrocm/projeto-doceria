@@ -1,0 +1,31 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-31T21:25:25.228Z",
+  "baseCommit": "0b9c23a8",
+  "tests": {
+    "react": 38,
+    "suites": 5,
+    "existingBackendAuthorizationUnchanged": true
+  },
+  "visual": {
+    "cases": 18,
+    "fixtureOnly": true,
+    "horizontalOverflow": false,
+    "mutations": 0
+  },
+  "build": {
+    "passed": true,
+    "main": "/static/js/main.8b290d13.js",
+    "css": "/static/css/main.dfbd1739.css"
+  },
+  "lint": {
+    "errors": 0,
+    "newWarnings": 0,
+    "preexistingAppWarnings": 65,
+    "preexistingRouteWarnings": 1
+  },
+  "diffCheck": true,
+  "storeMutations": 0,
+  "authorizedProfileRoleCorrections": 1,
+  "production": false
+}
