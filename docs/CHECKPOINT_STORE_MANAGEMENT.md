@@ -2,7 +2,7 @@
 
 ## Estado atual para retomada
 
-**Complemento publicado e conferido no DEV; novo aceite visual Dono PENDENTE.** O usuário NÃO aprovou o aceite anterior e solicitou separar seleção e administração. Não registrar PASS automaticamente. Não repetir implementação, build, deploy ou correção de papel sem nova falha.
+**CONCLUÍDO E HOMOLOGADO NO DEV.** O usuário respondeu **PASS** ao novo aceite autenticado da aba Configurações → Gerenciar Lojas e do seletor rápido, em 2026-10-31. A reprovação inicial foi tratada no complemento 9959c630. Não repetir implementação, build, deploy, homologação ou correção de papel sem nova falha.
 
 Workspace: C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree.
 Branch feature/infinitepay-customer-auth. Firebase crmdoceria-9959e. PROD não autorizada.
@@ -33,8 +33,8 @@ Validação original backend permanece: 53 emulador +19 focados sobrepostos, 26 
 
 Evidências: [local](evidence/store-management-settings/local-validation.json), [capturas](evidence/store-management-settings/local-report.json), [Hosting](evidence/store-management-settings/hosting-dev.json), [backend/Rules](evidence/store-management-settings/backend-rules-unchanged-dev.json), [correção autorizada](evidence/store-management-settings/owner-correction-dev.json), [capability atual](evidence/store-management-settings/owner-capability-dev.json), [Chrome público](evidence/store-management-settings/dev-public-report.json). Logs %TEMP%/store-management-settings-*.log; dados privados não devem ser copiados aos docs.
 
-## Próximo passo único
+## Encerramento
 
-Solicitar novo aceite autenticado: recarregar CRM DEV, Configurações → Gerenciar Lojas, conferir + Nova Loja (abrir e cancelar), campos/ações/status/readiness (sem salvar), Visão Geral somente seleção e ApFood protegido; seletor Ver lojas continua rápido, sem ações estruturais; desktop/mobile. Conta autorizada já é Dono, não precisa novo cadastro nem alteração de permissões. Não fazer mutações reais para homologação. Após PASS registrar documentalmente e push, sem novo runtime/deploy.
+Usuário respondeu PASS à solicitação consolidada revisada: Configurações → Gerenciar Lojas, + Nova Loja/Editar abrindo e cancelando, cards/ações por elegibilidade, Visão Geral somente seleção, ApFood protegido, Entre Lojas separado e Ver lojas rápido; desktop/mobile. [Aceite humano](evidence/store-management-settings/manual-acceptance-dev.json). As gravações, exclusão, auditoria e negações de papéis não Dono continuam sustentadas pelos testes automatizados, sem inferir mutações reais desse aceite visual. Nenhuma nova mudança de papel, dado remoto ou runtime foi necessária para o fechamento; nenhuma nova publicação. O aceite fiscal anterior permanece separado.
 
 Percentuais: Fase9 75%, Fase11/12 100%, Global95,00%, Fase13 0%, preservados. Mercado Pago futuro; aceite fiscal anterior separado. PROD intacta. Nenhum pedido/pagamento/nota/SMS/WhatsApp real.

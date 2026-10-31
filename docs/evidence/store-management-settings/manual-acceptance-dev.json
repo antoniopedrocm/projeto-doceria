@@ -1,0 +1,35 @@
+{
+  "project": "crmdoceria-9959e",
+  "functionalCommit": "9959c630636a304cff4b340dc4d97183ab20b0f6",
+  "deliveryEvidenceCommit": "e3deefbd",
+  "recordedAt": "2026-10-31T21:54:57.309Z",
+  "clientTimezone": "UTC-03:00",
+  "source": "Explicit user PASS to the revised Owner settings acceptance request",
+  "questionReference": "call_5eb1c0c8905141a785b2029f5bcf3c9b",
+  "answer": "PASS",
+  "scope": [
+    "Settings → Gerenciar Lojas exclusive structural management",
+    "+ Nova Loja form opened and canceled",
+    "Store cards, names, IDs, status and eligible actions",
+    "Edit form opened and canceled",
+    "General view selection only",
+    "ApFood legacy protected",
+    "Entre Lojas remains separate",
+    "Ver lojas quick selection only",
+    "Desktop 1920x889 and mobile 390x800"
+  ],
+  "procedure": "Visual inspection and cancellation only; no real store mutation, order, payment, invoice, SMS or WhatsApp requested",
+  "mutationAndNonOwnerDenialEvidence": "Previously recorded emulator/automated tests; not inferred from the human visual PASS",
+  "ownerRoleCorrection": "Previously explicitly authorized, executed and verified; not repeated during closure",
+  "initialAcceptance": "Not approved; superseded by the revised implementation and this explicit PASS",
+  "priorFiscalAcceptance": "Separate; not closed by this acceptance",
+  "closure": "Documentation only; no runtime, remote data mutation, build or deploy",
+  "production": false,
+  "formalProgress": {
+    "phase9": "75%",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%"
+  }
+}
