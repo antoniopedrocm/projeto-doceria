@@ -59,3 +59,10 @@ Emuladores Auth/Firestore com projeto demo, sem mutações no DEV real: ciclo co
 Capturas de componentes reais com respostas fictícias: desktop 1920×889 e mobile 390×800, incluindo lista/menu/edição/confirmações/Staff sem gestão. Não representam sessão Staff autenticada. [Relatório visual local](evidence/store-management/local-report.json). Evidências e situação de publicação/aceite no [checkpoint](CHECKPOINT_STORE_MANAGEMENT.md).
 
 Nenhuma mutação de Matriz/Garavelo, pedido, pagamento, nota, SMS ou WhatsApp real. InfinitePay/Mercado Pago não são alterados. Fase9=75%, Fase11/12=100%, Global=95,00%, Fase13=0% preservados.
+
+
+### 2026-10-31 — Gerenciamento exclusivo Dono publicado no DEV
+
+Commit funcional **c3a7bb63cb9210ccd87b383382d7f3fbcadc6612**, push na branch feature/infinitepay-customer-auth e publicação seletiva DEV concluídos: dez exports ACTIVE, 52 arquivos de runtime por fonte, envs/secrets preservados, 132 Functions não relacionadas inalteradas e Rules correspondentes à fonte testada. Callables anônimos rejeitados com 401, sem escrita. Hosting 61/61 hashes, 28 fontes de sourcemap, 52 fontes públicas e cache PASS. Chrome público Matriz/Garavelo direto/refresh, desktop/mobile, sem overflow/pageerror nem requisição de mutação PASS. **Entrega técnica concluída; aceite visual autenticado Dono PENDENTE.** Capturas da gestão são fixtures locais, não sessão Staff DEV. Mutações destrutivas somente em emuladores. [Contrato](STORE_MANAGEMENT.md), [checkpoint](CHECKPOINT_STORE_MANAGEMENT.md).
+
+Inventário real de lojas preservado. Garavelo já teve entrega habilitada por CRM_FREIGHT_SETTINGS em 31/10/2026 16:36 (UTC−3), antes do inventário deste workstream às 17:05; não foi ação desta implementação. A disponibilidade atual das duas lojas permanece intacta. Nenhum pedido/pagamento/nota/SMS/WhatsApp real; PROD intacta. Fase9=75%, Fase11/12=100%, Global=95,00%, Fase13=0% preservados. Mercado Pago futuro; aceite fiscal anterior separado.

@@ -1,0 +1,164 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-31T20:54:44.816Z",
+  "authenticatedStaff": false,
+  "production": false,
+  "cases": [
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "slug": "matriz",
+      "status": 200,
+      "initial": {
+        "storeId": "ana-guimaraes-doceria-matriz",
+        "delivery": {
+          "enabled": true,
+          "available": true
+        },
+        "pickup": {
+          "enabled": true
+        },
+        "banner": "",
+        "bannerVisible": false,
+        "overflow": false,
+        "path": "/cardapio-matriz"
+      },
+      "refreshed": {
+        "storeId": "ana-guimaraes-doceria-matriz",
+        "delivery": {
+          "enabled": true,
+          "available": true
+        },
+        "pickup": {
+          "enabled": true
+        },
+        "banner": "",
+        "bannerVisible": false,
+        "overflow": false,
+        "path": "/cardapio-matriz"
+      },
+      "errors": [],
+      "blockedMutatingRequests": [],
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "slug": "garavelo",
+      "status": 200,
+      "initial": {
+        "storeId": "ana-guimaraes-doceria-garavelo",
+        "delivery": {
+          "enabled": true,
+          "available": true
+        },
+        "pickup": {
+          "enabled": true
+        },
+        "banner": "",
+        "bannerVisible": false,
+        "overflow": false,
+        "path": "/cardapio-garavelo"
+      },
+      "refreshed": {
+        "storeId": "ana-guimaraes-doceria-garavelo",
+        "delivery": {
+          "enabled": true,
+          "available": true
+        },
+        "pickup": {
+          "enabled": true
+        },
+        "banner": "",
+        "bannerVisible": false,
+        "overflow": false,
+        "path": "/cardapio-garavelo"
+      },
+      "errors": [],
+      "blockedMutatingRequests": [],
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "slug": "matriz",
+      "status": 200,
+      "initial": {
+        "storeId": "ana-guimaraes-doceria-matriz",
+        "delivery": {
+          "enabled": true,
+          "available": true
+        },
+        "pickup": {
+          "enabled": true
+        },
+        "banner": "",
+        "bannerVisible": false,
+        "overflow": false,
+        "path": "/cardapio-matriz"
+      },
+      "refreshed": {
+        "storeId": "ana-guimaraes-doceria-matriz",
+        "delivery": {
+          "enabled": true,
+          "available": true
+        },
+        "pickup": {
+          "enabled": true
+        },
+        "banner": "",
+        "bannerVisible": false,
+        "overflow": false,
+        "path": "/cardapio-matriz"
+      },
+      "errors": [],
+      "blockedMutatingRequests": [],
+      "pass": true
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "slug": "garavelo",
+      "status": 200,
+      "initial": {
+        "storeId": "ana-guimaraes-doceria-garavelo",
+        "delivery": {
+          "enabled": true,
+          "available": true
+        },
+        "pickup": {
+          "enabled": true
+        },
+        "banner": "",
+        "bannerVisible": false,
+        "overflow": false,
+        "path": "/cardapio-garavelo"
+      },
+      "refreshed": {
+        "storeId": "ana-guimaraes-doceria-garavelo",
+        "delivery": {
+          "enabled": true,
+          "available": true
+        },
+        "pickup": {
+          "enabled": true
+        },
+        "banner": "",
+        "bannerVisible": false,
+        "overflow": false,
+        "path": "/cardapio-garavelo"
+      },
+      "errors": [],
+      "blockedMutatingRequests": [],
+      "pass": true
+    }
+  ]
+}

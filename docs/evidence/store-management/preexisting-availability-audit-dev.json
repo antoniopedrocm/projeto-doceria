@@ -1,0 +1,73 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-31T20:49:38.951Z",
+  "storeId": "ana-guimaraes-doceria-garavelo",
+  "configuration": {
+    "updateTime": "2026-10-31T19:36:19.965979Z",
+    "fields": {
+      "delivery": {
+        "mapValue": {
+          "fields": {
+            "enabled": {
+              "booleanValue": true
+            }
+          }
+        }
+      },
+      "pickup": {
+        "mapValue": {
+          "fields": {
+            "enabled": {
+              "booleanValue": true
+            }
+          }
+        }
+      },
+      "fulfillmentRevision": {
+        "integerValue": "1"
+      }
+    }
+  },
+  "audit": [
+    {
+      "eventId": "a5507d37-4437-4797-87c7-19cc074a9b82",
+      "fields": {
+        "createdAt": {
+          "timestampValue": "2026-10-31T19:36:19.951Z"
+        },
+        "before": {
+          "mapValue": {
+            "fields": {
+              "pickupEnabled": {
+                "booleanValue": true
+              },
+              "deliveryEnabled": {
+                "booleanValue": false
+              }
+            }
+          }
+        },
+        "source": {
+          "stringValue": "CRM_FREIGHT_SETTINGS"
+        },
+        "after": {
+          "mapValue": {
+            "fields": {
+              "pickupEnabled": {
+                "booleanValue": true
+              },
+              "deliveryEnabled": {
+                "booleanValue": true
+              }
+            }
+          }
+        },
+        "action": {
+          "stringValue": "FULFILLMENT_AVAILABILITY_CHANGED"
+        }
+      }
+    }
+  ],
+  "readOnly": true,
+  "production": false
+}

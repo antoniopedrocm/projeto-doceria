@@ -1,0 +1,113 @@
+{
+  "project": "crmdoceria-9959e",
+  "commit": "c3a7bb63cb9210ccd87b383382d7f3fbcadc6612",
+  "checkedAt": "2026-10-31T20:52:41.923Z",
+  "functions": [
+    {
+      "name": "api",
+      "state": "ACTIVE",
+      "revision": "api-00068-xis",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "createStore",
+      "state": "ACTIVE",
+      "revision": "createstore-00038-gac",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "staffGetFulfillment",
+      "state": "ACTIVE",
+      "revision": "staffgetfulfillment-00002-nom",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "staffSaveFulfillment",
+      "state": "ACTIVE",
+      "revision": "staffsavefulfillment-00002-qap",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "createUser",
+      "state": "ACTIVE",
+      "revision": "createuser-00051-wev",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "updateUser",
+      "state": "ACTIVE",
+      "revision": "updateuser-00052-wov",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "deleteUser",
+      "state": "ACTIVE",
+      "revision": "deleteuser-00046-gov",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "updateUserPassword",
+      "state": "ACTIVE",
+      "revision": "updateuserpassword-00046-won",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "storeManagementRead",
+      "state": "ACTIVE",
+      "revision": "storemanagementread-00001-suz",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    },
+    {
+      "name": "storeManagementWrite",
+      "state": "ACTIVE",
+      "revision": "storemanagementwrite-00001-yos",
+      "runtimeFilesMatched": 52,
+      "appEnvUnchanged": true,
+      "secretBindingsUnchanged": true
+    }
+  ],
+  "unrelatedFunctionsUnchanged": 132,
+  "rules": {
+    "matched": true,
+    "sha256": "8bfe5e618a5c62277fbb30a3fa180ebf0db7fa0ed3f732b3494108e192e5b48a",
+    "ruleset": "projects/crmdoceria-9959e/rulesets/674db1b8-5757-44cb-b256-5eb25b367e2b"
+  },
+  "anonymous": [
+    {
+      "name": "createStore",
+      "status": 401
+    },
+    {
+      "name": "staffSaveFulfillment",
+      "status": 401
+    },
+    {
+      "name": "storeManagementRead",
+      "status": 401
+    },
+    {
+      "name": "storeManagementWrite",
+      "status": 401
+    }
+  ],
+  "writesByVerifier": 0,
+  "production": false
+}

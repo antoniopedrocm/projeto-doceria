@@ -1,0 +1,14 @@
+{
+  "before": {
+    "file": "/static/js/main.66d27a75.js",
+    "bytes": 1695698,
+    "gzipBytes": 444760
+  },
+  "after": {
+    "file": "/static/js/main.60d6a111.js",
+    "bytes": 1703059,
+    "gzipBytes": 447142
+  },
+  "gzipDeltaBytes": 2382,
+  "newDependencies": 0
+}

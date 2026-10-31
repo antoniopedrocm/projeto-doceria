@@ -1,29 +1,35 @@
 # Checkpoint — gerenciamento de lojas exclusivo Dono
 
-DEV crmdoceria-9959e; branch feature/infinitepay-customer-auth; workspace C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree. PROD não autorizada. 31/10/2026.
+## Estado atual para retomada
 
-## Retomada
+**Entrega técnica concluída no DEV; homologação manual Dono PENDENTE.** Não repetir implementação, build ou deploy sem falha nova. PROD não autorizada.
 
-Base b4cd6b67 (disponibilidade por loja homologada). Auditoria/implementação em andamento. Não alterar Matriz/Garavelo reais para testar; mutações destrutivas somente em fixtures/emuladores. Nenhum deploy realizado neste workstream.
+Workspace absoluto: C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree.
+Branch: feature/infinitepay-customer-auth. Firebase: crmdoceria-9959e.
+Base b4cd6b67; commit funcional c3a7bb63cb9210ccd87b383382d7f3fbcadc6612 enviado ao origin.
 
-Achados: createStore permite Dono/Gerente e usa normalização que inclui Admin como Dono; frontend tem o mesmo grant. Novo manage_stores deve validar papel ORIGINAL dono/owner, revogável e sem grant a Admin, Gerente ou Staff. Não mudar globalmente o normalizador de Auth/Customer. Fulfillment estrutural passa a ser exclusivo Dono conforme decisão atual, mantendo leitura Staff autorizada.
+## Implementado
 
-Plano: serviço administrativo de listagem/detalhe/mutação e auditoria imutável; criar DRAFT, editar nome/nome público/slug e configuração de publicação; inativar sem apagar histórico; reativar somente com readiness; hard delete conservador apenas draft novo nunca publicado, vazio e sem referências, sem recursiveDelete. Slug antigo preservado como alias. Loja virtual Visão Geral nunca é entidade editável; canais/legado precisam de classificação/modelo válido.
+manage_stores exige papel ORIGINAL dono/owner e não revogado. Admin normalizado como Dono não recebe gestão. Leitura/seleção Staff preservadas por escopo. Nova loja DRAFT/inativa; edição estrutural e de publicação; confirmação de inativação/reativação com readiness; ID imutável; slugs anteriores preservados como aliases. Visão Geral virtual e canais/legado não são entidades editáveis. Telefone/endereço básicos reutilizam info/dados e preservam objetos legados. Configurações próprias de frete/agenda/provider/fiscal não são duplicadas.
 
-Investigar também proteção contra alteração direta de storefront/raiz e concessão indireta de Dono pelos endpoints Staff. Não alterar provider, Customer Auth, fiscal ou histórico. Validar escopo/readiness/concorrência e dependências antes de publicar.
+Hard delete somente rascunho novo, nunca publicado, vazio e sem dependências comprovadas; nome digitado, revisão/lock, consultas limitadas com falha fechada, sem recursiveDelete, tombstone e auditoria preservada. Documentados limites frente a scripts privilegiados fora dos contratos. Eventos STORE_CREATED/UPDATED/DEACTIVATED/REACTIVATED/DELETE_ATTEMPTED/DELETED append-only server-side. Rules bloqueiam bypass direto/lock e novas vendas em loja inativa; histórico permanece. Proteções estreitas impedem escalada de Admin via criação/edição/reset de Dono nos endpoints Staff. Disponibilidade estrutural agora exclusiva Dono; leitura Staff permanece.
 
-## Próximos passos
+## Verificação local
 
-Implementados localmente: functions/store-management.js (CRUD/lifecycle/audit/delete conservador/readiness), store-owner-policy.js (papel original e grants de conta Dono), dois novos callables e createStore compatível; fulfillment save exclusivo Dono; proteção estreita de concessão/reset de Dono nos endpoints Staff. UI StoreManagementModal substitui formulário antigo, reusa Modal/Button/Input; nomes por registro+unidade, root/slug imutáveis por rename, aliases dinâmicos preservam URLs antigas. Rules restringem aliases/audit/identidade de exibição, bloqueiam escrita com deletionLock e criação de novos pedidos em loja inativa, sem bloquear edição histórica.
+53 casos na regressão de emuladores; 19 focados finais, sobrepostos; 9 React e 26 Node PASS. Lint sem erros/avisos novos: 65 avisos App.js e um no-control-regex preexistentes; backend focado zero. Rules compiladas com avisos legados, fonte corresponde ao arquivo testado. Build main.60d6a111.js/CSS main.cda549b5.css; sourcemap corresponde à fonte. Sem dependências novas; delta JS gzip 2.382 bytes. Diff-check PASS. Doze capturas reais do componente com respostas fictícias desktop 1920×889/mobile390×800, menu corrigido e sem overflow. Não são sessão Staff autenticada DEV.
 
-Primeira validação: 19 casos de emulador (inclui ciclo, autorização, Rules e fulfillment) PASS após correção de isolamento de fixture; 26 Node de rotas/resolver/diretório e 9 React PASS. Mudanças posteriores pequenas de contato/endereço e mensagens ainda precisam rechecagem focada. Lint identificou helper antigo/reset de estado removidos — corrigidos; rerodar lint. Ainda não há build, commit, push ou deploy deste workstream. Logs %TEMP%/store-management-*.log, baseline remoto privado %TEMP%/store-management-baseline-private.json, inventário somente leitura %TEMP%/store-management-inventory.json. Não imprimir configuração sensível.
+## Publicação DEV concluída
 
-Concluir inventário DEV somente leitura, implementar e testar Owner/Admin/Gerente/Staff/anon, preservar seleção/histórico, build/lint/diff e revisão visual, commit/push, deploy DEV seletivo com baseline/env/secrets preservados, conferir fontes/hashes e pedir aceite manual somente visual. Registrar commit/targets/processos neste checkpoint antes de interrupção.
+Pacotes: .deploy-store-management-c3a7bb63-1/2; Rules .deploy-store-management-rules-c3a7bb63; Hosting .deploy-crm-store-baseline-c3a7bb63. Todos com projeto explícito e guarda de workspace DEV. CLI exit0.
 
-Fase9 75%, Fase11/12 100%, Global95,00%, Fase13 0% preservados. Mercado Pago futuro. Pendência fiscal anterior separada.
+Dez exports ACTIVE, 52 arquivos de runtime conferidos por fonte remota: api, createStore, createUser, updateUser, deleteUser, updateUserPassword, staffGetFulfillment, staffSaveFulfillment, storeManagementRead, storeManagementWrite. Env/secrets iguais ao baseline de cada export; 132 Functions não relacionadas inalteradas. API api-00068-xis. Callables anônimos testados retornam 401, sem escrita. Rules 674db1b8-5757-44cb-b256-5eb25b367e2b, SHA256 8bfe5e618a5c62277fbb30a3fa180ebf0db7fa0ed3f732b3494108e192e5b48a.
 
-## Validação final local
+Hosting 61/61 hashes, 28 fontes de sourcemap, 52 públicas, cache correto (HTML/stable revalidação, assets hash immutable). Chrome público real Matriz/Garavelo desktop/mobile, direto/refresh sem overflow/pageerror e zero mutações PASS. Dados estruturais das três lojas inalterados; documentos de disponibilidade antecedem o inventário inicial deste workstream. Garavelo entrega já estava habilitada por evento CRM_FREIGHT_SETTINGS em 19:36 UTC, antes do inventário às 20:05 UTC. Estado atual preservado, nenhuma restauração da flag antiga.
 
-Implementação concluída, sem commit/deploy até este registro. Regressão ampliada 53 casos em emuladores PASS; rechecagem final focada 19 PASS, sobreposta à regressão. React 9 e Node 26 PASS. Lint sem erros/avisos novos (65 App.js e um no-control-regex preexistentes). Capturas locais de 12 estados desktop/mobile, menu mobile corrigido e sem overflow; respostas fictícias. Build final em andamento após esse ajuste visual. Não repetir implementação. Próximo: conferir build/sourcemap/diff, commit/push e publicar somente os dez exports necessários, Rules e Hosting DEV, preservando env/secrets e Functions não relacionadas. Matriz/Garavelo reais não foram alteradas.
+Evidências: [validação local](evidence/store-management/local-validation.json), [Functions/Rules](evidence/store-management/functions-dev.json), [Hosting](evidence/store-management/hosting-dev.json), [dados](evidence/store-management/data-dev.json), [Chrome público](evidence/store-management/dev-public-report.json), [capturas locais](evidence/store-management/local-report.json). Baseline remoto privado e logs em %TEMP%/store-management-*; nunca copiar envs/secrets aos docs.
 
-Build final PASS: /static/js/main.60d6a111.js, CSS /static/css/main.cda549b5.css; fontes/sourcemap conferidas. Diff-check e lint final PASS, sem avisos novos. 19 casos focados finais incluem redação de campos desconhecidos/segredos. Próximo passo efetivo: commit/push e publicação DEV seletiva.
+## Única próxima ação
+
+Solicitar aceite visual Dono em Gerenciar lojas desktop/mobile: nomes/ID/status/menu, formulário/readiness e cancelar; abrir confirmação de inativação e cancelar. Visão Geral sem ações e legado/canal protegido. Sem salvar/criar/inativar/excluir lojas reais, pedido, pagamento, nota, SMS/WhatsApp. Se houver conta Admin já disponível, consulta/seleção apenas; negação de mutações comprovada nos emuladores. Após PASS registrar aceite documental e push, sem novo runtime/deploy.
+
+Fase9 75%, Fase11/12 100%, Global95,00%, Fase13 0% preservados. Mercado Pago futuro. Aceite fiscal anterior separado. PROD intacta.

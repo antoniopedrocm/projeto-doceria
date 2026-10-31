@@ -1,0 +1,38 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-31T20:50:13.675Z",
+  "storesChecked": 3,
+  "rootStructuralFieldsUnchanged": true,
+  "publicStatus": [
+    {
+      "slug": "matriz",
+      "active": true,
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "delivery": {
+        "enabled": true,
+        "available": true
+      },
+      "pickup": {
+        "enabled": true
+      },
+      "configurationUpdateTime": "2026-10-31T19:47:40.970061Z",
+      "configurationPredatesTaskInventory": true
+    },
+    {
+      "slug": "garavelo",
+      "active": true,
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "delivery": {
+        "enabled": true,
+        "available": true
+      },
+      "pickup": {
+        "enabled": true
+      },
+      "configurationUpdateTime": "2026-10-31T19:36:19.965979Z",
+      "configurationPredatesTaskInventory": true
+    }
+  ],
+  "readOnly": true,
+  "production": false
+}
