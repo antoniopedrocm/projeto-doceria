@@ -61,7 +61,7 @@ A auditoria documental inicial já foi feita nesta revisão. O levantamento atua
 
 ## 9. Admin Preview
 
-**Visual homologado; gate técnico PENDENTE.** Conferir trilha real STARTED → ORDER_VIEWED → ENDED da mesma sessão/canônico C02, família C04/C06/C08/C18, ausência de associação indevida a C03/C07 e zero leases/sessões ativas após saída. As leituras antigas e a expiração prevista não provam o estado atual; esta revisão não consultou sessões remotas. Fonte: ADMIN_CUSTOMER_PREVIEW.md e últimas solicitações de auditoria do usuário.
+**PASS / CONCLUÍDO.** O proprietário confirmou tecnicamente na missão atual STARTED/ORDER_VIEWED/ENDED de C02, mesmo administrador, pedido próprio, aliases C04/C06/C08/C18 corretos, sem atribuição indevida a C03/C07 e zero sessões/leases ativas. [Confirmação recebida](evidence/admin-preview-mission-confirmation-dev.json). Não reabrir a homologação. previewSessionId explícito comum fica como melhoria LOW futura, não bloqueante e sem implementação agora. Nenhuma nova consulta remota, alteração de runtime ou deploy foi necessária para registrar essa confirmação.
 
 ## 10. Outros blockers
 

@@ -1,0 +1,37 @@
+{
+  "project": "crmdoceria-9959e",
+  "recordedAt": "2026-10-31T22:43:54.887Z",
+  "source": "Explicit owner technical confirmation in the current mission attachment",
+  "gate": "ADMIN_CUSTOMER_PREVIEW",
+  "status": "PASS",
+  "canonicalReference": "C02",
+  "checks": {
+    "started": true,
+    "orderViewed": true,
+    "ended": true,
+    "sameAdministrator": true,
+    "orderBelongsToCanonical": true,
+    "aliases": [
+      "C04",
+      "C06",
+      "C08",
+      "C18"
+    ],
+    "noMisattributionTo": [
+      "C03",
+      "C07"
+    ],
+    "activeSessions": 0,
+    "activeLeases": 0
+  },
+  "independentRemoteQueryThisTurn": false,
+  "followUp": {
+    "item": "Explicit common previewSessionId across events",
+    "priority": "LOW",
+    "blocksProduction": false,
+    "implementNow": false
+  },
+  "runtimeChanged": false,
+  "deploy": false,
+  "production": false
+}
