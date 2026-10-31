@@ -1,0 +1,16 @@
+{
+  "project": "crmdoceria-9959e",
+  "readOnly": true,
+  "knownAccountFromUserCorrespondenceOnly": true,
+  "currentBrowserIdentityNotAssumed": true,
+  "matchingProfiles": [
+    {
+      "role": "dono",
+      "active": true,
+      "manageStores": true,
+      "explicitProfileRevocation": false,
+      "explicitCustomRevocation": false
+    }
+  ],
+  "production": false
+}

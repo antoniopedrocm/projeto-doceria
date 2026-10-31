@@ -2,45 +2,39 @@
 
 ## Estado atual para retomada
 
-**Entrega técnica concluída no DEV; homologação manual Dono PENDENTE.** Não repetir implementação, build ou deploy sem falha nova. PROD não autorizada.
+**Complemento publicado e conferido no DEV; novo aceite visual Dono PENDENTE.** O usuário NÃO aprovou o aceite anterior e solicitou separar seleção e administração. Não registrar PASS automaticamente. Não repetir implementação, build, deploy ou correção de papel sem nova falha.
 
-Workspace absoluto: C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree.
-Branch: feature/infinitepay-customer-auth. Firebase: crmdoceria-9959e.
-Base b4cd6b67; commit funcional c3a7bb63cb9210ccd87b383382d7f3fbcadc6612 enviado ao origin.
+Workspace: C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree.
+Branch feature/infinitepay-customer-auth. Firebase crmdoceria-9959e. PROD não autorizada.
 
-## Implementado
+## Commits e publicação
 
-manage_stores exige papel ORIGINAL dono/owner e não revogado. Admin normalizado como Dono não recebe gestão. Leitura/seleção Staff preservadas por escopo. Nova loja DRAFT/inativa; edição estrutural e de publicação; confirmação de inativação/reativação com readiness; ID imutável; slugs anteriores preservados como aliases. Visão Geral virtual e canais/legado não são entidades editáveis. Telefone/endereço básicos reutilizam info/dados e preservam objetos legados. Configurações próprias de frete/agenda/provider/fiscal não são duplicadas.
+Base anterior b4cd6b67. Backend/gestão original c3a7bb63cb9210ccd87b383382d7f3fbcadc6612; evidências 0b9c23a8. Complemento de navegação **9959c630636a304cff4b340dc4d97183ab20b0f6**, push concluído e Hosting-only DEV publicado (CLI exit0). Artefato .deploy-crm-store-baseline-9959c630, main.8b290d13.js/CSS main.dfbd1739.css. 61/61 hashes, 29 fontes sourcemap, 52 fontes públicas e cache correto. Backend/Rules não precisaram de novo deploy.
 
-Hard delete somente rascunho novo, nunca publicado, vazio e sem dependências comprovadas; nome digitado, revisão/lock, consultas limitadas com falha fechada, sem recursiveDelete, tombstone e auditoria preservada. Documentados limites frente a scripts privilegiados fora dos contratos. Eventos STORE_CREATED/UPDATED/DEACTIVATED/REACTIVATED/DELETE_ATTEMPTED/DELETED append-only server-side. Rules bloqueiam bypass direto/lock e novas vendas em loja inativa; histórico permanece. Proteções estreitas impedem escalada de Admin via criação/edição/reset de Dono nos endpoints Staff. Disponibilidade estrutural agora exclusiva Dono; leitura Staff permanece.
+## Interface atual
 
-## Verificação local
+**Ver lojas** e seletor superior: visualizar/selecionar loja, sem criação ou mutações estruturais mesmo para Dono. Modal mantido.
 
-53 casos na regressão de emuladores; 19 focados finais, sobrepostos; 9 React e 26 Node PASS. Lint sem erros/avisos novos: 65 avisos App.js e um no-control-regex preexistentes; backend focado zero. Rules compiladas com avisos legados, fonte corresponde ao arquivo testado. Build main.60d6a111.js/CSS main.cda549b5.css; sourcemap corresponde à fonte. Sem dependências novas; delta JS gzip 2.382 bytes. Diff-check PASS. Doze capturas reais do componente com respostas fictícias desktop 1920×889/mobile390×800, menu corrigido e sem overflow. Não são sessão Staff autenticada DEV.
+**Configurações → Gerenciar Lojas**: aba/página exclusiva manage_stores, header/subtexto e **+ Nova Loja**; cards em grid desktop/coluna mobile, IDs/status, seleção, menu Editar/Configurações/Inativar/Reativar/Excluir por elegibilidade. Mesmo componente/serviço central reutilizado em modo página. Visão Geral somente seleção. ApFood legado continua protegido. Entre Lojas não foi alterado. Restauração de aba sem capability não monta o painel; backend segue negando mutações de não Dono.
 
-## Publicação DEV concluída
+## Causa da opção ausente e correção autorizada
 
-Pacotes: .deploy-store-management-c3a7bb63-1/2; Rules .deploy-store-management-rules-c3a7bb63; Hosting .deploy-crm-store-baseline-c3a7bb63. Todos com projeto explícito e guarda de workspace DEV. CLI exit0.
+A conta indicada pelo usuário estava com papel ORIGINAL admin, exibido como Dono pelo normalizador legado; manage_stores corretamente era false. Usuário autorizou explicitamente corrigir SOMENTE essa conta no DEV para dono. **Correção já executada em 31/10/2026 21:21:26 UTC: NÃO repetir.** Escrita condicional e atômica somente no campo role, com evento privado append-only STAFF_OWNER_ROLE_CORRECTED/DEV_ROLE_CORRECTION em storeManagementAudit e timestamp server-side. Lojas, permissões e custom profile verificados idênticos; Firebase Auth não tocado. Leitura atual confirma dono/ativo/manage_stores=true. Identificadores pessoais omitidos nas evidências. Outros Admin/Gerente permanecem sem gestão.
 
-Dez exports ACTIVE, 52 arquivos de runtime conferidos por fonte remota: api, createStore, createUser, updateUser, deleteUser, updateUserPassword, staffGetFulfillment, staffSaveFulfillment, storeManagementRead, storeManagementWrite. Env/secrets iguais ao baseline de cada export; 132 Functions não relacionadas inalteradas. API api-00068-xis. Callables anônimos testados retornam 401, sem escrita. Rules 674db1b8-5757-44cb-b256-5eb25b367e2b, SHA256 8bfe5e618a5c62277fbb30a3fa180ebf0db7fa0ed3f732b3494108e192e5b48a.
+## Contrato preservado
 
-Hosting 61/61 hashes, 28 fontes de sourcemap, 52 públicas, cache correto (HTML/stable revalidação, assets hash immutable). Chrome público real Matriz/Garavelo desktop/mobile, direto/refresh sem overflow/pageerror e zero mutações PASS. Dados estruturais das três lojas inalterados; documentos de disponibilidade antecedem o inventário inicial deste workstream. Garavelo entrega já estava habilitada por evento CRM_FREIGHT_SETTINGS em 19:36 UTC, antes do inventário às 20:05 UTC. Estado atual preservado, nenhuma restauração da flag antiga.
+Papel original dono/owner + capability não revogada, validação server-side e escopo Staff. Nova loja DRAFT/inativa; cadastro/publicação e ID imutável; aliases publicados preservados; inativação sem apagar histórico; reativação exige readiness; hard delete conservador de rascunho novo nunca publicado/vazio/sem referências comprovadas, confirmação/nome/revisão/lock/tombstone e sem recursiveDelete. Auditoria global append-only. Disponibilidade estrutural exclusiva Dono, leitura Staff autorizada. Legado/canais protegidos. Proteções de concessão/reset de conta Dono nos endpoints Staff permanecem.
 
-Evidências: [validação local](evidence/store-management/local-validation.json), [Functions/Rules](evidence/store-management/functions-dev.json), [Hosting](evidence/store-management/hosting-dev.json), [dados](evidence/store-management/data-dev.json), [Chrome público](evidence/store-management/dev-public-report.json), [capturas locais](evidence/store-management/local-report.json). Baseline remoto privado e logs em %TEMP%/store-management-*; nunca copiar envs/secrets aos docs.
+## Validação
 
-## Única próxima ação
+Complemento: 38 React/cinco suítes PASS (aba Owner-only, Admin/Gerente/Staff, criação/edição e cancelamento, seleção rápida, resposta server-side negada e regressão capability/Frete). Build/lint/diff-check PASS; zero erros/avisos novos, 65 App.js e um no-control-regex preexistentes. 18 capturas locais de componentes reais com respostas fictícias desktop1920×889/mobile390×800, sem overflow/pageerror nem mutação; não são sessão Staff autenticada DEV. Chrome público real Matriz/Garavelo direto/refresh desktop/mobile PASS, zero mutações.
 
-Solicitar aceite visual Dono em Gerenciar lojas desktop/mobile: nomes/ID/status/menu, formulário/readiness e cancelar; abrir confirmação de inativação e cancelar. Visão Geral sem ações e legado/canal protegido. Sem salvar/criar/inativar/excluir lojas reais, pedido, pagamento, nota, SMS/WhatsApp. Se houver conta Admin já disponível, consulta/seleção apenas; negação de mutações comprovada nos emuladores. Após PASS registrar aceite documental e push, sem novo runtime/deploy.
+Validação original backend permanece: 53 emulador +19 focados sobrepostos, 26 Node; nenhuma mudança backend neste complemento. 142 Functions e Rules conferidas inalteradas após Hosting, incluindo dez exports de gestão nas revisões publicadas. API api-00068-xis; Rules 674db1b8-5757-44cb-b256-5eb25b367e2b. Env/secrets não alterados. Nenhuma loja real criada/editada/inativada/excluída; única mutação de dados autorizada foi a correção de papel da conta, além de sua auditoria.
 
-Fase9 75%, Fase11/12 100%, Global95,00%, Fase13 0% preservados. Mercado Pago futuro. Aceite fiscal anterior separado. PROD intacta.
+Evidências: [local](evidence/store-management-settings/local-validation.json), [capturas](evidence/store-management-settings/local-report.json), [Hosting](evidence/store-management-settings/hosting-dev.json), [backend/Rules](evidence/store-management-settings/backend-rules-unchanged-dev.json), [correção autorizada](evidence/store-management-settings/owner-correction-dev.json), [capability atual](evidence/store-management-settings/owner-capability-dev.json), [Chrome público](evidence/store-management-settings/dev-public-report.json). Logs %TEMP%/store-management-settings-*.log; dados privados não devem ser copiados aos docs.
 
+## Próximo passo único
 
-### 2026-10-31 — Aceite anterior não aprovado; separação da navegação e correção autorizada de papel
+Solicitar novo aceite autenticado: recarregar CRM DEV, Configurações → Gerenciar Lojas, conferir + Nova Loja (abrir e cancelar), campos/ações/status/readiness (sem salvar), Visão Geral somente seleção e ApFood protegido; seletor Ver lojas continua rápido, sem ações estruturais; desktop/mobile. Conta autorizada já é Dono, não precisa novo cadastro nem alteração de permissões. Não fazer mutações reais para homologação. Após PASS registrar documentalmente e push, sem novo runtime/deploy.
 
-O usuário NÃO aprovou o aceite anterior. Implementada aba **Configurações → Gerenciar Lojas**, exclusiva manage_stores, com + Nova Loja e painel completo reutilizando o mesmo serviço/componente. Seletor superior e modal **Ver lojas** passam a seleção rápida, sem mutações, inclusive para Dono. Entre Lojas permanece separado e sem mudança de finalidade. Visão Geral continua apenas seleção e ApFood legado permanece protegido. Aba restaurada em sessão sem capability não monta o painel. O backend já publicado e as Rules permanecem iguais.
-
-A conta indicada pela correspondência estava com role original admin, apresentado como Dono pelo normalizador legado; por isso a política estrita corretamente ocultava Nova Loja. O usuário autorizou explicitamente a correção dessa conta para dono no DEV. Alterado somente role, com precondition por updateTime e auditoria privada append-only STAFF_OWNER_ROLE_CORRECTED/DEV_ROLE_CORRECTION + timestamp server-side; lojas, permissões e custom profile conferidos intactos. Firebase Auth não alterado. Essa exceção de manutenção autorizada não concede manage_stores a outros Admin/Gerente. Identificadores da conta omitidos nas evidências públicas.
-
-38 testes React em cinco suítes e 18 capturas de componentes reais com respostas fictícias desktop/mobile PASS; nenhum envio de mutação no harness. Build/lint/diff-check PASS, sem aviso novo. Sem biblioteca nova. [Validação local](evidence/store-management-settings/local-validation.json), [correção autorizada](evidence/store-management-settings/owner-correction-dev.json). Publicação do Hosting complementar e novo aceite visual ainda pendentes neste registro. Nenhuma loja real criada/editada/inativada/excluída, pedido, pagamento, nota, SMS/WhatsApp; PROD intacta. Fase9 75%, Fase11/12 100%, Global95,00%, Fase13 0% preservados.
-
-Retomada efetiva: ajuste complementar local validado, build /static/js/main.8b290d13.js / /static/css/main.dfbd1739.css. Conta autorizada já corrigida e conferida; NÃO repetir a alteração de papel. Backend/Rules: 142 Functions e release anteriores inalterados. Próximo: commit/push, Hosting-only DEV, hashes/sourcemap/checagens públicas, docs de entrega e solicitar novo aceite. Não registrar PASS antes da resposta humana. Logs %TEMP%/store-management-settings-*.log.
+Percentuais: Fase9 75%, Fase11/12 100%, Global95,00%, Fase13 0%, preservados. Mercado Pago futuro; aceite fiscal anterior separado. PROD intacta. Nenhum pedido/pagamento/nota/SMS/WhatsApp real.
