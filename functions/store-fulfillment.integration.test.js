@@ -26,6 +26,7 @@ test('disponibilidade por loja: autorização, auditoria, persistência, readine
       assert.equal((await get()).deliveryAvailable,true);assert.equal((await get(a,'manager')).storeId,a);
       for(const uid of ['restricted','staff','customer','inactive','scopedOwner'])await assert.rejects(get(a,uid));
       await assert.rejects(get(a,null),e=>e.code==='unauthenticated');await assert.rejects(get(b,'manager'),e=>e.code==='permission-denied');
+      assert.equal((await get(a,'manager')).editable,false);await assert.rejects(save(false,true,0,a,'manager'),e=>e.code==='permission-denied');
       await db.doc('customProfiles/fulfill-manager').set({permissions:{configuracoes:false}});await assert.rejects(get(a,'manager'));await db.doc('customProfiles/fulfill-manager').delete();
       await assert.rejects(get('../a'),e=>e.code==='invalid-argument');
     });

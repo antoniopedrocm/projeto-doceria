@@ -1,0 +1,165 @@
+{
+  "fixtureOnly": true,
+  "authenticatedDev": false,
+  "source": "Actual StoreManagementModal, directory/route helpers and App.js Modal/Button/Input; synthetic responses; close icon stub",
+  "componentSha256": "3ddc0f595c80ba63e3ae514f58ab359070ab71dd9a1980040da30744a63279e6",
+  "cases": [
+    {
+      "mode": "owner-list",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "owner-list-1920.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "owner-menu",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "owner-menu-1920.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "edit",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "edit-1920.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "deactivate",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "deactivate-1920.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "delete",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "delete-1920.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "admin",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "file": "admin-1920.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "owner-list",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "owner-list-390.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "owner-menu",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "owner-menu-390.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "edit",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "edit-390.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "deactivate",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "deactivate-390.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "delete",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "delete-390.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    },
+    {
+      "mode": "admin",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "file": "admin-390.png",
+      "overflow": {
+        "page": false,
+        "internal": false
+      },
+      "errors": []
+    }
+  ],
+  "production": false
+}

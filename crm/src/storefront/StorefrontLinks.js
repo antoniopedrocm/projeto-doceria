@@ -26,7 +26,7 @@ export default function StorefrontLinks() {
     {busy && !stores.length && <div role="status" className="col-span-full grid grid-cols-2 gap-3"><span className="sr-only">Carregando lojas</span><span aria-hidden="true" className="h-12 rounded-xl bg-pink-100 animate-pulse"/><span aria-hidden="true" className="h-12 rounded-xl bg-pink-100 animate-pulse"/></div>}
     {message && <p role="status">{message}</p>}
     {!busy && !stores.length && message.startsWith('Não foi') && <button onClick={()=>setRetry(value=>value+1)}>Tentar novamente</button>}
-    {stores.map(store=>{const url=storeMenuUrl(store.storeId,store.channelId || null);return url && <a key={`${store.storeId}:${store.channelId || ''}`} href={url} target="_blank" rel="noopener noreferrer" className="p-4 rounded-xl bg-pink-600 text-white text-center">{store.name}</a>;})}
+    {stores.map(store=>{const url=storeMenuUrl(store.storeId,store.channelId || null,store.publicSlug);return url && <a key={`${store.storeId}:${store.channelId || ''}`} href={url} target="_blank" rel="noopener noreferrer" className="p-4 rounded-xl bg-pink-600 text-white text-center">{store.name}</a>;})}
     {moreError && <p role="alert">Não foi possível carregar mais lojas. Tente novamente.</p>}
     {cursor && <button disabled={busy} onClick={more}>Ver mais lojas</button>}
     <a href="/cardapio" className="p-4 underline">Escolher loja</a>

@@ -7,6 +7,7 @@ test('contrato AGREED_LATER mantém processamento Staff e bloqueia Customer sem 
   try {
     await env.withSecurityRulesDisabled(async context=>{
       const db=context.firestore();await setDoc(doc(db,'users/agreed-rule-staff'),{role:'dono',ativo:true});
+       await setDoc(doc(db,'lojas/agreed-rule-store'),{nome:'Fixture store',ativo:true,status:'ACTIVE'});
       await setDoc(doc(db,'lojas/agreed-rule-store/pedidos/agreed'),{status:'Pendente',paymentMode:'AGREED_LATER',paymentMethod:null,paymentStatus:'PENDING',formaPagamento:'A combinar',total:10});
     });
     const staff=env.authenticatedContext('agreed-rule-staff').firestore(),customer=env.authenticatedContext('agreed-rule-customer').firestore();

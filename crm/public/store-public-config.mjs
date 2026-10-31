@@ -25,20 +25,21 @@ export async function bootstrapPublicStore({location=window.location, document=w
         if(!response.ok) throw Error('STORE_CONFIG_UNAVAILABLE');
         const data=await response.json();
         for(const store of data.stores) {const href=storeMenuUrl(store.storeId,store.channelId || null);if(!href) continue;
-          const link=document.createElement('a');link.href=href;link.textContent=store.name;link.className='block p-4 underline';panel.append(link);}
+          const link=document.createElement('a');link.href=storeMenuUrl(store.storeId,store.channelId || null,store.publicSlug);link.textContent=store.name;link.className='block p-4 underline';panel.append(link);}
         cursor=data.nextCursor;more.hidden=!cursor;more.disabled=false;panel.append(more);
       };
       more.onclick=()=>load().catch(()=>{more.textContent='Não foi possível carregar as lojas.';});
       await load(); return null;
     }
-    const config=await fetchPublicStore({storeId:route.storeId,channelId:route.channelId}, {fetchImpl});
+    const config=await fetchPublicStore(route.kind==='alias'?{alias:route.alias}:{storeId:route.storeId,channelId:route.channelId}, {fetchImpl});
     if(!config.active || !config.catalog.enabled) throw Object.assign(Error('STORE_INACTIVE'),{code:'STORE_INACTIVE'});
-    if(config.storeId !== route.storeId || (config.channel?.id || null) !== route.channelId) throw Object.assign(Error('STORE_NOT_FOUND'),{code:'STORE_NOT_FOUND'});
+    if(route.kind!=='alias' && (config.storeId !== route.storeId || (config.channel?.id || null) !== route.channelId)) throw Object.assign(Error('STORE_NOT_FOUND'),{code:'STORE_NOT_FOUND'});
+    const canonicalPath=config.publicSlug?storeMenuUrl(config.storeId,null,config.publicSlug):route.canonicalPath;
     // Same document and store context: no reload, push, cart reset or Auth change.
-    if (location.pathname + (location.search || '') !== route.canonicalPath) history?.replaceState(history.state || null,'',route.canonicalPath);
+    if (location.pathname + (location.search || '') !== canonicalPath) history?.replaceState(history.state || null,'',canonicalPath);
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {canonical=document.createElement('link');canonical.rel='canonical';document.head.append(canonical);}
-    canonical.setAttribute('href',route.canonicalPath);
+    canonical.setAttribute('href',canonicalPath);
     return config;
   } catch(e) {
     const panel=document.getElementById('loading-message');

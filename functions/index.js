@@ -429,8 +429,13 @@ const {createAdminOrderEdit,createOrderAuthorizer} = require('./admin-order-edit
 const adminOrderEdit = createAdminOrderEdit({db, admin, HttpsError, authorize:createOrderAuthorizer({db,HttpsError,assertActiveUser,sanitizePermissions,extractStoreIds})});
 exports.adminOrderSave = onCall({region:'us-central1',timeoutSeconds:60},adminOrderEdit.save);
 exports.adminOrderHistory = onCall({region:'us-central1',timeoutSeconds:60},adminOrderEdit.history);
+const {createStoreManagement}=require('./store-management');
+const {persistedStaffRole,assertOwnerAccountChange}=require('./store-owner-policy');
+const storeManagement=createStoreManagement({db,admin,HttpsError,assertActiveUser,extractStoreIds,normalizeRole,getAvailability:config=>getStoreAvailability(config)});
+exports.storeManagementRead=onCall({region:'us-central1',timeoutSeconds:60},storeManagement.read);
+exports.storeManagementWrite=onCall({region:'us-central1',timeoutSeconds:120},storeManagement.write);
 const {createFulfillmentAdmin,createFulfillmentAuthorizer}=require('./store-fulfillment-admin');
-const fulfillmentAdmin=createFulfillmentAdmin({db,admin,HttpsError,authorize:createFulfillmentAuthorizer({db,HttpsError,assertActiveUser,sanitizePermissions,extractStoreIds})});
+const fulfillmentAdmin=createFulfillmentAdmin({db,admin,HttpsError,authorizeManage:storeManagement.owner,authorize:createFulfillmentAuthorizer({db,HttpsError,assertActiveUser,sanitizePermissions,extractStoreIds})});
 exports.staffGetFulfillment=onCall({region:'us-central1',timeoutSeconds:30},fulfillmentAdmin.get);
 exports.staffSaveFulfillment=onCall({region:'us-central1',timeoutSeconds:30},fulfillmentAdmin.save);
 
@@ -448,6 +453,7 @@ const grantsOwnerEquivalentPermissions = (role, permissionsInput, targetStores =
 };
 
 const assertManagerCannotGrantOwnerAccess = (requester, targetRole, permissionsInput, targetStores = []) => {
+  assertOwnerAccountChange(requester,normalizeRole(targetRole),null,HttpsError);
   if (requester.role !== ROLE_MANAGER) return;
   if (normalizeRole(targetRole) === ROLE_OWNER || grantsOwnerEquivalentPermissions(targetRole, permissionsInput, targetStores)) {
     throw new HttpsError('permission-denied', 'Gerentes não podem conceder perfil ou permissões de dono.');
@@ -1198,17 +1204,7 @@ const requireStoreId = (req, res) => {
   return lojaId;
 };
 
-const generateStoreId = (value) => {
-  if (!value) return '';
 
-  return String(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 50) || `loja-${Date.now()}`;
-};
 
 const getStoreRef = (storeId) => db.collection('lojas').doc(storeId);
 
@@ -2792,124 +2788,8 @@ exports.registerEmployeePoint = onCall({timeoutSeconds: 60}, async (request) => 
 // Exporta o app Express como uma Cloud Function HTTP
 exports.api = onRequest({secrets: ["GOOGLE_MAPS_SERVER_API_KEY"]}, app);
 
-// Cria uma nova loja e garante que os dados fiquem isolados por loja
-exports.createStore = onCall(async (request) => {
-    const uid = request.auth?.uid;
-
-    if (!uid) {
-        throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
-    }
-
-    const requester = await verifyManagementAccess(uid);
-
-    if (![ROLE_OWNER, ROLE_MANAGER].includes(requester.role)) {
-        throw new HttpsError('permission-denied', 'Apenas donos ou gerentes podem criar novas lojas.');
-    }
-
-    const rawName = typeof request.data?.nome === 'string' ? request.data.nome.trim() : '';
-    const rawId = typeof request.data?.storeId === 'string' ? request.data.storeId.trim() : '';
-
-    if (!rawName) {
-        throw new HttpsError('invalid-argument', 'Informe o nome da loja.');
-    }
-
-    const normalizedId = generateStoreId(rawId || rawName);
-
-    if (!normalizedId || normalizedId === STORE_ALL_KEY) {
-        throw new HttpsError('invalid-argument', 'Identificador inválido para a loja.');
-    }
-
-    const storeDocRef = db.collection('lojas').doc(normalizedId);
-    const timestamp = FieldValue.serverTimestamp();
-
-    await db.runTransaction(async (transaction) => {
-        const existingDoc = await transaction.get(storeDocRef);
-
-        if (existingDoc.exists) {
-            throw new HttpsError('already-exists', 'Já existe uma loja com esse identificador.');
-        }
-
-        const storePayload = {
-            nome: rawName,
-            storeConfigVersion: 1,
-            ativo: false,
-            status: 'DRAFT',
-            criadoEm: timestamp,
-            criadoPor: uid,
-        };
-
-        transaction.set(storeDocRef, storePayload, {merge: true});
-
-        transaction.set(storeDocRef.collection('info').doc(STORE_INFO_DOC_ID), {
-            nome: rawName,
-            criadoEm: timestamp,
-            criadoPor: uid,
-        }, {merge: true});
-
-        transaction.set(storeDocRef.collection('meuEspaco').doc('empresa'), {
-            nomeFantasia: rawName,
-            documento: '',
-            contato: { telefone: '', email: '' },
-            endereco: {},
-            atualizadoEm: timestamp,
-            criadoPor: uid,
-        }, {merge: true});
-
-        transaction.set(storeDocRef.collection('meuEspaco').doc('ponto'), {
-            nome: rawName,
-            endereco: {},
-            horarioFuncionamento: [],
-            atualizadoEm: timestamp,
-            criadoPor: uid,
-        }, {merge: true});
-
-        const configuracoesDoc = storeDocRef.collection('configuracoes').doc(CONFIG_DOC_ID);
-
-        transaction.set(storeDocRef.collection('configuracoes').doc('storefront'), {
-            schemaVersion: 1, catalog: {enabled: false, category: ''},
-            pickup: {enabled: false}, delivery: {enabled: false}, onlinePayment: {enabled: false},
-        });
-        transaction.set(configuracoesDoc, {
-            manualOverride: {mode: 'force_closed'},
-            iniciadoEm: timestamp,
-            criadoPor: uid,
-        }, {merge: true});
-    });
-
-    const profile = await getUserProfile(uid);
-    let assignedStoreIds = null;
-    let primaryStoreId = profile.lojaId || null;
-
-    if (!requester.allStores) {
-        const existingIds = extractStoreIds(profile);
-        const updatedStoreIds = Array.from(new Set([...existingIds, normalizedId]));
-        const userUpdate = {
-            lojaIds: updatedStoreIds,
-        };
-
-        if (!profile.lojaId) {
-            userUpdate.lojaId = normalizedId;
-            primaryStoreId = normalizedId;
-        }
-
-        await db.collection('users').doc(uid).set(userUpdate, {merge: true});
-        assignedStoreIds = updatedStoreIds;
-
-        if (!primaryStoreId) {
-            primaryStoreId = updatedStoreIds[0] || null;
-        }
-    }
-
-    return {
-        storeId: normalizedId,
-        storeData: {
-            nome: rawName,
-        },
-        assignedStoreIds,
-        primaryStoreId,
-        canAccessAllStores: requester.allStores,
-    };
-});
+// Existing callable name retained; all store writes now enforce strict OWNER.
+exports.createStore = onCall(request => storeManagement.write({...request,data:{...request.data,action:'CREATE'}}));
 
 // --- FUNÇÕES CHAMÁVEIS (CALLABLE FUNCTIONS) PARA GERENCIAMENTO DE USUÁRIOS ---
 
@@ -3345,7 +3225,7 @@ exports.createUser = onCall(async (request) => {
         await db.collection("users").doc(userRecord.uid).set({
             email,
             nome,
-            role: normalizedRole,
+            role: persistedStaffRole(role,normalizedRole),
             lojaId: targetStores[0] || null,
             lojaIds: targetStores,
             permissions,
@@ -3398,6 +3278,7 @@ exports.updateUser = onCall(async (request) => {
         const existingProfile = await getUserProfile(uid);
         const existingStores = extractStoreIds(existingProfile);
         const existingRole = normalizeRole(existingProfile.role);
+        assertOwnerAccountChange(requester,normalizedRole,existingProfile.role,HttpsError);
 
         let targetStores = [];
         if (normalizedRole === ROLE_OWNER) {
@@ -3462,7 +3343,7 @@ exports.updateUser = onCall(async (request) => {
         // caso o documento do usuário não exista no Firestore.
         await db.collection("users").doc(uid).set({
             nome: nome,
-            role: normalizedRole,
+            role: persistedStaffRole(role,normalizedRole,existingProfile),
             email: email,
             lojaId: targetStores[0] || null,
             lojaIds: targetStores,
@@ -3501,6 +3382,7 @@ exports.deleteUser = onCall(async (request) => {
 		const targetProfile = await getUserProfile(uid);
         const targetStores = extractStoreIds(targetProfile);
         const targetRole = normalizeRole(targetProfile.role);
+        assertOwnerAccountChange(requester,null,targetProfile.role,HttpsError);
 
         if (targetRole === ROLE_OWNER && requester.role !== ROLE_OWNER) {
             throw new HttpsError("permission-denied", "Somente donos podem remover outros donos.");
@@ -3540,6 +3422,7 @@ exports.updateUserPassword = onCall(async (request) => {
                 throw new HttpsError("permission-denied", "Você não pode alterar usuários de outra loja.");
             }
         }
+        assertOwnerAccountChange(requester,null,targetProfile.role,HttpsError);
         await auth.updateUser(uid, {password: newPassword});
         return {message: "Senha alterada com sucesso!"};
     } catch (error) {

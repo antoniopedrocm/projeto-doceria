@@ -57,3 +57,8 @@ Commit funcional **74a5c732** enviado e publicado no DEV: API + dois callables A
 ### 2026-10-31 — Disponibilidade por loja homologada no DEV
 
 **CONCLUÍDO.** Usuário respondeu PASS ao aceite consolidado Staff de Configurações → Frete (Matriz true/true, Garavelo false/true), seção Disponibilidade/readiness/ação própria, desktop/mobile e banners. [Aceite humano](evidence/fulfillment-availability-manual-acceptance-dev.json), [checkpoint](CHECKPOINT_FULFILLMENT_AVAILABILITY.md). Commit funcional **74a5c732** permanece publicado; evidências técnicas em **a33293e4**. Fechamento somente documental, sem runtime, alteração de dados ou novo deploy. Não libera entrega do Garavelo nem substitui homologação operacional do frete; pendências fiscais anteriores continuam separadas. Fase9=75%, Fase11/12=100%, Global=95,00%, Fase13=0% preservados. PROD intacta; nenhuma nova ação de pedido/pagamento/nota/SMS/WhatsApp solicitada.
+
+
+## 2026-10-31 — Restrição estrutural exclusiva Dono
+
+A decisão posterior de gerenciamento de lojas restringe a gravação da disponibilidade a Dono/OWNER original com manage_stores, no servidor; Admin/Gerente não herdam esse direito. Leitura Staff autorizada permanece, com editable=false e orientação na UI. Tarifas e readiness não foram alterados. Contrato e testes em [STORE_MANAGEMENT.md](STORE_MANAGEMENT.md). O aceite anterior dos banners continua válido; o novo controle de permissão é homologado separadamente.

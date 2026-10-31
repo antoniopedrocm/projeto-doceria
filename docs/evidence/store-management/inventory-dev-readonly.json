@@ -1,0 +1,86 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-31T20:05:10.958Z",
+  "readOnly": true,
+  "databaseEdition": "STANDARD",
+  "stores": [
+    {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "fields": {
+        "nome": {
+          "stringValue": "Ana Guimarães Doceria"
+        },
+        "ativo": {
+          "booleanValue": true
+        },
+        "status": {
+          "stringValue": "ACTIVE"
+        },
+        "storeConfigVersion": {
+          "integerValue": "1"
+        }
+      }
+    },
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "fields": {
+        "ativo": {
+          "booleanValue": true
+        },
+        "nome": {
+          "stringValue": "Ana Guimarães Doceria"
+        },
+        "status": {
+          "stringValue": "ACTIVE"
+        },
+        "storeConfigVersion": {
+          "integerValue": "1"
+        }
+      }
+    },
+    {
+      "storeId": "apfood",
+      "fields": {
+        "nome": {
+          "stringValue": "ApFood"
+        }
+      }
+    }
+  ],
+  "nextPage": false,
+  "functionRevisions": [
+    {
+      "name": "createStore",
+      "revision": "createstore-00037-reg"
+    },
+    {
+      "name": "updateUserPassword",
+      "revision": "updateuserpassword-00045-jez"
+    },
+    {
+      "name": "deleteUser",
+      "revision": "deleteuser-00045-hed"
+    },
+    {
+      "name": "staffSaveFulfillment",
+      "revision": "staffsavefulfillment-00001-xaf"
+    },
+    {
+      "name": "staffGetFulfillment",
+      "revision": "staffgetfulfillment-00001-nos"
+    },
+    {
+      "name": "updateUser",
+      "revision": "updateuser-00051-niw"
+    },
+    {
+      "name": "createUser",
+      "revision": "createuser-00050-cuc"
+    },
+    {
+      "name": "api",
+      "revision": "api-00067-lal"
+    }
+  ],
+  "production": false
+}

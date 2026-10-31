@@ -28,6 +28,15 @@ function isReadOnlyAccountant() {
     && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'contador';
 }
 
+function storeNotDeleting(lojaId) {
+  return exists(/databases/$(database)/documents/lojas/$(lojaId))
+    && get(/databases/$(database)/documents/lojas/$(lojaId)).data.get('deletionLock', null) == null;
+}
+function storeAcceptsNewOrders(lojaId) {
+  let store = get(/databases/$(database)/documents/lojas/$(lojaId)).data;
+  return store.get('ativo', true) != false && store.get('ativa', true) != false
+    && !(store.get('status', 'ACTIVE') in ['INACTIVE', 'DRAFT', 'inativo', 'inactive']);
+}
 function canStaffWrite() {
   return isSignedIn() && !isReadOnlyAccountant();
 }
@@ -105,7 +114,7 @@ function currentUserHasStore(lojaId) {
 }
 
 function canManageStorePoints(lojaId) {
-  return isSignedIn()
+  return isSignedIn() && storeNotDeleting(lojaId)
     && !isReadOnlyAccountant()
     && (
       isOwnerUser()
@@ -611,9 +620,9 @@ match /lojas/{lojaId} {
   // Online financial state and reservations are changed only by the backend.
   match /pedidos/{pedidoId} {
     allow read: if canReadStoreCollection(lojaId, 'pedidos');
-    allow create: if canStaffWrite() && !request.resource.data.keys().hasAny(['paymentId', 'payment_status', 'order_status']);
-    allow delete: if canStaffWrite() && !resource.data.keys().hasAny(['paymentId']);
-    allow update: if canStaffWrite() && (
+    allow create: if (canStaffWrite() && storeNotDeleting(lojaId)) && storeAcceptsNewOrders(lojaId) && !request.resource.data.keys().hasAny(['paymentId', 'payment_status', 'order_status']);
+    allow delete: if (canStaffWrite() && storeNotDeleting(lojaId)) && !resource.data.keys().hasAny(['paymentId']);
+    allow update: if (canStaffWrite() && storeNotDeleting(lojaId)) && (
       (!resource.data.keys().hasAny(['paymentId']) && !request.resource.data.keys().hasAny(['paymentId', 'payment_status', 'order_status']))
       || (resource.data.get('payment_status', '') == 'PAID'
         && resource.data.get('order_status', '') in ['CONFIRMED', 'PREPARING', 'READY', 'DELIVERED']
@@ -628,7 +637,17 @@ match /lojas/{lojaId} {
 
   match /produtos/{produtoId} {
     allow read: if true;
-    allow write: if canStaffWrite();
+    allow write: if (canStaffWrite() && storeNotDeleting(lojaId));
+  }
+
+  // Store display identity is managed by the OWNER callable, not a direct client write.
+  match /info/{infoId} {
+    allow read: if canReadStoreCollection(lojaId, 'info');
+    allow create: if canStaffWrite() && storeNotDeleting(lojaId)
+      && (infoId != 'dados' || !request.resource.data.keys().hasAny(['nome','nomePublico','telefone','endereco']));
+    allow update: if canStaffWrite() && storeNotDeleting(lojaId)
+      && (infoId != 'dados' || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['nome','nomePublico','telefone','endereco']));
+    allow delete: if canStaffWrite() && storeNotDeleting(lojaId) && infoId != 'dados';
   }
 
   match /configuracoes/{docId} {
@@ -637,18 +656,18 @@ match /lojas/{lojaId} {
     // - /lojas/{lojaId}/configuracoes/frete
     allow get, list: if isPublicRead();
     // Storefront availability is saved through authorized, audited callables.
-    allow create, update, delete: if docId != 'storefront' && canStaffWrite();
+    allow create, update, delete: if docId != 'storefront' && (canStaffWrite() && storeNotDeleting(lojaId));
 
     match /{subcollection}/{configDocId} {
       allow get, list: if subcollection == 'cupons'
         || (isSignedIn() && (!isReadOnlyAccountant() || accountantHasModule('configuracoes')));
-      allow create, update, delete: if canStaffWrite();
+      allow create, update, delete: if (canStaffWrite() && storeNotDeleting(lojaId));
     }
   }
 
   match /cupons/{cupomId} {
     allow read: if true;
-    allow write: if canStaffWrite();
+    allow write: if (canStaffWrite() && storeNotDeleting(lojaId));
   }
 
   // Dados fiscais confidenciais sao lidos e alterados apenas por callables autorizadas.
@@ -740,11 +759,11 @@ match /lojas/{lojaId} {
   // pelas Functions e nao podem ser disfarçadas por uma alteracao posterior.
   match /contas_a_pagar/{contaId} {
     allow read: if canReadStoreCollection(lojaId, 'contas_a_pagar');
-    allow create: if canStaffWrite() && !isCashExpenseWithdrawal(request.resource.data);
-    allow update: if canStaffWrite()
+    allow create: if (canStaffWrite() && storeNotDeleting(lojaId)) && !isCashExpenseWithdrawal(request.resource.data);
+    allow update: if (canStaffWrite() && storeNotDeleting(lojaId))
       && !isCashExpenseWithdrawal(resource.data)
       && !isCashExpenseWithdrawal(request.resource.data);
-    allow delete: if canStaffWrite() && !isCashExpenseWithdrawal(resource.data);
+    allow delete: if (canStaffWrite() && storeNotDeleting(lojaId)) && !isCashExpenseWithdrawal(resource.data);
   }
 
   match /{collection}/{document=**} {
@@ -757,9 +776,10 @@ match /lojas/{lojaId} {
       && collection != 'alertas'
       && collection != 'configuracoesInternas'
       && canReadStoreCollection(lojaId, collection);
-    allow write: if canStaffWrite()
+    allow write: if (canStaffWrite() && storeNotDeleting(lojaId))
       && collection != 'fulfillmentAudit'
       && collection != 'configuracoes'
+      && collection != 'info'
       && collection != 'pedidos'
       && collection != 'ifood'
       && collection != 'fiscalConfig'
@@ -838,6 +858,9 @@ match /fechamentosEntreLojas/{fechamentoId} {
 match /{collection}/{document=**} {
   allow read: if isSignedIn()
     && collection != 'lojas'
+    && collection != 'storefrontAliases'
+    && collection != 'storeManagementAudit'
+    && collection != 'storeIdTombstones'
     && collection != 'integrations'
     && collection != 'users'
     && collection != 'customProfiles'
@@ -849,6 +872,9 @@ match /{collection}/{document=**} {
       || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
   allow write: if canStaffWrite()
     && collection != 'clientes'
+    && collection != 'storefrontAliases'
+    && collection != 'storeManagementAudit'
+    && collection != 'storeIdTombstones'
     && collection != 'checkoutPayments'
     && collection != 'checkoutReceipts'
     && collection != 'checkoutNotificationAttempts'

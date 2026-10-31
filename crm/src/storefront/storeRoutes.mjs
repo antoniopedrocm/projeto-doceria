@@ -7,8 +7,10 @@ export const PUBLIC_MENU_ROUTES = Object.freeze({
   'cardapio-festa': Object.freeze({storeId:'ana-guimaraes-doceria-matriz',channelId:'festas'}),
   'cardapio-apfood': Object.freeze({storeId:'apfood',channelId:null}),
 });
-export function storeMenuUrl(storeId, channelId = null) {
+export const validMenuSlug=value=>typeof value==='string' && /^cardapio-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) && value.length<=100;
+export function storeMenuUrl(storeId, channelId = null, publicSlug = null) {
   if (!validStoreId(storeId) || (channelId !== null && !validStoreId(channelId))) return null;
+  if(!channelId && validMenuSlug(publicSlug))return '/'+publicSlug;
   const route = Object.entries(PUBLIC_MENU_ROUTES).find(([,entry]) => entry.storeId === storeId && entry.channelId === channelId);
   if (route) return '/' + route[0];
   const base = Object.entries(PUBLIC_MENU_ROUTES).find(([,entry]) => entry.storeId === storeId && entry.channelId === null);
@@ -28,7 +30,7 @@ export function resolvePublicMenuRoute({pathname = '', search = ''} = {}) {
     return {kind:'menu',storeId:store,channelId:channel,canonicalPath:storeMenuUrl(store,channel)};
   }
   const slug = path.slice(1);
-  if (!path.startsWith('/') || !Object.hasOwn(PUBLIC_MENU_ROUTES,slug)) return missing;
+  if (!path.startsWith('/') || !Object.hasOwn(PUBLIC_MENU_ROUTES,slug)) return validMenuSlug(slug) && !store && !channel?{kind:'alias',alias:slug,canonicalPath:'/'+slug}:missing;
   const route = PUBLIC_MENU_ROUTES[slug];
   if ((store && store !== route.storeId) || (route.channelId && channel && channel !== route.channelId)) return missing;
   const channelId = route.channelId || channel;
@@ -46,7 +48,7 @@ export function safeCustomerReturnPath(value) {
   const params = new URLSearchParams(search || '');
   if ([...params.keys()].some(key => !['store', 'channel'].includes(key)) || params.getAll('store').length > 1 || params.getAll('channel').length > 1) return null;
   const route = resolvePublicMenuRoute({pathname,search});
-  return route.kind === 'menu' ? route.canonicalPath : null;
+  return ['menu','alias'].includes(route.kind) ? route.canonicalPath : null;
 }
 
 export function customerAreaEntryPath(location) {

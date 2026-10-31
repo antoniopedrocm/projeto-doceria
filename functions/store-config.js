@@ -1,5 +1,6 @@
 const {loadStoreFreightConfig, validateFreightCoordinates} = require('./freight-core');
 const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,150}$/.test(value);
+const publicSlug=value=>typeof value==='string' && /^cardapio-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) && value.length<=100;
 const error = (code, status = 409) => Object.assign(new Error(code), {code, httpStatus: status});
 const ready = value => value ? 'READY' : 'BLOCKED';
 const cleanText = value => typeof value === 'string' ? value.trim().slice(0,160) : '';
@@ -74,7 +75,8 @@ function createStoreResolver({db, getAvailability, loadPaymentConfig}) {
     const delivery = catalog && deliveryEnabled && Boolean(freight);
     const paymentReady = catalog && onlineEnabled && Boolean(payment);
     const publicConfig = {
-      storeId, name:cleanText(store.nome), active,
+      storeId, name:cleanText(store.nomePublico || store.nome), active,
+      ...(!channelId && publicSlug(store.publicSlug)?{publicSlug:store.publicSlug}:{}),
       catalog:{enabled:catalog && Boolean(category), category},
       schedule:{...publicSchedule(config), effectiveAvailability:scheduleReady ? availability : 'CONFIG_UNAVAILABLE'},
       pickup:{enabled:pickup}, delivery:{enabled:deliveryEnabled, available:delivery},
@@ -109,7 +111,7 @@ function createStoreResolver({db, getAvailability, loadPaymentConfig}) {
       const store=doc.data() || {},definition=definitions[index];
       const identity=catalogIdentity(store,definition.data() || {},definition.exists);
       if(!identity.active || !identity.category || !identity.catalogEnabled) return [];
-      const entries=[{storeId:doc.id,name:cleanText(store.nome)}];
+      const entries=[{storeId:doc.id,name:cleanText(store.nomePublico || store.nome),...(publicSlug(store.publicSlug)?{publicSlug:store.publicSlug}:{})}];
       const channels=await db.collection(`lojas/${doc.id}/canais`).where('listed','==',true).limit(20).get();
       for(const channel of channels.docs) {
         const data=channel.data();

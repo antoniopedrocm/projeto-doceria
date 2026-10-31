@@ -1,5 +1,6 @@
 const crypto=require('node:crypto');
 const {validId,catalogIdentity,deliveryFreight}=require('./store-config');
+const {canManageStores}=require('./store-owner-policy');
 function createFulfillmentAuthorizer({db,HttpsError,assertActiveUser,sanitizePermissions,extractStoreIds}) {
   return async(uid,storeId)=>{
     const profile=await assertActiveUser(uid),raw=String(profile.role || '').toLowerCase();
@@ -9,10 +10,10 @@ function createFulfillmentAuthorizer({db,HttpsError,assertActiveUser,sanitizePer
     const custom=(await db.doc('customProfiles/'+uid).get()).data() || {};
     const permissions=sanitizePermissions(custom.permissions || profile.permissions,role),stores=extractStoreIds(profile);
     if(!permissions.configuracoes || (!(role==='dono' && !stores.length) && !stores.includes(storeId)))throw new HttpsError('permission-denied','Sem permissão de configurações nesta loja.');
-    return {uid};
+    return {uid,manageStores:canManageStores(profile,custom)};
   };
 }
-function createFulfillmentAdmin({db,admin,HttpsError,authorize}) {
+function createFulfillmentAdmin({db,admin,HttpsError,authorize,authorizeManage=authorize}) {
   const fail=(code,message)=>{throw new HttpsError(code,message);};
   const identify=data=>{if(!validId(data?.storeId))fail('invalid-argument','Loja inválida.');return `lojas/${data.storeId}`;};
   async function project(storeId) {
@@ -25,9 +26,9 @@ function createFulfillmentAdmin({db,admin,HttpsError,authorize}) {
       pickupAvailable:identity.active && identity.catalogEnabled && Boolean(identity.category) && pickupEnabled,
       revision:Number(data.fulfillmentRevision || 0),editable:store.get('storeConfigVersion')===1 && data.schemaVersion===1};
   }
-  async function get(request) {identify(request.data);await authorize(request.auth?.uid,request.data.storeId);return project(request.data.storeId);}
+  async function get(request) {identify(request.data);const actor=await authorize(request.auth?.uid,request.data.storeId);const result=await project(request.data.storeId);return {...result,validContract:result.editable,manage_stores:actor.manageStores===true,editable:result.editable && actor.manageStores===true};}
   async function save(request) {
-    const data=request.data || {},root=identify(data),actor=await authorize(request.auth?.uid,data.storeId);
+    const data=request.data || {},root=identify(data),actor=await authorizeManage(request.auth?.uid,data.storeId);
     if(Object.keys(data).some(k=>!['storeId','deliveryEnabled','pickupEnabled','expectedRevision','requestId'].includes(k)) ||
       typeof data.deliveryEnabled!=='boolean' || typeof data.pickupEnabled!=='boolean' || !Number.isSafeInteger(data.expectedRevision) || data.expectedRevision<0 || !/^[a-zA-Z0-9_-]{16,80}$/.test(data.requestId || ''))fail('invalid-argument','Disponibilidade inválida.');
     const ref=db.doc(root+'/configuracoes/storefront'),event=db.doc(root+'/fulfillmentAudit/'+data.requestId);

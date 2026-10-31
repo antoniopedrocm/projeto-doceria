@@ -3,8 +3,9 @@ import {storePerfMark,storePerfEvent,storePerfRequest,storePerfPaint} from './pe
 import {canPreviewCustomer,previewPermissionDetails,previewTarget} from './customer/adminPreviewAccess';
 import PaginaInicial from './storefront/CrmHome';
 import StoreSelector from './stores/StoreSelector';
+import StoreManagementModal from './stores/StoreManagementModal';
 import FulfillmentSettings from './stores/FulfillmentSettings';
-import {staffDirectoryKey,reconcileStoreSelection,staffStoreSelectionKey} from './stores/staffDirectory';
+import {staffDirectoryKey,reconcileStoreSelection,staffStoreSelectionKey,storeFriendlyName} from './stores/staffDirectory';
 import useStaffSection,{reconcileStaffSection} from './stores/useStaffSection';
 import {storeDeadline} from './stores/storeRequests';
 import {normalizeRole, isActiveStaffProfile} from './customer/staffRole';
@@ -285,6 +286,7 @@ const buildUserDataFromProfile = (authUser, profile = {}, customProfileData = nu
   return {
     auth: authUser,
     role,
+    manage_stores:['dono','owner'].includes(String(profile.role || '').trim().toLowerCase()) && profile.manage_stores!==false && profile.capabilities?.manage_stores!==false && customProfileData?.capabilities?.manage_stores!==false,
     lojaIds,
     lojaId: lojaIds[0] || null,
     canAccessAllStores: role === ROLE_OWNER && lojaIds.length === 0,
@@ -1534,237 +1536,7 @@ const DeliveryModal = ({ isOpen, onClose, order, clientes = [], fornecedores = [
   );
 };
 
-const generateStoreId = (value) => {
-  if (!value) return '';
-  const cleaned = value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 50);
-  return cleaned || `loja-${Date.now()}`;
-};
 
-const StoreManagerModal = ({
-  isOpen,
-  onClose,
-  availableStores,
-  storeInfoMap,
-  onCreateStore,
-  onSelectStore,
-  canCreate,
-  allowAllOption,
-  currentStoreId,
-  isCreatingStore
-}) => {
-  const [storeName, setStoreName] = useState('');
-  const [storeIdInput, setStoreIdInput] = useState('');
-  const [error, setError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [showForm, setShowForm] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setStoreName('');
-      setStoreIdInput('');
-      setError('');
-      setSuccessMessage('');
-	  setShowForm(false);
-
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && canCreate && availableStores.length === 0) {
-      setShowForm(true);
-    }
-  }, [isOpen, canCreate, availableStores.length]);
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    if (!canCreate) return;
-
-    setError('');
-    setSuccessMessage('');
-
-    const name = storeName.trim();
-    if (!name) {
-      setError('Informe o nome da loja.');
-      return;
-    }
-
-    let finalId = storeIdInput.trim();
-    if (finalId) {
-      finalId = generateStoreId(finalId);
-    } else {
-      finalId = generateStoreId(name);
-    }
-
-    if (finalId === STORE_ALL_KEY) {
-      setError('Identificador inválido.');
-      return;
-    }
-
-    if (!finalId) {
-      setError('Não foi possível gerar um identificador para a loja.');
-      return;
-    }
-
-    if (availableStores.includes(finalId)) {
-      setError('Já existe uma loja com esse identificador.');
-      return;
-    }
-
-    try {
-      await onCreateStore({ storeId: finalId, nome: name });
-      setSuccessMessage(`Loja "${name}" criada com sucesso!`);
-      setStoreName('');
-      setStoreIdInput('');
-	  setShowForm(false);
-
-    } catch (createError) {
-      setError(createError.message || 'Não foi possível criar a loja.');
-    }
-  };
-
-  const handleSelect = (value) => {
-    onSelectStore(value);
-    onClose();
-  };
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Gerenciar lojas" size="lg">
-      <div className="space-y-6">
-        {canCreate && (
-          <div className="space-y-4">
-            {showForm ? (
-              <form onSubmit={handleSubmit} className="space-y-4 p-4 border border-gray-200 rounded-xl bg-white shadow-sm">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800">Adicionar nova loja</h3>
-                  <p className="text-sm text-gray-500">Informe um nome para identificar a loja. Você pode ajustar o identificador se necessário.</p>
-                </div>
-                <Input
-                  label="Nome da loja"
-                  value={storeName}
-                  onChange={(e) => setStoreName(e.target.value)}
-                  placeholder="Ex: Loja Centro"
-                  required
-                />
-                <Input
-                  label="Identificador (opcional)"
-                  value={storeIdInput}
-                  onChange={(e) => setStoreIdInput(e.target.value)}
-                  placeholder="Ex: loja-centro"
-                />
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <div className="flex justify-end gap-3">
-                  {availableStores.length > 0 && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setShowForm(false);
-                        setStoreName('');
-                        setStoreIdInput('');
-                        setError('');
-                      }}
-                    >
-                      Cancelar
-                    </Button>
-                  )}
-                  <Button type="submit" disabled={isCreatingStore}>
-                    <Plus className="w-4 h-4" />
-                    {isCreatingStore ? 'Salvando...' : 'Criar loja'}
-                  </Button>
-                </div>
-              </form>
-            ) : (
-              <div className="p-4 border border-gray-200 rounded-xl flex items-center justify-between bg-white shadow-sm">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-800">Adicionar nova loja</h3>
-                  <p className="text-sm text-gray-500">Crie lojas para organizar suas unidades. Você pode adicionar quantas quiser.</p>
-                </div>
-                <Button
-                  onClick={() => {
-                    setShowForm(true);
-                    setError('');
-                    setSuccessMessage('');
-                  }}
-                >
-                  <Plus className="w-4 h-4" /> Nova loja
-                </Button>
-              </div>
-            )}
-            {successMessage && !showForm && (
-              <p className="text-sm text-green-600">{successMessage}</p>
-            )}
-          </div>
-        )}
-
-        <div className="space-y-3">
-          <h3 className="text-lg font-semibold text-gray-800">Lojas disponíveis</h3>
-
-          {allowAllOption && availableStores.length > 0 && (
-            <div className="p-4 border border-gray-200 rounded-xl flex items-center justify-between bg-gray-50">
-              <div>
-                <p className="font-semibold text-gray-800">Visão Geral</p>
-                <p className="text-xs text-gray-500">Exibe dados combinados de todas as lojas.</p>
-              </div>
-              <Button
-                size="sm"
-                variant={currentStoreId === STORE_ALL_KEY ? 'secondary' : 'primary'}
-                onClick={() => handleSelect(STORE_ALL_KEY)}
-                disabled={currentStoreId === STORE_ALL_KEY}
-              >
-                {currentStoreId === STORE_ALL_KEY ? 'Selecionada' : 'Selecionar'}
-              </Button>
-            </div>
-          )}
-
-          {availableStores.length === 0 ? (
-            <div className="p-6 border border-dashed border-gray-300 rounded-xl text-center space-y-3 bg-gray-50">
-              <Store className="w-10 h-10 mx-auto text-gray-400" />
-              <p className="text-base font-semibold text-gray-700">Nenhuma loja cadastrada</p>
-              <p className="text-sm text-gray-500">Crie sua primeira loja para começar a organizar sua operação.</p>
-              {canCreate && (
-                <Button
-                  onClick={() => {
-                    setShowForm(true);
-                    setError('');
-                    setSuccessMessage('');
-                  }}
-                >
-                  <Plus className="w-4 h-4" /> Criar primeira loja
-                </Button>
-              )}
-            </div>
-          ) : (
-            availableStores.map((storeId) => {
-              const info = storeInfoMap[storeId] || {};
-              return (
-                <div key={storeId} className="p-4 border border-gray-200 rounded-xl flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-gray-800">{info.nome || storeId}</p>
-                    <p className="text-xs text-gray-500">ID: {storeId}</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant={currentStoreId === storeId ? 'secondary' : 'primary'}
-                    onClick={() => handleSelect(storeId)}
-                    disabled={currentStoreId === storeId}
-                  >
-                    {currentStoreId === storeId ? 'Selecionada' : 'Selecionar'}
-                  </Button>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </Modal>
-  );
-};
 
 
 // Helper function
@@ -3727,7 +3499,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
   },[availableStores,storeInfoMap,directoryNames]);
   const [selectedStoreId, setSelectedStoreId] = usePersistentState(staffStoreSelectionKey(staffUid), null);
   const [showStoreManager, setShowStoreManager] = useState(false);
-  const [isCreatingStore, setIsCreatingStore] = useState(false);
+
 
   // --- REVISADO: Refs de Áudio ---
   const stopAlarmRef = useRef(null); // Guarda a função de parar o som
@@ -3961,66 +3733,6 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
   const handleStoreChange = useCallback((event) => {
         selectStoreById(event.target.value);
   }, [selectStoreById]);
-
-  const handleCreateStore = useCallback(async ({ storeId, nome }) => {
-        const trimmedId = typeof storeId === 'string' ? storeId.trim() : '';
-        const trimmedName = typeof nome === 'string' ? nome.trim() : '';
-
-        if (!trimmedName) {
-          throw new Error('Nome e identificador são obrigatórios.');
-        }
-
-        setIsCreatingStore(true);
-
-        try {
-          const createStoreFn = httpsCallable(functions, 'createStore');
-          const result = await createStoreFn({ storeId: trimmedId, nome: trimmedName });
-          const response = (result && result.data) || {};
-          const createdStoreId = response.storeId || generateStoreId(trimmedId || trimmedName);
-
-          if (!createdStoreId || createdStoreId === STORE_ALL_KEY) {
-            throw new Error('Identificador inválido para a loja.');
-          }
-
-          const storeData = response.storeData || { nome: trimmedName };
-
-          setAvailableStores((prev) => (prev.includes(createdStoreId) ? prev : [...prev, createdStoreId]));
-          setDirectoryNames(previous=>({...previous,[createdStoreId]:trimmedName}));
-          setDirectoryStatus('ready');
-          setStoreInfoMap((prev) => ({
-            ...prev,
-            [createdStoreId]: { ...(prev[createdStoreId] || {}), ...storeData }
-          }));
-
-          selectStoreById(createdStoreId);
-
-          if (Array.isArray(response.assignedStoreIds)) {
-            setUser((prev) => {
-              if (!prev) return prev;
-              const uniqueIds = Array.from(new Set(response.assignedStoreIds));
-              const nextPrimary = response.primaryStoreId || prev.lojaId || uniqueIds[0] || null;
-
-              return {
-                ...prev,
-                lojaIds: uniqueIds,
-                lojaId: nextPrimary,
-                canAccessAllStores: typeof response.canAccessAllStores === 'boolean'
-                  ? response.canAccessAllStores
-                  : prev.canAccessAllStores
-              };
-            });
-          }
-        } catch (error) {
-          console.error('Erro ao criar loja:', error);
-          if (error && typeof error.message === 'string') {
-            const cleanedMessage = error.message.replace(/^FirebaseError:\s*/i, '').trim();
-            throw new Error(cleanedMessage || 'Não foi possível criar a loja.');
-          }
-          throw new Error('Não foi possível criar a loja.');
-		  } finally {
-          setIsCreatingStore(false);
-        }
-  }, [selectStoreById, setUser]);
 
   // --- SUBSTITUÍDO: Nova função stopAlarm ---
   const stopAlarm = useCallback(() => {
@@ -5194,7 +4906,6 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
       setStoreInfoMap({});
       setSelectedStoreId(null);
       setShowStoreManager(false);
-      setIsCreatingStore(false);
       setCurrentPage('pagina-inicial');
       stopAlarm();
     };
@@ -5295,7 +5006,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
           if(access.role===ROLE_OWNER && access.all) {
             const snapshot=await storeDeadline(storePerfRequest('staff-directory-query',()=>getDocs(collection(db,'lojas'))));
             storePerfMark('T6');ids=snapshot.docs.map(d=>d.id);
-            names=Object.fromEntries(snapshot.docs.map(d=>[d.id,typeof d.data().nome==='string'?d.data().nome.trim():d.id]));
+            names=Object.fromEntries(snapshot.docs.map(d=>[d.id,storeFriendlyName(d.id,d.data())]));
           } else {storePerfMark('T6');storePerfEvent('staff-directory-membership');}
           storePerfMark('T7');if(!active)return;
           setDirectoryNames(names);setAvailableStores(ids);setDirectoryStatus('ready');
@@ -21535,7 +21246,7 @@ const handleSubmit = async (e) => {
 
   const canCreateStores = useMemo(() => {
     if (!user) return false;
-    return user.role === ROLE_OWNER || user.role === ROLE_MANAGER;
+    return user.manage_stores===true;
   }, [user]);
 
   const effectiveStoreId = useMemo(() => {
@@ -21676,9 +21387,9 @@ const handleSubmit = async (e) => {
 
             <div className="flex-1 flex items-center justify-center md:justify-start">
                 {user && <StoreSelector owner={user.role===ROLE_OWNER} allKey={STORE_ALL_KEY}
-                  stores={availableStores} names={{...directoryNames,...Object.fromEntries(Object.entries(storeInfoMap).filter(([,info])=>info?.nome).map(([id,info])=>[id,info.nome]))}}
+                  stores={availableStores} names={{...Object.fromEntries(Object.entries(storeInfoMap).filter(([,info])=>info?.nome).map(([id,info])=>[id,info.nome])),...directoryNames}}
                   selected={currentStoreIdForDisplay} status={directoryContextKey===storeAccessKey?directoryStatus:'loading'} onChange={handleStoreChange}
-                  onRetry={()=>setDirectoryRetry(value=>value+1)} canCreate={canCreateStores} onCreate={()=>setShowStoreManager(true)}/>}
+                  onRetry={()=>setDirectoryRetry(value=>value+1)} onManage={()=>setShowStoreManager(true)} canCreate={canCreateStores} onCreate={()=>setShowStoreManager(true)}/>}
             </div>
             <div className="flex items-center gap-4">
                                 {user && (
@@ -21736,18 +21447,9 @@ const handleSubmit = async (e) => {
         </main>
       </div>
 
-      <StoreManagerModal
-        isOpen={showStoreManager}
-        onClose={() => setShowStoreManager(false)}
-        availableStores={availableStores}
-        storeInfoMap={storeInfoMap}
-        onCreateStore={handleCreateStore}
-        onSelectStore={selectStoreById}
-        canCreate={canCreateStores}
-        allowAllOption={user?.role === ROLE_OWNER}
-        currentStoreId={currentStoreIdForDisplay}
-        isCreatingStore={isCreatingStore}
-      />
+      <StoreManagementModal isOpen={showStoreManager} onClose={()=>setShowStoreManager(false)} Modal={Modal} Button={Button} Input={Input}
+        canManage={canCreateStores} onSelectStore={selectStoreById} allowAllOption={user?.role===ROLE_OWNER} allKey={STORE_ALL_KEY} currentStoreId={currentStoreIdForDisplay}
+        onSaved={result=>{if(Array.isArray(result.assignedStoreIds))setUser(previous=>({...previous,lojaIds:result.assignedStoreIds,lojaId:result.primaryStoreId}));setDirectoryRetry(value=>value+1);}} onConfigure={id=>{selectStoreById(id);setCurrentPage('configuracoes');}} />
 
       <Modal isOpen={showLogin} onClose={() => {setShowLogin(false); setLoginError(''); setPasswordResetMessage({ text: '', type: '' });}} title={showPasswordReset ? "Recuperar Senha" : "Login"} size="sm">
         {showPasswordReset ? (

@@ -1,4 +1,15 @@
 // Stable access signature excludes unrelated Customer/schedule/notification data.
+import {storeMenuUrl} from '../storefront/storeRoutes.mjs';
+export function storeFriendlyName(storeId,data={}) {
+  const candidate=data.nomePublico || data.nome || data.legalName;
+  const registered=typeof candidate==='string'?candidate.trim():'';
+  if(!registered || registered===storeId)return 'Loja sem nome cadastrado';
+  if(data.nomePublico)return registered;
+  const path=data.publicSlug?'/'+data.publicSlug:storeMenuUrl(storeId);
+  const unit=/^\/cardapio-([a-z0-9-]+)$/.exec(path || '')?.[1];
+  const label=unit?.split('-').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+  return label && !registered.toLowerCase().includes(label.toLowerCase())?registered+' — '+label:registered;
+}
 // The values come from the server-validated Staff profile, never public-list.
 // A store ID is a navigation preference, not authority. Keep it per canonical
 // Staff UID so gate cleanup can still discard every shared/private Staff draft.

@@ -30,11 +30,17 @@ for(const [slug,identity] of Object.entries(PUBLIC_MENU_ROUTES)) {
  });
 }
 test('slugs malformados, inexistentes e conflito slug/store falham antes de qualquer request',async()=>{
- for(const url of ['/cardapio-loja-que-nao-existe','/cardapio-constructor','//evil.test/cardapio-matriz','/cardapio-matriz/../private','/cardapio-matriz?store=ana-guimaraes-doceria-garavelo','/cardapio?store=a&store=b','/cardapio?store=foo%0A','/cardapio-festa?channel=outro']){
+  for(const url of ['//evil.test/cardapio-matriz','/cardapio-matriz/../private','/cardapio-matriz?store=ana-guimaraes-doceria-garavelo','/cardapio?store=a&store=b','/cardapio?store=foo%0A','/cardapio-festa?channel=outro']){
   const [pathname,search='']=url.split('?'),dom=new JSDOM('<div id="loading-message"></div>');let count=0;
   const result=await bootstrapPublicStore({location:{pathname,search:'?'+search},document:dom.window.document,fetchImpl:async()=>{count++;throw Error('Must not fetch');}});
   assert.equal(result,null,url);assert.equal(count,0,url);assert.equal(dom.window.document.getElementById('loading-message').textContent,'Loja não encontrada.');dom.window.close();
  }
+});
+test('alias novo é resolvido no backend; alias inexistente não cai em Matriz',async()=>{
+ for(const exists of [true,false]){const dom=new JSDOM('<div id="loading-message"></div>',{url:'https://dev.test/cardapio-loja-nova'});let count=0;
+ const config={storeId:'future-store',active:true,catalog:{enabled:true},publicSlug:'cardapio-loja-renomeada'};
+ const result=await bootstrapPublicStore({location:dom.window.location,history:dom.window.history,document:dom.window.document,fetchImpl:async url=>{count++;assert.equal(new URL(url).searchParams.get('alias'),'cardapio-loja-nova');return {ok:exists,json:async()=>exists?config:{code:'STORE_NOT_FOUND'}};}});
+ assert.equal(count,1);if(exists){assert.equal(result.storeId,'future-store');assert.equal(dom.window.location.pathname,'/cardapio-loja-renomeada');assert.equal(customerMenuDestination(store(),'?returnTo='+encodeURIComponent('/cardapio-loja-renomeada')),'/cardapio-loja-renomeada');}else{assert.equal(result,null);assert.equal(dom.window.document.getElementById('loading-message').textContent,'Loja não encontrada.');}dom.window.close();}
 });
 test('diretório genérico continua disponível, com links amigáveis para lojas/canais aprovados',async()=>{
  const dom=new JSDOM('<div id="loading-message"></div>');

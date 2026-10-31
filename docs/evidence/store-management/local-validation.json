@@ -1,0 +1,33 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-10-31T20:45:51.167Z",
+  "baseCommit": "b4cd6b67",
+  "tests": {
+    "expandedEmulators": 53,
+    "finalFocusedEmulators": 19,
+    "overlap": true,
+    "react": 9,
+    "node": 26,
+    "realDevMutations": 0
+  },
+  "build": {
+    "passed": true,
+    "main": "/static/js/main.60d6a111.js",
+    "css": "/static/css/main.cda549b5.css"
+  },
+  "lint": {
+    "backendErrors": 0,
+    "frontendErrors": 0,
+    "preexistingAppWarnings": 65,
+    "preexistingRouteWarnings": 1,
+    "newWarnings": 0
+  },
+  "visual": {
+    "fixtureOnly": true,
+    "cases": 12,
+    "horizontalOverflow": false
+  },
+  "rulesSha256": "8bfe5e618a5c62277fbb30a3fa180ebf0db7fa0ed3f732b3494108e192e5b48a",
+  "diffCheck": true,
+  "production": false
+}
