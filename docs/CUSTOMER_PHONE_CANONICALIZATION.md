@@ -1,5 +1,9 @@
 # Customer canônico por telefone — pré-PROD / DEV
 
+## Distinção vigente — Fase10 obrigatória, 31/10/2026
+
+A conclusão/homologação deste componente em25/10 permanece válida. **Não equivale ao encerramento integral da Fase10**, agora gate obrigatório pré-PROD por decisão do proprietário. Auditoria inicial:75%/12 de16 critérios; faltam conflitos/remanescentes, inventário atual e decisões de dados, claim real Google/e-mail com Enterprise e aceite consolidado. O aceite descrito abaixo exclui expressamente claim real/novo SMS. [Auditoria Fase10](PHASE10_LEGACY_RECOVERY_AUDIT.md), [gate vigente](PREPROD_GATE_REVIEW.md). Contrato InfinitePay já recebido; não aguardar nova resposta genérica.
+
 Estado: **CONCLUÍDO E HOMOLOGADO NO DEV — ACEITE MANUAL CONSOLIDADO EM25/10/2026**. Fase9=75%, Fase11=100%,
 Fase12=100% histórico, Global95,00%, Fase13=0%. Não iniciar produção.
 Workspace C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree;

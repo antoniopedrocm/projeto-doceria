@@ -1,6 +1,10 @@
 # Fase 9 — reavaliação documental dos eventos InfinitePay
 
-**Revisão vigente:** [fechamento interno de 2026-10-21](#fechamento-interno--2026-10-21),
+## Revisão vigente — contrato recebido e conferido em 31/10/2026
+
+As respostas formais do suporte de25/10 estão disponíveis e encerram a pendência de obter o contrato: [resumo e fontes](INFINITEPAY_SUPPORT_CONTRACT_2026-10-25.md). A revisão histórica de20–21/10 abaixo não é o gate atual. Webhook sem assinatura, event_type, payment_check de aprovação, operações esperadas/execução verificável para cancelamento/refund e settled informativo precisam ser implementados/testados/homologados. Fase9 permanece75%; Fase10 agora é gate obrigatório, ambos devem atingir100% antes de PROD. [PRE-PROD GATE REVIEW](PREPROD_GATE_REVIEW.md).
+
+**Revisão histórica:** [fechamento interno de 2026-10-21](#fechamento-interno--2026-10-21),
 commit funcional `8ea926a8`, posterior à auditoria profunda da base `9bda18bd`.
 A seção inicial preserva a investigação de 2026-10-20; a nova
 rodada amplia fontes, distingue modos compatíveis de conflitos ainda não resolvidos
@@ -588,17 +592,14 @@ adicional realmente confirmada continua exigindo REVIEW, não segundo consumo.
 |20 cenários e regressão de ownership/multiloja/CRM | Interna | CONCLUÍDA | Não |65+31+36 testes atuais |
 | Inventário/readiness/rollback/smoke e plano condicional | Interna/documental | CONCLUÍDA como preparação | Não | Execução PROD pertence à Fase13 autorizada |
 | Triagem de histórico, opcionais e backlog aceito | Interna/documental | CONCLUÍDA como triagem | Não | Não confundir com correção das dívidas D/E |
-| CONTRATO EXTERNO INFINITEPAY | Externa | PENDENTE | SIM | Resposta oficial e posterior implementação/testes condicionais |
+| CONTRATO OFICIAL INFINITEPAY | Fonte externa | OBTIDO em25/10, conferido31/10 | Não por obtenção de resposta | Implementar o contrato recebido; ver resumo rastreável |
+| Tratamento operacional e homologação Fase9 | Interna/DEV | PENDENTE | SIM | Eventos, operações esperadas, reconciliação, segurança, testes, deploy DEV e aceite |
 
-**Todas as pendências internas pré-PROD obrigatórias e solucionáveis agora foram
-concluídas. A única dependência restante para a conclusão da Fase9 é resposta técnica
-oficial da InfinitePay sobre o contrato dos eventos não-PAID.** Isso não declara zero
-backlog, produto publicado com este delta ou prontidão real de PROD. Mantidos no
-readiness os itens D/E e tarefas futuras da Fase13, sem apagá-los ou marcá-los corrigidos.
+**A preparação interna histórica está preservada, mas a implementação dos ramos agora esclarecidos pelo suporte e sua homologação ainda estão pendentes. O contrato já foi obtido.** Não declarar Fase9 completa nem readiness de produção.
 
-### PENDÊNCIA EXTERNA — INFINITEPAY
+### Histórico encerrado — perguntas externas respondidas em25/10/2026
 
-Somente lacunas da seção18, agrupadas em uma dependência, sem contato enviado:
+Lista histórica de lacunas da seção18, preparada antes da resposta. A obtenção da resposta está concluída; consultar o resumo vigente e não reapresentar esta lista como pendência atual:
 
 - Mecanismo verificável de origem, incluindo proteção contra replay quando aplicável.
 - Endpoint/campo/enum de confirmação de payment_failed/canceled/refunded e relação
@@ -611,7 +612,7 @@ Somente lacunas da seção18, agrupadas em uma dependência, sem contato enviado
   App/Conta; confirmação de parcial/Pix/cartão na integração. **Não perguntar se App,
   navegador ou devolução Pix parcial existem:** já documentados.
 
-### IMPLEMENTAÇÃO PENDENTE APÓS RESPOSTA DA INFINITEPAY
+### Cenários condicionais históricos — usar a resposta já obtida
 
 | Resposta oficial | Implementação/teste condicionado, ainda não ativado |
 |---|---|
@@ -622,7 +623,7 @@ Somente lacunas da seção18, agrupadas em uma dependência, sem contato enviado
 | API pública de refund não existe | App/Conta continuam procedimento externo; definir como comprovar e conciliar, sem engenharia reversa |
 | Esclarecimento insuficiente/conflitante | Não ativar transições nem fechar Fase9; perguntar somente a lacuna remanescente |
 
-Receber resposta não aplica automaticamente estado financeiro nem muda percentual.
+A resposta já recebida não aplica automaticamente estado financeiro nem muda percentual.
 Separar refund de fulfillment; não restaurar estoque sem regra de negócio autorizada.
 Provider pode exigir alteração ainda não conhecida; prontidão significa poder retomar
 imediatamente o trabalho, não prometer implementação antecipada de contrato desconhecido.

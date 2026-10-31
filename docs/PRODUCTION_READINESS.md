@@ -1,4 +1,12 @@
-# Readiness interno pré-PROD — 2026-10-21
+# Readiness interno pré-PROD — revisão vigente 2026-10-31
+
+## Gate vigente — decisão do proprietário em 31/10/2026
+
+**PROD READY: NÃO. Fases 9 E 10 obrigatoriamente em 100%, mais todos os demais gates PASS e autorização explícita final. Fase 10 tornou-se gate obrigatório de produção por decisão do proprietário.** Nenhum peso histórico foi alterado: Fase9 75%, Global95,00%, Fase13 0%; Fase10 75% auditado (12/16) e fora da ponderação. Fase9 em100% produz97,00% formal, sem liberar produção com Fase10 pendente.
+
+**Contrato InfinitePay já recebido e conferido:** respostas do suporte de25/10, incluindo eventos não assinados e reconciliação com operações da equipe. O restante é implementação/testes/deploy/homologação DEV; não aguardar novo contrato para iniciar o trabalho conhecido. Não inventar HMAC ou consulta de refund inexistentes.
+
+Gates complementares ainda abertos: Nota Fiscal, SMS Enterprise, Refresh CRM e Admin Preview técnico; revisão específica de configurações PROD, backup/rollback e segurança/regressão; autorização final NÃO concedida. Gestão de lojas já foi homologada e não precisa ser refeita. [Revisão completa e ordem de execução](PREPROD_GATE_REVIEW.md), [auditoria Fase10](PHASE10_LEGACY_RECOVERY_AUDIT.md), [fonte do contrato](INFINITEPAY_SUPPORT_CONTRACT_2026-10-25.md). Os registros anteriores abaixo são históricos e não substituem este gate vigente.
 
 ## Decisão e fronteira
 
@@ -354,7 +362,7 @@ simula autenticação nem inventa payload oficial de estorno.
 | Multiloja | Public-config/public-list, readiness por domínio, aliases e Festas/canal explícito | Backend compatível antes de Hosting; migração própria antes de ativar capacidades |
 | Maps | Cotação autoritativa backend e anti-adulteração previamente homologados | Restrições/quota/serviço de rotas próprios; não reutilizar chave browser no servidor |
 | CORS/Auth | Callables usam allowlist; API pública usa cors origin:true, autorização continua server-side | Conferir origens, OAuth, redirects, provedores e URLs do projeto próprio; CORS não é autorização |
-| InfinitePay | Conta/config por loja e registro da tentativa; sem fallback; PAID homologado | Resolver dependência externa e homologar mudanças que ela exigir; ação real financeira só por autorização separada |
+| InfinitePay | Conta/config por loja e registro da tentativa; sem fallback; PAID homologado | Contrato já recebido; implementar/testar/publicar DEV/homologar eventos e reconciliação. Ação financeira real só por autorização separada |
 | Flags/WhatsApp | Worker exige config explícita; trilha atual permanece desligada | Não habilitar enabled/automaticEnabled nem publicar WhatsApp como consequência da promoção |
 | Artefatos | Temporários não rastreados preservados fora de staging/build | Empacotar apenas arquivos aprovados; excluir funções/tests/fixtures/manifesto temporário do upload |
 | Observabilidade | Diagnósticos sanitizados e sinais retidos; sem payload/credencial | Conferir acesso/retenção/logs sem dados privados; não confundir log com prova provider |
@@ -386,17 +394,9 @@ simula autenticação nem inventa payload oficial de estorno.
 - Registrar resultados, delta publicado, rollback disponível e gate manual. Não avançar
   percentuais automaticamente por deploy.
 
-## Dependência única e retomada
+## Retomada vigente — contrato recebido e gates obrigatórios
 
-Para o último marco FINANCEIRO: **resposta técnica oficial da InfinitePay**,
-detalhada na seção vigente do relatório. O requisito de endereços/SMS e o save
-persistente sem OTP já possuem aceite DEV. A nova migração de CAPTCHA visível
-para Enterprise SCORE é gate interno separado até confirmação do Console SMS
-defense e homologação normal mobile/desktop; não infla percentuais.
-Preparação e testes internos não substituem a resposta nem concedem pontuação.
-Quando chegar: conferir fonte/versão, escolher somente o ramo condicional documentado,
-implementar/testar o que for necessário e avaliar o quarto marco. Não executar refund
-ou iniciar Fase13 automaticamente. Nenhum contato enviado nesta entrega.
+A resposta técnica oficial da InfinitePay foi recebida em25/10 e conferida nesta revisão. Não há mais pendência genérica de obter o contrato. Implementação/testes/deploy/homologação financeira da Fase9 continuam necessários. O fluxo Enterprise e os demais gates internos não são encerrados por esse recebimento. Fase10 agora é obrigatória, com auditoria inicial75%/12 de16 e trabalho restante descrito no relatório. Seguir a ordem do proprietário: complementos pequenos → Fase9 → atualizar auditoria/dados Fase10 → gaps → homologação Fase10 → Readiness Review → solicitar autorização Fase13. Não executar produção, SMS real, refund ou contato com suporte nesta revisão.
 
 ### Tentativa de publicação DEV — 2026-10-23
 
@@ -679,3 +679,8 @@ Complemento funcional **9959c630636a304cff4b340dc4d97183ab20b0f6** enviado ao or
 ### 2026-10-31 — Gerenciamento de lojas homologado no DEV
 
 **CONCLUÍDO.** Usuário respondeu **PASS** ao novo aceite autenticado de Configurações → Gerenciar Lojas, + Nova Loja/Editar com cancelamento, cards/status/ações por elegibilidade, Visão Geral somente seleção, ApFood protegido, Entre Lojas separado e Ver lojas rápido, desktop/mobile. O complemento funcional **9959c630** permanece publicado; evidências de entrega em **e3deefbd**. [Aceite humano](evidence/store-management-settings/manual-acceptance-dev.json), [checkpoint](CHECKPOINT_STORE_MANAGEMENT.md). A reprovação inicial foi resolvida pelo complemento e pelo novo PASS; não repetir a correção de papel já autorizada/executada. Fechamento somente documental, sem runtime, mutação remota, build ou novo deploy. Segurança, gravações e exclusão continuam comprovadas nos testes automatizados, sem operação destrutiva real de homologação. Aceite fiscal anterior separado; Mercado Pago futuro. Fase9=75%, Fase11/12=100%, Global=95,00%, Fase13=0% preservados. PROD intacta; nenhum pedido/pagamento/nota/SMS/WhatsApp solicitado neste fechamento.
+
+
+## 31/10/2026 — Atualização formal dos gates e auditoria inicial Fase10
+
+Fase10 tornou-se gate obrigatório de produção por decisão do proprietário, sem peso global. Contrato InfinitePay recebido em25/10 e conferido; pendência Fase9 é implementação/testes/deploy/homologação, não obter resposta. Fase9=75%, Fase10=75% aferido em12/16 critérios, Global95,00%, Fase13=0%, pesos históricos preservados. **PROD READY: NÃO** até Fases9 E10 em100%, demais gates PASS e autorização explícita final. [Revisão completa](PREPROD_GATE_REVIEW.md), [auditoria20 itens](PHASE10_LEGACY_RECOVERY_AUDIT.md), [fonte do contrato](INFINITEPAY_SUPPORT_CONTRACT_2026-10-25.md). Somente documentação e12 testes locais PASS; sem runtime, build, deploy, mutação remota, SMS/pagamento/WhatsApp ou contato enviado. Auditoria detalhada atual de dados e execução dos gaps pertencem à etapa Fase10 após Fase9.

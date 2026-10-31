@@ -1,5 +1,9 @@
 # Contrato financeiro — evidências, estados e limites
 
+## Atualização vigente — 31/10/2026
+
+**Contrato oficial OBTIDO**, respostas formais do suporte de25/10 conferidas. As lacunas de obtenção de resposta descritas na auditoria histórica abaixo foram superadas pela fonte em [INFINITEPAY_SUPPORT_CONTRACT_2026-10-25.md](INFINITEPAY_SUPPORT_CONTRACT_2026-10-25.md). O provider informa ausência de assinatura/consulta de certos estados: isso é característica do contrato a tratar, não motivo para continuar pedindo o mesmo contrato. Fase9 permanece75% por implementação/testes/publicação/homologação ainda pendentes. Cancelamento/refund exigem reconciliação com execução verificável de operação interna esperada; intenção ou POST isolados não bastam. Gate Fases9 E10 em100% e demais condições em [PREPROD_GATE_REVIEW.md](PREPROD_GATE_REVIEW.md).
+
 Auditoria local em 2026-10-20, base `c518597c`, branch DEV `feature/infinitepay-customer-auth`.
 Este documento não autoriza transações, estornos, escritas financeiras remotas ou publicação.
 
@@ -115,7 +119,7 @@ preservação de estoque/recibo. Todo provider financeiro é simulado explicitam
 provas locais não substituem autenticação verificável/consulta específica e o
 tratamento operacional ainda pendentes. Não presumir API de refund/cancelamento.
 Não exigir um novo Pix ou um estorno real apenas para repetir cenários homologados.
-Próxima dependência: obter contrato/evidência oficial suficiente e definir o mecanismo
-operacional autorizado de registro/conciliação, com testes, sem confiar em status
-enviado pelo cliente. Caso uma ação financeira real venha a ser indispensável,
+Próximo trabalho vigente: implementar o contrato já recebido e o mecanismo operacional
+autorizado de operações esperadas/registro/conciliação, com testes e homologação DEV,
+sem confiar em status enviado pelo cliente. Caso uma ação financeira real venha a ser indispensável,
 deverá ter valor/pedido/loja/efeito e autorização específicos antes de executá-la.

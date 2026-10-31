@@ -1,0 +1,166 @@
+{
+  "project": "crmdoceria-9959e",
+  "reviewDate": "2026-10-31",
+  "timezone": "UTC-03:00",
+  "baseCommit": "2507adfdf3c877e41197d885a5d5c85d159c6656",
+  "sourceReview": "documentation, source code and versioned evidence; no new remote customer inventory",
+  "ownerDecision": {
+    "phase9RequiredBeforeProduction": 100,
+    "phase10RequiredBeforeProduction": 100,
+    "phase10PreviouslyOptional": true,
+    "noAutomaticRebaseline": true,
+    "productionAuthorized": false
+  },
+  "phase9": {
+    "percent": 75,
+    "contractStatus": "RECEIVED",
+    "supportMessages": [
+      {
+        "id": "1a172fc0a16ba009",
+        "receivedAt": "2026-10-25T12:14:42Z"
+      },
+      {
+        "id": "1a17310c0584bb54",
+        "receivedAt": "2026-10-25T12:37:19Z",
+        "clarifiesFirst": true
+      }
+    ],
+    "remaining": "implementation, tests, DEV deployment and acceptance under received contract"
+  },
+  "phase10": {
+    "percent": 75,
+    "method": "12 evidenced criteria of 16 equally weighted internal criteria; partial/pending receive no credit; no global weight change",
+    "criteria": [
+      {
+        "id": "C01",
+        "title": "Normalização única",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C02",
+        "title": "Índice/writers sem duplicidade",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C03",
+        "title": "Identidades estáveis",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C04",
+        "title": "Ownership sem auto-merge",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C05",
+        "title": "Lookup/seleção fraca segura",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C06",
+        "title": "Endereço histórico recuperado",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C07",
+        "title": "Canônico/aliases/UIDs revisados",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C08",
+        "title": "Pedidos históricos imutáveis",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C09",
+        "title": "Histórico autorizado por referências",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C10",
+        "title": "Claim implementado/testado",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C11",
+        "title": "Propósitos/grants segregados",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C12",
+        "title": "Migração/backup/rollback",
+        "status": "EVIDENCED"
+      },
+      {
+        "id": "C13",
+        "title": "Conflitos e decisões operacionais",
+        "status": "PARTIAL_NOT_CLOSED"
+      },
+      {
+        "id": "C14",
+        "title": "Inventário atual e remanescentes",
+        "status": "PENDING"
+      },
+      {
+        "id": "C15",
+        "title": "Claim real Google/e-mail/Enterprise",
+        "status": "PENDING"
+      },
+      {
+        "id": "C16",
+        "title": "Homologação integral Fase10",
+        "status": "PENDING"
+      }
+    ],
+    "historicalDataSnapshot": "2026-10-24/25; counts must be refreshed",
+    "historicalDebts": {
+      "customersWithoutPhone": 3,
+      "invalidPhone": 1,
+      "orphanAddresses": 3,
+      "phoneOnlyOrder": 1
+    },
+    "notFullHomologation": true
+  },
+  "formalProgress": {
+    "phase9": "75%",
+    "phase10": "75% audited, mandatory gate, outside global weighting",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%",
+    "globalIfPhase9Completes": "97,00%",
+    "weightsChanged": false
+  },
+  "additionalGates": {
+    "invoice": "PENDING",
+    "smsEnterprise": "PENDING",
+    "crmRefresh": "PENDING_SPECIFIC_ACCEPTANCE",
+    "adminPreview": "VISUAL_PASS_TECHNICAL_AUDIT_PENDING",
+    "productionConfiguration": "NOT_VALIDATED_IN_THIS_REVIEW",
+    "backupRollback": "FINAL_GATE_PENDING",
+    "securityRegression": "FINAL_GATE_PENDING",
+    "explicitOwnerProductionAuthorization": "NOT_GIVEN",
+    "storeManagement": "PASS"
+  },
+  "validation": {
+    "localTests": 12,
+    "passed": 12,
+    "failed": 0,
+    "files": [
+      "functions/customer-phone.test.js",
+      "functions/customer-migration-writes.test.js",
+      "crm/tests/customer-phone-claim.test.mjs"
+    ],
+    "syntheticUiProvider": true,
+    "emulatorsRerun": false,
+    "build": false,
+    "deploy": false,
+    "remoteWrites": 0,
+    "realSms": 0,
+    "realFinancialActions": 0,
+    "whatsapp": 0,
+    "outboundEmail": 0,
+    "productionAccess": false
+  },
+  "productionReady": false
+}
