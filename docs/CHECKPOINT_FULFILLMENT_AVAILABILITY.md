@@ -4,7 +4,7 @@ DEV crmdoceria-9959e; workspace C:/Users/antonio.pedro/Projeto/projeto-doceria-m
 
 ## Estado real
 
-**IMPLEMENTAÇÃO, TESTES E PUBLICAÇÃO DEV CONCLUÍDOS. HOMOLOGAÇÃO STAFF DOS CONTROLES PENDENTE.** Commit funcional **74a5c73245b7ae48f0b0b1f92a8934dcf4715707**, enviado ao origin. Não repetir implementação/testes/build/deploy sem defeito novo.
+**CONCLUÍDO E HOMOLOGADO NO DEV.** Usuário respondeu **PASS** à solicitação consolidada dos controles Staff e banners. Commit funcional **74a5c73245b7ae48f0b0b1f92a8934dcf4715707**, enviado ao origin. Não repetir implementação/testes/build/deploy sem defeito novo.
 
 Campos existentes preservados: lojas/{storeId}/configuracoes/storefront.delivery.enabled e pickup.enabled. Sem campos paralelos ou migração de dados. Matriz true/true, Garavelo false/true, sem alteração de configuração real. O DEV atual contém dados de frete do Garavelo que passam na validação técnica, diferente do diagnóstico antigo; não foram homologados operacionalmente, copiados ou alterados. Flag false preservada.
 
@@ -19,12 +19,14 @@ CRM → Configurações → Frete apresenta seção Disponibilidade independente
 - Dados consultados antes/depois nas duas lojas permanecem iguais, inclusive frete e flags. Nenhuma escrita de pedido/configuração para homologar. [Verificação dos dados](evidence/fulfillment-availability-data-dev.json).
 - Chrome real DEV: /cardapio-matriz e /cardapio-garavelo, desktop 1920×889 e mobile 390×800, abertura direta/refresh/loja correta/banner correto, sem overflow horizontal ou pageerror: **4 casos PASS**. Matriz sem banner; Garavelo com Entrega indisponível. Retirada disponível. Nenhuma requisição de mutação foi necessária ou bloqueada. [Relatório público DEV](evidence/fulfillment-availability/dev-public-report.json).
 
-## Único passo restante
+## Homologação Staff — PASS
 
-Com Staff autorizado, conferir Configurações → Frete da Matriz (ambos marcados) e Garavelo (entrega desmarcada/retirada marcada), desktop/mobile, sem salvar nem alterar flags/tarifas. Readiness técnica Pronta no Garavelo não equivale a aceite operacional de entrega. Não criar pedido, pagamento, nota, SMS ou WhatsApp reais. Cardápios públicos e refresh já passaram no Chrome; pode confirmar o banner sem repetir outros workstreams. Registrar PASS ou falha antes de encerrar o aceite humano.
+Usuário respondeu **PASS** à conferência de Configurações → Frete, Matriz com ambos marcados e Garavelo com entrega desmarcada/retirada marcada, seção Disponibilidade/readiness/botão próprio, desktop e mobile 390×800, além dos banners indicados. [Aceite registrado](evidence/fulfillment-availability-manual-acceptance-dev.json). Procedimento solicitado somente de leitura, sem salvar flags/tarifas nem criar pedido/pagamento/nota/SMS/WhatsApp. Mutação, auditoria e efeitos permanecem comprovados pelos testes em emuladores; não se infere gravação real deste PASS. O aceite não libera entrega do Garavelo nem homologa operacionalmente seus dados de frete. Não há etapa pendente neste ajuste.
 
-## Retomada e limites
+## Fechamento e limites
 
 Stages .deploy-fulfillment-74a5c732-1/2, .deploy-fulfillment-rules-74a5c732 e .deploy-crm-store-baseline-74a5c732 já publicados. Logs locais %TEMP%/fulfillment-deploy.log, fulfillment-functions-verify.log, fulfillment-hosting-deploy.log, fulfillment-hosting-verify.log e fulfillment-public-browser.log. Configuração sensível fica somente local, fora dos documentos e do Git. [Contrato](FULFILLMENT_AVAILABILITY.md).
 
 Fase9 **75%**, Fase11/12 **100%**, Global **95,00%**, Fase13 **0%** preservados. Mercado Pago futuro. PROD intacta. Sem pedido/pagamento/nota/SMS/WhatsApp real. Pendências fiscais anteriores permanecem separadas.
+
+Fechamento somente documental após PASS humano, sem alteração de runtime, dados ou novo build/deploy. Não repetir homologação concluída sem defeito novo.

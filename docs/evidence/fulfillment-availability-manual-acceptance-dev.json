@@ -1,0 +1,30 @@
+{
+  "project": "crmdoceria-9959e",
+  "functionalCommit": "74a5c73245b7ae48f0b0b1f92a8934dcf4715707",
+  "deliveryEvidenceCommit": "a33293e4",
+  "recordedAt": "2026-10-31T19:48:40.868Z",
+  "source": "Explicit user reply to consolidated Staff controls and public banner acceptance request",
+  "answer": "PASS",
+  "scope": [
+    "CRM Freight Settings availability controls and own save action",
+    "Matriz delivery/pickup checked",
+    "Garavelo delivery unchecked and pickup checked",
+    "Technical readiness presentation",
+    "Desktop and mobile 390x800",
+    "Matriz no delivery warning; Garavelo delivery unavailable/pickup available"
+  ],
+  "procedure": "Inspect only; no save/configuration change, order, payment, SMS or WhatsApp requested",
+  "mutationEvidence": "Existing emulator tests; not inferred from human visual PASS",
+  "garaveloDeliveryActivationAuthorized": false,
+  "garaveloOperationalFreightApproval": false,
+  "priorFiscalAcceptance": "Separate; not closed by this acceptance",
+  "closure": "Documentation only; no runtime, data write, build or deployment",
+  "production": false,
+  "formalProgress": {
+    "phase9": "75%",
+    "phase11": "100%",
+    "phase12": "100%",
+    "global": "95,00%",
+    "phase13": "0%"
+  }
+}
