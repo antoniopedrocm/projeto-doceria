@@ -55,3 +55,12 @@ Commit de implementação: 48655bc1, enviado para origin/codex/fiscal-sync-produ
 Não foram executadas emissão, cancelamento ou inutilização reais, nem alterada a próxima numeração. Funcionalidade fiscal foi alinhada; ambientes conservam seus próprios dados, credenciais, séries e configurações.
 
 Não houve aceite visual autenticado nesta tarefa. A confirmação da interface está coberta pelos testes React, presença no bundle e verificação do artefato publicado.
+
+## Correção da inicialização em branco
+A verificação anterior de hash/HTTP e testes de componentes não detectou que o worktree novo não tinha crm/.env.production.local (ignorado pelo Git). O bundle main.a41f437e.js interrompia a inicialização com a mensagem Configuração Firebase DEV incompleta ou vinculada a outro projeto, por ausência de API Key Web e App ID.
+
+Foi reutilizada exclusivamente a configuração pública Web de crmdoceria-9959e da base DEV anterior, mantendo-a no arquivo local ignorado. Nenhuma configuração fiscal, contador ou secret de servidor foi copiado. Adicionado scripts/assert-dev-client-config.cjs ao prebuild, usando o mesmo carregador/precedência do react-scripts; cinco testes validam configuração completa, ausência de campos, placeholders, projeto errado e identidades incompatíveis. O runtime guard foi preservado.
+
+Build corrigido: main.5a33d589.js, SHA256 3c64b1dd18adbeb01bfcb467cd442e807ffd671f6d4537b17f040171df1fd0b2. Candidato aberto em Edge headless com o hostname DEV e os assets locais interceptados: página inicial renderizada, 570 caracteres, root com conteúdo, zero pageerrors. Sem login, alterações de dados ou transmissão fiscal. ESLint sem erros e git diff --check aprovado.
+
+Publicação desta correção: somente Hosting DEV com o mesmo comando seletivo e pacote público preservado. Verificação online será registrada após o deploy.
