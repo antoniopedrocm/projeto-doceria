@@ -31,4 +31,6 @@ Somente Hosting DEV; nenhuma Function, Rule ou componente de produção foi publ
 firebase deploy --project crmdoceria-9959e --config firebase.fiscal-dev.local.json --only hosting --non-interactive
 ```
 
-Aguardando registro da verificação pós-deploy.
+Deploy DEV concluído. Verificação online em Edge headless: abertura e recarga com conteúdo, zero pageerrors, bundle main.8d1e1e60.js e SHA256 iguais ao build local. Commit 642d7938 enviado ao remoto DEV. Evidência: docs/evidence/client-edit-auth-dev/validation.json.
+
+A edição de um cadastro real autenticado não foi executada; os testes de gravação usam dados e tokens sintéticos.

@@ -1,0 +1,39 @@
+{
+  "project": "crmdoceria-9959e",
+  "branch": "codex/dev-client-edit-auth",
+  "codeCommit": "642d7938",
+  "base": "7afff057",
+  "tests": {
+    "suites": 54,
+    "passed": 575,
+    "failed": 0,
+    "newClientCases": 19
+  },
+  "lintErrors": 0,
+  "buildPassed": true,
+  "diffCheckPassed": true,
+  "main": "/static/js/main.8d1e1e60.js",
+  "sha256": "1b7c4739537d03b96a842d7aff8165a23e5f90e506d7aef7ea42c45a93acf435",
+  "sourceVerified": true,
+  "onlineHashMatches": true,
+  "browser": {
+    "url": "https://crmdoceria-9959e.web.app/",
+    "bundle": "/static/js/main.8d1e1e60.js",
+    "rootChildren": 1,
+    "textLength": 570,
+    "errors": [],
+    "reloadHasContent": true
+  },
+  "preflight": {
+    "status": 204,
+    "allowsAuthorization": true,
+    "origin": "https://crmdoceria-9959e.web.app"
+  },
+  "unrelatedPublicAssetsPreserved": 52,
+  "backendChanged": false,
+  "rulesChanged": false,
+  "productionChanged": false,
+  "realCustomerEdited": false,
+  "authenticatedSaveTest": "Mocked Firebase user/token and API; actual App handlers exercised by AST",
+  "deploy": "firebase deploy --project crmdoceria-9959e --config firebase.fiscal-dev.local.json --only hosting --non-interactive"
+}
