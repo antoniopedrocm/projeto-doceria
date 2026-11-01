@@ -28,6 +28,7 @@ import OrderStatusBadge from './components/orders/OrderStatusBadge';
 import {getOrderStatusLabel} from './utils/orderStatus';
 import {OPERATIONAL_ORDER_STATUSES} from './utils/onlineOrderStatus.mjs';
 import {adminOrderRequest} from './utils/adminOrderEdit';
+import {clientApiRequest} from './utils/clientApi';
 import OrderAdminHistory,{OrderPaymentAdjustment} from './components/orders/OrderAdminHistory';
 import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
 import FiscalInvoiceHistory from './components/FiscalInvoiceHistory';
@@ -3705,23 +3706,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
 
   const callClientApi = useCallback(async (path, { method = 'GET', body = null } = {}) => {
     const storeId = resolveActiveStoreForWrite();
-    const url = `${API_BASE_URL}${path}${path.includes('?') ? '&' : '?'}lojaId=${encodeURIComponent(storeId)}`;
-
-    const response = await fetch(url, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || 'Erro ao comunicar com a API de clientes.');
-    }
-
-    if (response.status === 204) return null;
-    return response.json();
+    return clientApiRequest({auth, baseUrl: API_BASE_URL, path, storeId, method, body});
   }, [resolveActiveStoreForWrite]);
 
   const selectStoreById = useCallback((value) => {
@@ -9563,14 +9548,19 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
             codigoIbge: fiscalCityCode,
             address: fiscalAddress,
         };
-        if (editingClient) {
-            const { id, ...clientData } = updateData;
-            await updateItem('clientes', editingClient.id, clientData);
-        } else {
-            await addItem('clientes', { ...updateData, numeroDeCompras: 0, valorEmCompras: 0 });
+        try {
+            if (editingClient) {
+                const { id, ...clientData } = updateData;
+                await updateItem('clientes', editingClient.id, clientData);
+            } else {
+                await addItem('clientes', { ...updateData, numeroDeCompras: 0, valorEmCompras: 0 });
+            }
+            setShowModal(false);
+            resetForm();
+        } catch {
+            // The shared write handlers already show the error. Keep the form
+            // and its values open, without an unhandled promise rejection.
         }
-        setShowModal(false);
-        resetForm();
     };
     const handleEdit = (client) => {
       const firstAddress = Array.isArray(client.enderecos) ? client.enderecos[0] : null;
