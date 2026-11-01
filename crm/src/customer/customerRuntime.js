@@ -3,6 +3,9 @@ import * as sdk from 'firebase/auth';
 import {httpsCallable} from 'firebase/functions';
 import {app, auth, functions} from '../firebaseConfig';
 import {unregisterDeviceForPush} from '../utils/notifications';
+import {readPhoneSession,clearPhoneSession} from './legacyPhoneSession';
+export const customerApiBase=app.options.projectId==='demo-doceria-checkout'?'http://127.0.0.1:5001/demo-doceria-checkout/us-central1/api':'https://us-central1-crmdoceria-9959e.cloudfunctions.net/api';
+export const lookupPhoneByStore=data=>httpsCallable(functions,'lookupClientByPhone')(data);
 // The named app is read only for retirement; it is never a login destination.
 const legacyApp=getApps().find(a=>a.name==='cardapioPublic') || initializeApp(app.options,'cardapioPublic');
 export const legacyAuth=sdk.getAuth(legacyApp);
@@ -18,6 +21,13 @@ export const prepareCanonicalSession=()=>{
 export const syncSessionCart=async(uid,options)=>(await sessionModule()).syncPrivateCart(window.sessionStorage,uid,options);
 let logout;
 export const logoutCanonicalSession=async()=>{
+  const phoneSession=readPhoneSession();clearPhoneSession();
+  if(phoneSession) {
+    // Local revocation is immediate. A failed remote cleanup cannot trap logout.
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),2000);
+    try {await fetch(customerApiBase+'/customer/phone-session/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:phoneSession}),signal:controller.signal});}catch{}finally{clearTimeout(timer);}
+  }
   if(!logout) {
     const module=await sessionModule();
     if(!logout) logout=module.createCanonicalLogout({auth,legacyAuth,signOut:sdk.signOut,storage:window.sessionStorage,

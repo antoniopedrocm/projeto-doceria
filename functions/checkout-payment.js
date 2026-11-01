@@ -4,6 +4,7 @@ const {readReservation, settleReservation, operationalState} = require('./checko
 const logger = require('firebase-functions/logger');
 const {readErrorBody, diagnostic} = require('./infinitepay-diagnostics');
 const {inspectPaymentSignal} = require('./payment-signal-policy');
+const {canReadPayment}=require('./payment-return-auth');
 function paymentError(message, httpStatus = 409) {return Object.assign(new Error(message), {httpStatus});}
 const cents = value => {const n = Math.round(Number(value)*100);if (!Number.isSafeInteger(n) || n <= 0) throw paymentError('Valor de pagamento inválido.',400);return n;};
 function assertPaid(result, expectedAmount) {
@@ -65,20 +66,26 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     if (redirect.protocol !== 'https:' || webhook.protocol !== 'https:') throw paymentError('Configuração de pagamento inválida.',503);
     return {handle:c.handle,redirectUrl:redirect.href,webhookUrl:webhook.href,sendCustomerData:c.sendCustomerData!==false,sendDeliveryAddress:c.sendDeliveryAddress!==false};
   }
-  async function start(paymentId, ownerUid) {
+  async function start(paymentId, ownerUid, checkoutProof=null) {
     const ref=payments.doc(paymentId);
     await expire(paymentId);
     const payment = await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);const p=snap.data();
-      if (!p || p.ownerUid !== ownerUid) throw paymentError('Pedido não encontrado.',404);
+      if (!p || (p.ownerUid ? p.ownerUid !== ownerUid : !checkoutProof)) throw paymentError('Pedido não encontrado.',404);
       // Historical payments predate checkout selection. New records must carry
       // the server-established assurance; a Firebase token alone cannot upgrade it.
       if(p.checkoutIdentity) {
         const identity=p.checkoutIdentity;
-        if(identity.mode!=='strong_auth' || !/^checkoutPayments\/_identity\/contexts\/[a-f0-9]{64}$/.test(identity.contextPath || '')) throw paymentError('Para pagar online, entre com Google ou e-mail.',403);
+        if(!['strong_auth','legacy_phone'].includes(identity.mode) || !/^checkoutPayments\/_identity\/contexts\/[a-f0-9]{64}$/.test(identity.contextPath || '')) throw paymentError('Identifique novamente este checkout.',403);
         const context=(await tx.get(db.doc(identity.contextPath))).data();
-        if(!context || context.mode!=='strong_auth' || context.ownerUid!==ownerUid || context.customerId!==identity.customerId ||
+        const strong=identity.mode==='strong_auth';
+        const proofPath=typeof checkoutProof?.token==='string' && /^[a-f0-9]{64}$/.test(checkoutProof.token)
+          ? 'checkoutPayments/_identity/contexts/'+crypto.createHash('sha256').update(checkoutProof.token).digest('hex') : null;
+        if(!context || context.mode!==identity.mode || (strong ? !ownerUid || context.ownerUid!==ownerUid || context.customerId!==identity.customerId
+          : p.ownerUid!=null || context.legacyCustomerId!==identity.customerId || proofPath!==identity.contextPath || checkoutProof.revision!==identity.revision) ||
           context.storeId!==p.storeId || context.revision!==identity.revision || context.expiresAt<=now()) throw paymentError('Para pagar online, entre com Google ou e-mail.',403);
+      } else if(!ownerUid) {
+        throw paymentError('Pedido não encontrado.',404);
       }
       if(p.requiresReview || (p.payment_status !== 'PENDING' && p.payment_status !== 'PAID')) throw paymentError('Pedido aguardando conciliação. Consulte a loja antes de pagar.');
       if(p.checkoutUrl || p.payment_status === 'PAID') return p;
@@ -172,14 +179,15 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
         return {ok:true,payment_status:'PAID',requiresReview};
     });
   }
-  async function status(id,uid) {
+  async function status(id,uid,returnToken) {
     if(!/^[a-f0-9]{64}$/.test(id)) throw paymentError('Pedido inválido.',400);
     let p=(await payments.doc(id).get()).data();
-    if(!p || p.ownerUid!==uid) throw paymentError('Pedido não encontrado.',404);
+    if(!p || !canReadPayment(p,uid,returnToken,now())) throw paymentError('Pedido não encontrado ou acesso expirado.',404);
     await expire(id);
     p=(await payments.doc(id).get()).data();
     const requiresReview=!!p.requiresReview || p.linkState==='RECONCILIATION_REQUIRED';
-    return {id:p.orderId,payment_status:p.payment_status,checkoutUrl:p.payment_status==='PENDING' && !requiresReview ? p.checkoutUrl || null : null,requiresReview};
+    return {id:p.orderId,payment_status:p.payment_status,
+      checkoutUrl:uid && p.ownerUid===uid && p.payment_status==='PENDING' && !requiresReview ? p.checkoutUrl || null : null,requiresReview};
   }
   async function expire(id) {
     return db.runTransaction(async tx => {

@@ -7,6 +7,9 @@ import {legacyAuth,prepareCanonicalSession,logoutCanonicalSession,syncSessionCar
 import {isCustomerPath} from './customerContext';
 import {permittedContext} from './userCapabilities';
 import CustomerShell from './CustomerShell';
+import LegacyCustomerShell from './LegacyCustomerShell';
+import {readPhoneSession} from './legacyPhoneSession';
+import {customerApiBase} from './customerRuntime';
 
 export default function ApplicationGate({StaffApplication,resolveCapabilities}) {
   const [view,setView]=useState({kind:'loading'});
@@ -27,6 +30,11 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
       if(!uid) {
         state.activeContext=null;state.requestedContext=null;
         setView({kind:isCustomerPath(window.location.pathname)?'customer-login':'public'});
+      }
+      const phoneSession=isCustomerPath(window.location.pathname) && readPhoneSession();
+      if(phoneSession && target==='customer') {
+        state.activeContext='customer';state.requestedContext='customer';
+        setView({kind:'customer-phone',session:phoneSession});return;
       }
       try {
         const preparation=await prepareCanonicalSession();
@@ -109,6 +117,7 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
   if(view.kind==='admin-denied') return <main className="p-8"><p role="alert">Acesso administrativo não autorizado.</p></main>;
   if(view.kind==='staff') return <StaffApplication key={`${view.uid}:staff:${view.contextGeneration}`} staffUid={view.uid}
     staffProfile={view.capabilities.staff} canOpenCustomer={view.capabilities.isCustomer} onCustomerContext={openCustomer} onLogout={logout} onStaffAccessLost={revalidateStaff}/>;
+  if(view.kind==='customer-phone') return <LegacyCustomerShell session={view.session} apiBase={customerApiBase} onLogout={logout}/>;
   if(['customer','customer-login','onboarding'].includes(view.kind)) return <CustomerShell key={`${view.uid || 'login'}:customer:${view.contextGeneration || 0}`}
     onCustomerResolved={view.kind==='onboarding'?openCustomer:undefined} sessionAuth={auth} uid={view.uid || null} canOpenStaff={view.capabilities?.isStaff===true} onStaffContext={openStaff} onLogout={logout} sessionMessage={view.message}/>;
   return <>{view.message && <p role="alert">{view.message}</p>}<StaffApplication onLogout={logout}/></>;

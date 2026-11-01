@@ -5,12 +5,23 @@ import {syncPaymentChoices} from './checkout-payment-choice.mjs';
 const key='doceria-payment-pending';
 export async function checkoutHeaders(online=false,identity=null) {
   await auth.authStateReady();
-  if(online && (!identity?.isStrong() || !auth.currentUser || auth.currentUser.isAnonymous ||
+  const phone=identity?.get().mode==='legacy_phone' && !!identity?.get().token;
+  if(online && !phone && (!identity?.isStrong() || !auth.currentUser || auth.currentUser.isAnonymous ||
     !auth.currentUser.providerData.some(p=>['google.com','password'].includes(p.providerId)))) {
-    throw new Error('Entre com Google ou e-mail em Minha Conta para pagar online.');
+    throw new Error('Identifique seu celular ou entre em Minha Conta para continuar.');
   }
   const headers={'Content-Type':'application/json'};
   if(identity?.isStrong() && auth.currentUser) headers.Authorization=`Bearer ${await auth.currentUser.getIdToken()}`;
+  return headers;
+}
+export async function paymentStatusHeaders(hasReturnCapability=false) {
+  // A bearer capability suffices after logout. Historical attempts without it
+  // still support their original, explicitly authenticated owner contract.
+  const headers={'Content-Type':'application/json'};
+  if(hasReturnCapability) return headers;
+  await auth.authStateReady();
+  const user=auth.currentUser;
+  if(user && !user.isAnonymous && user.providerData.some(p=>['google.com','password'].includes(p.providerId))) headers.Authorization=`Bearer ${await user.getIdToken()}`;
   return headers;
 }
 export function paymentAttempt() {
@@ -21,6 +32,7 @@ export function paymentAttempt() {
 export function redirectToPayment(data) {
   const prior=JSON.parse(sessionStorage.getItem(key) || '{}');
   sessionStorage.setItem(key,JSON.stringify({...prior,paymentId:data.paymentId}));
+  if(data.paymentReturnToken) sessionStorage.setItem('doceria-payment-return:'+data.paymentId,JSON.stringify({token:data.paymentReturnToken}));
   if(data.payment_status==='PAID') {window.location.href=`./payment-return.html?order_nsu=${encodeURIComponent(data.paymentId)}`;return;}
   if(!data.checkoutUrl) throw new Error('Seu pedido está aguardando confirmação. Consulte Minha Conta.');
   const url=new URL(data.checkoutUrl);
@@ -28,18 +40,18 @@ export function redirectToPayment(data) {
   window.location.assign(url.href);
 }
 let onlineEnabled=false;
-export function syncOnlinePaymentOption(customer,strong=false) {
+export function syncOnlinePaymentOption(customer,strong=false,phone=false) {
   const select=document.getElementById('payment-method-select');
   const guest=document.getElementById('guest-payment-method');
   guest?.querySelector('option[value="Online"]')?.remove();
   if(!select) return;
-  syncPaymentChoices(select, strong && isLinkedCustomer(customer), onlineEnabled);
+  syncPaymentChoices(select, (strong && isLinkedCustomer(customer)) || (phone && !!customer), onlineEnabled);
 }
-export async function enableOnlinePayment(storeId,getCustomer=()=>null,isStrong=()=>false) {
+export async function enableOnlinePayment(storeId,getCustomer=()=>null,isStrong=()=>false,isPhone=()=>false) {
   try {
     const r=await fetch(`${apiBaseUrl}/checkout/config?lojaId=${encodeURIComponent(storeId)}`);
     const config=await r.json();
     onlineEnabled=r.ok && config.enabled===true;
-    syncOnlinePaymentOption(getCustomer(),isStrong());
+    syncOnlinePaymentOption(getCustomer(),isStrong(),isPhone());
   } catch { /* Store keeps its current payment methods until configured. */ }
 }

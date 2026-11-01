@@ -3,9 +3,10 @@ const {addressRecords,normalizeContactPhone,normalizeName,normalizeBirthdate}=re
 const {addressOptions,addressReference}=require('./checkout-addresses');
 const {getRuntimeProjectId,DEV_PROJECT_ID}=require('./whatsapp-config');
 const PURPOSE='ADDRESS_MANAGEMENT';
+const CUSTOMER_PRIVATE_PURPOSE='CUSTOMER_PRIVATE_SESSION';
 // Retain the existing proof purpose/token contract; explicitly restrict the
 // newly authorized basic-profile capability to name/birthdate, never security.
-const GRANT_SCOPES=['address_manage','profile_basic'];
+const GRANT_SCOPES=['address_manage','profile_basic','customer_private'];
 const hash=value=>createHash('sha256').update(String(value)).digest('hex');
 const error=(code,message,httpStatus=403)=>Object.assign(new Error(message),{code,httpStatus});
 const required=()=>error('OTP_REQUIRED','Confirme que este número é seu para gerenciar endereços.');
@@ -129,11 +130,14 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
       const s=await scope(input,tx),d=(await tx.get(ref)).data();
       if(d?.nonce!==nonce || d.status!=='verifying' || s.context.addressChallengeId!==ref.id || d.expiresAt<=now()) throw expired();
       if(!valid) {tx.update(ref,{status:d.attempts>=d.maxAttempts?'locked':'sent'});audit(tx,s,'code_rejected',d.channel);return null;}
-      const grant={purpose:PURPOSE,scopes:d.channel==='sms'?GRANT_SCOPES:['address_manage'],customerId:s.context.legacyCustomerId,phoneHash:s.context.phoneHash,phoneRecordHash:s.context.phoneRecordHash,
+      const grant={purpose:PURPOSE,purposes:d.channel==='sms'?[PURPOSE,CUSTOMER_PRIVATE_PURPOSE]:[PURPOSE],scopes:d.channel==='sms'?GRANT_SCOPES:['address_manage'],customerId:s.context.legacyCustomerId,phoneHash:s.context.phoneHash,phoneRecordHash:s.context.phoneRecordHash,
         contextPath:s.contextRef.path,revision:s.context.revision,storeId:input.storeId,channel:d.channel,verifiedAt:now(),expiresAt:now()+d.sessionMs};
       tx.set(ref,{...d,status:'consumed',proof:null});tx.create(root.collection('grants').doc(hash(token)),grant);
       tx.update(s.contextRef,{addressGrantHash:hash(token)});audit(tx,s,'phone_verified',d.channel);
-      return {addressSessionToken:token,expiresAt:grant.expiresAt,purpose:PURPOSE};
+      return {addressSessionToken:token,expiresAt:grant.expiresAt,purpose:PURPOSE,customerSession:d.channel==='sms'?{
+        storeId:input.storeId,checkoutIdentityToken:input.checkoutIdentityToken,checkoutIdentityRevision:input.checkoutIdentityRevision,
+        addressSessionToken:token,expiresAt:grant.expiresAt,purpose:CUSTOMER_PRIVATE_PURPOSE,
+      }:null};
     });
     if(!result) throw unavailable?error('OTP_VERIFY_FAILED','Não foi possível confirmar o código agora. Tente novamente em alguns instantes.',503):error('OTP_INVALID','Código incorreto.',400);
     return result;
@@ -146,8 +150,17 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
     if(grant.scopes!==undefined && (!Array.isArray(grant.scopes) || !grant.scopes.includes(capability))) throw required();
     // Existing, unexpired server-issued SMS proof is sufficient under the new
     // business policy. Upgrade only after all bindings, without extending TTL.
-    if(grant.scopes===undefined && capability==='profile_basic'){tx.update(ref,{scopes:GRANT_SCOPES});audit(tx,s,'grant_scope_upgrade',grant.channel);}
+    if(grant.scopes===undefined && capability==='profile_basic'){tx.update(ref,{scopes:['address_manage','profile_basic']});audit(tx,s,'grant_scope_upgrade',grant.channel);}
     return {s,grant};
+  }
+  async function authorizeCustomer(input) {
+    return db.runTransaction(async tx=>{
+      const {s,grant}=await authorized(input,tx,'customer_private');
+      // Old address-only grants and WhatsApp proofs are never silently upgraded
+      // to private history. A new, bound SMS proof must mint this purpose.
+      if(grant.channel!=='sms' || !grant.purposes?.includes(CUSTOMER_PRIVATE_PURPOSE)) throw required();
+      return {customer:s.customer,grant};
+    });
   }
   async function manage(input) {
     if(!['read','create','update','delete','default'].includes(input.operation)) throw error('ADDRESS_INVALID','Operação de endereço inválida.',400);
@@ -214,7 +227,7 @@ function createAddressVerification({db,identities,provider,now=Date.now,getProje
       throw cause;
     }
   };
-  return {status,createUnverified,start:observed(start),verify:observed(verify),manage,profile,revoke};
+  return {status,createUnverified,start:observed(start),verify:observed(verify),manage,profile,revoke,authorizeCustomer};
 }
 function mountAddressVerification(app,service) {
   app.post('/checkout/addresses',async(req,res)=>{

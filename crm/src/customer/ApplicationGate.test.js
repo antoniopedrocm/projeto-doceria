@@ -10,6 +10,7 @@ jest.mock('../firebaseConfig',()=>({auth:{currentUser:null}}));
 jest.mock('./customerRuntime',()=>({legacyAuth:{currentUser:null},prepareCanonicalSession:jest.fn(async()=> 'READY'),syncSessionCart:jest.fn(async()=>{}),logoutCanonicalSession:jest.fn(async()=>{})}));
 jest.mock('firebase/auth',()=>({onIdTokenChanged:jest.fn()}));
 jest.mock('./CustomerShell',()=>({__esModule:true,default:props=><div>Customer:{props.uid||'login'}{props.canOpenStaff && <button onClick={props.onStaffContext}>Ir para o CRM</button>}<button onClick={props.onLogout}>Sair Customer</button></div>}));
+jest.mock('./LegacyCustomerShell',()=>({__esModule:true,default:props=><div>Temporary SMS:{props.session.storeId}<button onClick={props.onLogout}>Sair SMS</button></div>}));
 const identity=uid=>({uid,providerData:[{providerId:'google.com'}]});
 const caps=(uid='a',isStaff=true,isCustomer=true)=>({uid,isStaff,isCustomer,staff:isStaff?{role:'dono'}:null,customer:isCustomer?{customerId:'own'}:null,customerState:isCustomer?'CUSTOMER_RESOLVED':'NEEDS_PHONE'});
 let host,root,listeners,resolver,staff;
@@ -55,6 +56,13 @@ test('signed-out /area-cliente shows login and stays in Customer context after a
   expect(host.textContent).toContain('Customer:login');expect(staff).not.toHaveBeenCalled();expect(resolver).not.toHaveBeenCalled();
   await emit(identity('a'));expect(host.textContent).toContain('Customer:a');expect(staff).not.toHaveBeenCalled();
   expect(window.location.pathname).toBe('/area-cliente');
+});
+test('temporary SMS context can reach its server-guarded shell with Auth null without resolving Staff or promoting Firebase',async()=>{
+  window.history.replaceState(null,'','/minha-conta');
+  sessionStorage.setItem('customerPhoneSession_v1',JSON.stringify({purpose:'CUSTOMER_PRIVATE_SESSION',storeId:'phone-store',checkoutIdentityToken:'a'.repeat(64),checkoutIdentityRevision:1,addressSessionToken:'b'.repeat(64),expiresAt:Date.now()+600000}));
+  await mount();await emit(null);expect(host.textContent).toContain('Temporary SMS:phone-store');
+  expect(auth.currentUser).toBeNull();expect(resolver).not.toHaveBeenCalled();expect(staff).not.toHaveBeenCalled();expect(prepareCanonicalSession).not.toHaveBeenCalled();
+  expect(window.location.pathname).toBe('/minha-conta');
 });
 test('inactive Staff cannot be restored from cache; Customer stays valid',async()=>{
   await mount();await emit(identity('a'));await click('Área do Cliente');resolver.mockResolvedValue(caps('a',false,true));await click('Ir para o CRM');expect(host.textContent).toContain('Customer:a');expect(host.textContent).not.toContain('CRM:a');expect(host.textContent).not.toContain('Ir para o CRM');

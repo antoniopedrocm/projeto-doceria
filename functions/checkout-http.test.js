@@ -76,7 +76,7 @@ const selectIdentity=async(mode,context=null,bearer=token,storeId=store)=>{
 };
 const send=async (b,bearer=token)=>{const value={...b};if(b.pagamento.forma!=='Online' && !b.pagamento.mode) delete value.checkoutIdentityToken;const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer},body:JSON.stringify(value)});return {status:r.status,data:await r.json()};};
 
-test('SMS válido libera endereço mas token Firebase forte antigo e grant NÃO autorizam pagamento online',async()=>{
+test('SMS grant continua separado de Auth; pagamento PHONE usa contexto próprio sem herdar ownership',async()=>{
   const {createCheckoutIdentity}=require('./checkout-identity'),{createAddressVerification}=require('./address-verification');
   const identities=createCheckoutIdentity({db});
   const found=await functions.lookupClientByPhone.run({data:{lojaId:store,telefone:'62999991234'},rawRequest:{ip:'verified-no-payment-fixture',headers:{}}});
@@ -86,8 +86,12 @@ test('SMS válido libera endereço mas token Firebase forte antigo e grant NÃO 
   const grant=await service.verify({...input,challengeId:challenge.challengeId,code:'123456'});
   assert.ok(grant.addressSessionToken);assert.equal((await identities.read(input.checkoutIdentityToken,store)).mode,'legacy_phone');
   const beforeLinks=links;
-  const result=await send({...body(),...input,addressSessionToken:grant.addressSessionToken});
-  assert.equal(result.status,403);assert.equal(result.data.code,'CHECKOUT_STRONG_AUTH_REQUIRED');assert.equal(links,beforeLinks);
+  await db.doc(`lojas/${store}/produtos/phone-grant`).set({nome:'Fixture telefone',preco:10,estoque:2,ativo:true});
+  const result=await send({...body(),...input,itens:[{produtoId:'phone-grant',quantity:1,preco:10}],addressSessionToken:grant.addressSessionToken});
+  assert.equal(result.status,200,JSON.stringify(result));assert.equal(links,beforeLinks+1);
+  const payment=(await db.doc('checkoutPayments/'+result.data.paymentId).get()).data();
+  assert.equal(payment.ownerUid,null);assert.equal(payment.checkoutIdentity.mode,'legacy_phone');
+  assert.ok(result.data.paymentReturnToken);
 });
 
 test('rotas legadas não contornam OTP nem expõem endereço por telefone/Customer ID',async()=>{
@@ -178,8 +182,8 @@ test('pedido weak não herda ownership nem altera Customer mesmo com token váli
   assert.deepEqual((await customer.get()).data(),before);assert.equal(links,priorLinks);
 });
 test('HTTP online reserva uma vez e devolve o mesmo checkout no retry',async()=>{
-  const b=body();const a=await send(b);assert.equal(a.status,200,JSON.stringify(a.data));
-  const retry=await send(b);assert.equal(retry.status,200);assert.equal(retry.data.id,a.data.id);assert.equal(links,1);
+  const priorLinks=links,b=body();const a=await send(b);assert.equal(a.status,200,JSON.stringify(a.data));
+  const retry=await send(b);assert.equal(retry.status,200);assert.equal(retry.data.id,a.data.id);assert.equal(links,priorLinks+1);
   const order=(await db.doc(`lojas/${store}/pedidos/${a.data.id}`).get()).data();
   assert.equal(order.payment_status,'PENDING');assert.equal(order.order_status,'PENDING');assert.equal(order.status,'Aguardando pagamento');
   assert.equal((await db.doc(`lojas/${store}/produtos/product`).get()).data().estoque,9);

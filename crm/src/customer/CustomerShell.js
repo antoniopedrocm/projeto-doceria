@@ -5,6 +5,7 @@ import CustomerFrame,{CustomerHome} from './CustomerFrame';
 import {ArrowUpRight,Home,LogOut,ShoppingBag,UserRound} from 'lucide-react';
 import './customerAccount.css';
 import './customerLogin.css';
+import LegacyPhoneAccess from './LegacyPhoneAccess';
 
 export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCustomerResolved,onStaffContext,onLogout=logoutCanonicalSession,sessionMessage='',loadController=loadCustomerController}) {
   const [route,setRoute]=useState(()=>customerRoute(window.location.pathname,window.location.search));
@@ -69,6 +70,7 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
         {logoutState==='complete' && <a href="/area-cliente">Entrar na minha conta</a>}
       </>}
       <div ref={host} hidden={logoutState!=='idle'}/>
+      {logoutState==='idle' && <LegacyPhoneAccess menuPath={menuPath}/>}
       <button type="button" className="customer-login-back" onClick={returnToMenu}>Voltar ao Cardápio</button>
     </section></main>
   </div>;

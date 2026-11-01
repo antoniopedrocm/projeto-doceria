@@ -3,10 +3,10 @@ export const PAYMENT_CHOICES = Object.freeze({
   AGREED_LATER: {label: 'Combinar Pagamento', forma: 'A combinar', helper: 'Combine a forma de pagamento diretamente com a loja. O método será informado posteriormente.'},
 });
 
-export function paymentSelection(value, strong) {
+export function paymentSelection(value, identified) {
   const choice = PAYMENT_CHOICES[value];
   if (!choice) return {forma: value}; // Historical guest/phone checkout contract.
-  if (!strong) throw new Error('Entre com Google ou e-mail para continuar com esta identificação.');
+  if (!identified) throw new Error('Identifique seu celular ou entre em sua conta para continuar.');
   return {forma: choice.forma, mode: value};
 }
 

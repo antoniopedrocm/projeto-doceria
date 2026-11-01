@@ -1268,7 +1268,7 @@
                 return result;
             }});
         function syncCheckoutPayment() {
-            syncOnlinePaymentOption(currentClient,checkoutIdentity.isStrong());
+            syncOnlinePaymentOption(currentClient,checkoutIdentity.isStrong(),checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE);
             document.querySelectorAll('[data-checkout-strong-invitation]').forEach(el=>{el.hidden=checkoutIdentity.isStrong();});
         }
         const legacyAddressSaver=createLegacyAddressSaver({identity:checkoutIdentity,storeId:STORE_ID,request:async data=>{
@@ -3244,7 +3244,7 @@
 
             try {
                 ensureCheckoutNotBlocked(pendingOrderDetails);
-                const selection = paymentSelection(paymentMethodSelect.value, checkoutIdentity.isStrong());
+                const selection = paymentSelection(paymentMethodSelect.value, checkoutIdentity.isStrong() || checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE);
                 if (selection.mode === 'ONLINE_NOW' && paymentMethodSelect.selectedOptions[0]?.disabled) throw new Error('Pagamento online indisponível nesta loja. Tente novamente ou escolha Combinar Pagamento.');
                 const finalOrderDetails = { ...pendingOrderDetails, formaPagamento: selection.forma, paymentMode: selection.mode };
                 await finalizeOrder(finalOrderDetails, finalOrderDetails.clienteId, true);
@@ -3264,7 +3264,7 @@
             };
             await revalidateCheckoutBeforeFinalSubmit(clientInfo);
             const online = clientInfo.formaPagamento === 'Online';
-            if (online && (!checkoutIdentity.isStrong() || !isLinkedCustomer(currentClient))) throw new Error('Para pagar online, entre com Google ou e-mail.');
+            if (online && !(checkoutIdentity.isStrong() && isLinkedCustomer(currentClient)) && !(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE && currentClient)) throw new Error('Identifique seu celular antes de pagar.');
             if (!storeIsOpenNow) {
                 showToast(getStoreAvailabilityMessage(storeAvailability), true);
                 throw new Error(storeAvailability);
@@ -3431,7 +3431,7 @@
                 return;
             }
             initApp();
-            enableOnlinePayment(STORE_ID,()=>currentClient,()=>checkoutIdentity.isStrong());
+            enableOnlinePayment(STORE_ID,()=>currentClient,()=>checkoutIdentity.isStrong(),()=>checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE);
             for(const container of [document.getElementById('payment-method-select'),document.getElementById('guest-payment-method')]) {
                 if(!container) continue;
                 const notice=document.createElement('section');notice.dataset.checkoutStrongInvitation='';

@@ -73,10 +73,11 @@ test('perfil básico exige o mesmo grant, permite só nome/aniversário e não c
 
 test('grant anterior válido é ampliado explicitamente sem novo SMS nem extensão de TTL; escopo removido é negado',async()=>{
   const f=await fixture(),grant=await f.authorize(),ref=db.doc('integrations/addressVerification/grants/'+hash(grant.addressSessionToken));
-  const issued=(await ref.get()).data();assert.deepEqual(issued.scopes,['address_manage','profile_basic']);
+  const issued=(await ref.get()).data();assert.deepEqual(issued.scopes,['address_manage','profile_basic','customer_private']);
   await ref.update({scopes:admin.firestore.FieldValue.delete()});
   await f.service.profile({...f.input,operation:'read',addressSessionToken:grant.addressSessionToken});
-  const upgraded=(await ref.get()).data();assert.deepEqual(upgraded.scopes,issued.scopes);assert.equal(upgraded.expiresAt,issued.expiresAt);assert.equal(f.calls().sends,1);
+  const upgraded=(await ref.get()).data();assert.deepEqual(upgraded.scopes,['address_manage','profile_basic']);assert.equal(upgraded.expiresAt,issued.expiresAt);assert.equal(f.calls().sends,1);
+  await assert.rejects(()=>f.service.authorizeCustomer({...f.input,addressSessionToken:grant.addressSessionToken}),e=>e.httpStatus===403);
   await ref.update({scopes:['address_manage']});await assert.rejects(()=>f.service.profile({...f.input,operation:'read',addressSessionToken:grant.addressSessionToken}),e=>e.httpStatus===403);
   await f.manage(grant,'read');
   await ref.update({scopes:issued.scopes,channel:'whatsapp'});await assert.rejects(()=>f.service.profile({...f.input,operation:'read',addressSessionToken:grant.addressSessionToken}),e=>e.httpStatus===403);

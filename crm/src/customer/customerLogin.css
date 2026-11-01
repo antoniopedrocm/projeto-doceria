@@ -28,3 +28,8 @@
 .customer-login-card>.customer-login-back{border:0;border-top:1px solid #f3f4f6;border-radius:0;margin-top:20px;padding-top:20px;color:#6b7280}
 .customer-login-card>.customer-login-back:hover{color:#be185d}
 @media(max-width:767px){.customer-login-shell>main{padding:24px 16px}.customer-login-shell .customer-login-card{padding:24px;border-radius:16px}.customer-login-heading h1{font-size:24px}}
+.customer-phone-access{margin-top:20px;border-top:1px solid #f3f4f6;padding-top:16px;font-size:13px;color:#6b7280}
+.customer-phone-access summary{cursor:pointer;min-height:36px;color:#be185d;line-height:1.6}
+.customer-phone-access form{display:grid;gap:14px;margin-top:12px}
+.customer-login-card .customer-phone-access input{box-sizing:border-box;width:100%;min-width:0;min-height:48px;padding:12px 14px;border:1px solid #d1d5db;border-radius:12px;font:inherit;color:#111827}
+.customer-phone-access button{min-height:44px;border:1px solid #d1d5db;border-radius:12px;padding:10px 14px;background:#fff;color:#374151;font-weight:600}

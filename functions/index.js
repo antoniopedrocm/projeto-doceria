@@ -65,7 +65,10 @@ const {createAddressVerificationProvider}=require('./address-verification-provid
 const {createAddressVerification,mountAddressVerification}=require('./address-verification');
 const addressProvider=createAddressVerificationProvider({db,admin});
 const addressVerification=createAddressVerification({db,identities:checkoutIdentities,provider:addressProvider});
+const {createLegacyCustomerSession,mountLegacyCustomerSession}=require('./legacy-customer-session');
+const legacyCustomerSession=createLegacyCustomerSession({db,verification:addressVerification});
 const customerPhoneClaim=createCustomerPhoneClaim({db,accounts:customerAccounts,provider:addressProvider});
+const {returnToken,returnAuthorization}=require('./payment-return-auth');
 const {createPaymentService, cents, paymentError} = require('./checkout-payment');
 const checkoutPayments = createPaymentService({db, admin});
 const {paymentPrefill}=require('./payment-prefill');
@@ -1283,6 +1286,7 @@ mountAdminCustomerPreview(app,adminCustomerPreview,checkoutToken);
 const storeResolver = createStoreResolver({db,getAvailability:getStoreAvailability,loadPaymentConfig:store=>checkoutPayments.config(store)});
 mountStoreRoutes(app,storeResolver);
 mountAddressVerification(app,addressVerification);
+mountLegacyCustomerSession(app,legacyCustomerSession);
 // Selection is explicit and independent of the browser's ambient Firebase session.
 app.post('/checkout/identity',async(req,res)=>{
   try {
@@ -1311,13 +1315,15 @@ app.post('/checkout/webhook', async(req,res)=>{
 });
 app.post('/checkout/payment-status', async(req,res)=>{
   try {
-    const user=await checkoutToken(req);
+    res.set('Cache-Control','no-store');
+    const user=req.headers.authorization ? await checkoutToken(req) : null;
     const paymentId=String(req.body?.paymentId || '');
-    await checkoutPayments.status(paymentId,user.uid);
+    const credential=req.body?.paymentReturnToken;
+    await checkoutPayments.status(paymentId,user?.uid,credential);
     if(req.body.transaction_nsu && (req.body.slug || req.body.invoice_slug)) {
       try {await checkoutPayments.reconcile({...req.body,order_nsu:paymentId});} catch(e) {if(e.httpStatus!==409) throw e;}
     }
-    return res.json(await checkoutPayments.status(paymentId,user.uid));
+    return res.json(await checkoutPayments.status(paymentId,user?.uid,credential));
   } catch(e) {return res.status(e.httpStatus || 500).json({message:e.message});}
 });
 
@@ -1839,7 +1845,8 @@ app.post("/checkout/confirmar", async (req, res) => {
     if (explicitPaymentMode && pagamento.forma !== (online ? 'Online' : 'A combinar')) throw paymentError('Escolha de pagamento inconsistente.',400);
     const whatsappConfirmation = buildCheckoutWhatsApp({phone: cliente.telefone,
       consent: req.body?.whatsappConsent, serverTimestamp: () => FieldValue.serverTimestamp()});
-    let paymentConfig, paymentId, ownerUid, orderRef, fingerprint, buyerEmail, checkoutCustomerId;
+    let paymentConfig, paymentId, orderRef, fingerprint, buyerEmail, checkoutCustomerId;
+    let ownerUid=null;
     const identityToken=req.body?.checkoutIdentityToken;
     let checkoutIdentity=identityToken ? await checkoutIdentities.read(identityToken,lojaId) : {mode:CHECKOUT_MODES.GUEST};
     const checkoutIdentityRevision=checkoutIdentity.revision;
@@ -1849,11 +1856,12 @@ app.post("/checkout/confirmar", async (req, res) => {
       checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
     } else {
       // Business association comes from the server context, never the browser.
-      // This does not grant Auth, private reads or online payment.
+      // This business association grants neither Firebase Auth nor private reads.
       cliente.id=checkoutIdentity.mode===CHECKOUT_MODES.PHONE?checkoutIdentity.legacyCustomerId:null;
       if(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.phoneHash && hashForPrivacy(normalizePhoneNumber(cliente.telefone))!==checkoutIdentity.phoneHash) throw paymentError('Identifique novamente o celular deste checkout.',403);
     }
     if(online || explicitPaymentMode) {
+      if(checkoutIdentity.mode===CHECKOUT_MODES.STRONG) {
       const token=await checkoutToken(req);ownerUid=token.uid;buyerEmail=token.email;
       checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
       let account;
@@ -1864,9 +1872,14 @@ app.post("/checkout/confirmar", async (req, res) => {
       }
       checkoutCustomerId=account.customer?.id;
       if(!checkoutCustomerId || cliente.id!==checkoutCustomerId) throw paymentError('Entre em sua conta de cliente para pagar online.',403);
+      } else {
+        if(checkoutIdentity.mode!==CHECKOUT_MODES.PHONE || !checkoutIdentity.legacyCustomerId || !checkoutIdentity.phoneHash) throw paymentError('Identifique seu celular antes de continuar.',403);
+        checkoutCustomerId=await customerRegistry.resolveId(checkoutIdentity.legacyCustomerId);
+        cliente.id=checkoutCustomerId;
+      }
       if(!/^[a-zA-Z0-9_-]{16,100}$/.test(req.body?.idempotencyKey || '')) throw paymentError('Identificador do pedido inválido.',400);
       if(online) paymentConfig=await checkoutPayments.config(lojaId);
-      paymentId=crypto.createHash('sha256').update(ownerUid+':'+lojaId+':'+req.body.idempotencyKey).digest('hex');
+      paymentId=crypto.createHash('sha256').update((ownerUid || 'phone:'+checkoutIdentities.ref(identityToken).id)+':'+lojaId+':'+req.body.idempotencyKey).digest('hex');
       fingerprint=crypto.createHash('sha256').update(JSON.stringify({cliente,itens,cupom,subtotal,delivery:req.body.delivery,descontoInformado,...(explicitPaymentMode ? {paymentMode} : {})})).digest('hex');
       orderRef=db.collection('lojas').doc(lojaId).collection('pedidos').doc(paymentId);
     }
@@ -1875,7 +1888,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         checkoutIdentity=await checkoutIdentities.read(identityToken,lojaId,transaction);
         if(checkoutIdentity.revision!==checkoutIdentityRevision) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
         if(checkoutIdentity.mode===CHECKOUT_MODES.STRONG) checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
-        else if(online || ownerUid) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
+        else if((online || explicitPaymentMode) && (checkoutIdentity.mode!==CHECKOUT_MODES.PHONE || ownerUid || checkoutIdentity.legacyCustomerId!==checkoutCustomerId)) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
         if(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.legacyCustomerId) cliente.id=await customerRegistry.resolveId(checkoutIdentity.legacyCustomerId,transaction);
       }
       if(explicitPaymentMode) {
@@ -1895,7 +1908,8 @@ app.post("/checkout/confirmar", async (req, res) => {
           if (!savedOrder.exists) throw paymentError('Pedido indisponível. Consulte o pagamento pendente.');
           assertFreightClaims(req.body, savedOrder.data(), cliente.endereco === 'Retirar na Loja');
           if(prior.data().ownerUid!==ownerUid || prior.data().storeId!==lojaId || savedOrder.data().clienteId!==checkoutCustomerId) throw paymentError('Pedido não autorizado.',403);
-          transaction.update(prior.ref,{checkoutIdentity:{mode:CHECKOUT_MODES.STRONG,contextPath:checkoutIdentities.ref(identityToken).path,revision:checkoutIdentity.revision,customerId:checkoutCustomerId}});
+          transaction.update(prior.ref,{checkoutIdentity:{mode:checkoutIdentity.mode,contextPath:checkoutIdentities.ref(identityToken).path,revision:checkoutIdentity.revision,customerId:checkoutCustomerId},
+            ...(!prior.get('returnAuthorization')?{returnAuthorization:returnAuthorization(identityToken,paymentId)}:{})});
           return prior.data().orderId;
         }
       }
@@ -2053,7 +2067,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         clienteSnap = await transaction.get(clienteRef);
       }
 
-      if ((online || explicitPaymentMode) && (!clienteSnap?.exists || clienteRef.id!==checkoutCustomerId || !ownsCustomer(clienteSnap.data(),ownerUid))) throw paymentError('Cadastro de cliente não autorizado para este checkout.',403);
+      if ((online || explicitPaymentMode) && (!clienteSnap?.exists || clienteRef.id!==checkoutCustomerId || (checkoutIdentity.mode===CHECKOUT_MODES.STRONG ? !ownsCustomer(clienteSnap.data(),ownerUid) : hashForPrivacy(normalizePhoneNumber(clienteSnap.data().telefone))!==checkoutIdentity.phoneRecordHash))) throw paymentError('Cadastro de cliente não autorizado para este checkout.',403);
       if (checkoutIdentity.mode===CHECKOUT_MODES.STRONG && clienteSnap?.data()?.authOwnerUid && !ownsCustomer(clienteSnap.data(),ownerUid)) throw paymentError('Entre na conta vinculada ao cadastro.',403);
       const customerCoupons=couponCode && clienteSnap?.exists?await customerRegistry.couponState(clienteRef.id,transaction):null;
       if (online && customerCoupons?.used.includes(couponCode)) throw paymentError('Você já utilizou este cupom.');
@@ -2062,13 +2076,14 @@ app.post("/checkout/confirmar", async (req, res) => {
       if(online) {
         transaction.set(db.collection('checkoutPayments').doc(paymentId),{
           orderId:orderRef.id,orderPath:orderRef.path,storeId:lojaId,ownerUid,fingerprint,
-          checkoutIdentity:{mode:CHECKOUT_MODES.STRONG,contextPath:checkoutIdentities.ref(identityToken).path,revision:checkoutIdentity.revision,customerId:checkoutCustomerId},
+          checkoutIdentity:{mode:checkoutIdentity.mode,contextPath:checkoutIdentities.ref(identityToken).path,revision:checkoutIdentity.revision,customerId:checkoutCustomerId},
           payment_status:'PENDING',amount:cents(total),...paymentConfig,
+          returnAuthorization:returnAuthorization(identityToken,paymentId),
           expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+RESERVATION_MS),
           reservation:{state:'HELD',stock:stockUpdates.map(s=>({path:s.ref.path,quantity:s.quantity})),
             couponPath:cupomDocRef?.path || null,couponCode,
             customerPath:cupomDocRef && clienteSnap?.exists ? clienteRef.path : null},
-          ...paymentPrefill(paymentConfig,clienteSnap.data(),req.body.delivery,buyerEmail),
+          ...paymentPrefill(paymentConfig,checkoutIdentity.mode===CHECKOUT_MODES.STRONG ? clienteSnap.data() : {nome:cliente.nome,telefone:clienteSnap.data().telefone,normalizedPhone:clienteSnap.data().normalizedPhone},req.body.delivery,buyerEmail),
           createdAt:FieldValue.serverTimestamp()
         });
       }
@@ -2113,7 +2128,10 @@ app.post("/checkout/confirmar", async (req, res) => {
         whatsappPhoneStatus: whatsappConfirmation.phoneStatus};
     });
 
-    if(online) return res.status(200).json({ok:true,...await checkoutPayments.start(paymentId,ownerUid),whatsappPhoneStatus:whatsappConfirmation.phoneStatus});
+    if(online) {
+      res.set('Cache-Control','no-store');
+      return res.status(200).json({ok:true,...await checkoutPayments.start(paymentId,ownerUid,{token:identityToken,revision:checkoutIdentity.revision}),paymentReturnToken:returnToken(identityToken,paymentId),whatsappPhoneStatus:whatsappConfirmation.phoneStatus});
+    }
     return res.status(200).json({ok: true, ...orderId});
   } catch (error) {
     logger.error('Erro ao confirmar checkout:', error);

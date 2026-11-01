@@ -5,7 +5,7 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
   const scope=()=>{const s=identity.get();return {storeId,checkoutIdentityToken:s.token,checkoutIdentityRevision:s.revision};};
   const same=s=>{if(!s)return false;const current=scope();return current.checkoutIdentityToken===s.checkoutIdentityToken && current.checkoutIdentityRevision===s.checkoutIdentityRevision && identity.get().mode==='legacy_phone';};
   function closeDialog(){if(interval) clock.clearInterval(interval);interval=null;disposeCaptcha?.();disposeCaptcha=null;dialog?.remove();dialog=null;}
-  function invalidate(){const old=activeScope;generation++;grant=null;activeScope=null;clock.clearTimeout(expiryTimer);closeDialog();if(old) void request('revoke',{},old).catch(()=>{});}
+  function invalidate(){const old=activeScope;generation++;grant=null;activeScope=null;clock.clearTimeout(expiryTimer);closeDialog();if(old) {try {const saved=JSON.parse(document.defaultView.sessionStorage.getItem('customerPhoneSession_v1') || 'null');if(saved?.checkoutIdentityToken===old.checkoutIdentityToken) document.defaultView.sessionStorage.removeItem('customerPhoneSession_v1');}catch{} void request('revoke',{},old).catch(()=>{});}}
   const unsubscribe=identity.subscribe?.(invalidate);
   function modal(title) {
     closeDialog();const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-3';
@@ -56,7 +56,9 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
         const code=input.value;input.value='';
         try {
           const result=await api('verify',{challengeId:challenge.challengeId,code},s);if(current!==generation) return;
-          grant=result;expiryTimer=clock.setTimeout(invalidate,Math.max(0,grant.expiresAt-now()));closeDialog();await action();
+          grant=result;
+          try {if(result.customerSession) document.defaultView.sessionStorage.setItem('customerPhoneSession_v1',JSON.stringify(result.customerSession));}catch{ /* Server proof remains mandatory. */ }
+          expiryTimer=clock.setTimeout(invalidate,Math.max(0,grant.expiresAt-now()));closeDialog();await action();
         }catch(error){if(current===generation)view.message.textContent=error.message || 'Não foi possível confirmar o código.';}
         finally{submit.disabled=false;}
       };
@@ -109,5 +111,5 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
       }catch(error){view.message.textContent=error.message;}finally{save.disabled=false;view.cancel.disabled=false;}};
     });
   }
-  return {perform,invalidate,getTrustState(){return identity.get().mode==='legacy_phone'?(grant && grant.expiresAt>now() && same(activeScope)?'legacy_phone_verified':'legacy_phone_unverified'):identity.get().mode;},destroy(){invalidate();unsubscribe?.();}};
+  return {perform,authorize,invalidate,getTrustState(){return identity.get().mode==='legacy_phone'?(grant && grant.expiresAt>now() && same(activeScope)?'legacy_phone_verified':'legacy_phone_unverified'):identity.get().mode;},destroy(){invalidate();unsubscribe?.();}};
 }

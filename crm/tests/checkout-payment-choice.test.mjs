@@ -18,12 +18,25 @@ test('Strong: duas opções, padrão online, helper contextual; sincronização 
   syncPaymentChoices(select,false,true);assert.equal(select.innerHTML,original);assert.equal(helper.hidden,true);
   syncPaymentChoices(select,true,false);assert.equal(select.value,'ONLINE_NOW');assert.equal(select.selectedOptions[0].disabled,true);
 });
-test('escolha separa momento/método sem conceder direito online a Guest/Phone',()=>{
+test('escolha separa momento/método; contexto identificado Strong ou Phone usa contrato e Guest permanece sem direito',()=>{
   assert.deepEqual(paymentSelection('ONLINE_NOW',true),{forma:'Online',mode:'ONLINE_NOW'});
   assert.deepEqual(paymentSelection('AGREED_LATER',true),{forma:'A combinar',mode:'AGREED_LATER'});
   assert.throws(()=>paymentSelection('AGREED_LATER',false));
   assert.throws(()=>paymentSelection('ONLINE_NOW',false));
   assert.deepEqual(paymentSelection('Dinheiro',false),{forma:'Dinheiro'});
+});
+test('PHONE não envia Auth ambiente; retorno com capability funciona sem sessão e histórico mantém Auth explícito',async()=>{
+ const source=fs.readFileSync(new URL('../public/checkout-payment-client.js',import.meta.url),'utf8');
+ const code=source.slice(source.indexOf('export async function checkoutHeaders'),source.indexOf('export function paymentAttempt')).replaceAll('export ','');
+ let authCalls=0,tokenCalls=0;
+ const auth={authStateReady:async()=>{authCalls++;},currentUser:{isAnonymous:false,providerData:[{providerId:'password'}],getIdToken:async()=>{tokenCalls++;return 'fixture-only';}}};
+ const api=vm.runInNewContext(code+';({checkoutHeaders,paymentStatusHeaders})',{auth});
+ const phone={get:()=>({mode:'legacy_phone',token:'a'.repeat(64)}),isStrong:()=>false};
+ const headers=await api.checkoutHeaders(true,phone);assert.equal(headers.Authorization,undefined);assert.equal(tokenCalls,0);
+ await assert.rejects(()=>api.checkoutHeaders(true,{get:()=>({mode:'guest'}),isStrong:()=>false}));
+ const before=authCalls;assert.equal((await api.paymentStatusHeaders(true)).Authorization,undefined);assert.equal(authCalls,before);
+ assert.equal((await api.paymentStatusHeaders()).Authorization,'Bearer fixture-only');
+ auth.currentUser=null;assert.equal((await api.paymentStatusHeaders(true)).Authorization,undefined);
 });
 test('redirecionamento online mantém allowlist e retorno de pagamento já confirmado',()=>{
   const source=fs.readFileSync(new URL('../public/checkout-payment-client.js',import.meta.url),'utf8');
