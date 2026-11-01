@@ -24,7 +24,7 @@
     "tailwindcss": "^3.4.17"
   },
   "scripts": {
-    "prebuild": "node ../scripts/sync-canonical-auth.cjs",
+    "prebuild": "node ../scripts/sync-canonical-auth.cjs && node ../scripts/sync-fiscal-money.cjs --check",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",

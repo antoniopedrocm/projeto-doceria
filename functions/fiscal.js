@@ -2,9 +2,12 @@ const {GoogleAuth} = require('google-auth-library');
 const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 const forge = require('node-forge');
 const {isValidFiscalDocument} = require('./fiscal-core');
+const {fiscalCents, allocateFiscalCharges} = require('./fiscal-money');
 const {createHash} = require('node:crypto');
 const {cloneEditableForm, draftTotals, editableFromXml} = require('./fiscal-clone');
 const {explicitFiscalPayment, manualPaymentPatch} = require('./order-payment-method');
+const {canAdministerFiscal, canEditPlatformFiscalService, protectedPlatformFieldsIn} = require('./fiscal-permissions');
+const {MAX_FISCAL_NUMBER, counterId, counterRevision, nextNumberFrom, isFiscalNumber, sequenceContext, sameSequence, invoiceKnowsNumber, rangeBlocksNumber} = require('./fiscal-numbering');
 
 const secretManager = new SecretManagerServiceClient();
 const MAX_CERTIFICATE_BYTES = 5 * 1024 * 1024;
@@ -19,6 +22,13 @@ const INVOICE_STATUS = {
   DENIED: 'denied',
   PENDING_RETURN: 'pending_return',
 };
+const DUPLICATE_NFE_CSTATS = new Set([204, 539]);
+const BLOCKING_ORDER_INVOICE_STATUSES = new Set([
+  INVOICE_STATUS.VALIDATING,
+  INVOICE_STATUS.PENDING_RETURN,
+  INVOICE_STATUS.AUTHORIZED,
+  INVOICE_STATUS.DENIED,
+]);
 
 const onlyDigits = (value) => String(value || '').replace(/\D/g, '');
 const money = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -31,7 +41,6 @@ const normalizeLookupText = (value) => trimText(value)
 
 const inferDocumentType = (document) => (onlyDigits(document).length > 11 ? 'CNPJ' : 'CPF');
 const environmentCode = (environment) => (environment === 'production' ? 1 : 2);
-const counterId = (environment, model, series) => `${environment}_${model}_${series}`;
 
 const normalizePaymentCode = (value) => {
   const digits = onlyDigits(value);
@@ -307,6 +316,13 @@ const validatePreparedPayload = (payload) => {
   }
   const expectedTotal = money(payload.totals.products - payload.totals.discount + payload.totals.freight + payload.totals.insurance + payload.totals.other);
   if (expectedTotal !== money(payload.totals.invoice)) errors.push('Totais: valor da nota diverge da soma de produtos, descontos e acréscimos.');
+  for (const field of ['freight', 'insurance', 'other']) {
+    if (!Number.isFinite(Number(payload.totals[field])) || Number(payload.totals[field]) < 0) errors.push(`Totais: ${field} inválido.`);
+    if (payload.items.some((item) => item[field] !== undefined)
+      && payload.items.reduce((sum, item) => sum + fiscalCents(item[field]), 0) !== fiscalCents(payload.totals[field])) {
+      errors.push(`Totais: ${field === 'freight' ? 'frete da NF-e' : field} não corresponde ao somatório distribuído entre os itens.`);
+    }
+  }
 
   if (payload.invoice.payment.methodCode === '90' && payload.invoice.payment.amount > 0) {
     errors.push('Forma de pagamento 90 (sem pagamento) não pode ter valor pago maior que zero.');
@@ -446,6 +462,7 @@ const publicCertificateInfo = (certificate = {}) => ({
 const getServiceConfig = () => ({
   serviceUrl: cleanText(process.env.FISCAL_SERVICE_URL),
   sharedSecret: cleanText(process.env.FISCAL_SHARED_SECRET),
+  source: cleanText(process.env.FISCAL_SERVICE_URL) ? 'FISCAL_SERVICE_URL' : '',
 });
 
 const fiscalServiceErrorCode = (status) => {
@@ -490,8 +507,8 @@ const parseFiscalServicePayload = (data) => {
   return {};
 };
 
-const callFiscalService = async (path, body) => {
-  const {serviceUrl, sharedSecret} = getServiceConfig();
+const callFiscalService = async (path, body, serviceConfigOverride = null) => {
+  const {serviceUrl, sharedSecret} = serviceConfigOverride || getServiceConfig();
   if (!serviceUrl) {
     const error = new Error('A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
     error.code = 'failed-precondition';
@@ -554,6 +571,23 @@ const createFiscalFunctions = ({
   STORE_ALL_KEY,
 }) => {
   const FieldValue = admin.firestore.FieldValue;
+  const isPlatformFiscalAdmin = canEditPlatformFiscalService;
+
+  const loadPlatformServiceConfig = async () => {
+    const envConfig = getServiceConfig();
+    const snap = await db.collection('integrations').doc('fiscal').get();
+    const data = snap.exists ? snap.data() || {} : {};
+    const storedServiceUrl = cleanText(data.serviceUrl || data.fiscalServiceUrl);
+    const storedSharedSecret = cleanText(data.sharedSecret || data.fiscalSharedSecret);
+    const serviceUrl = storedServiceUrl || envConfig.serviceUrl;
+    const sharedSecret = storedSharedSecret || envConfig.sharedSecret;
+    return {
+      serviceUrl,
+      sharedSecret,
+      configured: Boolean(serviceUrl),
+      source: storedServiceUrl ? 'integrations/fiscal' : envConfig.source,
+    };
+  };
 
   const normalizeHttpsError = (error) => {
     if (error instanceof HttpsError) return error;
@@ -568,12 +602,11 @@ const createFiscalFunctions = ({
       throw new HttpsError('failed-precondition', 'Selecione uma loja específica para emitir nota fiscal.');
     }
 
-    const requester = await verifyManagementAccess(uid);
-    const profileSnap = await db.collection('users').doc(uid).get();
-    const profile = profileSnap.data() || {};
-    if (profile.permissions?.['nota-fiscal'] === false || profile.customPermissions?.['nota-fiscal'] === false) {
-      throw new HttpsError('permission-denied', 'O módulo Nota Fiscal não está habilitado para este usuário.');
+    const requester = await verifyStoreReadAccess(uid);
+    if (!canAdministerFiscal(requester)) {
+      throw new HttpsError('permission-denied', 'Você não tem permissão para administrar o módulo Nota Fiscal.');
     }
+    await requireFiscalCatalogPermission(uid);
     if (requester.role === 'dono' && requester.allStores) return requester;
     if (!userHasAccessToStores(requester.stores, [lojaId])) {
       throw new HttpsError('permission-denied', 'Você não tem acesso fiscal a esta loja.');
@@ -608,8 +641,8 @@ const createFiscalFunctions = ({
       throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
     }
     const lojaId = String(request.data?.lojaId || '').trim();
-    await requireStoreAccess(uid, lojaId);
-    return {uid, lojaId};
+    const requester = await requireStoreAccess(uid, lojaId);
+    return {uid, lojaId, requester};
   };
 
   const requireReadContext = async (request) => {
@@ -621,6 +654,86 @@ const createFiscalFunctions = ({
     const requester = await requireStoreReadAccess(uid, lojaId);
     return {uid, lojaId, requester};
   };
+
+  const auditFiscalAction = async ({uid, lojaId, requester, action, documentId = null, before = null, after = null, result = 'success', details = null}) => {
+    const profile = requester?.profile || {};
+    const payload = {
+      uid,
+      usuario: cleanText(profile.nome || profile.displayName || profile.email || uid),
+      email: cleanText(profile.email),
+      perfil: requester?.role || null,
+      lojaId,
+      modulo: 'nota-fiscal',
+      action,
+      documentId,
+      before,
+      after,
+      result,
+      details,
+      createdAt: FieldValue.serverTimestamp(),
+    };
+    try {
+      await db.collection('auditLogs').add(payload);
+    } catch (error) {
+      logger.error('fiscal audit log failed', {action, lojaId, uid, message: error?.message || String(error)});
+    }
+  };
+
+  const numberingContextInTransaction = async (transaction, storeRef, model) => {
+    const [issuer, settings] = await Promise.all([
+      transaction.get(storeRef.collection('fiscalConfig').doc('issuer')),
+      transaction.get(storeRef.collection('fiscalConfig').doc('settings')),
+    ]);
+    const context = sequenceContext(issuer.data() || {}, settings.data() || {}, model, process.env.FISCAL_ENVIRONMENT);
+    if (!['production', 'homologation'].includes(context.environment) || context.issuerCnpj.length !== 14 ||
+      !Number.isInteger(context.series) || context.series < 0 || context.series > 999) {
+      throw new HttpsError('failed-precondition', 'Confira CNPJ, ambiente fiscal e série na configuração salva.');
+    }
+    return context;
+  };
+
+  const assertCounterIssuer = (snapshot, context) => {
+    if (snapshot.get('issuerCnpj') && snapshot.get('issuerCnpj') !== context.issuerCnpj) {
+      throw new HttpsError('failed-precondition', 'O contador pertence a outro emitente. Confira a loja e o CNPJ antes de ajustar a sequência.');
+    }
+  };
+
+  const assertNumberAvailable = async (transaction, storeRef, context, number, manual = false) => {
+    if (!isFiscalNumber(number)) throw new HttpsError('failed-precondition', 'Numeração fiscal inválida ou esgotada. Configure o próximo número antes de emitir.');
+    const blockRef = storeRef.collection('fiscalNumberBlocks').doc(counterId(context.environment, context.model, context.series) + `_${number}`);
+    const [invoices, block, operations] = await Promise.all([
+      transaction.get(storeRef.collection('invoices').select('number', 'nNF', 'model', 'series', 'environment', 'status', 'key', 'history', 'xMotivo', 'issuanceRejection', 'serviceResult.duplicateIssueResult')),
+      transaction.get(blockRef),
+      transaction.get(storeRef.collection('fiscalInutilizations').select('model', 'series', 'environment', 'status', 'start', 'end')),
+    ]);
+    if (manual && invoices.docs.some((snap) => sameSequence(snap.data(), context) && ['validating', 'pending_return'].includes(snap.get('status')))) {
+      throw new HttpsError('failed-precondition', 'Há emissão em andamento nesta sequência. Aguarde ou consulte o retorno antes de alterar a numeração.');
+    }
+    if (block.exists || operations.docs.some((snap) => rangeBlocksNumber(snap.data(), context, number)) ||
+      invoices.docs.some((snap) => invoiceKnowsNumber(snap.data(), context, number))) {
+      throw new HttpsError('failed-precondition', `Número ${number} já conhecido como usado, reservado ou inutilizado nesta sequência. Revise a numeração configurada.`);
+    }
+    return blockRef;
+  };
+
+  const fiscalConfigurationAuditView = (issuer = {}, settings = {}) => ({
+    issuer: {
+      cnpj: cleanText(issuer.cnpj),
+      stateRegistration: cleanText(issuer.stateRegistration || issuer.ie),
+      legalName: cleanText(issuer.legalName || issuer.razaoSocial),
+      tradeName: cleanText(issuer.tradeName || issuer.nomeFantasia),
+      taxRegime: Number(issuer.taxRegime || 1),
+      address: issuer.address || null,
+    },
+    settings: {
+      environment: cleanText(settings.environment),
+      nfeSeries: Number(settings.nfeSeries ?? 1),
+      nfceSeries: Number(settings.nfceSeries ?? 1),
+      operationNature: cleanText(settings.operationNature),
+      defaultPaymentMethodCode: cleanText(settings.defaultPaymentMethodCode),
+      defaultPresence: Number(settings.defaultPresence || 2),
+    },
+  });
 
   const fiscalCatalogs = {
     NCM: {field: 'ncmOptions', pattern: /^(?:\d{8}|\d{4}\.\d{2}\.\d{2})$/, defaults: ['19059090', '17049090', '18069000'], format: '8 dígitos, com ou sem pontos'},
@@ -742,6 +855,12 @@ const createFiscalFunctions = ({
     signedXmlPath: artifacts.signedXml?.path || null,
     authorizedXmlPath: artifacts.authorizedXml?.path || null,
     danfePdfPath: artifacts.danfePdf?.path || null,
+    duplicateIssueResult: result.duplicateIssueResult || null,
+    consultationResult: result.consultationResult || null,
+    duplicateConsultFailed: Boolean(result.duplicateConsultFailed),
+    duplicateConsultSkipped: Boolean(result.duplicateConsultSkipped),
+    duplicateConsultError: cleanText(result.duplicateConsultError).slice(0, 1000) || null,
+    duplicateConsultMessage: cleanText(result.duplicateConsultMessage).slice(0, 1000) || null,
   });
 
   const fiscalResultReason = (result = {}, status = '') => (
@@ -765,6 +884,51 @@ const createFiscalFunctions = ({
     danfePdfReady: Boolean(artifacts.danfePdf),
     artifactError: artifactError || null,
   });
+
+  const isDuplicateNfeResult = (result = {}) => {
+    const cStat = Number(result.cStat ?? result.serviceResult?.cStat ?? 0);
+    const reason = [
+      result.xMotivo,
+      result.message,
+      result.error,
+      result.detail,
+      result.serviceResult?.xMotivo,
+      result.serviceResult?.message,
+      result.serviceResult?.error,
+      result.serviceResult?.detail,
+    ].map((value) => cleanText(value)).filter(Boolean).join(' ');
+    return DUPLICATE_NFE_CSTATS.has(cStat) || /duplicidade\s+de\s+nf-?e/i.test(reason);
+  };
+
+  const isDuplicateInvoiceRecord = (invoice = {}) => isDuplicateNfeResult({
+    cStat: invoice.cStat,
+    xMotivo: invoice.xMotivo || invoice.error,
+    message: invoice.message,
+    detail: invoice.detail,
+    serviceResult: invoice.serviceResult,
+  });
+
+  const blockingInvoiceMessage = (invoiceId, invoice = {}) => {
+    const number = invoice.number ? ` ${String(invoice.number).padStart(8, '0')}` : '';
+    const series = invoice.series ? ` série ${String(invoice.series).padStart(3, '0')}` : '';
+    const status = invoice.status || 'em processamento';
+    if (isDuplicateInvoiceRecord(invoice)) {
+      return `Este pedido já possui uma nota fiscal${number}${series} com rejeição por duplicidade. Consulte/atualize essa nota antes de tentar emitir outra.`;
+    }
+    if (status === INVOICE_STATUS.AUTHORIZED) {
+      return `Este pedido já possui uma nota fiscal autorizada${number}${series}.`;
+    }
+    if (status === INVOICE_STATUS.PENDING_RETURN) {
+      return `Este pedido já possui uma emissão pendente${number}${series}. Consulte o retorno da SEFAZ antes de reemitir.`;
+    }
+    if (status === INVOICE_STATUS.VALIDATING) {
+      return `Este pedido já possui uma emissão em andamento${number}${series}. Aguarde a finalização antes de tentar novamente.`;
+    }
+    if (status === INVOICE_STATUS.DENIED) {
+      return `Este pedido já possui uma nota denegada${number}${series}; não é permitido emitir outra para a mesma operação.`;
+    }
+    return `Este pedido já possui uma nota fiscal vinculada (${invoiceId}).`;
+  };
 
   const loadInvoiceArtifact = async (artifact) => {
     if (!artifact?.path) {
@@ -795,8 +959,8 @@ const createFiscalFunctions = ({
     const settings = snap.exists ? snap.data() || {} : {};
     return {
       environment: process.env.FISCAL_ENVIRONMENT || settings.environment || 'homologation',
-      nfeSeries: Number(settings.nfeSeries || 1),
-      nfceSeries: Number(settings.nfceSeries || 1),
+      nfeSeries: Number(settings.nfeSeries ?? 1),
+      nfceSeries: Number(settings.nfceSeries ?? 1),
       operationNature: settings.operationNature || 'Venda de producao do estabelecimento',
       defaultPresence: Number(settings.defaultPresence || 2),
       defaultPaymentMethodCode: settings.defaultPaymentMethodCode || '99',
@@ -1106,9 +1270,14 @@ const createFiscalFunctions = ({
     const manualInputErrors = [];
     if (selectedOperationCfop.length !== 4) manualInputErrors.push('Documento: selecione CFOP válido com 4 dígitos.');
     for (const field of ['freight', 'insurance', 'other']) {
-      if (!Number.isFinite(Number(manualInvoice[field] || 0)) || Number(manualInvoice[field] || 0) < 0) manualInputErrors.push(`Totais: ${field === 'freight' ? 'frete' : field === 'insurance' ? 'seguro' : 'outras despesas'} inválido.`);
+      const value = manualInvoice[field] ?? 0;
+      if (!['number', 'string'].includes(typeof value) || !Number.isFinite(Number(value)) || Number(value) < 0) {
+        manualInputErrors.push(`Totais: ${field === 'freight' ? 'frete' : field === 'insurance' ? 'seguro' : 'outras despesas'} inválido.`);
+      }
     }
-    if (manualInvoice.freightMode !== undefined && String(manualInvoice.freightMode) !== '9') manualInputErrors.push('Transporte: o provedor atual suporta somente modalidade de frete 9. Revise com o responsável fiscal.');
+    const freightMode = String(manualInvoice.freightMode ?? '9');
+    if (!['0', '1', '2', '3', '4', '9'].includes(freightMode)) manualInputErrors.push('Transporte: modalidade de frete inválida (0, 1, 2, 3, 4 ou 9).');
+    if (model === 65 && freightMode !== '9') manualInputErrors.push('Transporte: o fluxo NFC-e atual suporta somente modalidade 9.');
 
     const rawItems = Array.isArray(manualInvoice.items) ? manualInvoice.items : [];
     if (!rawItems.length) manualInputErrors.push('Produtos: adicione ao menos um item.');
@@ -1194,6 +1363,7 @@ const createFiscalFunctions = ({
       lojaId,
       origin: 'manual',
       manualInvoice: true,
+      transport: {freightMode},
       environment: environmentCode(settings.environment),
       invoice: {
         model,
@@ -1253,6 +1423,11 @@ const createFiscalFunctions = ({
       fiscalSecrets: certificate.fiscalSecrets,
     };
 
+    try {
+      payload.items = allocateFiscalCharges(payload.items, totals);
+    } catch (error) {
+      manualInputErrors.push(error.message);
+    }
     return {
       payload,
       settings,
@@ -1265,7 +1440,43 @@ const createFiscalFunctions = ({
     };
   };
 
-  const reserveInvoice = async ({lojaId, orderId, environment, model, series, uid, justification, additionalInfo, operationCfop, paymentResolution}) => {
+  const findBlockingInvoiceForOrder = async ({lojaId, orderId, environment, model, series}) => {
+    const snap = await db.collection('lojas').doc(lojaId).collection('invoices')
+      .where('orderId', '==', orderId)
+      .limit(30)
+      .get();
+    const candidates = [];
+    snap.forEach((doc) => {
+      const invoice = doc.data() || {};
+      if (invoice.environment !== environment) return;
+      if (Number(invoice.model || 0) !== Number(model || 0)) return;
+      if (Number(invoice.series || 0) !== Number(series || 0)) return;
+      if (invoice.status === INVOICE_STATUS.CANCELLED) return;
+      if (BLOCKING_ORDER_INVOICE_STATUSES.has(invoice.status) || isDuplicateInvoiceRecord(invoice)) {
+        candidates.push({id: doc.id, invoice});
+      }
+    });
+    candidates.sort((a, b) => {
+      const aTime = a.invoice.updatedAt?.toMillis?.() || a.invoice.createdAt?.toMillis?.() || 0;
+      const bTime = b.invoice.updatedAt?.toMillis?.() || b.invoice.createdAt?.toMillis?.() || 0;
+      return bTime - aTime;
+    });
+    return candidates[0] || null;
+  };
+
+  const assertCanIssueOrderInvoice = async ({lojaId, orderId, environment, model, series}) => {
+    const blocking = await findBlockingInvoiceForOrder({lojaId, orderId, environment, model, series});
+    if (!blocking) return;
+    throw new HttpsError('already-exists', blockingInvoiceMessage(blocking.id, blocking.invoice), {
+      invoiceId: blocking.id,
+      status: blocking.invoice.status || null,
+      number: blocking.invoice.number || null,
+      series: blocking.invoice.series || null,
+      duplicate: isDuplicateInvoiceRecord(blocking.invoice),
+    });
+  };
+
+  const reserveInvoice = async ({lojaId, orderId, environment, model, series, issuerCnpj, uid, justification, additionalInfo, operationCfop, paymentResolution}) => {
     const storeRef = db.collection('lojas').doc(lojaId);
     const orderRef = storeRef.collection('pedidos').doc(orderId);
     const counterRef = storeRef.collection('fiscalCounters').doc(counterId(environment, model, series));
@@ -1280,15 +1491,40 @@ const createFiscalFunctions = ({
       if (order.paymentId && order.payment_status === 'PAID' && Math.round(Number(order.total)*100) !== Math.round(Number(paymentResolution?.amount)*100)) throw new HttpsError('aborted','Total do pedido alterado durante a validação. Valide novamente.');
       const latestPayment = explicitFiscalPayment(order);
       if (latestPayment && latestPayment.methodCode !== paymentResolution?.methodCode) throw new HttpsError('aborted','Pagamento alterado durante a validação. Valide novamente.');
+      const previousId = order.fiscal?.lastInvoiceId;
+      if (previousId) {
+        const previous = await transaction.get(storeRef.collection('invoices').doc(previousId));
+        const invoice = previous.data() || {};
+        if (previous.exists && invoice.status !== INVOICE_STATUS.CANCELLED && sameSequence(invoice, {model, series, environment})) {
+          return {invoiceId: previousId, number: invoice.number, repeated: true,
+            response: callableFiscalResult({result: invoice, invoiceId: previousId, artifacts: invoice.artifacts || {}})};
+        }
+      }
       if (order.fiscal?.authorizedInvoiceId) {
         throw new HttpsError('already-exists', 'Pedido já tem nota autorizada.');
       }
       if (order.fiscal?.invoiceInProgressId) {
         throw new HttpsError('aborted', 'Pedido já tem emissão em andamento.');
       }
+      if (order.fiscal?.lastInvoiceStatus === INVOICE_STATUS.AUTHORIZED) {
+        throw new HttpsError('already-exists', 'Pedido já tem nota autorizada.');
+      }
+      if (order.fiscal?.lastInvoiceStatus === INVOICE_STATUS.PENDING_RETURN) {
+        throw new HttpsError('already-exists', 'Pedido já tem emissão pendente. Consulte o retorno da SEFAZ antes de reemitir.');
+      }
+      if (order.fiscal?.lastInvoiceDuplicate) {
+        throw new HttpsError('already-exists', 'Pedido já tem nota rejeitada por duplicidade. Consulte/atualize essa nota antes de tentar emitir outra.');
+      }
 
-      const nextNumber = Number(counterSnap.get('nextNumber') || 1);
+      const context = await numberingContextInTransaction(transaction, storeRef, model);
+      if (context.environment !== environment || context.series !== series || context.issuerCnpj !== issuerCnpj) throw new HttpsError('aborted', 'Configuração fiscal alterada. Confira novamente antes de emitir.');
+      assertCounterIssuer(counterSnap, context);
+      const nextNumber = nextNumberFrom(counterSnap);
+      const blockRef = await assertNumberAvailable(transaction, storeRef, context, nextNumber);
+      transaction.set(blockRef, {environment, model, series, number: nextNumber, issuerCnpj: context.issuerCnpj,
+        status: 'reserved', invoiceId: invoiceRef.id, at: FieldValue.serverTimestamp(), by: uid});
       transaction.set(counterRef, {
+        issuerCnpj: context.issuerCnpj,
         environment,
         model,
         series,
@@ -1338,11 +1574,62 @@ const createFiscalFunctions = ({
     });
   };
 
-  const updateInvoiceAfterIssue = async ({lojaId, invoiceId, orderId, uid, result}) => {
+
+  const consultDuplicateIfNeeded = async ({payload, result, serviceConfig}) => {
+    if (!isDuplicateNfeResult(result)) {
+      return result;
+    }
+    if (!result.signedXml && !result.key) {
+      return {
+        ...result,
+        duplicateConsultSkipped: true,
+        duplicateConsultMessage: 'Duplicidade detectada sem XML assinado ou chave de acesso para consulta.',
+      };
+    }
+
+    try {
+      const consultResult = await callFiscalService('/consult', {
+        ...payload,
+        key: result.key || null,
+        signedXml: result.signedXml || null,
+      }, serviceConfig);
+      const confirmed = [INVOICE_STATUS.AUTHORIZED, INVOICE_STATUS.CANCELLED].includes(consultResult.status);
+      return {
+        ...(confirmed ? consultResult : result),
+        ...(!confirmed ? {consultationResult: {
+          status: consultResult.status || null, cStat: consultResult.cStat ?? null,
+          xMotivo: fiscalResultReason(consultResult, consultResult.status),
+        }} : {}),
+        signedXml: consultResult.signedXml || result.signedXml || null,
+        duplicateIssueResult: {
+          status: result.status || null,
+          cStat: result.cStat ?? null,
+          xMotivo: fiscalResultReason(result, result.status || INVOICE_STATUS.REJECTED) || null,
+        },
+      };
+    } catch (error) {
+      logger.warn('fiscal duplicate consult failed', {
+        message: error?.message || String(error),
+        cStat: result.cStat ?? null,
+      });
+      return {
+        ...result,
+        duplicateConsultFailed: true,
+        duplicateConsultError: error?.message || String(error),
+      };
+    }
+  };
+
+  const updateInvoiceAfterIssue = async ({lojaId, invoiceId, orderId, uid, result, historyMessage = null}) => {
     const invoiceRef = db.collection('lojas').doc(lojaId).collection('invoices').doc(invoiceId);
     const orderRef = orderId ? db.collection('lojas').doc(lojaId).collection('pedidos').doc(orderId) : null;
     const status = result.status || INVOICE_STATUS.REJECTED;
     const resultReason = fiscalResultReason(result, status);
+    const consultation = result.consultationResult ? {...result.consultationResult, at: admin.firestore.Timestamp.now(), by: uid} : null;
+    const duplicateRejected = status === INVOICE_STATUS.REJECTED && isDuplicateNfeResult({
+      ...result,
+      xMotivo: resultReason,
+    });
     let artifacts = {};
     let artifactError = '';
     try {
@@ -1360,6 +1647,11 @@ const createFiscalFunctions = ({
         receipt: result.receipt || null,
         cStat: result.cStat || null,
         xMotivo: resultReason || null,
+        ...(consultation ? {lastConsultation: consultation} : {}),
+        ...(status === INVOICE_STATUS.REJECTED ? {issuanceRejection: {
+          cStat: result.cStat ?? null, xMotivo: resultReason || null,
+          at: admin.firestore.Timestamp.now(), by: uid, attemptId: invoiceId,
+        }} : {}),
         errors: compactFiscalErrors(result.errors),
         artifacts: Object.keys(artifacts).length ? artifacts : FieldValue.delete(),
         artifactError: artifactError || FieldValue.delete(),
@@ -1370,23 +1662,42 @@ const createFiscalFunctions = ({
           status,
           at: admin.firestore.Timestamp.now(),
           by: uid,
-          message: resultReason || 'Retorno recebido do serviço fiscal.',
-        }),
+          message: historyMessage || resultReason || 'Retorno recebido do serviço fiscal.',
+          cStat: result.cStat ?? null,
+        }, ...(consultation ? [{...consultation, action: 'consultation', status}] : [])),
       }, {merge: true});
 
       if (!orderRef) {
         return;
       }
 
+      const lastInvoicePatch = {
+        'fiscal.lastInvoiceId': invoiceId,
+        'fiscal.lastInvoiceStatus': status,
+        'fiscal.lastInvoiceReason': resultReason || null,
+        'fiscal.lastInvoiceKey': result.key || null,
+        'fiscal.lastInvoiceProtocol': result.protocol || null,
+        'fiscal.lastInvoiceCStat': result.cStat ?? null,
+        'fiscal.lastInvoiceDuplicate': duplicateRejected ? true : FieldValue.delete(),
+      };
+
       if (status === INVOICE_STATUS.AUTHORIZED) {
         transaction.update(orderRef, {
+          ...lastInvoicePatch,
           'fiscal.authorizedInvoiceId': invoiceId,
           'fiscal.invoiceInProgressId': FieldValue.delete(),
+          'fiscal.lastInvoiceDuplicate': FieldValue.delete(),
           updatedAt: FieldValue.serverTimestamp(),
         });
       } else if ([INVOICE_STATUS.REJECTED, INVOICE_STATUS.DENIED].includes(status)) {
         transaction.update(orderRef, {
+          ...lastInvoicePatch,
           'fiscal.invoiceInProgressId': FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else if (status === INVOICE_STATUS.PENDING_RETURN) {
+        transaction.update(orderRef, {
+          ...lastInvoicePatch,
           updatedAt: FieldValue.serverTimestamp(),
         });
       }
@@ -1397,8 +1708,21 @@ const createFiscalFunctions = ({
 
   const previewNextNumber = async (lojaId, environment, model, series) => {
     const counterSnap = await db.collection('lojas').doc(lojaId).collection('fiscalCounters').doc(counterId(environment, model, series)).get();
-    return Number(counterSnap.get('nextNumber') || 1);
+    return nextNumberFrom(counterSnap);
   };
+
+  const checkedPreviewNumber = async (lojaId, expected) => db.runTransaction(async (transaction) => {
+    const storeRef = db.collection('lojas').doc(lojaId);
+    const context = await numberingContextInTransaction(transaction, storeRef, expected.model);
+    if (context.environment !== expected.environment || context.series !== expected.series || context.issuerCnpj !== expected.issuerCnpj) {
+      throw new HttpsError('aborted', 'Configuração fiscal alterada. Confira novamente antes de emitir.');
+    }
+    const counter = await transaction.get(storeRef.collection('fiscalCounters').doc(counterId(context.environment, context.model, context.series)));
+    assertCounterIssuer(counter, context);
+    const number = nextNumberFrom(counter);
+    await assertNumberAvailable(transaction, storeRef, context, number);
+    return number;
+  });
 
   const draftRefFor = (lojaId, draftId) => {
     if (!draftId || draftId.includes('/')) throw new HttpsError('invalid-argument', 'Identificador de rascunho inválido.');
@@ -1423,18 +1747,24 @@ const createFiscalFunctions = ({
       errors.push(error?.message || 'Não foi possível preparar a nota.');
     }
     if (!prepared) return {ok: false, errors, warnings: [], preview: null};
-    if (!getServiceConfig(prepared.settings).serviceUrl) errors.push('Serviço fiscal não configurado.');
+    const serviceConfig = await loadPlatformServiceConfig();
+    prepared.serviceConfig = serviceConfig;
+    if (!serviceConfig.serviceUrl) errors.push('Serviço fiscal não configurado.');
     if (!prepared.certificate.ready) errors.push('Certificado A1 da loja não configurado.');
     if (prepared.model === 65 && (!prepared.certificate.nfceCscSecretVersion || !prepared.certificate.nfceCscIdSecretVersion)) {
       errors.push('CSC e ID CSC da NFC-e não configurados.');
     }
     const environment = prepared.settings.environment || 'homologation';
-    const number = await previewNextNumber(lojaId, environment, prepared.model, prepared.series);
+    let number = await previewNextNumber(lojaId, environment, prepared.model, prepared.series);
+    if (!errors.length) {
+      try { number = await checkedPreviewNumber(lojaId, {environment, model: prepared.model, series: prepared.series, issuerCnpj: prepared.payload.issuer.cnpj}); }
+      catch (error) { errors.push(error.message); }
+    }
     const payload = {...prepared.payload, invoice: {...prepared.payload.invoice, number}};
     let warnings = [];
     if (!errors.length) {
       try {
-        const result = await callFiscalService('/validate', payload, prepared.settings);
+        const result = await callFiscalService('/validate', payload, serviceConfig);
         errors.push(...(Array.isArray(result.errors) ? result.errors : []));
         warnings = Array.isArray(result.warnings) ? result.warnings : [];
         if (result.ok === false && !errors.length) errors.push('Validação fiscal não aprovada pelo serviço.');
@@ -1532,6 +1862,79 @@ const createFiscalFunctions = ({
         });
         return {ok:true};
       } catch (error) {throw normalizeHttpsError(error);}
+    }),
+    fiscalGetNumbering: onCall(async (request) => {
+      try {
+        const {lojaId, requester} = await requireReadContext(request);
+        const storeRef = db.collection('lojas').doc(lojaId);
+        const sequences = await db.runTransaction(async (transaction) => {
+          return Promise.all([55, 65].map(async (model) => {
+            const context = await numberingContextInTransaction(transaction, storeRef, model);
+            const counter = await transaction.get(storeRef.collection('fiscalCounters').doc(counterId(context.environment, model, context.series)));
+            assertCounterIssuer(counter, context);
+            return {...context, nextNumber: nextNumberFrom(counter), revision: counterRevision(counter), configured: counter.exists};
+          }));
+        });
+        return {lojaId, canManage: canAdministerFiscal(requester), sequences};
+      } catch (error) {
+        logger.error('fiscalGetNumbering failed', {code: error?.code || 'internal'});
+        throw normalizeHttpsError(error);
+      }
+    }),
+    fiscalSetNextNumber: onCall(async (request) => {
+      try {
+        const {uid, lojaId, requester} = await requireCallableContext(request);
+        const data = request.data || {};
+        if (data.confirmed !== true || ![55, 65].includes(data.model) || !isFiscalNumber(data.nextNumber) ||
+          !['production', 'homologation'].includes(data.environment) || !Number.isInteger(data.series) || data.series < 0 || data.series > 999 ||
+          !Number.isInteger(data.expectedNextNumber) || data.expectedNextNumber < 1 || data.expectedNextNumber > MAX_FISCAL_NUMBER + 1 ||
+          typeof data.expectedRevision !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(data.changeRequestId || '')) {
+          throw new HttpsError('invalid-argument', 'Confirme a alteração e informe um próximo número inteiro entre 1 e 999999999.');
+        }
+        const fingerprint = JSON.stringify([data.model, data.series, data.environment, data.issuerCnpj, data.nextNumber, data.expectedNextNumber, data.expectedRevision]);
+        const id = createHash('sha256').update(JSON.stringify([lojaId, uid, data.environment, data.model, data.series, data.changeRequestId])).digest('hex');
+        const auditRef = db.collection('auditLogs').doc(`manual_numbering_${id}`);
+        const storeRef = db.collection('lojas').doc(lojaId);
+        // Authoritative receipt stays under the existing server-only counter path.
+        // auditLogs retains the familiar audit mirror, but is never trusted for retries.
+        const receiptRef = storeRef.collection('fiscalCounters').doc(counterId(data.environment, data.model, data.series)).collection('manualChanges').doc(id);
+        return await db.runTransaction(async (transaction) => {
+          const previous = await transaction.get(receiptRef);
+          if (previous.exists) {
+            if (previous.get('fingerprint') !== fingerprint) throw new HttpsError('invalid-argument', 'Identificador já utilizado para outra alteração.');
+            return {...previous.get('numbering'), repeated: true};
+          }
+          const context = await numberingContextInTransaction(transaction, storeRef, data.model);
+          if (data.series !== context.series || data.environment !== context.environment || data.issuerCnpj !== context.issuerCnpj) {
+            throw new HttpsError('aborted', 'Emitente, ambiente ou série mudou. Atualize a numeração e confirme novamente.');
+          }
+          const ref = storeRef.collection('fiscalCounters').doc(counterId(context.environment, context.model, context.series));
+          const counter = await transaction.get(ref);
+          assertCounterIssuer(counter, context);
+          const current = nextNumberFrom(counter);
+          if (current !== data.expectedNextNumber || counterRevision(counter) !== data.expectedRevision) {
+            throw new HttpsError('aborted', 'A numeração mudou durante a conferência. Atualize e confirme novamente.');
+          }
+          if (current === data.nextNumber) throw new HttpsError('invalid-argument', 'O próximo número já possui esse valor.');
+          await assertNumberAvailable(transaction, storeRef, context, data.nextNumber, true);
+          const numbering = {...context, previousNumber: current, nextNumber: data.nextNumber};
+          const profile = requester.profile || {};
+          transaction.set(ref, {...context, nextNumber: data.nextNumber, updatedAt: FieldValue.serverTimestamp(), updatedByUid: uid}, {merge: true});
+          const audit = {
+            uid, usuario: cleanText(profile.nome || profile.displayName || profile.email || uid), email: cleanText(profile.email),
+            perfil: requester.role, lojaId, modulo: 'nota-fiscal', action: 'fiscal_numbering_manually_changed',
+            documentId: ref.id, before: {...context, nextNumber: current}, after: {...context, nextNumber: data.nextNumber},
+            numbering, fingerprint, result: 'success', createdAt: FieldValue.serverTimestamp(),
+            details: {direction: data.nextNumber < current ? 'decrease' : 'increase', availabilityConfirmedBySefaz: false},
+          };
+          transaction.set(receiptRef, audit);
+          transaction.set(auditRef, {...audit, authoritativePath: receiptRef.path});
+          return numbering;
+        });
+      } catch (error) {
+        logger.error('fiscalSetNextNumber failed', {code: error?.code || 'internal'});
+        throw normalizeHttpsError(error);
+      }
     }),
     fiscalCloneInvoice: onCall(async (request) => {
       try {
@@ -1699,7 +2102,8 @@ const createFiscalFunctions = ({
         const snap = await ref.get();
         if (!snap.exists) throw new HttpsError('not-found', 'Rascunho não encontrado.');
         const draft = snap.data() || {};
-        if (draft.status !== INVOICE_STATUS.DRAFT) return {invoiceId: draftId, status: draft.status, xMotivo: 'Esta nota já iniciou a emissão.'};
+        if (draft.status !== INVOICE_STATUS.DRAFT) return {...callableFiscalResult({result: draft, invoiceId: draftId, artifacts: draft.artifacts || {}}),
+          number: draft.number ?? null, model: draft.model, series: draft.series ?? null, xMotivo: draft.xMotivo || 'Esta nota já iniciou a emissão.'};
         if (Number(request.data?.model) !== Number(draft.model)) throw new HttpsError('invalid-argument', 'Modelo da confirmação difere do rascunho.');
         const checked = await checkDraft({lojaId, draftId, draft, uid});
         if (!checked.ok) throw new HttpsError('failed-precondition', checked.errors.join(' '), {errors: checked.errors});
@@ -1721,16 +2125,27 @@ const createFiscalFunctions = ({
             const latestPayment = explicitFiscalPayment(orderSnap.data());
             if (latestPayment && latestPayment.methodCode !== prepared.payload.invoice.payment.methodCode) throw new HttpsError('aborted','Pagamento alterado durante a validação. Valide novamente.');
           }
-          const number = Number(counter.get('nextNumber') || 1);
-          transaction.set(counterRef, {environment, model: prepared.model, series: prepared.series, nextNumber: number + 1, updatedAt: FieldValue.serverTimestamp()}, {merge: true});
+          const storeRef = db.collection('lojas').doc(lojaId);
+          const context = await numberingContextInTransaction(transaction, storeRef, prepared.model);
+          if (context.environment !== environment || context.series !== prepared.series || context.issuerCnpj !== prepared.payload.issuer.cnpj) {
+            throw new HttpsError('aborted', 'Configuração fiscal alterada. Confira novamente antes de emitir.');
+          }
+          assertCounterIssuer(counter, context);
+          const number = nextNumberFrom(counter);
+          const blockRef = await assertNumberAvailable(transaction, storeRef, context, number);
+          transaction.set(blockRef, {environment, model: prepared.model, series: prepared.series, number, issuerCnpj: context.issuerCnpj,
+            status: 'reserved', invoiceId: draftId, at: FieldValue.serverTimestamp(), by: uid});
+          transaction.set(counterRef, {environment, model: prepared.model, series: prepared.series, issuerCnpj: context.issuerCnpj, nextNumber: number + 1, updatedAt: FieldValue.serverTimestamp()}, {merge: true});
           transaction.set(ref, {
             status: INVOICE_STATUS.VALIDATING,
             environment,
             series: prepared.series,
+            issuerCnpj: prepared.payload.issuer.cnpj,
             number,
             customer: prepared.payload.customer,
             items: prepared.payload.items,
             totals: prepared.payload.totals,
+            ...(prepared.payload.transport ? {transport: prepared.payload.transport} : {}),
             total: prepared.payload.totals.invoice,
             operationCfop: prepared.payload.invoice.operationCfop,
             additionalInfo: prepared.payload.additionalInfo,
@@ -1748,7 +2163,8 @@ const createFiscalFunctions = ({
         if (!reservation) return {invoiceId: draftId, status: INVOICE_STATUS.VALIDATING, xMotivo: 'Emissão já iniciada.'};
         const payload = {...prepared.payload, invoiceId: draftId, invoice: {...prepared.payload.invoice, number: reservation.number}};
         try {
-          const result = await callFiscalService('/issue', payload, prepared.settings);
+          const issueResult = await callFiscalService('/issue', payload, prepared.serviceConfig);
+          const result = await consultDuplicateIfNeeded({payload, result: issueResult, serviceConfig: prepared.serviceConfig});
           return await updateInvoiceAfterIssue({lojaId, invoiceId: draftId, orderId: draft.orderId || null, uid, result});
         } catch (error) {
           const status = error?.fiscalServiceResponded ? INVOICE_STATUS.REJECTED : INVOICE_STATUS.PENDING_RETURN;
@@ -1787,11 +2203,11 @@ const createFiscalFunctions = ({
         if (end - start + 1 > 100) throw new HttpsError('invalid-argument', 'Envie faixas de até 100 números por operação.');
         if (year !== new Date().getUTCFullYear()) throw new HttpsError('invalid-argument', 'Informe o ano corrente da integração fiscal.');
         if (reason.length < 15 || reason.length > 255) throw new HttpsError('invalid-argument', 'Justificativa deve ter entre 15 e 255 caracteres.');
-        const [settings, issuer, certificate] = await Promise.all([loadSettings(lojaId), loadIssuer(lojaId), loadCertificate(lojaId)]);
-        if (!getServiceConfig(settings).serviceUrl || !certificate.ready) {
+        const [settings, issuer, certificate, serviceConfig] = await Promise.all([loadSettings(lojaId), loadIssuer(lojaId), loadCertificate(lojaId), loadPlatformServiceConfig()]);
+        if (!serviceConfig.serviceUrl || !certificate.ready) {
           throw new HttpsError('failed-precondition', 'Configure serviço fiscal e certificado antes de inutilizar numeração.');
         }
-        const capabilities = await callFiscalService('/capabilities', {}, settings);
+        const capabilities = await callFiscalService('/capabilities', {}, serviceConfig);
         if (capabilities.inutilize !== true || Number(capabilities.year) !== year) {
           throw new HttpsError('failed-precondition', 'O serviço fiscal ainda não suporta inutilização neste ano.');
         }
@@ -1840,7 +2256,7 @@ const createFiscalFunctions = ({
           const result = await callFiscalService('/inutilize', {
             model, series, start, end, year, reason,
             environment: environmentCode(environment), issuer, fiscalSecrets: certificate.fiscalSecrets,
-          }, settings);
+          }, serviceConfig);
           let responseArtifact = null;
           let artifactError = null;
           if (result.responseXml) {
@@ -1891,6 +2307,8 @@ const createFiscalFunctions = ({
             updatedAt: FieldValue.serverTimestamp(),
           }, {merge: true});
         }
+        const canViewPlatformService = isPlatformFiscalAdmin(requester) || requester.role === 'contador';
+        const platformConfig = canViewPlatformService ? await loadPlatformServiceConfig() : null;
 
         return {
           issuer: issuerSnap.exists ? issuerSnap.data() || {} : null,
@@ -1900,10 +2318,10 @@ const createFiscalFunctions = ({
               .map((item) => ({code: item.code, description: cleanText(item.description).slice(0, 120)}))
             : [],
           certificate: publicCertificateInfo(certificate),
-          platformService: requester.role === 'dono' && requester.allStores ? {
-            serviceUrl: getServiceConfig().serviceUrl,
-            configured: Boolean(getServiceConfig().serviceUrl),
-            source: 'FISCAL_SERVICE_URL',
+          platformService: platformConfig ? {
+            serviceUrl: platformConfig.serviceUrl,
+            configured: platformConfig.configured,
+            source: platformConfig.source,
           } : null,
         };
       } catch (error) {
@@ -1946,10 +2364,33 @@ const createFiscalFunctions = ({
 
     fiscalSaveConfiguration: onCall(async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId, requester} = await requireCallableContext(request);
         const issuer = request.data?.issuer || {};
         const settings = request.data?.settings || {};
-        await Promise.all([
+        for (const key of ['nfeSeries', 'nfceSeries']) {
+          const value = settings[key] ?? 1;
+          if (!['number', 'string'].includes(typeof value) || String(value).trim() === '' || !Number.isInteger(Number(value)) || Number(value) < 0 || Number(value) > 999) {
+            throw new HttpsError('invalid-argument', 'Informe séries fiscais inteiras entre 0 e 999.');
+          }
+        }
+        const protectedPlatformFields = protectedPlatformFieldsIn(settings);
+        const shouldUpdatePlatformService = protectedPlatformFields.length > 0;
+        if (shouldUpdatePlatformService && !isPlatformFiscalAdmin(requester)) {
+          await auditFiscalAction({
+            uid,
+            lojaId,
+            requester,
+            action: 'fiscal_platform_service_update_denied',
+            result: 'denied',
+            details: {fields: protectedPlatformFields},
+          });
+          throw new HttpsError('permission-denied', 'Somente o dono pode alterar a URL global do serviço fiscal.');
+        }
+        const [previousIssuerSnap, previousSettingsSnap] = await Promise.all([
+          db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('issuer').get(),
+          db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').get(),
+        ]);
+        const writes = [
           db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('issuer').set({
             ...issuer,
             taxRegime: Number(issuer.taxRegime || 1),
@@ -1958,8 +2399,8 @@ const createFiscalFunctions = ({
           }, {merge: true}),
           db.collection('lojas').doc(lojaId).collection('fiscalConfig').doc('settings').set({
             environment: cleanText(settings.environment || 'homologation'),
-            nfeSeries: Number(settings.nfeSeries || 1),
-            nfceSeries: Number(settings.nfceSeries || 1),
+            nfeSeries: Number(settings.nfeSeries ?? 1),
+            nfceSeries: Number(settings.nfceSeries ?? 1),
             operationNature: cleanText(settings.operationNature),
             defaultPaymentMethodCode: cleanText(settings.defaultPaymentMethodCode || '99'),
             defaultPresence: Number(settings.defaultPresence || 2),
@@ -1970,7 +2411,28 @@ const createFiscalFunctions = ({
             updatedAt: FieldValue.serverTimestamp(),
             updatedByUid: uid,
           }, {merge: true}),
-        ]);
+        ];
+        if (shouldUpdatePlatformService) {
+          const serviceUrl = cleanText(settings.serviceUrl || settings.fiscalServiceUrl);
+          const sharedSecret = cleanText(settings.sharedSecret || settings.fiscalSharedSecret);
+          writes.push(db.collection('integrations').doc('fiscal').set({
+            serviceUrl: serviceUrl || FieldValue.delete(),
+            sharedSecret: sharedSecret || FieldValue.delete(),
+            configured: Boolean(serviceUrl),
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedByUid: uid,
+          }, {merge: true}));
+        }
+        await Promise.all(writes);
+        await auditFiscalAction({
+          uid,
+          lojaId,
+          requester,
+          action: 'fiscal_configuration_updated',
+          documentId: 'issuer/settings',
+          before: fiscalConfigurationAuditView(previousIssuerSnap.data(), previousSettingsSnap.data()),
+          after: fiscalConfigurationAuditView(issuer, settings),
+        });
         return {ok: true};
       } catch (error) {
         logger.error('fiscalSaveConfiguration failed', error);
@@ -1978,9 +2440,117 @@ const createFiscalFunctions = ({
       }
     }),
 
+    fiscalSaveProducts: onCall(async (request) => {
+      try {
+        const {uid, lojaId, requester} = await requireCallableContext(request);
+        const products = Array.isArray(request.data?.products) ? request.data.products : [];
+        if (!products.length || products.length > 450) {
+          throw new HttpsError('invalid-argument', 'Envie entre 1 e 450 produtos fiscais por operação.');
+        }
+        const allowedFields = ['productId', 'code', 'description', 'ncm', 'cfop', 'cfopNfe', 'cfopNfce', 'unit', 'origin', 'csosn', 'cst', 'pisCst', 'cofinsCst', 'ipiCst', 'cest', 'cBenef'];
+        const batch = db.batch();
+        const ids = [];
+        products.forEach((entry) => {
+          const id = cleanText(entry?.id || entry?.productId);
+          if (!id || id.includes('/')) throw new HttpsError('invalid-argument', 'Produto fiscal com identificador inválido.');
+          const payload = {};
+          allowedFields.forEach((field) => {
+            if (Object.prototype.hasOwnProperty.call(entry || {}, field)) payload[field] = entry[field];
+          });
+          payload.productId = cleanText(payload.productId || id);
+          payload.updatedAt = FieldValue.serverTimestamp();
+          payload.updatedByUid = uid;
+          batch.set(db.collection('lojas').doc(lojaId).collection('fiscalProducts').doc(id), payload, {merge: true});
+          ids.push(id);
+        });
+        await batch.commit();
+        await auditFiscalAction({uid, lojaId, requester, action: 'fiscal_products_updated', details: {count: ids.length, ids}});
+        return {ok: true, count: ids.length};
+      } catch (error) {
+        logger.error('fiscalSaveProducts failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
+    fiscalDeleteProduct: onCall(async (request) => {
+      try {
+        const {uid, lojaId, requester} = await requireCallableContext(request);
+        const productId = cleanText(request.data?.productId);
+        if (!productId || productId.includes('/')) throw new HttpsError('invalid-argument', 'productId obrigatório.');
+        const ref = db.collection('lojas').doc(lojaId).collection('fiscalProducts').doc(productId);
+        const snap = await ref.get();
+        if (!snap.exists) throw new HttpsError('not-found', 'Produto fiscal não encontrado.');
+        const product = snap.data() || {};
+        await ref.delete();
+        await auditFiscalAction({
+          uid,
+          lojaId,
+          requester,
+          action: 'fiscal_product_deleted',
+          documentId: productId,
+          before: {productId, code: product.code || null, description: product.description || null, ncm: product.ncm || null},
+        });
+        return {ok: true};
+      } catch (error) {
+        logger.error('fiscalDeleteProduct failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
+    fiscalUpdatePreInvoiceOrder: onCall(async (request) => {
+      try {
+        const {uid, lojaId, requester} = await requireCallableContext(request);
+        const orderId = cleanText(request.data?.orderId);
+        const input = request.data?.order || {};
+        if (!orderId || orderId.includes('/')) throw new HttpsError('invalid-argument', 'orderId obrigatório.');
+        if (!cleanText(input.clienteNome)) throw new HttpsError('invalid-argument', 'Informe o nome do cliente.');
+        if (!Array.isArray(input.itens) || !input.itens.length) throw new HttpsError('invalid-argument', 'Adicione ao menos um produto ao pedido.');
+        const invalidItem = input.itens.find((item) => !cleanText(item?.produtoId || item?.productId || item?.id)
+          || !cleanText(item?.nome || item?.description)
+          || Number(item?.quantity || item?.quantidade || 0) <= 0
+          || Number(item?.preco ?? item?.unitPrice ?? -1) < 0);
+        if (invalidItem) throw new HttpsError('invalid-argument', 'Revise os produtos e valores do pedido.');
+
+        const ref = db.collection('lojas').doc(lojaId).collection('pedidos').doc(orderId);
+        const [snap, invoiceSnaps] = await Promise.all([
+          ref.get(),
+          db.collection('lojas').doc(lojaId).collection('invoices').where('orderId', '==', orderId).get(),
+        ]);
+        if (!snap.exists) throw new HttpsError('not-found', 'Pedido não encontrado.');
+        const previous = snap.data() || {};
+        const lockedInvoice = invoiceSnaps.docs.map((item) => item.data() || {}).find((invoice) => (
+          [INVOICE_STATUS.AUTHORIZED, INVOICE_STATUS.CANCELLED, INVOICE_STATUS.VALIDATING, INVOICE_STATUS.PENDING_RETURN].includes(invoice.status)
+          || isDuplicateInvoiceRecord(invoice)
+        ));
+        if (lockedInvoice) throw new HttpsError('failed-precondition', 'Este pedido possui nota fiscal que impede alterações antes da emissão.');
+
+        const allowedFields = ['clienteId', 'clienteNome', 'telefone', 'clienteEndereco', 'formaPagamento', 'observacao', 'additionalInfo', 'itens', 'subtotal', 'desconto', 'valorFrete', 'frete', 'total', 'cupom'];
+        const payload = {};
+        allowedFields.forEach((field) => {
+          if (Object.prototype.hasOwnProperty.call(input, field)) payload[field] = input[field];
+        });
+        payload.updatedAt = FieldValue.serverTimestamp();
+        payload.updatedByUid = uid;
+        await ref.set(payload, {merge: true});
+        await auditFiscalAction({
+          uid,
+          lojaId,
+          requester,
+          action: 'fiscal_pre_invoice_order_updated',
+          documentId: orderId,
+          before: {clienteNome: previous.clienteNome || null, itemCount: previous.itens?.length || 0, total: previous.total || 0},
+          after: {clienteNome: payload.clienteNome || null, itemCount: payload.itens?.length || 0, total: payload.total || 0},
+        });
+        return {ok: true};
+      } catch (error) {
+        logger.error('fiscalUpdatePreInvoiceOrder failed', error);
+        throw normalizeHttpsError(error);
+      }
+    }),
+
     fiscalValidateOrder: onCall(async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId, requester} = await requireCallableContext(request);
         if (![55, 65].includes(Number(request.data?.modelOverride))) throw new HttpsError('invalid-argument', 'Selecione explicitamente NF-e ou NFC-e.');
         const orderId = String(request.data?.orderId || '').trim();
         if (!orderId) throw new HttpsError('invalid-argument', 'orderId obrigatório.');
@@ -1997,12 +2567,17 @@ const createFiscalFunctions = ({
           ...prepared.payload,
           invoice: {...prepared.payload.invoice, number: nextNumber},
         };
+        const serviceConfig = await loadPlatformServiceConfig();
 
         const readinessErrors = [
-          ...(getServiceConfig(prepared.settings).serviceUrl ? [] : ['Serviço fiscal não configurado.']),
+          ...(serviceConfig.serviceUrl ? [] : ['Serviço fiscal não configurado.']),
           ...(prepared.certificate.ready ? [] : ['Certificado A1 da loja não configurado.']),
           ...(prepared.model === 65 && (!prepared.certificate.nfceCscSecretVersion || !prepared.certificate.nfceCscIdSecretVersion) ? ['CSC e ID CSC da NFC-e não configurados.'] : []),
         ];
+        if (!prepared.errors.length && !readinessErrors.length) {
+          try { await checkedPreviewNumber(lojaId, {environment, model: prepared.model, series: prepared.series, issuerCnpj: prepared.payload.issuer.cnpj}); }
+          catch (error) { readinessErrors.push(error.message); }
+        }
         const localResult = {
           ok: prepared.errors.length === 0 && readinessErrors.length === 0,
           errors: [...prepared.errors, ...readinessErrors],
@@ -2021,26 +2596,29 @@ const createFiscalFunctions = ({
           },
           totals: payload.totals,
           preview: {
-            model: prepared.model,
-            series: prepared.series,
-            nextNumber,
-            environment,
+            model: prepared.model, series: prepared.series, nextNumber, environment,
             issuer: {legalName: payload.issuer.legalName, cnpj: payload.issuer.cnpj},
-            customer: payload.customer,
-            items: payload.items,
-            totals: payload.totals,
+            customer: payload.customer, items: payload.items, totals: payload.totals,
             additionalInfo: payload.additionalInfo,
           },
         };
 
-        if (!localResult.ok) return localResult;
-        const providerCheck = await callFiscalService('/validate', payload, prepared.settings);
-        return {
-          ...localResult,
-          ok: providerCheck.ok === true && localResult.ok,
+        const providerCheck = localResult.ok ? await callFiscalService('/validate', payload, serviceConfig) : null;
+        const validationResult = providerCheck ? {
+          ...localResult, ok: providerCheck.ok === true,
           errors: [...localResult.errors, ...(Array.isArray(providerCheck.errors) ? providerCheck.errors : [])],
-          warnings: [...localResult.warnings, ...(Array.isArray(providerCheck.warnings) ? providerCheck.warnings : [])],
-        };
+          warnings: Array.isArray(providerCheck.warnings) ? providerCheck.warnings : [],
+        } : localResult;
+        await auditFiscalAction({
+          uid,
+          lojaId,
+          requester,
+          action: 'fiscal_order_validated',
+          documentId: orderId,
+          result: validationResult.ok === false ? 'validation_failed' : 'success',
+          details: {model: prepared.model, series: prepared.series, number: nextNumber, errorCount: validationResult.errors?.length || 0},
+        });
+        return validationResult;
       } catch (error) {
         logger.error('fiscalValidateOrder failed', error);
         throw normalizeHttpsError(error);
@@ -2049,7 +2627,7 @@ const createFiscalFunctions = ({
 
     fiscalUploadCertificate: onCall({timeoutSeconds: 120, memory: '512MiB'}, async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId, requester} = await requireCallableContext(request);
         const certificateBase64 = cleanText(request.data?.certificateBase64).replace(/^data:.*;base64,/, '');
         const password = String(request.data?.password || '');
         const filename = cleanText(request.data?.filename || 'certificado-a1.pfx');
@@ -2139,13 +2717,24 @@ const createFiscalFunctions = ({
           updatedAt: FieldValue.serverTimestamp(),
         }, {merge: true});
 
+        const publicCertificate = publicCertificateInfo({
+          ...certificate,
+          uploadedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        await auditFiscalAction({
+          uid,
+          lojaId,
+          requester,
+          action: previousSnap.exists ? 'fiscal_certificate_replaced' : 'fiscal_certificate_added',
+          documentId: 'certificate',
+          before: publicCertificateInfo(previous),
+          after: publicCertificate,
+        });
+
         return {
           ok: true,
-          certificate: publicCertificateInfo({
-            ...certificate,
-            uploadedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }),
+          certificate: publicCertificate,
         };
       } catch (error) {
         logger.error('fiscalUploadCertificate failed', error);
@@ -2155,7 +2744,7 @@ const createFiscalFunctions = ({
 
     fiscalIssueInvoice: onCall({timeoutSeconds: 540, memory: '1GiB'}, async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId, requester} = await requireCallableContext(request);
         if (![55, 65].includes(Number(request.data?.modelOverride))) throw new HttpsError('invalid-argument', 'Selecione explicitamente NF-e ou NFC-e.');
         const orderId = String(request.data?.orderId || '').trim();
         if (!orderId) throw new HttpsError('invalid-argument', 'orderId obrigatório.');
@@ -2171,7 +2760,8 @@ const createFiscalFunctions = ({
         if (prepared.errors.length) {
           throw new HttpsError('failed-precondition', prepared.errors.join(' '));
         }
-        if (!getServiceConfig(prepared.settings).serviceUrl) {
+        const serviceConfig = await loadPlatformServiceConfig();
+        if (!serviceConfig.serviceUrl) {
           throw new HttpsError('failed-precondition', 'A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
         }
         if (!prepared.certificate.ready) {
@@ -2183,64 +2773,84 @@ const createFiscalFunctions = ({
 
         const previewNumber = await previewNextNumber(lojaId, prepared.settings.environment || 'homologation', prepared.model, prepared.series);
         const providerCheck = await callFiscalService('/validate', {
-          ...prepared.payload,
-          invoice: {...prepared.payload.invoice, number: previewNumber},
-        }, prepared.settings);
+          ...prepared.payload, invoice: {...prepared.payload.invoice, number: previewNumber},
+        }, serviceConfig);
         if (providerCheck.ok !== true) throw new HttpsError('failed-precondition', (providerCheck.errors || []).join(' ') || 'Validação fiscal não aprovada.');
-
         const environment = prepared.settings.environment || 'homologation';
-        const reservation = await reserveInvoice({
+        await assertCanIssueOrderInvoice({
           lojaId,
           orderId,
           environment,
           model: prepared.model,
           series: prepared.series,
-          uid,
-          justification: request.data?.justification,
-          additionalInfo: prepared.payload.additionalInfo,
-          operationCfop: prepared.payload.invoice.operationCfop,
-          paymentResolution: prepared.paymentResolution,
         });
-        const payload = {
-          ...prepared.payload,
-          invoiceId: reservation.invoiceId,
-          invoice: {...prepared.payload.invoice, number: reservation.number},
-        };
-
-        try {
-          const result = await callFiscalService('/issue', payload, prepared.settings);
-          return await updateInvoiceAfterIssue({
+        {
+          const reservation = await reserveInvoice({
             lojaId,
-            invoiceId: reservation.invoiceId,
             orderId,
+            environment,
+            model: prepared.model,
+            series: prepared.series,
+            issuerCnpj: prepared.payload.issuer.cnpj,
             uid,
-            result,
+            justification: request.data?.justification,
+            additionalInfo: prepared.payload.additionalInfo,
+            operationCfop: prepared.payload.invoice.operationCfop,
+            paymentResolution: prepared.paymentResolution,
           });
-        } catch (error) {
-          const statusAfterError = error?.fiscalServiceResponded ? INVOICE_STATUS.REJECTED : INVOICE_STATUS.PENDING_RETURN;
-          const messageAfterError = statusAfterError === INVOICE_STATUS.PENDING_RETURN
-            ? 'Falha sem retorno conclusivo; consulte a SEFAZ antes de reemitir.'
-            : (error?.message || 'Falha antes do envio para a SEFAZ.');
-          await db.runTransaction(async (transaction) => {
-            transaction.set(db.collection('lojas').doc(lojaId).collection('invoices').doc(reservation.invoiceId), {
-              status: statusAfterError,
-              error: error?.message || String(error),
-              updatedAt: FieldValue.serverTimestamp(),
-              history: FieldValue.arrayUnion({
+          if (reservation.repeated) return reservation.response;
+          const payload = {
+            ...prepared.payload,
+            invoiceId: reservation.invoiceId,
+            invoice: {...prepared.payload.invoice, number: reservation.number},
+          };
+
+          try {
+            const issueResult = await callFiscalService('/issue', payload, serviceConfig);
+            const result = await consultDuplicateIfNeeded({payload, result: issueResult, serviceConfig});
+            const issued = await updateInvoiceAfterIssue({
+              lojaId,
+              invoiceId: reservation.invoiceId,
+              orderId,
+              uid,
+              result,
+            });
+            await auditFiscalAction({
+              uid,
+              lojaId,
+              requester,
+              action: 'fiscal_invoice_issued',
+              documentId: reservation.invoiceId,
+              result: issued.status || result.status || 'success',
+              details: {orderId, model: prepared.model, series: prepared.series, number: reservation.number, key: issued.key || result.key || null},
+            });
+            return issued;
+          } catch (error) {
+            const statusAfterError = error?.fiscalServiceResponded ? INVOICE_STATUS.REJECTED : INVOICE_STATUS.PENDING_RETURN;
+            const messageAfterError = statusAfterError === INVOICE_STATUS.PENDING_RETURN
+              ? 'Falha sem retorno conclusivo; consulte a SEFAZ antes de reemitir.'
+              : (error?.message || 'Falha antes do envio para a SEFAZ.');
+            await db.runTransaction(async (transaction) => {
+              transaction.set(db.collection('lojas').doc(lojaId).collection('invoices').doc(reservation.invoiceId), {
                 status: statusAfterError,
-                at: admin.firestore.Timestamp.now(),
-                by: uid,
-                message: messageAfterError,
-              }),
-            }, {merge: true});
-            if (statusAfterError !== INVOICE_STATUS.PENDING_RETURN) {
-              transaction.update(db.collection('lojas').doc(lojaId).collection('pedidos').doc(orderId), {
-                'fiscal.invoiceInProgressId': FieldValue.delete(),
+                error: error?.message || String(error),
                 updatedAt: FieldValue.serverTimestamp(),
-              });
-            }
-          });
-          throw error;
+                history: FieldValue.arrayUnion({
+                  status: statusAfterError,
+                  at: admin.firestore.Timestamp.now(),
+                  by: uid,
+                  message: messageAfterError,
+                }),
+              }, {merge: true});
+              if (statusAfterError !== INVOICE_STATUS.PENDING_RETURN) {
+                transaction.update(db.collection('lojas').doc(lojaId).collection('pedidos').doc(orderId), {
+                  'fiscal.invoiceInProgressId': FieldValue.delete(),
+                  updatedAt: FieldValue.serverTimestamp(),
+                });
+              }
+            });
+            throw error;
+          }
         }
       } catch (error) {
         logger.error('fiscalIssueInvoice failed', error);
@@ -2259,7 +2869,7 @@ const createFiscalFunctions = ({
 
     fiscalCancelInvoice: onCall({timeoutSeconds: 180, memory: '512MiB'}, async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId, requester} = await requireCallableContext(request);
         const invoiceId = String(request.data?.invoiceId || '').trim();
         const reason = String(request.data?.reason || '').trim();
         if (!invoiceId) throw new HttpsError('invalid-argument', 'invoiceId obrigatório.');
@@ -2281,7 +2891,8 @@ const createFiscalFunctions = ({
           loadSettings(lojaId),
           loadIssuer(lojaId),
         ]);
-        if (!getServiceConfig(settings).serviceUrl) {
+        const serviceConfig = await loadPlatformServiceConfig();
+        if (!serviceConfig.serviceUrl) {
           throw new HttpsError('failed-precondition', 'A URL central do serviço fiscal ainda não foi configurada pelo administrador da plataforma.');
         }
         const certificate = await loadCertificate(lojaId);
@@ -2315,7 +2926,7 @@ const createFiscalFunctions = ({
           environment: environmentCode(settings.environment),
           issuer,
           fiscalSecrets: certificate.fiscalSecrets,
-          }, settings);
+          }, serviceConfig);
         } catch (error) {
           await invoiceRef.set({
             cancelRequestStatus: 'pending_return',
@@ -2356,6 +2967,17 @@ const createFiscalFunctions = ({
           }),
         }, {merge: true});
 
+        await auditFiscalAction({
+          uid,
+          lojaId,
+          requester,
+          action: 'fiscal_invoice_cancelled',
+          documentId: invoiceId,
+          before: {status: invoice.status, number: invoice.number || null, series: invoice.series || null, key: invoice.key || null},
+          after: {status: invoiceStatus, cancellationAccepted, cStat: result.cStat || null},
+          result: cancellationAccepted ? 'success' : 'rejected',
+        });
+
         return {...result, status: invoiceStatus, cancellationAccepted};
       } catch (error) {
         logger.error('fiscalCancelInvoice failed', error);
@@ -2365,7 +2987,7 @@ const createFiscalFunctions = ({
 
     fiscalRefreshInvoice: onCall({timeoutSeconds: 240, memory: '1GiB'}, async (request) => {
       try {
-        const {uid, lojaId} = await requireCallableContext(request);
+        const {uid, lojaId, requester} = await requireCallableContext(request);
         const invoiceId = String(request.data?.invoiceId || '').trim();
         if (!invoiceId) throw new HttpsError('invalid-argument', 'invoiceId obrigatório.');
 
@@ -2373,40 +2995,70 @@ const createFiscalFunctions = ({
         const invoiceSnap = await invoiceRef.get();
         if (!invoiceSnap.exists) throw new HttpsError('not-found', 'Nota não encontrada.');
         const invoice = invoiceSnap.data() || {};
-        if (invoice.status !== INVOICE_STATUS.PENDING_RETURN) {
+        const shouldConsultDuplicate = invoice.status === INVOICE_STATUS.REJECTED && isDuplicateInvoiceRecord(invoice);
+        const shouldConsultRejected = invoice.status === INVOICE_STATUS.REJECTED && Boolean(invoice.key);
+        if (invoice.status !== INVOICE_STATUS.PENDING_RETURN && !shouldConsultDuplicate && !shouldConsultRejected) {
           return {id: invoiceSnap.id, ...invoice};
         }
-        if (!invoice.receipt) {
+        if (invoice.status === INVOICE_STATUS.PENDING_RETURN && !invoice.receipt) {
           throw new HttpsError(
             'failed-precondition',
-            'Esta emissão pendente não tem recibo da SEFAZ. Consulte a situação fiscal antes de qualquer nova emissão.'
+            'Esta emissão pendente não tem recibo da SEFAZ. Como a falha aconteceu antes do envio, emita novamente.'
           );
         }
 
         const signedXml = (await loadInvoiceArtifact(invoice.artifacts?.signedXml)).toString('utf8');
-        const prepared = invoice.manualInvoice && invoice.origin === 'manual'
-          ? await buildManualPreparedPayload({
-            lojaId, manualInvoice: invoice.manualInvoice, modelOverride: invoice.model,
-            number: invoice.number, invoiceId, uid, additionalInfo: invoice.additionalInfo,
-            operationCfop: invoice.operationCfop,
-          })
-          : await buildPreparedPayload({
-            lojaId, orderId: invoice.orderId, modelOverride: invoice.model,
-            number: invoice.number, invoiceId, uid, additionalInfo: invoice.additionalInfo,
-            operationCfop: invoice.operationCfop,
-          });
-        const result = await callFiscalService('/receipt', {
-          ...prepared.payload,
-          receipt: invoice.receipt,
+        const [settings, issuer, certificate, serviceConfig] = await Promise.all([
+          loadSettings(lojaId),
+          loadIssuer(lojaId),
+          loadCertificate(lojaId),
+          loadPlatformServiceConfig(),
+        ]);
+        const consultPayload = {
+          invoiceId,
+          invoice: {
+            model: Number(invoice.model || 0),
+            series: Number(invoice.series || 0),
+            number: Number(invoice.number || 0),
+          },
+          environment: environmentCode(invoice.environment || settings.environment || 'homologation'),
+          issuer,
+          fiscalSecrets: certificate.fiscalSecrets,
+          key: invoice.key || null,
           signedXml,
-        }, prepared.settings);
-        return await updateInvoiceAfterIssue({
+        };
+        const result = invoice.status === INVOICE_STATUS.PENDING_RETURN
+          ? await callFiscalService('/receipt', {...consultPayload, receipt: invoice.receipt}, serviceConfig)
+          : await callFiscalService('/consult', consultPayload, serviceConfig);
+        if (invoice.status === INVOICE_STATUS.REJECTED && result.status !== INVOICE_STATUS.AUTHORIZED && result.status !== INVOICE_STATUS.CANCELLED) {
+          const consultation = {cStat: result.cStat ?? null, xMotivo: fiscalResultReason(result, result.status),
+            status: result.status || null, at: admin.firestore.Timestamp.now(), by: uid};
+          await db.collection('lojas').doc(lojaId).collection('invoices').doc(invoiceId).set({
+            lastConsultation: consultation,
+            history: FieldValue.arrayUnion({...consultation, status: invoice.status, action: 'consultation'}),
+          }, {merge: true});
+          await auditFiscalAction({uid, lojaId, requester, action: 'fiscal_invoice_refreshed', documentId: invoiceId,
+            before: {status: invoice.status, cStat: invoice.cStat ?? null},
+            after: {status: invoice.status, consultationCStat: consultation.cStat}});
+          return {id: invoiceId, ...invoice, lastConsultation: consultation};
+        }
+        const refreshed = await updateInvoiceAfterIssue({
           lojaId,
           invoiceId,
-          orderId: invoice.orderId,
+          orderId: invoice.orderId || null,
           uid,
           result,
         });
+        await auditFiscalAction({
+          uid,
+          lojaId,
+          requester,
+          action: 'fiscal_invoice_refreshed',
+          documentId: invoiceId,
+          before: {status: invoice.status, number: invoice.number || null, series: invoice.series || null},
+          after: {status: refreshed.status || result.status || null, key: refreshed.key || result.key || null},
+        });
+        return refreshed;
       } catch (error) {
         logger.error('fiscalRefreshInvoice failed', error);
         throw normalizeHttpsError(error);

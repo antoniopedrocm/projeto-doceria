@@ -28,6 +28,7 @@ final class PayloadValidator
         $customer = $payload['customer'];
         $items = $payload['items'];
         $totals = $payload['totals'];
+        $items = ItemCharges::prepare($payload)['items'];
 
         foreach (['model', 'series', 'number', 'operationNature', 'issueDate'] as $field) {
             if (!isset($invoice[$field]) || $invoice[$field] === '') {
@@ -37,6 +38,12 @@ final class PayloadValidator
 
         if (!in_array((int)($invoice['model'] ?? 0), [55, 65], true)) {
             $errors[] = 'invoice.model deve ser 55 ou 65.';
+        }
+        if (!in_array((int)$payload['environment'], [1, 2], true)) {
+            $errors[] = 'Ambiente fiscal invalido.';
+        }
+        if ((int)($invoice['series'] ?? -1) < 0 || (int)($invoice['number'] ?? 0) < 1) {
+            $errors[] = 'Serie ou numero fiscal invalido.';
         }
 
         foreach (['cnpj', 'legalName', 'stateRegistration', 'taxRegime', 'address'] as $field) {
@@ -50,6 +57,8 @@ final class PayloadValidator
                 $errors[] = "customer.{$field} obrigatorio.";
             }
         }
+        if (!$this->validDocument((string)($issuer['cnpj'] ?? ''))) $errors[] = 'Emitente: CNPJ invalido.';
+        if (!$this->validDocument((string)($customer['document'] ?? ''))) $errors[] = 'Cliente: CPF/CNPJ invalido.';
 
         $this->validateAddress($issuer['address'] ?? [], 'issuer.address', $errors);
         $this->validateAddress($customer['address'] ?? [], 'customer.address', $errors);
@@ -70,8 +79,19 @@ final class PayloadValidator
                 if (isset($item['cfop']) && !preg_match('/^\d{4}$/', (string)$item['cfop'])) {
                     $errors[] = "{$prefix}.cfop deve ter 4 digitos.";
                 }
-                if (!isset($item['tax']['csosn']) && !isset($item['tax']['cst'])) {
+                if (empty($item['tax']['csosn']) && empty($item['tax']['cst'])) {
                     $errors[] = "{$prefix}.tax precisa ter CSOSN ou CST.";
+                }
+                foreach (['origin', 'pisCst', 'cofinsCst'] as $taxField) {
+                    if (!isset($item['tax'][$taxField]) || $item['tax'][$taxField] === '') {
+                        $errors[] = "{$prefix}.tax.{$taxField} obrigatorio.";
+                    }
+                }
+                if ((float)($item['quantity'] ?? 0) <= 0 || (float)($item['unitPrice'] ?? -1) < 0) {
+                    $errors[] = "{$prefix}: quantidade ou valor unitario invalido.";
+                }
+                if (round((float)($item['quantity'] ?? 0) * (float)($item['unitPrice'] ?? 0), 2) !== round((float)($item['total'] ?? 0), 2)) {
+                    $errors[] = "{$prefix}: total diverge de quantidade x valor unitario.";
                 }
             }
         }
@@ -80,6 +100,27 @@ final class PayloadValidator
             if (!isset($totals[$field]) || !is_numeric($totals[$field])) {
                 $errors[] = "totals.{$field} numerico obrigatorio.";
             }
+            elseif (!is_finite((float)$totals[$field]) || (float)$totals[$field] < 0) $errors[] = "totals.{$field} deve ser finito e nao negativo.";
+        }
+        foreach (['freight', 'insurance', 'other'] as $field) {
+            $sum = 0;
+            foreach ($items as $index => $item) {
+                if (!is_numeric($item[$field] ?? null) || !is_finite((float)$item[$field]) || (float)$item[$field] < 0) {
+                    $errors[] = 'Item ' . ($index + 1) . ": {$field} invalido.";
+                }
+                $sum += ItemCharges::cents($item[$field] ?? 0);
+            }
+            if ($sum !== ItemCharges::cents($totals[$field] ?? 0)) $errors[] = "Totais: {$field} da nota difere do somatorio dos itens.";
+        }
+        $freightMode = (string)($payload['transport']['freightMode'] ?? '9');
+        if (!in_array($freightMode, ['0', '1', '2', '3', '4', '9'], true)) $errors[] = 'Transporte: modalidade de frete invalida.';
+        if (is_array($items) && is_numeric($totals['products'] ?? null)) {
+            $itemProducts = round(array_sum(array_map(static fn (array $item): float => (float)($item['total'] ?? 0), $items)), 2);
+            if ($itemProducts !== round((float)$totals['products'], 2)) $errors[] = 'Totais: subtotal diverge dos itens.';
+            $itemDiscount = round(array_sum(array_map(static fn (array $item): float => (float)($item['discount'] ?? 0), $items)), 2);
+            if ($itemDiscount !== round((float)($totals['discount'] ?? 0), 2)) $errors[] = 'Totais: desconto diverge dos itens.';
+            $calculatedTotal = round((float)$totals['products'] - (float)$totals['discount'] + (float)($totals['freight'] ?? 0) + (float)($totals['insurance'] ?? 0) + (float)($totals['other'] ?? 0), 2);
+            if ($calculatedTotal !== round((float)($totals['invoice'] ?? 0), 2)) $errors[] = 'Totais: valor da nota inconsistente.';
         }
 
         $payment = $invoice['payment'] ?? [];
@@ -106,6 +147,26 @@ final class PayloadValidator
                 $errors[] = "{$prefix}.{$field} obrigatorio.";
             }
         }
+        if (!preg_match('/^\d{8}$/', (string)($address['zip'] ?? ''))) $errors[] = "{$prefix}.zip deve ter 8 digitos.";
+    }
+
+    private function validDocument(string $value): bool
+    {
+        $digits = preg_replace('/\D/', '', $value) ?? '';
+        $length = strlen($digits);
+        if (!in_array($length, [11, 14], true) || preg_match('/^(\d)\1+$/', $digits)) return false;
+        $weights = $length === 11
+            ? [[10, 9, 8, 7, 6, 5, 4, 3, 2], [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]]
+            : [[5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]];
+        foreach ($weights as $index => $weightSet) {
+            $sum = 0;
+            foreach ($weightSet as $position => $weight) $sum += (int)$digits[$position] * $weight;
+            $remainder = $sum % 11;
+            $expected = $remainder < 2 ? 0 : 11 - $remainder;
+            $digitIndex = $length === 11 ? 9 + $index : 12 + $index;
+            if ($expected !== (int)$digits[$digitIndex]) return false;
+        }
+        return true;
     }
 
     /**
@@ -115,6 +176,9 @@ final class PayloadValidator
     public function warnings(array $payload): array
     {
         $warnings = [];
+        if ((float)($payload['totals']['freight'] ?? 0) > 0 && (string)($payload['transport']['freightMode'] ?? '9') === '9') {
+            $warnings[] = 'Modalidade 9 significa sem ocorrencia de transporte. Ha frete cobrado; revise a modalidade com o responsavel fiscal. Ela nao foi alterada automaticamente.';
+        }
         if ((int)($payload['invoice']['model'] ?? 0) === 65 && empty(getenv('NFCE_CSC')) && empty(getenv('NFCE_CSC_ID'))) {
             $warnings[] = 'NFC-e pode exigir CSC conforme leiaute/ambiente; configure NFCE_CSC_ID e NFCE_CSC se necessario.';
         }

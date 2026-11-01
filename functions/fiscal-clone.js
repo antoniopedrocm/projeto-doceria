@@ -3,18 +3,7 @@ const {XMLParser, XMLValidator} = require('fast-xml-parser');
 // Copy by allowlist. No fiscal identity or provider result can enter the new form.
 const pick = (value, keys) => Object.fromEntries(keys.filter((key) => value?.[key] !== undefined && (value[key] === null || ['string', 'number', 'boolean'].includes(typeof value[key]))).map((key) => [key, value[key]]));
 const taxFields = ['origin', 'csosn', 'cst', 'pisCst', 'cofinsCst', 'ipiCst', 'cBenef', 'cest'];
-const round = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
-
-const draftTotals = (form) => {
-  const items = form.items || [];
-  const products = round(items.reduce((sum, item) => sum + round(finite(item.quantity) * finite(item.unitPrice)), 0));
-  const discount = round(items.reduce((sum, item) => sum + round(finite(item.discount)), 0));
-  const freight = round(finite(form.freight));
-  const insurance = round(finite(form.insurance));
-  const other = round(finite(form.other));
-  return {products, discount, freight, insurance, other, invoice: round(products - discount + freight + insurance + other)};
-};
+const {draftTotals} = require('./fiscal-money');
 
 const cloneEditableForm = (source) => {
   const customer = pick(source.customer, ['id', 'name', 'document', 'stateRegistration', 'email', 'phone', 'isFinalConsumer', 'receivesIcmsCredit', 'requiresNfe']);

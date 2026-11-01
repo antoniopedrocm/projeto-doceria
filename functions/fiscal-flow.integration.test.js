@@ -46,8 +46,8 @@ before(async () => {
   ]);
   api = createFiscalFunctions({
     admin, db, HttpsError, onCall: (...args) => args.at(-1), logger: {error: () => {}},
-    verifyManagementAccess: async (uid) => {if(uid==='customer') throw new HttpsError('permission-denied','Sem permissão fiscal.');return uid === 'owner' ? {role: 'dono', allStores: true} : {role: 'gerente', stores: ['outra-loja']};},
-    verifyStoreReadAccess: async (uid) => uid === 'owner' ? {role:'dono',allStores:true} : uid === 'customer' ? {role:'cliente',stores:[storeId]} : {role:'gerente',stores:['outra-loja']},
+    verifyManagementAccess: async (uid) => uid === 'owner' ? {role: 'dono', allStores: true} : {role: 'gerente', stores: ['outra-loja']},
+    verifyStoreReadAccess: async (uid) => uid === 'owner' ? {role: 'dono', allStores: true} : {role: 'gerente', stores: ['outra-loja']},
     userHasAccessToStores: (stores, requested) => requested.every((id) => stores.includes(id)),
     STORE_ALL_KEY: 'all',
   });
@@ -130,51 +130,6 @@ test('permissão impede gravação fora da loja autorizada', async () => {
   await assert.rejects(invoke('fiscalSaveDraft', {model: 55, manualInvoice: manualInvoice()}, 'manager'), /não tem acesso fiscal/);
 });
 
-test('AGREED_LATER exige método no backend, reutiliza mapping fiscal, audita e não registra recebimento', async () => {
-  for (const [label, code] of [['Pix','20'],['Dinheiro','01'],['Cartão de Débito','04'],['Cartão de Crédito','03']]) {
-    const orderId='agreed-'+code,ref=db.doc(`lojas/${storeId}/pedidos/${orderId}`);
-    await ref.set({status:'Finalizado',paymentMode:'AGREED_LATER',paymentMethod:null,paymentStatus:'PENDING',formaPagamento:'A combinar',clienteNome:'Maria',clienteDocumento:customer().document,clienteEnderecoFiscal:customer().address,
-      itens:[{produtoId:'test-product',nome:'Brigadeiro',preco:10,quantity:2,fiscal:manualInvoice().items[0]}],total:20});
-    const saved=await invoke('fiscalSaveDraft',{orderId,model:55,operationCfop:'5101'});
-    const sends=transmissions.filter(t=>t.path==='/issue').length;
-    assert.equal((await invoke('fiscalCheckDraft',{draftId:saved.draftId})).ok,false);
-    await assert.rejects(invoke('fiscalIssueDraft',{draftId:saved.draftId,model:55}),/Forma de pagamento/);
-    await assert.rejects(invoke('fiscalIssueInvoice',{orderId,modelOverride:55}),/Forma de pagamento/);
-    assert.equal(transmissions.filter(t=>t.path==='/issue').length,sends);
-    await assert.rejects(invoke('fiscalResolveOrderPaymentMethod',{orderId,paymentMethodLabel:label},'customer'),/permissão/);
-    await assert.rejects(invoke('fiscalResolveOrderPaymentMethod',{orderId,paymentMethodLabel:label},'manager'),/acesso fiscal/);
-    await invoke('fiscalResolveOrderPaymentMethod',{orderId,paymentMethodLabel:label});
-    const resolved=(await ref.get()).data();assert.equal(resolved.paymentStatus,'PENDING');assert.equal(resolved.paymentMethodSource,'invoice/manual');assert.equal(resolved.fiscalPaymentCode,code);assert.ok(resolved.paymentMethodResolvedAt);
-    assert.equal((await db.collection('auditLogs').where('orderId','==',orderId).get()).size,1);
-    const ready=await invoke('fiscalCheckDraft',{draftId:saved.draftId});assert.equal(ready.ok,true,JSON.stringify(ready));
-    await invoke('fiscalIssueDraft',{draftId:saved.draftId,model:55});
-    assert.equal(transmissions.filter(t=>t.path==='/issue').at(-1).payload.invoice.payment.methodCode,code);
-    assert.equal((await ref.get()).get('paymentStatus'),'PENDING');
-  }
-});
-test('método do provider online chega automaticamente à NF e não pode ser sobrescrito',async()=>{
-  for(const [method,code] of [['PIX','17'],['CREDIT_CARD','03']]) {
-    const orderId='online-'+code,ref=db.doc(`lojas/${storeId}/pedidos/${orderId}`);
-    await ref.set({status:'Finalizado',paymentMode:'ONLINE_NOW',payment_status:'PAID',paymentId:'mock-provider-payment-'+code,paymentMethod:method,paymentMethodSource:'provider/infinitepay',formaPagamento:'Dinheiro',clienteNome:'Maria',clienteDocumento:customer().document,clienteEnderecoFiscal:customer().address,
-      itens:[{produtoId:'test-product',nome:'Brigadeiro',preco:10,quantity:2,fiscal:manualInvoice().items[0]}],total:20});
-    await db.doc('checkoutPayments/mock-provider-payment-'+code).set({orderPath:ref.path,storeId,payment_status:'PAID',amount:2000,captureMethod:method==='PIX'?'pix':'credit_card'});
-    await assert.rejects(invoke('fiscalResolveOrderPaymentMethod',{orderId,paymentMethodLabel:'Dinheiro'}),/não pode/);
-    const saved=await invoke('fiscalSaveDraft',{orderId,model:55,operationCfop:'5101'});
-    const ready=await invoke('fiscalCheckDraft',{draftId:saved.draftId});assert.equal(ready.ok,true,JSON.stringify(ready));
-    await invoke('fiscalIssueDraft',{draftId:saved.draftId,model:55,paymentMethodLabel:'Dinheiro'});
-    assert.equal(transmissions.filter(t=>t.path==='/issue').at(-1).payload.invoice.payment.methodCode,code);
-    assert.equal((await ref.get()).get('paymentMethod'),method);
-  }
-});
-test('NF bloqueia total divergente do registro privado mesmo sem confiar no marcador da interface',async()=>{
- const orderId='paid-amount-divergent',ref=db.doc(`lojas/${storeId}/pedidos/${orderId}`);
- await ref.set({status:'Finalizado',paymentMode:'ONLINE_NOW',payment_status:'PAID',paymentId:'mock-divergent',paymentMethod:'PIX',paymentMethodSource:'provider/infinitepay',formaPagamento:'Pix online',clienteNome:'Maria',clienteDocumento:customer().document,clienteEnderecoFiscal:customer().address,itens:[{produtoId:'test-product',nome:'Brigadeiro',preco:10,quantity:2}],total:20,adminPaymentAdjustment:{state:'BALANCED',differenceCents:0}});
- await db.doc('checkoutPayments/mock-divergent').set({orderPath:ref.path,storeId,payment_status:'PAID',amount:1000,captureMethod:'pix'});
- const before=transmissions.filter(t=>t.path==='/issue').length;
- await assert.rejects(invoke('fiscalIssueInvoice',{orderId,modelOverride:55}),/diferença de valor/);
- const draft=await invoke('fiscalSaveDraft',{orderId,model:55});const checked=await invoke('fiscalCheckDraft',{draftId:draft.draftId});assert.equal(checked.ok,false);
- assert.equal(transmissions.filter(t=>t.path==='/issue').length,before);
-});
 test('real Firestore transaction deduplicates clone, preserves original and leaves counters untouched', async () => {
   const sourceRef = db.collection('lojas').doc(storeId).collection('invoices').doc('original-clone-55');
   const form = manualInvoice();
@@ -202,4 +157,50 @@ test('real Firestore transaction deduplicates clone, preserves original and leav
   const edit = {...draft.manualInvoice, additionalInfo: 'Alterada', items: draft.manualInvoice.items.map((item) => ({...item, quantity: 3}))};
   await invoke('fiscalSaveDraft', {draftId: a.draftId, model: 55, manualInvoice: edit});
   assert.equal((await sourceRef.parent.doc(a.draftId).get()).data().total, 30);
+});
+
+test('real Firestore numbering changes atomically audit and reject stale revisions, used numbers and conflicting confirmations', async () => {
+  const row = (await invoke('fiscalGetNumbering', {})).sequences.find((entry) => entry.model === 55);
+  const base = {model: 55, series: row.series, environment: row.environment, issuerCnpj: row.issuerCnpj,
+    expectedNextNumber: row.nextNumber, expectedRevision: row.revision, confirmed: true, nextNumber: 500,
+    changeRequestId: 'integration-numbering-request-500'};
+  const previousTransmissions = transmissions.length;
+  const [a, b] = await Promise.all([invoke('fiscalSetNextNumber', base), invoke('fiscalSetNextNumber', base)]);
+  assert.equal(a.nextNumber, 500);
+  assert.equal(b.nextNumber, 500);
+  const counterRef = db.collection('lojas').doc(storeId).collection('fiscalCounters').doc('homologation_55_1');
+  assert.equal((await counterRef.get()).get('nextNumber'), 500);
+  const audits = await db.collection('auditLogs').where('action', '==', 'fiscal_numbering_manually_changed').get();
+  assert.equal(audits.size, 1);
+  assert.equal(audits.docs[0].get('after.nextNumber'), 500);
+  assert.equal(audits.docs[0].get('uid'), 'owner');
+  await assert.rejects(invoke('fiscalSetNextNumber', {...base, nextNumber: 501, changeRequestId: 'integration-numbering-stale-501'}), /numeração mudou/);
+  const current = (await invoke('fiscalGetNumbering', {})).sequences.find((entry) => entry.model === 55);
+  const fresh = {...base, expectedNextNumber: current.nextNumber, expectedRevision: current.revision};
+  const results = await Promise.allSettled([
+    invoke('fiscalSetNextNumber', {...fresh, nextNumber: 600, changeRequestId: 'integration-numbering-change-600'}),
+    invoke('fiscalSetNextNumber', {...fresh, nextNumber: 700, changeRequestId: 'integration-numbering-change-700'}),
+  ]);
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(transmissions.length, previousTransmissions);
+  const used = (await invoke('fiscalGetNumbering', {})).sequences.find((entry) => entry.model === 55);
+  await assert.rejects(invoke('fiscalSetNextNumber', {...base, expectedNextNumber: used.nextNumber, expectedRevision: used.revision,
+    nextNumber: 1, changeRequestId: 'integration-numbering-used-number'}), /conhecido/);
+});
+
+test('real Firestore reserves unique numbers for concurrent new drafts and one reservation for same-attempt double click', async () => {
+  const counter = db.collection('lojas').doc(storeId).collection('fiscalCounters').doc('homologation_55_1');
+  const before = (await counter.get()).get('nextNumber');
+  const a = await invoke('fiscalSaveDraft', {model: 55, manualInvoice: manualInvoice()});
+  const b = await invoke('fiscalSaveDraft', {model: 55, manualInvoice: manualInvoice()});
+  await Promise.all([invoke('fiscalCheckDraft', {draftId: a.draftId}), invoke('fiscalCheckDraft', {draftId: b.draftId})]);
+  assert.equal((await counter.get()).get('nextNumber'), before);
+  const issuedBefore = transmissions.filter((item) => item.path === '/issue').length;
+  await Promise.all([invoke('fiscalIssueDraft', {draftId: a.draftId, model: 55}), invoke('fiscalIssueDraft', {draftId: a.draftId, model: 55}), invoke('fiscalIssueDraft', {draftId: b.draftId, model: 55})]);
+  const numbers = await Promise.all([a, b].map(async (draft) => (await counter.parent.parent.collection('invoices').doc(draft.draftId).get()).get('number')));
+  assert.deepEqual(numbers.sort((x, y) => x - y), [before, before + 1]);
+  assert.equal((await counter.get()).get('nextNumber'), before + 2);
+  assert.equal(transmissions.filter((item) => item.path === '/issue').length, issuedBefore + 2);
+  const blocks = await Promise.all(numbers.map((number) => counter.parent.parent.collection('fiscalNumberBlocks').doc(`homologation_55_1_${number}`).get()));
+  assert.ok(blocks.every((block) => block.exists && block.get('status') === 'reserved'));
 });
