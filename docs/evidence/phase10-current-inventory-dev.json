@@ -1,0 +1,115 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-01T11:04:40.334Z",
+  "readOnly": true,
+  "snapshotSha256": "00c16cdde71f340830ab0c7a52a4f20086967650ce4985c2082b1112084c7e87",
+  "counts": {
+    "customers": 18,
+    "canonicalOrUnclassified": 14,
+    "aliases": 4,
+    "identities": 4,
+    "registryUids": 4,
+    "phoneIndexEntries": 10,
+    "missingPhone": 3,
+    "invalidPhone": 1,
+    "duplicatePhoneGroups": 1,
+    "unresolvedDuplicatePhoneGroups": 0,
+    "customersWithoutOwner": 12,
+    "multipleOwnerCustomers": 1,
+    "unreviewedMultipleOwnerCustomers": 0,
+    "uidLinkedToMultipleCanonicalCustomers": 0,
+    "identityUidsWithoutCustomer": 0,
+    "orders": 96,
+    "customerLinkedOrders": 95,
+    "phoneOnlyOrders": 1,
+    "ordersWithMissingCustomer": 6,
+    "rootOrders": 38,
+    "globalAddresses": 3,
+    "orphanAddresses": 3
+  },
+  "reviewedMultipleOwnerGroups": [
+    {
+      "caseId": "c2a4ddf9042b11c2",
+      "count": 3,
+      "reviewed": true
+    }
+  ],
+  "dispositions": [
+    {
+      "caseId": "6a550a9849b68de5",
+      "kind": "CUSTOMER_MISSING_PHONE",
+      "disposition": "CONTACT_CORRECTION_REQUIRES_EXISTING_OWNER_OR_MANUAL_PROOF_NO_INFERRED_PHONE"
+    },
+    {
+      "caseId": "e7ea94d04f2746fa",
+      "kind": "CUSTOMER_MISSING_PHONE",
+      "disposition": "CONTACT_CORRECTION_REQUIRES_EXISTING_OWNER_OR_MANUAL_PROOF_NO_INFERRED_PHONE"
+    },
+    {
+      "caseId": "e044fc9b84179707",
+      "kind": "CUSTOMER_MISSING_PHONE",
+      "disposition": "CONTACT_CORRECTION_REQUIRES_EXISTING_OWNER_OR_MANUAL_PROOF_NO_INFERRED_PHONE"
+    },
+    {
+      "caseId": "cda503888761e578",
+      "kind": "CUSTOMER_INVALID_PHONE",
+      "disposition": "QUARANTINED_FROM_PHONE_RECOVERY_PENDING_DOCUMENTED_PROOF"
+    },
+    {
+      "caseId": "57a9910cb2f0b614",
+      "kind": "ORPHAN_ADDRESS",
+      "disposition": "PRESERVED_PRIVATE_UNASSIGNED_NO_AUTO_MATCH"
+    },
+    {
+      "caseId": "41dea487df7f5216",
+      "kind": "ORPHAN_ADDRESS",
+      "disposition": "PRESERVED_PRIVATE_UNASSIGNED_NO_AUTO_MATCH"
+    },
+    {
+      "caseId": "9698e5c3cb55b41e",
+      "kind": "ORPHAN_ADDRESS",
+      "disposition": "PRESERVED_PRIVATE_UNASSIGNED_NO_AUTO_MATCH"
+    },
+    {
+      "caseId": "08981d72af634eb5",
+      "kind": "PHONE_ONLY_ORDER",
+      "disposition": "PRESERVED_PRIVATE_EXCLUDED_FROM_CUSTOMER_HISTORY_UNTIL_PROVEN"
+    },
+    {
+      "caseId": "7ce5ee83ce003577",
+      "kind": "ORDER_UNKNOWN_CUSTOMER",
+      "disposition": "PRESERVED_PRIVATE_MANUAL_REVIEW_NO_AUTO_MATCH"
+    },
+    {
+      "caseId": "52e9bf6e96d26943",
+      "kind": "ORDER_UNKNOWN_CUSTOMER",
+      "disposition": "PRESERVED_PRIVATE_MANUAL_REVIEW_NO_AUTO_MATCH"
+    },
+    {
+      "caseId": "6af177dd34c51478",
+      "kind": "ORDER_UNKNOWN_CUSTOMER",
+      "disposition": "PRESERVED_PRIVATE_MANUAL_REVIEW_NO_AUTO_MATCH"
+    },
+    {
+      "caseId": "c77ec661cd4c31c4",
+      "kind": "ORDER_UNKNOWN_CUSTOMER",
+      "disposition": "PRESERVED_PRIVATE_MANUAL_REVIEW_NO_AUTO_MATCH"
+    },
+    {
+      "caseId": "42864d4f32b7173b",
+      "kind": "ORDER_UNKNOWN_CUSTOMER",
+      "disposition": "PRESERVED_PRIVATE_MANUAL_REVIEW_NO_AUTO_MATCH"
+    },
+    {
+      "caseId": "0143a70d7f81bb36",
+      "kind": "ORDER_UNKNOWN_CUSTOMER",
+      "disposition": "PRESERVED_PRIVATE_MANUAL_REVIEW_NO_AUTO_MATCH"
+    }
+  ],
+  "noDataMigrationOrOwnershipWrite": true,
+  "production": false,
+  "limitations": [
+    "Auth user inventory is separate; identityUid count is not a claim about all Firebase Auth users.",
+    "Dispositions preserve access denial and original data. They do not assert recovery of unprovable ownership."
+  ]
+}

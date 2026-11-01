@@ -1,0 +1,18 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-01T11:04:40.334Z",
+  "mode": "DRY_RUN",
+  "migrationId": "customer-phone-3e21d91aacf839d4",
+  "summary": {
+    "customers": 18,
+    "phones": 10,
+    "ready": 9,
+    "manualReview": 1,
+    "unresolved": 4,
+    "additionalAddresses": 0
+  },
+  "customerWrites": 0,
+  "orderWrites": 0,
+  "identityWrites": 0,
+  "note": "Raw duplicate group is already covered by the approved C02 alias migration. This dry-run does not re-apply or reopen it. No migration was executed."
+}

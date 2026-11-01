@@ -1,0 +1,29 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedOn": "2026-11-01",
+  "remoteUI": {
+    "method": "Existing authorized Staff Chrome session, read-only",
+    "storeId": "ana-guimaraes-doceria-matriz",
+    "eligibleOrdersVisibleWithoutMonthlyFilter": 45,
+    "onlinePixAutomatic": true,
+    "onlineCardAutomatic": true,
+    "historicalPaymentMethodsVisible": true,
+    "knownOrder": {"idPrefix": "e44896d8", "currentOperationalStatus": "Finalizado", "paymentMode": "ONLINE_NOW", "paymentMethod": "PIX", "financialStatus": "PAID", "visibleInFiscal": true},
+    "knownOrderStatusChangedByThisAudit": false,
+    "eligibleAgreedLaterExamples": 0,
+    "note": "Date fields were applied with native keyboard input; browser fill changed the DOM value without applying React state. No app date-filter defect established."
+  },
+  "safeFixtures": {
+    "emulatorTests": {"passed": 28, "failed": 0},
+    "uiAndRouteTests": {"passed": 76, "failed": 0},
+    "agreedLaterRequiredSelect": true,
+    "realComponentVisualReview": "preprod-fiscal-v1/local-review.json",
+    "desktop": "1920x889 PASS",
+    "mobile": "390x800 PASS",
+    "externalRequests": false
+  },
+  "invoiceIssuedByAudit": false,
+  "realOrderOrFiscalDataMutated": false,
+  "production": false,
+  "remainingManualScenario": "AGREED_LATER select on an existing eligible DEV example when available; do not alter a real order merely to manufacture the case."
+}

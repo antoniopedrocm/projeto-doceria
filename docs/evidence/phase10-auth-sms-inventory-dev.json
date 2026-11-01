@@ -1,0 +1,28 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-01T11:27:25.187Z",
+  "readOnly": true,
+  "authUsers": 167,
+  "disabledAuthUsers": 1,
+  "authUidsMappedToCustomer": 4,
+  "authUidsWithoutCustomer": 163,
+  "anonymousAuthUidsWithoutCustomer": 154,
+  "strongAuthUidsWithoutCustomer": 9,
+  "staffUidsWithoutCustomer": 9,
+  "nonStaffAuthUidsWithoutCustomer": 154,
+  "registryUidsMissingAuth": 0,
+  "sms": [
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "verificationProject": "crmdoceria-sms-dev-2026",
+      "enabled": true,
+      "smsEnabled": true,
+      "allowedRecipientCount": 2,
+      "configuredTestPhoneCount": 0,
+      "phoneSignInEnabled": true,
+      "readOnly": true
+    }
+  ],
+  "noCredentialsOrTestCodesExported": true,
+  "production": false
+}

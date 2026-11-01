@@ -1,0 +1,57 @@
+{
+  "scope": "local fictional presentation only, not authenticated DEV acceptance",
+  "report": [
+    {
+      "case": "fiscal-method-required",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "width": 1920,
+      "scrollWidth": 1920,
+      "required": true,
+      "options": [
+        "Selecione...",
+        "Pix dinâmico / link gerado",
+        "Pix fixo / QR Code fixo",
+        "Link de cartão de crédito",
+        "Link de cartão de débito",
+        "Cartão de Crédito",
+        "Cartão de Débito",
+        "Dinheiro",
+        "Link de Pagamento",
+        "Pix"
+      ],
+      "value": "",
+      "screenshot": "fiscal-method-required-1920.png",
+      "errors": [],
+      "blockedRequests": 0
+    },
+    {
+      "case": "fiscal-method-required",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "width": 390,
+      "scrollWidth": 390,
+      "required": true,
+      "options": [
+        "Selecione...",
+        "Pix dinâmico / link gerado",
+        "Pix fixo / QR Code fixo",
+        "Link de cartão de crédito",
+        "Link de cartão de débito",
+        "Cartão de Crédito",
+        "Cartão de Débito",
+        "Dinheiro",
+        "Link de Pagamento",
+        "Pix"
+      ],
+      "value": "",
+      "screenshot": "fiscal-method-required-390.png",
+      "errors": [],
+      "blockedRequests": 0
+    }
+  ]
+}

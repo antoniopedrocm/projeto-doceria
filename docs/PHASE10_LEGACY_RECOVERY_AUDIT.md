@@ -1,5 +1,29 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
+## Atualização vigente — 01/11/2026
+
+Reauditoria DEV somente leitura, sem migração aplicada, SMS ou alteração de dados. Esta atualização prevalece sobre a fotografia de 31/10 preservada abaixo. **Fase 10 = 81,25% (13/16 critérios)**, fora da ponderação global histórica. C13 agora está PASS: o procedimento operacional foi formalizado em [LEGACY_MANUAL_REVIEW.md](LEGACY_MANUAL_REVIEW.md), reutiliza proposta exata/aprovação de todos os UIDs/dry-run/CAS/backup/rollback e foi conferido com 23 testes emulados de registry, histórico, claim, migração e Rules. Não equivale a aprovação dos casos de dados pendentes.
+
+| Critério | Situação atual | Evidência/ação restante |
+|---|---|---|
+| C01–C12 | PASS, preservados e regressão pertinente aprovada | Implementação e evidências históricas abaixo; suíte atual registry/migração/claim/Rules: 23 PASS |
+| C13 | PASS | Procedimento explícito de conflitos, rejeição, aprovação, auditoria e rollback; LEGACY_MANUAL_REVIEW.md |
+| C14 | PARTIAL | Inventário e dry-run atuais concluídos; falta decisão aprovada para cada remanescente, sem inventar vínculos |
+| C15 | PENDENTE | Claim real pós-Google e pós-e-mail com SMS Enterprise; nenhum SMS autorizado/enviado nesta missão |
+| C16 | PENDENTE | Homologação consolidada após publicação dos gaps e encerramento de C14/C15 |
+
+Fotografia de 01/11 às 08:04 UTC−3: **18 Customers, 4 aliases, 4 identities/UIDs, 10 entradas de telefone, 96 pedidos (58 por loja/38 root), 3 endereços globais**. Há 3 Customers sem telefone, 1 telefone inválido, 12 canônicos sem owner, 1 pedido somente por telefone e 6 pedidos cujo customerId não está no cadastro/mapping atual. Os 3 endereços globais continuam órfãos. O único grupo com múltiplos UIDs é o C02 já revisado; nenhum conflito novo não revisado foi encontrado. Os 14 casos sanitizados permanecem pendentes de disposição formal; isolamento preventivo não significa recuperação concluída.
+
+Auth atual: 167 usuários, dos quais 4 vinculados ao registry Customer; os 163 restantes são 154 anônimos e 9 Staff com identidade forte. Nenhum UID do registry está ausente no Auth. Não há evidência de 163 Customers fortes sem vínculo. Dry-run atual: 18 Customers/10 telefones, 9 grupos prontos, 1 grupo revisável já conhecido e 4 registros sem resolução; **zero escrita**. Não aplicar o dry-run como migração sem nova aprovação explícita da proposta.
+
+Evidências sanitizadas: [inventário](evidence/phase10-current-inventory-dev.json), [Auth/SMS](evidence/phase10-auth-sms-inventory-dev.json), [dry-run](evidence/phase10-current-dry-run-dev.json). Snapshot com dados pessoais permanece somente em TEMP privado, fora do Git/Hosting.
+
+Decisão da missão: LEGACY_PHONE pode comprar/pagar sem SMS; SMS com finalidade própria permite sessão privada temporária, sem promover Firebase Auth. Claim permanente continua exigindo identidade forte e prova específica. Implementação registrada em [LEGACY_PHONE_ACCESS_V2.md](LEGACY_PHONE_ACCESS_V2.md), commit b5892db3; publicação/homologação ainda pendentes. O projeto de verificação Enterprise existente está habilitado, com dois destinatários autorizados e nenhum telefone de teste configurado; não foi enviado SMS real.
+
+Fase 9 continua 75%; global formal 95,00%; Fase 13 0%. C14–C16 impedem Fase 10 = 100%. Nenhuma produção autorizada.
+
+## Auditoria original preservada — 31/10/2026
+
 Data: **31/10/2026**, DEV `crmdoceria-9959e`, branch `feature/infinitepay-customer-auth`, base `2507adfdf3c877e41197d885a5d5c85d159c6656`. Revisão de documentos, código e evidências versionadas; nenhum inventário remoto novo, migração, SMS ou deploy. Dados quantitativos de legado abaixo são a fotografia de 24–25/10, não uma contagem atual presumida.
 
 **Fase 10 tornou-se gate obrigatório de produção por decisão do proprietário.** Continua fora da ponderação global histórica. Sua aferição nesta auditoria é **75% de atendimento comprovado (12/16 critérios)**, com quatro critérios ainda não encerrados; **não está concluída nem integralmente homologada**.
