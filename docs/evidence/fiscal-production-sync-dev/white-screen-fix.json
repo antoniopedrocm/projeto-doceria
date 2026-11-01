@@ -1,0 +1,27 @@
+{
+  "url": "https://crmdoceria-9959e.web.app/",
+  "bundle": "/static/js/main.5a33d589.js",
+  "firstLoad": {
+    "rootChildren": 1,
+    "textLength": 570
+  },
+  "afterReload": {
+    "rootChildren": 1,
+    "textLength": 570
+  },
+  "pageErrors": [],
+  "project": "crmdoceria-9959e",
+  "codeCommit": "a5463506",
+  "cause": "Missing ignored DEV Web client configuration in new worktree during previous build",
+  "fixedSha256": "3c64b1dd18adbeb01bfcb467cd442e807ffd671f6d4537b17f040171df1fd0b2",
+  "onlineHashMatches": true,
+  "guardTestsPassed": 5,
+  "lintErrors": 0,
+  "buildPassed": true,
+  "publicAssetsPreserved": 52,
+  "productionChanged": false,
+  "onlyHostingDeployed": true,
+  "realFiscalTransmission": false,
+  "authenticatedAcceptance": false,
+  "deployCommand": "firebase deploy --project crmdoceria-9959e --config firebase.fiscal-dev.local.json --only hosting --non-interactive"
+}

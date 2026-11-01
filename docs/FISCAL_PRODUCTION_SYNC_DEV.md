@@ -63,4 +63,4 @@ Foi reutilizada exclusivamente a configuração pública Web de crmdoceria-9959e
 
 Build corrigido: main.5a33d589.js, SHA256 3c64b1dd18adbeb01bfcb467cd442e807ffd671f6d4537b17f040171df1fd0b2. Candidato aberto em Edge headless com o hostname DEV e os assets locais interceptados: página inicial renderizada, 570 caracteres, root com conteúdo, zero pageerrors. Sem login, alterações de dados ou transmissão fiscal. ESLint sem erros e git diff --check aprovado.
 
-Publicação desta correção: somente Hosting DEV com o mesmo comando seletivo e pacote público preservado. Verificação online será registrada após o deploy.
+Publicação desta correção: somente Hosting DEV com o mesmo comando seletivo e pacote público preservado. Pós-deploy validado em Edge headless no endereço real do DEV: primeira abertura e recarga com conteúdo renderizado (570 caracteres, root preenchido), zero erros de JavaScript e main.5a33d589.js. SHA256 online igual ao build local. Commit da correção a5463506, enviado ao remoto DEV. Nenhuma Function/Rule republicada e nenhuma configuração fiscal alterada nesta correção.
