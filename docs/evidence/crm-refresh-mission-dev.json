@@ -1,0 +1,17 @@
+{
+  "project": "crmdoceria-9959e",
+  "checkedOn": "2026-11-01",
+  "method": "Chrome extension, existing authorized Staff UI, actual browser reload",
+  "scope": "Read-only navigation; no order, invoice or settings mutations",
+  "deployedBaseline": "9959c630",
+  "storeBeforeAndAfter": "ana-guimaraes-doceria-matriz",
+  "results": [
+    {"section": "Página Inicial", "reloadPreservesSection": true, "staffSessionPreserved": true, "storePreserved": true},
+    {"section": "Clientes", "heading": "Gestão de Clientes", "reloadPreservesSection": true, "staffSessionPreserved": true, "storePreserved": true},
+    {"section": "Financeiro", "reloadPreservesSection": true, "staffSessionPreserved": true, "storePreserved": true},
+    {"section": "Nota Fiscal", "reloadPreservesSection": true, "staffSessionPreserved": true, "storePreserved": true}
+  ],
+  "automatedCompanion": {"suites": 4, "tests": 76, "failed": 0},
+  "privatePayloadOrCredentialsIncluded": false,
+  "production": false
+}

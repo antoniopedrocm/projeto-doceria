@@ -19,3 +19,12 @@ Skill computer-use lida integralmente e inicializada; list_apps falhou duas veze
 ## Percentuais iniciais
 
 Fase9 75%, Fase10 75% auditado/fora da ponderação, Global95,00%, Fase13 0%. Só elevar fases após implementação/testes/publicação/aceite exigidos. Admin Preview e gestão de lojas já PASS não serão reabertos. Nenhum novo pagamento/NF/SMS/WhatsApp real autorizado.
+
+## Retomada 01/11/2026 — estado real
+
+- Base da retomada: 0142aad0; bloco A commitado. Não havia mudança de runtime concluída antes desta retomada.
+- B: 28 testes fiscais/financeiros em emuladores e 76 UI/rotas PASS. Sessão Staff DEV agora acessível pelo novo controle Chrome. Inventário somente leitura confirmou pedido e44896d8 atualmente Finalizado/ONLINE_NOW/PIX/PAID (estado mudou por ação externa desde a auditoria anterior); há 45 pedidos elegíveis na Matriz, nenhum AGREED_LATER elegível na fotografia atual. Não alterar pedidos reais para produzir exemplo. Conferência visual da fila/data ainda em investigação; não registrar NF PASS indevidamente.
+- C: PASS das quatro seções após reload real em sessão Staff DEV com Matriz preservada. Evidência crm-refresh-mission-dev.json. Nenhuma alteração de runtime/deploy necessária para esse gate.
+- D/E11: implementado localmente checkout LEGACY_PHONE sem SMS/Google e retorno limitado à tentativa; grant SMS com finalidade privada temporária e UI própria sem promoção Firebase. Ver LEGACY_PHONE_ACCESS_V2.md. 27 testes checkout/retorno, 24 grants/claim e 87 React Customer PASS; 4 testes públicos PASS. Build passou; lint focado sem erro. Ainda falta revisão de segurança, QA visual, commit/publicação/aceite desta implementação.
+- F: inventário DEV refeito às 08:04 UTC−3 em 01/11: 18 Customers, 4 identities, 5 lojas, 96 pedidos (58 loja/38 root), 3 endereços globais, 4 aliases, 4 UIDs, 10 entradas de telefone. Snapshot com PII somente em TEMP privado; análise/classificação e evidência sanitizada da Fase 10 ainda em andamento. Não houve escrita remota.
+- Fase9 continua75%, Fase10 continua75%, global95,00%, Fase130%. Não houve deploy novo ou ação PROD.
