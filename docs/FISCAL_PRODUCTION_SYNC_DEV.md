@@ -35,7 +35,23 @@
 
 ## Publicação
 Somente serviço fiscal Cloud Run DEV, callables fiscais, firestore:rules e Hosting DEV; nenhum índice/Storage/Function não fiscal.
-Resultados e comandos efetivamente executados serão registrados após a publicação.
+Publicação concluída: 24 Functions fiscais ACTIVE, Rules conferidas via API, Cloud Run revisão ana-guimaraes-fiscal-service-00021-n2j com 100% do tráfego, Hosting com 66 arquivos.
+
+Comandos exatos, executados exclusivamente no workspace DEV acima:
+
+```powershell
+gcloud run services update ana-guimaraes-fiscal-service --project crmdoceria-9959e --region us-central1 --image us-central1-docker.pkg.dev/crmdoceria-9959e/cloud-run-source-deploy/fiscal-sync-production-dev@sha256:3dd8087dd1ef2b33315203e9ab9c84580151149795b49b3d7ad0255e9a30e1f2 --quiet
+firebase deploy --project crmdoceria-9959e --only 'functions:fiscalResolveOrderPaymentMethod,functions:fiscalGetNumbering,functions:fiscalSetNextNumber,functions:fiscalCloneInvoice,functions:fiscalSaveDraft,functions:fiscalCheckDraft,functions:fiscalIssueDraft,functions:fiscalInutilizeNumbering,functions:fiscalGetConfiguration,functions:fiscalSaveNcmOption,functions:fiscalSaveCfopOption,functions:fiscalListCfopOptions,functions:fiscalSaveConfiguration,functions:fiscalSaveProducts,functions:fiscalDeleteProduct,functions:fiscalUpdatePreInvoiceOrder,functions:fiscalValidateOrder,functions:fiscalUploadCertificate,functions:fiscalIssueInvoice,functions:fiscalIssueManualInvoice,functions:fiscalCancelInvoice,functions:fiscalRefreshInvoice,functions:fiscalGetInvoice,functions:fiscalGetInvoiceArtifact,firestore:rules' --non-interactive
+firebase deploy --project crmdoceria-9959e --config firebase.fiscal-dev.local.json --only hosting --non-interactive
+```
+
+O config local de Hosting aponta para .fiscal-dev-release/hosting e reutiliza integralmente guard/headers/rewrites da base DEV. A pasta contém os 52 arquivos públicos inalterados da release DEV anterior, index/manifest e static gerados nesta branch; os assets estáticos anteriores foram conservados para abas já abertas.
+
+Pós-deploy: HTTP 200 com main.a41f437e.js e SHA256 conferido; 52/52 arquivos públicos online idênticos; configurações/revisão e ambos os documentos de contadores DEV idênticos antes/depois; URL fiscal DEV preservada e sem override de ambiente; fiscalGetNumbering/fiscalSetNextNumber retornam 401 UNAUTHENTICATED sem login.
+
+Commit de implementação: 48655bc1, enviado para origin/codex/fiscal-sync-production-dev. Evidências resumidas: docs/evidence/fiscal-production-sync-dev/validation.json.
 
 ## Limites
 Não foram executadas emissão, cancelamento ou inutilização reais, nem alterada a próxima numeração. Funcionalidade fiscal foi alinhada; ambientes conservam seus próprios dados, credenciais, séries e configurações.
+
+Não houve aceite visual autenticado nesta tarefa. A confirmação da interface está coberta pelos testes React, presença no bundle e verificação do artefato publicado.
