@@ -28,4 +28,6 @@ Somente API DEV, preservando os parâmetros de ambiente e vínculos de secrets q
 firebase deploy --project crmdoceria-9959e --only functions:api --non-interactive
 ```
 
-Aguardando conferência pós-deploy.
+Deploy concluído. API ACTIVE, atualização em 2026-11-01T02:15:13Z. Código publicado index.js/crm-client-edit.js conferido contra o source atual; ambiente e referências de secrets idênticos antes/depois; .env local restaurado byte a byte. PUT sem autenticação continua retornando 401, sem gravação. Hosting HTTP 200 preserva main.8d1e1e60.js; frontend/Rules não foram republicados. Commit de implementação df3dce3c enviado ao remoto DEV.
+
+As gravações de teste foram realizadas exclusivamente nos emuladores com dados sintéticos, não no cadastro real.

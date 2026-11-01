@@ -1,0 +1,32 @@
+{
+  "project": "crmdoceria-9959e",
+  "branch": "codex/dev-owned-client-edit",
+  "codeCommit": "df3dce3c",
+  "cause": "Unconditional guard rejected all updates of Auth-linked customers, including authorized CRM staff",
+  "profileRoleConfirmed": "dono",
+  "tests": {
+    "unitPassed": 27,
+    "unitFailed": 0,
+    "httpAuthFirestoreEmulatorPassed": 6,
+    "httpAuthFirestoreEmulatorFailed": 0,
+    "cloudBuild": "d0b88341-075c-4b29-b405-4939cac6dcce"
+  },
+  "lintErrors": 0,
+  "syntaxCheck": true,
+  "diffCheck": true,
+  "deployedOnly": "functions:api",
+  "apiState": "ACTIVE",
+  "apiUpdatedAt": "2026-11-01T02:15:13Z",
+  "publishedSourceMatches": true,
+  "environmentPreserved": true,
+  "secretBindingsPreserved": true,
+  "localEnvRestored": true,
+  "unauthenticatedPutStatus": 401,
+  "hostingStatus": 200,
+  "hostingBundlePreserved": "main.8d1e1e60.js",
+  "frontendChanged": false,
+  "rulesChanged": false,
+  "productionChanged": false,
+  "realCustomerEdited": false,
+  "command": "firebase deploy --project crmdoceria-9959e --only functions:api --non-interactive"
+}
