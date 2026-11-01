@@ -1,3 +1,5 @@
+import {isRecognizedOrderReceipt,recognizedOrderTotal} from './orderFinancialRecognition';
+import PaymentReconciliation from './components/PaymentReconciliation';
 import AdminCustomerPreview from './customer/AdminCustomerPreview';
 import {storePerfMark,storePerfEvent,storePerfRequest,storePerfPaint} from './performance/storeBootstrapPerf';
 import {canPreviewCustomer,previewPermissionDetails,previewTarget} from './customer/adminPreviewAccess';
@@ -2522,7 +2524,7 @@ const Fornecedores = ({ data, addItem, updateItem, deleteItem, setConfirmDelete,
 };
 
 
-const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete }) => {
+const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete, storeId }) => {
     const [activeTab, setActiveTab] = usePersistentState('financeiro_activeTab', 'dashboard');
     const [modalConfig, setModalConfig] = useState({ isOpen: false, type: null, item: null });
     const [formData, setFormData] = useState({});
@@ -2557,7 +2559,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 		};
 
 		const allReceitas = [
-			...(data.pedidos || []).filter(p => p.status === 'Finalizado'),
+			...(data.pedidos || []).filter(isRecognizedOrderReceipt).map(p=>({...p,total:recognizedOrderTotal(p)})),
 			...(data.contas_a_receber || []).filter(r => r.status === 'Recebido')
 		];
 
@@ -2753,7 +2755,8 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
 
     const renderFluxoCaixa = () => {
         const filteredPedidos = (data.pedidos || [])
-            .filter(p => p.status === 'Finalizado')
+            .filter(isRecognizedOrderReceipt)
+            .map(p=>({...p,total:recognizedOrderTotal(p)}))
             .filter(p => {
                 if(!p.createdAt) return false;
                 const itemDate = getJSDate(p.createdAt);
@@ -2861,12 +2864,13 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
             </div>
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2">
                 <div className="flex flex-wrap gap-2">
-                    {['dashboard', 'pagar', 'receber', 'fluxo'].map(tab => (
+                    {['dashboard', 'pagar', 'receber', 'fluxo', 'conciliacao'].map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === tab ? 'bg-pink-600 text-white' : 'hover:bg-pink-100'}`}>
                             {tab === 'dashboard' && 'Dashboard'}
                             {tab === 'pagar' && 'Despesas'}
                             {tab === 'receber' && 'Contas a Receber'}
                             {tab === 'fluxo' && 'Fluxo de Caixa'}
+                            {tab === 'conciliacao' && 'Conciliação InfinitePay'}
                         </button>
                     ))}
                 </div>
@@ -2877,6 +2881,7 @@ const Financeiro = ({ data, addItem, updateItem, deleteItem, setConfirmDelete })
                 {activeTab === 'pagar' && renderContas('pagar')}
                 {activeTab === 'receber' && renderContas('receber')}
                 {activeTab === 'fluxo' && renderFluxoCaixa()}
+                {activeTab === 'conciliacao' && <PaymentReconciliation key={storeId} storeId={storeId}/>}
             </div>
 
             <Modal isOpen={modalConfig.isOpen} onClose={() => setModalConfig({isOpen: false, type: null, item: null})} title={modalConfig.item ? 'Editar Lançamento' : 'Novo Lançamento'}>
@@ -21329,12 +21334,12 @@ const handleSubmit = async (e) => {
           storeInfoMap={storeInfoMap}
         />
       ) : <PaginaInicial onImageClick={setLightboxImage} />;
-      case 'financeiro': return userHasPermission('financeiro') ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'financeiro': return userHasPermission('financeiro') ? <Financeiro storeId={selectedStoreId} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'nota-fiscal': return userHasPermission('nota-fiscal') ? <NotaFiscal data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} storeInfoMap={storeInfoMap} currentUser={user} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'ifood': return userHasPermission('ifood') ? <IfoodHub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'food99': return userHasPermission('food99') ? <Food99Hub data={data} effectiveStoreId={effectiveStoreId} selectedStoreId={selectedStoreId} availableStores={availableStores} storeInfoMap={storeInfoMap} onSelectStore={selectStoreById} currentUser={user} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'configuracoes': return userHasPermission('configuracoes') ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} availableStores={availableStores} storeInfoMap={storeInfoMap} resolveActiveStoreForWrite={resolveActiveStoreForWrite} selectedStoreId={selectedStoreId} onOpenCashRecord={openCashRecordFromAlert} onSelectStore={selectStoreById} onStoresSaved={handleStoresSaved} /> : <PaginaInicial onImageClick={setLightboxImage} />;
-      case 'financeiro': return user?.role === 'admin' ? <Financeiro data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'financeiro': return user?.role === 'admin' ? <Financeiro storeId={selectedStoreId} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} setConfirmDelete={setConfirmDelete} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'configuracoes': return user?.role === 'admin' ? <Configuracoes user={user} setConfirmDelete={setConfirmDelete} data={data} addItem={addItem} updateItem={updateItem} deleteItem={deleteItem} /> : <PaginaInicial onImageClick={setLightboxImage} />;
       default: return <PaginaInicial onImageClick={setLightboxImage} />;
     }

@@ -1313,6 +1313,22 @@ app.post('/checkout/webhook', async(req,res)=>{
   try {return res.json(await checkoutPayments.reconcile(req.body));}
   catch(e){return res.status(e.httpStatus || 500).json({ok:false});}
 });
+app.post('/staff/payment-reconciliation/:method',async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  try {
+    const token=await checkoutToken(req),profile=await verifyManagementAccess(token.uid);
+    const storeId=req.body?.storeId,method=req.params.method;
+    if(typeof storeId!=='string' || !/^[\w-]{1,150}$/.test(storeId) || profile.permissions.financeiro!==true || (!profile.allStores && !profile.stores.includes(storeId))) throw paymentError('Sem permissão financeira nesta loja.',403);
+    if(req.headers['x-customer-preview'] || req.body?.previewSession)throw paymentError('Indisponível em Admin Preview.',403);
+    if(method==='list')return res.json(await checkoutPayments.financialEvents.list(storeId,req.body?.cursor));
+    if(method==='payment')return res.json(await checkoutPayments.financialEvents.lookup(storeId,req.body?.paymentId));
+    await assertNoPreviewMutation(db,token.uid);
+    if(method==='register')return res.json(await checkoutPayments.financialEvents.register(req.body,{uid:token.uid,role:profile.role}));
+    if(method==='reconcile')return res.json(await checkoutPayments.financialEvents.reconcileEvent(storeId,req.body?.eventId));
+    if(method==='dismiss')return res.json(await checkoutPayments.financialEvents.dismiss(storeId,req.body?.eventId,req.body?.reason,{uid:token.uid,role:profile.role}));
+    return res.status(404).json({message:'Operação não encontrada.'});
+  }catch(e){return res.status(e.httpStatus || (e.code==='unauthenticated'?401:e.code==='permission-denied'?403:500)).json({message:e.httpStatus?e.message:'Não foi possível acessar a conciliação financeira.'});}
+});
 app.post('/checkout/payment-status', async(req,res)=>{
   try {
     res.set('Cache-Control','no-store');
@@ -1321,7 +1337,7 @@ app.post('/checkout/payment-status', async(req,res)=>{
     const credential=req.body?.paymentReturnToken;
     await checkoutPayments.status(paymentId,user?.uid,credential);
     if(req.body.transaction_nsu && (req.body.slug || req.body.invoice_slug)) {
-      try {await checkoutPayments.reconcile({...req.body,order_nsu:paymentId});} catch(e) {if(e.httpStatus!==409) throw e;}
+      try {await checkoutPayments.reconcile({order_nsu:paymentId,transaction_nsu:req.body.transaction_nsu,slug:req.body.slug || req.body.invoice_slug});} catch(e) {if(e.httpStatus!==409) throw e;}
     }
     return res.json(await checkoutPayments.status(paymentId,user?.uid,credential));
   } catch(e) {return res.status(e.httpStatus || 500).json({message:e.message});}

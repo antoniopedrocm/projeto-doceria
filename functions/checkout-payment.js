@@ -5,6 +5,8 @@ const logger = require('firebase-functions/logger');
 const {readErrorBody, diagnostic} = require('./infinitepay-diagnostics');
 const {inspectPaymentSignal} = require('./payment-signal-policy');
 const {canReadPayment}=require('./payment-return-auth');
+const {createFinancialEvents}=require('./payment-financial-events');
+const {createPaymentVerification}=require('./payment-verification');
 function paymentError(message, httpStatus = 409) {return Object.assign(new Error(message), {httpStatus});}
 const cents = value => {const n = Math.round(Number(value)*100);if (!Number.isSafeInteger(n) || n <= 0) throw paymentError('Valor de pagamento inválido.',400);return n;};
 function assertPaid(result, expectedAmount) {
@@ -57,6 +59,9 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
   auditSignal = entry => logger.warn('Checkout payment signal held', entry)}) {
   const payments = db.collection('checkoutPayments');
   const timestamp = () => FieldValue.serverTimestamp();
+  const checkProvider=createPaymentVerification({db,provider,now});
+  let events;
+  const getFinancialEvents=()=>events || (events=createFinancialEvents({db,admin,provider:{check:checkProvider},now,orderIdentity,verifyApproval:input=>reconcile(input)}));
   async function config(store) {
     const snap = await db.doc(`lojas/${store}/configuracoesInternas/infinitepay`).get();
     const c = snap.data();
@@ -114,6 +119,7 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
   }
   async function reconcile(input) {
     const signal=inspectPaymentSignal(input);
+    if(signal.action==='FINANCIAL_EVENT')return getFinancialEvents().process(signal);
     if(signal.action!=='VERIFY_APPROVAL') {
       // Operational audit only: no raw body, IDs, PII, credentials or financial receipt.
       try {await auditSignal({outcome:signal.action==='HOLD'?'UNVERIFIED_PROVIDER_EVENT':'REJECTED_PAYMENT_SIGNAL',
@@ -126,10 +132,13 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     const ref=payments.doc(id);const snap=await ref.get();const payment=snap.data();
     if(!payment) throw paymentError('Pedido não encontrado.',404);
     const identity=orderIdentity(payment);
-    // Webhook and browser parameters are hints only. Re-query the provider with stored merchant/order.
-    const result=await provider.check({handle:payment.handle,order_nsu:id,transaction_nsu:transactionNsu,slug});
-    if(result?.success !== true || result?.paid !== true) throw paymentError('Pagamento ainda não confirmado.');
     const receiptRef=db.collection('checkoutReceipts').doc(crypto.createHash('sha256').update(`${payment.handle}:${transactionNsu}`).digest('hex'));
+    const priorReceipt=await receiptRef.get();
+    if(priorReceipt.exists && priorReceipt.data().paymentId===id && priorReceipt.data().orderPath===payment.orderPath &&
+      payment.transactionNsu===transactionNsu && payment.slug===slug && payment.payment_status!=='PENDING') return {ok:true,payment_status:payment.payment_status,requiresReview:!!payment.requiresReview};
+    // Webhook and browser parameters are hints only. Re-query the provider with stored merchant/order.
+    const result=await checkProvider({handle:payment.handle,order_nsu:id,transaction_nsu:transactionNsu,slug});
+    if(result?.success !== true || result?.paid !== true) throw paymentError('Pagamento ainda não confirmado.');
     const paidMatches=(()=>{try {assertPaid(result,payment.amount);return true;} catch {return false;}})();
     const orderRef=db.doc(payment.orderPath);
     const evidence={handle:payment.handle,orderPath:payment.orderPath,transactionNsu,
@@ -231,6 +240,6 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
       if(next==='CANCELLED') tx.update(paymentRef,{requiresReview:true,reviewReason:'PAID_ORDER_CANCELLED'});
     });
   }
-  return {config,start,reconcile,status,expire,expireDue,syncOrderStatus};
+  return {config,start,reconcile,status,expire,expireDue,syncOrderStatus,get financialEvents(){return getFinancialEvents();}};
 }
 module.exports={InfinitePayProvider,createPaymentService,assertPaid,cents,paymentError};

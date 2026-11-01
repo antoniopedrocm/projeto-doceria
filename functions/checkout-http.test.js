@@ -61,6 +61,24 @@ before(async()=>{
 after(async()=>{global.fetch=originalFetch;server.closeAllConnections();await new Promise(r=>server.close(r));await admin.app().delete();});
 const body=()=>({lojaId:store,checkoutIdentityToken:identityToken,cliente:{id:customerId,nome:'Cliente teste',telefone:'62999991234',endereco:'Retirar na Loja'},itens:[{produtoId:'product',quantity:1,preco:10}],pagamento:{forma:'Online'},subtotal:10,valorFrete:0,delivery:{pickup:true},idempotencyKey:'http-test-'+Date.now()});
 let identityCalls=0;
+test('financial reconciliation requires active financial Staff, exact store scope and rejects Customer/anonymous/preview',async()=>{
+  const url=base+'/staff/payment-reconciliation/list';
+  const invoke=async(bearer=token,extra={},headers={})=>{
+    const response=await originalFetch(url,{method:'POST',headers:{'Content-Type':'application/json',...(bearer?{Authorization:'Bearer '+bearer}:{}),...headers},body:JSON.stringify({storeId:store,...extra})});
+    return {status:response.status,data:await response.json()};
+  };
+  assert.equal((await invoke(null)).status,401);
+  const uid=customerId.slice('http-customer-'.length),profile=db.doc('users/'+uid);
+  assert.equal((await invoke()).status,403);
+  await profile.set({role:'gerente',ativo:true,lojaIds:[store],permissions:{financeiro:false}});
+  assert.equal((await invoke()).status,403);
+  await profile.set({role:'gerente',ativo:true,lojaIds:['foreign-store'],permissions:{financeiro:true}});
+  assert.equal((await invoke()).status,403);
+  await profile.set({role:'gerente',ativo:true,lojaIds:[store],permissions:{financeiro:true}});
+  assert.equal((await invoke()).status,200);assert.equal((await invoke(token,{storeId:'foreign-store'})).status,403);
+  assert.equal((await invoke(token,{}, {'X-Customer-Preview':'fixture'})).status,403);
+  await profile.update({ativo:false});assert.equal((await invoke()).status,403);await profile.delete();
+});
 test('credencial do projeto SMS separado não autentica API privada nem inicia pagamento',async()=>{
   const parts=token.split('.');
   const claims=JSON.parse(Buffer.from(parts[1],'base64url').toString());
@@ -250,7 +268,7 @@ test('HTTP webhook e payment-status confirmam uma vez nas duas ordens e ignoram 
       assert.equal((await product.get()).data().estoque,2);
       assert.equal((await db.collection('checkoutReceipts').where('paymentId','==',paymentId).get()).size,1);
       const inputs=checkBodies.filter(input=>input.order_nsu===paymentId);
-      assert.equal(inputs.length,3);
+      assert.equal(inputs.length,1); // Duplicate delivery uses the immutable verified receipt.
       for(const input of inputs) assert.deepEqual(input,{handle:'merchant-test',order_nsu:paymentId,
         transaction_nsu:reference.transaction_nsu,slug:reference.slug});
       nextCheckResult={success:true,paid:false};

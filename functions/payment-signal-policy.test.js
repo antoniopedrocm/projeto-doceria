@@ -31,6 +31,20 @@ test('invalid input or references cannot trigger lookup', () => {
     assert.equal(inspectPaymentSignal(value).action, 'REJECT');
   }
 });
+test('formal event_type dispatch is explicit, deterministic per event type and does not trust financial payload fields',()=>{
+  const fingerprints=new Set();
+  for(const event_type of PROVIDER_EVENT_NAMES){
+    const a=inspectPaymentSignal({...refs,event_type,invoice_type:'checkout',amount:1,customer:{phone:'private'},paid:true});
+    const b=inspectPaymentSignal({...refs,event_type,invoice_type:'checkout',amount:2000});
+    assert.equal(a.action,'FINANCIAL_EVENT');assert.equal(a.fingerprint,b.fingerprint);fingerprints.add(a.fingerprint);
+    assert.equal(JSON.stringify(a).includes('private'),false);assert.equal(Object.hasOwn(a,'amount'),false);
+  }
+  assert.equal(fingerprints.size,PROVIDER_EVENT_NAMES.length);
+  assert.equal(inspectPaymentSignal({...refs,event_type:'paid',event:'refunded'}).action,'HOLD');
+  assert.equal(inspectPaymentSignal({...refs,event_type:'unknown-secret'}).eventHint,'UNKNOWN');
+  assert.equal(inspectPaymentSignal({order_nsu:refs.order_nsu,event_type:'refunded'}).references.transactionNsu,null);
+  assert.equal(inspectPaymentSignal({order_nsu:refs.order_nsu,event_type:'paid'}).action,'REJECT');
+});
 test('audit is sanitized, awaited, and failures do not permit financial work', async () => {
   const entries = [];
   const db = {collection: () => ({doc: () => assert.fail('no database work for held input')})};

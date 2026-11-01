@@ -106,7 +106,8 @@ test('webhook and payment-check hints use stored merchant and deduplicate both e
 test('a later unpaid response cannot regress PAID or release consumed stock', async () => {
   const f = await fixture('old-unpaid');
   await f.serviceFor(f.paid).reconcile(f.payload);
-  await assert.rejects(() => f.serviceFor({success: true, paid: false}).reconcile(f.payload));
+  const retained=await f.serviceFor({success: true, paid: false}).reconcile(f.payload);
+  assert.equal(retained.payment_status,'PAID'); // Immutable receipt avoids querying/reprocessing duplicate approval.
   assert.equal((await data(f.payment)).payment_status, 'PAID');
   assert.equal((await data(f.payment)).reservation.state, 'CONSUMED');
   assert.equal((await data(f.order)).order_status, 'CONFIRMED');

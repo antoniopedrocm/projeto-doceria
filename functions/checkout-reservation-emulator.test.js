@@ -110,6 +110,7 @@ test('Rules impedem equipe de forjar pagamento ou liberar pedido pendente e mant
   const env=await initializeTestEnvironment({projectId:'demo-doceria-checkout',firestore:{host:'127.0.0.1',port:8080,rules:fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8')}});
   try {
     await db.doc('users/reservation-staff').set({role:'gerente',ativo:true});
+    await db.doc('lojas/reservation-tests').set({nome:'Loja fixture',status:'ACTIVE'});
     const staff=env.authenticatedContext('reservation-staff').firestore();
     const f=await fixture('rules');
     await f.order.update({paymentId:f.id});

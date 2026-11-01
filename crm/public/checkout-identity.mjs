@@ -17,6 +17,7 @@ export function createCheckoutIdentity({storage,storeId,request,getUid=()=>null}
     get:()=>({...state}),
     isStrong:()=>state.mode===CHECKOUT_MODES.STRONG && !!getUid() && state.uid===getUid(),
     select(mode) {
+      try {storage.removeItem('customerPhoneSession_v1');}catch{ /* Explicit checkout selection retires the cached temporary context. */ }
       const current=++generation;
       // Demote synchronously, so passive auth callbacks cannot restore privileges.
       state={...state,mode,uid:null};save();changed();
@@ -28,7 +29,7 @@ export function createCheckoutIdentity({storage,storeId,request,getUid=()=>null}
       });
       pending=operation;return operation;
     },
-    acceptPhone(data){networkToken=data.token;return publish({...data,mode:CHECKOUT_MODES.PHONE});},
+    acceptPhone(data){try{storage.removeItem('customerPhoneSession_v1');}catch{} networkToken=data.token;return publish({...data,mode:CHECKOUT_MODES.PHONE});},
     ready:()=>pending,
     subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},
     invalidate(){generation++;networkToken=null;state={mode:CHECKOUT_MODES.GUEST,token:null,revision:0,uid:null};save();changed();},
