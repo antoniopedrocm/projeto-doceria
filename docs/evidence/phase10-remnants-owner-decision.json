@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "recordedOn": "2026-11-04",
+  "source": "explicit owner reply in this Codex conversation",
+  "ownerReply": "Aprovar preservação sem atribuição",
+  "inventoryCommit": "4d894ddf",
+  "inventoryFile": "docs/evidence/phase10-current-inventory-dev.json",
+  "inventorySnapshotSha256": "00c16cdde71f340830ab0c7a52a4f20086967650ce4985c2082b1112084c7e87",
+  "disposition": "PRESERVED_UNASSIGNED_APPROVED",
+  "caseIds": [
+    "6a550a9849b68de5", "e7ea94d04f2746fa", "e044fc9b84179707", "cda503888761e578",
+    "57a9910cb2f0b614", "41dea487df7f5216", "9698e5c3cb55b41e", "08981d72af634eb5",
+    "7ce5ee83ce003577", "52e9bf6e96d26943", "6af177dd34c51478", "c77ec661cd4c31c4",
+    "42864d4f32b7173b", "0143a70d7f81bb36"
+  ],
+  "decision": "Preserve original records and deny automatic recovery/assignment until adequate future ownership proof. No deletion, merge, inferred phone, invented ownership or Customer history expansion.",
+  "authorizesMigrationOrNewOwnership": false,
+  "remoteDataWrites": 0,
+  "production": false
+}

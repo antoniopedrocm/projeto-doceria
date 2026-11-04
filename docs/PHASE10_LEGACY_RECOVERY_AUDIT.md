@@ -1,5 +1,11 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
+## Decisão vigente registrada em 04/11/2026
+
+O Dono aprovou explicitamente “Aprovar preservação sem atribuição” para os 14 caseIds do inventário do commit4d894ddf. C14 passa a **PASS por disposição segura formal**, sem apagar, fundir, corrigir telefone ou conceder ownership. Originais permanecem privados e não atribuídos até prova futura. [Registro exato da decisão](evidence/phase10-remnants-owner-decision.json). Isso encerra a decisão dos remanescentes desta fotografia; não afirma que os dados foram recuperados nem aprova migração.
+
+**Fase10 = 87,50% (14/16): C01–C14 PASS; C15 e C16 pendentes.** A declaração de81,25% abaixo fica como histórico anterior à resposta. C15 exige claim real Google/e-mail com SMS Enterprise autorizado; C16 exige homologação consolidada do estado publicado. Fase9=75%, global95,00%, Fase13=0%. PROD bloqueada.
+
 ## Atualização vigente — 01/11/2026
 
 Reauditoria DEV somente leitura, sem migração aplicada, SMS ou alteração de dados. Esta atualização prevalece sobre a fotografia de 31/10 preservada abaixo. **Fase 10 = 81,25% (13/16 critérios)**, fora da ponderação global histórica. C13 agora está PASS: o procedimento operacional foi formalizado em [LEGACY_MANUAL_REVIEW.md](LEGACY_MANUAL_REVIEW.md), reutiliza proposta exata/aprovação de todos os UIDs/dry-run/CAS/backup/rollback e foi conferido com 23 testes emulados de registry, histórico, claim, migração e Rules. Não equivale a aprovação dos casos de dados pendentes.
