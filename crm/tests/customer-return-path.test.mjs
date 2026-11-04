@@ -29,10 +29,14 @@ test('aliases auditados e canais existentes são preservados sem inventar associ
   assert.equal(customerMenuDestination(storage(),incoming(path)),path);
 });
 test('returnTo externo, ambíguo, privado ou malformado nunca é aceito',()=>{
-  for(const path of ['https://evil.test','//evil.test','javascript:alert(1)','data:text/html,x','/\\evil.test','/cardapio/../admin','/admin/customer-preview/id','/minha-conta','/cardapio?store=../private','/cardapio?store=foo%0A','/cardapio?store=a&store=b','/cardapio?channel=festas','/cardapio?store=a&next=https://evil.test','/cardapio?store=a&token=private','/cardapio?store=a#outside','/cardapio?store=a?store=b','/%2f/evil.test','/cardapio?store=','/cardapio-futuro']) {
+  for(const path of ['https://evil.test','//evil.test','javascript:alert(1)','data:text/html,x','/\\evil.test','/cardapio/../admin','/admin/customer-preview/id','/minha-conta','/cardapio?store=../private','/cardapio?store=foo%0A','/cardapio?store=a&store=b','/cardapio?channel=festas','/cardapio?store=a&next=https://evil.test','/cardapio?store=a&token=private','/cardapio?store=a#outside','/cardapio?store=a?store=b','/%2f/evil.test','/cardapio?store=']) {
     assert.equal(safeCustomerReturnPath(path),null,path);const tab=storage();assert.equal(customerMenuDestination(tab,incoming(path)),'/',path);assert.equal(tab.getItem(CUSTOMER_RETURN_PATH_KEY),null,path);
   }
   assert.equal(customerMenuDestination(storage(),incoming(origin('matriz'))+'&returnTo='+encodeURIComponent(origin('garavelo'))),'/');
+});
+test('slug público futuro é navegação interna; resolução canônica continua no backend, sem fallback Matriz',()=>{
+  assert.equal(safeCustomerReturnPath('/cardapio-futuro'),'/cardapio-futuro');
+  assert.equal(customerMenuDestination(storage(),incoming('/cardapio-futuro')),'/cardapio-futuro');
 });
 test('entrada transporta só pathname/search público; nunca credenciais, hash ou URL externa',()=>{
   const entry=customerAreaEntryPath({pathname:'/cardapio',search:'?store=garavelo&channel=festas&id_token=private&email=private&returnTo=https://evil.test',hash:'#private'});

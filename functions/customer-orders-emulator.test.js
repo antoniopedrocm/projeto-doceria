@@ -27,8 +27,11 @@ before(async()=>{
   await db.doc('integrations/customerRegistry').set({state:'READY'});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base=`http://127.0.0.1:${server.address().port}`;
   a=await signup(`history-a-${Date.now()}@example.test`);b=await signup(`history-b-${Date.now()}@example.test`);anonymous=await signup();
-  const pa=await send('/profile',{nome:'Customer A',phone:'+5562999991234'}),pb=await send('/profile',{nome:'Customer B',phone:'+5562999991235'},b.idToken);
-  assert.equal(pa.status,200);assert.equal(pb.status,200);customerA=pa.body.result.customer.id;customerB=pb.body.result.customer.id;
+  // Dedicated phone namespace: this suite shares a demo project with checkout
+  // fixtures in consolidated runs. Reusing their numbers correctly requires a
+  // claim, instead of creating the new strong Customers needed by this fixture.
+  const pa=await send('/profile',{nome:'Customer A',phone:'+5562987711001'}),pb=await send('/profile',{nome:'Customer B',phone:'+5562987711002'},b.idToken);
+  assert.equal(pa.status,200);assert.equal(pb.status,200);assert.ok(pa.body.result.customer,'Fixture A must create its own Customer');assert.ok(pb.body.result.customer,'Fixture B must create its own Customer');customerA=pa.body.result.customer.id;customerB=pb.body.result.customer.id;
   const batch=db.batch();
   for(const store of ['history-matriz','history-garavelo']) {
     batch.set(db.doc(`lojas/${store}`),{nome:`Loja ${store}`});
@@ -40,7 +43,7 @@ before(async()=>{
     total:16,subtotal:12,desconto:0,valorFrete:4,clienteEndereco:'Rua histórica, 20',formaPagamento:'Cartão de Crédito',
     itens:[{produtoId:'brownie',nome:'Brownie na compra',quantity:1,preco:12,total:12}],order_status:'CONFIRMED',payment_status:'PAID',receipt_url:'https://receipt.example.test/old'});
   batch.set(db.doc('lojas/history-matriz/pedidos/history-private-b'),{clienteId:customerB,ownerUid:b.localId,createdAt:admin.firestore.Timestamp.now(),total:100,endereco:'Private B'});
-  batch.set(db.doc('lojas/history-matriz/pedidos/history-phone-only'),{telefone:'62999991234',createdAt:admin.firestore.Timestamp.now(),total:999});
+  batch.set(db.doc('lojas/history-matriz/pedidos/history-phone-only'),{telefone:'62987711001',createdAt:admin.firestore.Timestamp.now(),total:999});
   await batch.commit();
 });
 after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await admin.app().delete();});
@@ -77,7 +80,7 @@ test('ausência de Auth/sessão anônima não concede histórico ou detalhe priv
 });
 test('Firestore real inclui datas legadas/ausentes e mantém ordenação entre páginas',async()=>{
   const user=await signup(`history-legacy-${Date.now()}@example.test`);
-  const profile=await send('/profile',{nome:'Legacy dates',phone:'+5562999991236'},user.idToken);
+  const profile=await send('/profile',{nome:'Legacy dates',phone:'+5562987711003'},user.idToken);
   const owner={clienteId:profile.body.result.customer.id,ownerUid:user.localId,total:16};
   const batch=db.batch();
   for(let i=0;i<23;i++) batch.set(db.doc(`lojas/history-matriz/pedidos/legacy-${String(i).padStart(2,'0')}`),{
@@ -93,7 +96,7 @@ test('Firestore real inclui datas legadas/ausentes e mantém ordenação entre p
 });
 test('Firestore real atravessa lotes totalmente filtrados sem perder pedidos próprios multiloja',async()=>{
   const user=await signup(`history-filtered-${Date.now()}@example.test`);
-  const profile=await send('/profile',{nome:'Filtered batches',phone:'+5562999991237'},user.idToken);
+  const profile=await send('/profile',{nome:'Filtered batches',phone:'+5562987711004'},user.idToken);
   const owner={clienteId:profile.body.result.customer.id,total:16,createdAt:admin.firestore.Timestamp.fromMillis(1760000000000)};
   const batch=db.batch();
   for(let i=0;i<220;i++) batch.set(db.doc(`lojas/history-garavelo/pedidos/aaa-filtered-${i}`),{...owner,ownerUid:b.localId});

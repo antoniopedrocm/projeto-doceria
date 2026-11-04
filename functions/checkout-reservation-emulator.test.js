@@ -109,7 +109,7 @@ test('recurso removido bloqueia liberação parcial e preserva reserva para inve
 test('Rules impedem equipe de forjar pagamento ou liberar pedido pendente e mantêm status legado',async()=>{
   const env=await initializeTestEnvironment({projectId:'demo-doceria-checkout',firestore:{host:'127.0.0.1',port:8080,rules:fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8')}});
   try {
-    await db.doc('users/reservation-staff').set({role:'gerente',ativo:true});
+    await db.doc('users/reservation-staff').set({role:'gerente',ativo:true,lojaIds:['reservation-tests']});
     await db.doc('lojas/reservation-tests').set({nome:'Loja fixture',status:'ACTIVE'});
     const staff=env.authenticatedContext('reservation-staff').firestore();
     const f=await fixture('rules');
