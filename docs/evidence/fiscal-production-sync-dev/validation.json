@@ -1,0 +1,78 @@
+{
+  "project": "crmdoceria-9959e",
+  "branch": "codex/fiscal-sync-production-dev",
+  "codeCommit": "48655bc1",
+  "baseDev": "0142aad0",
+  "productionReference": "6b353495",
+  "productionModified": false,
+  "tests": {
+    "backend": {
+      "passed": 60,
+      "failed": 0
+    },
+    "frontend": {
+      "suites": 52,
+      "passed": 556,
+      "failed": 0
+    },
+    "firestoreEmulator": {
+      "passed": 8,
+      "failed": 0,
+      "cloudBuild": "4e7b643c-f915-44df-a828-7594ecf594b5"
+    },
+    "php": {
+      "payloadChecks": 12,
+      "xmlSchemaDanfeAndRegressionPassed": true,
+      "cloudBuild": "4b5f18e5-fe50-4b67-8ff0-33024cda1fc8"
+    }
+  },
+  "lint": {
+    "frontendErrors": 0,
+    "backendErrors": 0
+  },
+  "diffCheck": true,
+  "build": {
+    "project": "crmdoceria-9959e",
+    "main": "static/js/main.a41f437e.js",
+    "sha256": "25547659874bb15d929a2b87049478a8d402c8e95eb8f072e480f9d9ad6724fc",
+    "unrelatedPublicAssetsPreserved": 52,
+    "buildMatchesSource": true,
+    "onlineHashMatches": true
+  },
+  "published": {
+    "fiscalFunctions": 24,
+    "allActive": true,
+    "firestoreRulesMatchSource": true,
+    "cloudRunRevision": "ana-guimaraes-fiscal-service-00021-n2j",
+    "cloudRunTrafficPercent": 100,
+    "hostingFiles": 66,
+    "unrelatedPublicFilesChecked": 52,
+    "unrelatedPublicFilesIdentical": 52
+  },
+  "preserved": {
+    "fiscalEnvironment": "homologation",
+    "tpAmb": 2,
+    "settingsRevisionUnchanged": true,
+    "counterDocumentsUnchanged": 2,
+    "serviceUrlUnchanged": true,
+    "noFiscalEnvironmentOverride": true,
+    "iFoodHub": true,
+    "food99Hub": true,
+    "cloning": true,
+    "onlinePaymentFiscalAdapter": true,
+    "agreedPaymentFiscalAdapter": true,
+    "freightToBeAgreed": true,
+    "appOutsideFiscalUnchanged": true
+  },
+  "unauthenticatedChecks": {
+    "fiscalGetNumbering": 401,
+    "fiscalSetNextNumber": 401
+  },
+  "realFiscalTransmission": false,
+  "authenticatedVisualAcceptance": false,
+  "commands": [
+    "gcloud run services update ana-guimaraes-fiscal-service --project crmdoceria-9959e --region us-central1 --image us-central1-docker.pkg.dev/crmdoceria-9959e/cloud-run-source-deploy/fiscal-sync-production-dev@sha256:3dd8087dd1ef2b33315203e9ab9c84580151149795b49b3d7ad0255e9a30e1f2 --quiet",
+    "firebase deploy --project crmdoceria-9959e --only 'functions:fiscalResolveOrderPaymentMethod,functions:fiscalGetNumbering,functions:fiscalSetNextNumber,functions:fiscalCloneInvoice,functions:fiscalSaveDraft,functions:fiscalCheckDraft,functions:fiscalIssueDraft,functions:fiscalInutilizeNumbering,functions:fiscalGetConfiguration,functions:fiscalSaveNcmOption,functions:fiscalSaveCfopOption,functions:fiscalListCfopOptions,functions:fiscalSaveConfiguration,functions:fiscalSaveProducts,functions:fiscalDeleteProduct,functions:fiscalUpdatePreInvoiceOrder,functions:fiscalValidateOrder,functions:fiscalUploadCertificate,functions:fiscalIssueInvoice,functions:fiscalIssueManualInvoice,functions:fiscalCancelInvoice,functions:fiscalRefreshInvoice,functions:fiscalGetInvoice,functions:fiscalGetInvoiceArtifact,firestore:rules' --non-interactive",
+    "firebase deploy --project crmdoceria-9959e --config firebase.fiscal-dev.local.json --only hosting --non-interactive"
+  ]
+}

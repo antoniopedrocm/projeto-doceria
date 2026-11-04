@@ -51,7 +51,8 @@ exports.whatsappWebhook = onRequest({region: 'southamerica-east1', timeoutSecond
     createWhatsAppWebhook({db, logger}));
 const auth = admin.auth();
 const {createCustomerAccount} = require('./checkout-auth');
-const {ownsCustomer}=require('./customer-ownership');
+const {ownsCustomer,customerOwnerUids}=require('./customer-ownership');
+const {isClientStaffProfile,claimedClientPatch}=require('./crm-client-edit');
 const {normalizeCustomerPhone}=require('./customer-phone');
 const customerAccounts = createCustomerAccount({admin, db,getStoreAvailability:config=>getStoreAvailability(config), resolveStore:(...args)=>storeResolver.resolve(...args)});
 const customerRegistry=customerAccounts.registry;
@@ -1496,6 +1497,7 @@ const upsertClientDocument = async ({
   purchaseCountIncrement = 0,
   purchaseValueIncrement = 0,
   createdAt = null,
+  crmStaffUid = null,
 }) => {
   const timestamp = FieldValue.serverTimestamp();
   return db.runTransaction(async (transaction) => {
@@ -1503,7 +1505,21 @@ const upsertClientDocument = async ({
     if(!snap.exists) throw createHttpError(404,'Cliente não encontrado.');
     if(snap.data().canonicalStatus==='ALIAS') throw createHttpError(409,'Este cadastro foi consolidado. Reabra o cadastro principal.');
     if(data.telefone) customerRegistry.assertPhoneUnchanged(snap.data(),data.telefone);
-    if (snap.data()?.authOwnerUid) throw createHttpError(403, 'Use Minha Conta para alterar este cadastro.');
+    if (customerOwnerUids(snap.data()).length) {
+      if (!crmStaffUid) throw createHttpError(403, 'Use Minha Conta para alterar este cadastro.');
+      const [staffSnap, customSnap] = await Promise.all([
+        transaction.get(db.collection('users').doc(crmStaffUid)),
+        transaction.get(db.collection('customProfiles').doc(crmStaffUid)),
+      ]);
+      const patch = claimedClientPatch({customer: snap.data(), input: data, profile: staffSnap.data(), customProfile: customSnap.data(), lojaId});
+      if (Object.hasOwn(data, 'telefone')) customerRegistry.assertPhoneUnchanged(snap.data(), data.telefone);
+      transaction.update(targetRef, {...patch, atualizadoEm: timestamp});
+      transaction.create(db.collection('auditLogs').doc(), {
+        action: 'CRM_CLIENT_PROFILE_UPDATED', adminUid: crmStaffUid, storeId: lojaId,
+        customerId: targetRef.id, fields: Object.keys(patch), timestamp,
+      });
+      return {id: targetRef.id};
+    }
     const payload = {
       ...data,
       lojaId: data.lojaId || lojaId || data.lojaId,
@@ -1551,8 +1567,7 @@ app.get("/produtos", async (req, res) => {
 // Rota para buscar cliente por telefone
 async function isClientStaff(token,lojaId) {
   const staff=(await db.collection('users').doc(token.uid).get()).data();
-  return !!staff && staff.ativo!==false && staff.status!=='inativo' && ['dono','gerente','atendente'].includes(staff.role) &&
-    (staff.role==='dono' || staff.lojaId===lojaId || staff.lojaIds?.includes(lojaId));
+  return isClientStaffProfile(staff,lojaId);
 }
 async function canManageClient(token,lojaId,clientId) {
   if(await isClientStaff(token,lojaId)) return true;
@@ -1643,7 +1658,9 @@ app.put("/clientes/:id", async (req, res) => {
 
   try {
     const id=await customerRegistry.resolveId(req.params.id);
-    if(!await canManageClient(await checkoutToken(req),lojaId,id)) return res.status(403).json({message:'Confirme seu telefone para gerenciar endereços.'});
+    const token = await checkoutToken(req);
+    const staff = await isClientStaff(token,lojaId);
+    if(!staff && !await canManageClient(token,lojaId,id)) return res.status(403).json({message:'Confirme seu telefone para gerenciar endereços.'});
     const {newAddress, ...rawData} = req.body || {};
     const {data: clientData, purchaseCountIncrement, purchaseValueIncrement} = sanitizeClientPayload(rawData);
     const clientRef = getClientsCollection().doc(id);
@@ -1658,6 +1675,7 @@ app.put("/clientes/:id", async (req, res) => {
       data: updates,
       lojaId,
       setCreatedIfMissing: true,
+      crmStaffUid: staff ? token.uid : null,
       purchaseCountIncrement,
       purchaseValueIncrement,
     });

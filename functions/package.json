@@ -12,7 +12,9 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --config ../firebase.json --project crmdoceria-9959e --only functions",
     "logs": "firebase functions:log --project crmdoceria-9959e",
-    "test:checkout": "node --test checkout*.test.js"
+    "test:checkout": "node --test checkout*.test.js",
+    "test:fiscal": "node --test fiscal-core.test.js fiscal-money.test.js fiscal-clone.test.js fiscal-flow.test.js fiscal-ncm-options.test.js fiscal-permissions.test.js fiscal-numbering.test.js order-payment-method.test.js",
+    "test:fiscal:integration": "firebase emulators:exec --config ../firebase.json --project demo-fiscal-flow --only firestore \"node --test --test-concurrency=1 fiscal-flow.integration.test.js fiscal-numbering.rules.test.js\""
   },
   "engines": {
     "node": "22"

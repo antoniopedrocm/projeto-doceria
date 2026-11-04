@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace AnaGuimaraes\Fiscal\Service\NFe;
 
 use InvalidArgumentException;
+use AnaGuimaraes\Fiscal\Service\ItemCharges;
+use AnaGuimaraes\Fiscal\Service\PayloadValidator;
 use NFePHP\NFe\Make;
 use stdClass;
 
@@ -15,6 +17,9 @@ final class InvoiceXmlBuilder
      */
     public function build(array $payload): string
     {
+        $payload = ItemCharges::prepare($payload);
+        $errors = (new PayloadValidator())->validateIssuePayload($payload);
+        if ($errors !== []) throw new InvalidArgumentException(implode(' ', $errors));
         $nfe = new Make();
         $invoice = $payload['invoice'];
         $issuer = $payload['issuer'];
@@ -26,7 +31,7 @@ final class InvoiceXmlBuilder
         $this->tagCustomer($nfe, $customer);
         $this->tagItems($nfe, $payload);
         $this->tagTotals($nfe, $payload);
-        $this->tagTransport($nfe);
+        $this->tagTransport($nfe, $payload);
         $this->tagPayment($nfe, $payload);
         $this->tagAdditionalInfo($nfe, $payload);
 
@@ -173,6 +178,9 @@ final class InvoiceXmlBuilder
             if ((float)$item['discount'] > 0) {
                 $std->vDesc = $this->decimal($item['discount'], 2);
             }
+            foreach (['freight' => 'vFrete', 'insurance' => 'vSeg', 'other' => 'vOutro'] as $field => $tag) {
+                if ((float)($item[$field] ?? 0) > 0) $std->{$tag} = $this->decimal($item[$field], 2);
+            }
             $std->indTot = 1;
             $nfe->tagprod($std);
 
@@ -248,10 +256,10 @@ final class InvoiceXmlBuilder
         $nfe->tagICMSTot($std);
     }
 
-    private function tagTransport(Make $nfe): void
+    private function tagTransport(Make $nfe, array $payload): void
     {
         $std = new stdClass();
-        $std->modFrete = 9;
+        $std->modFrete = (int)($payload['transport']['freightMode'] ?? 9);
         $nfe->tagtransp($std);
     }
 

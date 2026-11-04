@@ -24,6 +24,22 @@ function handler(name, bindings) {
   return new Function(...Object.keys(bindings), `return (${source.slice(expression.start, expression.end)});`)(...Object.values(bindings));
 }
 const noop = () => {};
+test('Detalhe e listagem mostram rejeição original preservada mesmo após consulta 217', () => {
+  const invoice = {status: 'rejected', cStat: 217, xMotivo: 'Não consta na SEFAZ',
+    serviceResult: {duplicateIssueResult: {cStat: 539, xMotivo: 'Duplicidade de NF-e, diferença na chave'}}};
+  expect(handler('fiscalReturnReason', {})(invoice)).toBe('Duplicidade de NF-e, diferença na chave');
+});
+test('Rejeição histórica não substitui motivo de documento autorizado', () => {
+  expect(handler('fiscalReturnReason', {})({status: 'authorized', xMotivo: 'Autorizado',
+    issuanceRejection: {xMotivo: 'Duplicidade antiga'}})).toBe('Autorizado');
+});
+test.each([
+  [{totals: {freight: 300}, manualInvoice: {freight: 0}}, 300],
+  [{totals: {freight: 0}, manualInvoice: {freight: 300}}, 0],
+  [{manualInvoice: {freight: '300.00'}}, 300],
+])('Detalhe/DANFE respeitam frete persistido sem depender de pedido: %p', (invoice, expected) => {
+  expect(handler('getInvoiceFreight', {getInvoiceOrder: () => ({frete: 999})})(invoice)).toBe(expected);
+});
 const order = {id: 'order-1', observacao: 'Pedido', clienteNome: 'Cliente', itens: [{productId: 'p1', nome: 'Bolo', quantity: 2, preco: 10}], total: 20};
 const draft = {id: 'draft_order-1_55', orderId: order.id, status: 'draft', model: 55, operationCfop: '5101', additionalInfo: 'Observação do rascunho'};
 
@@ -44,7 +60,7 @@ test.each([null, draft])('Editar abre o pedido correto e reutiliza rascunho: %s'
 test.each([null, draft])('Salvar editor atualiza pedido, invalida checagem e não duplica rascunho: %s', async (savedDraft) => {
   const updateItem = jest.fn(), save = jest.fn().mockResolvedValue({data: {draftId: draft.id}}), setValidation = jest.fn();
   const normalized = {...order, subtotal: 20, desconto: 0, valorFrete: 0, observacao: 'Editada'};
-  await handler('handleSavePreInvoiceOrderEdit', {isReadOnly: false, orderToEditBeforeInvoice: order, effectiveStoreId: 'store-1',
+  await handler('handleSavePreInvoiceOrderEdit', {isReadOnly: false, isAccountant: false, orderToEditBeforeInvoice: order, effectiveStoreId: 'store-1',
     setOrderEditError: noop, getPreInvoiceLockedReason: () => '', buildOrderEditFormWithTotals: () => normalized, orderEditForm: normalized,
     getOrderItemProductId: (item) => item.productId, setOrderEditSaving: noop, setMessage: noop, DEFAULT_ORDER_PAYMENT_METHOD: 'Dinheiro',
     updateItem, setValidationByOrder: setValidation, orderDraftToEdit: savedDraft, functions: {}, httpsCallable: () => save,

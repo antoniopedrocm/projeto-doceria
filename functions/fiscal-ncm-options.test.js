@@ -97,8 +97,9 @@ for (const catalog of [
     await assert.rejects(api[catalog.save]({data: {lojaId: 'loja-a', ...input}}), /autenticado/);
     await assert.rejects(call(catalog.save, input, 'manager'), /não tem acesso fiscal/);
     await assert.rejects(call(catalog.list, {}, 'manager'), /não tem acesso fiscal/);
-    await assert.rejects(call(catalog.save, input, 'accountant'), /gestão/);
-    assert.deepEqual((await call(catalog.list, {}, 'accountant'))[catalog.result], []);
+    const accountant = createHarness();
+    await accountant.call(catalog.save, input, 'accountant');
+    assert.equal((await accountant.call(catalog.list, {}, 'accountant'))[catalog.result].length, 1);
     await assert.rejects(call(catalog.save, {...input, lojaId: '__all__'}), /loja específica/);
     records.set('users/owner', {permissions: {'nota-fiscal': false}});
     await assert.rejects(call(catalog.save, input), /não está habilitado/);

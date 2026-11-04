@@ -30,8 +30,12 @@ import OrderStatusBadge from './components/orders/OrderStatusBadge';
 import {getOrderStatusLabel} from './utils/orderStatus';
 import {OPERATIONAL_ORDER_STATUSES} from './utils/onlineOrderStatus.mjs';
 import {adminOrderRequest} from './utils/adminOrderEdit';
+import {clientApiRequest} from './utils/clientApi';
 import OrderAdminHistory,{OrderPaymentAdjustment} from './components/orders/OrderAdminHistory';
 import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
+import FiscalInvoiceHistory from './components/FiscalInvoiceHistory';
+import FiscalNumberingControls from './components/FiscalNumberingControls';
+import {draftTotals as fiscalDraftTotals} from './utils/fiscalMoney';
 import FiscalOrderPaymentField from './components/FiscalOrderPaymentField';
 import {findOrderDraft, validateFiscalOrder, createFiscalOrderActions} from './fiscalOrderActions';
 import {
@@ -3707,23 +3711,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
 
   const callClientApi = useCallback(async (path, { method = 'GET', body = null } = {}) => {
     const storeId = resolveActiveStoreForWrite();
-    const url = `${API_BASE_URL}${path}${path.includes('?') ? '&' : '?'}lojaId=${encodeURIComponent(storeId)}`;
-
-    const response = await fetch(url, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || 'Erro ao comunicar com a API de clientes.');
-    }
-
-    if (response.status === 204) return null;
-    return response.json();
+    return clientApiRequest({auth, baseUrl: API_BASE_URL, path, storeId, method, body});
   }, [resolveActiveStoreForWrite]);
 
   const selectStoreById = useCallback((value) => {
@@ -9565,14 +9553,19 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
             codigoIbge: fiscalCityCode,
             address: fiscalAddress,
         };
-        if (editingClient) {
-            const { id, ...clientData } = updateData;
-            await updateItem('clientes', editingClient.id, clientData);
-        } else {
-            await addItem('clientes', { ...updateData, numeroDeCompras: 0, valorEmCompras: 0 });
+        try {
+            if (editingClient) {
+                const { id, ...clientData } = updateData;
+                await updateItem('clientes', editingClient.id, clientData);
+            } else {
+                await addItem('clientes', { ...updateData, numeroDeCompras: 0, valorEmCompras: 0 });
+            }
+            setShowModal(false);
+            resetForm();
+        } catch {
+            // The shared write handlers already show the error. Keep the form
+            // and its values open, without an unhandled promise rejection.
         }
-        setShowModal(false);
-        resetForm();
     };
     const handleEdit = (client) => {
       const firstAddress = Array.isArray(client.enderecos) ? client.enderecos[0] : null;
@@ -17307,6 +17300,8 @@ const handleSubmit = async (e) => {
     });
     const [configLoading, setConfigLoading] = useState(false);
     const [configSaving, setConfigSaving] = useState(false);
+    const [numberingReloadKey, setNumberingReloadKey] = useState(0);
+    const callNumbering = useCallback(async (name, payload) => (await httpsCallable(functions, name)({lojaId: effectiveStoreId, ...payload})).data, [effectiveStoreId]);
     const [certificateInfo, setCertificateInfo] = useState(null);
     const [certificateUploading, setCertificateUploading] = useState(false);
     const [platformService, setPlatformService] = useState(null);
@@ -17316,8 +17311,9 @@ const handleSubmit = async (e) => {
       cscId: '',
       csc: ''
     });
-    const isReadOnly = currentUser?.role === ROLE_ACCOUNTANT;
-    const isPlatformAdmin = currentUser?.role === ROLE_OWNER && currentUser?.canAccessAllStores;
+    const isAccountant = currentUser?.role === ROLE_ACCOUNTANT;
+    const isReadOnly = false;
+    const isPlatformAdmin = currentUser?.role === ROLE_OWNER;
     const canViewFullFiscalDocument = [ROLE_OWNER, ROLE_MANAGER, ROLE_ACCOUNTANT].includes(currentUser?.role);
 
     const storeName = effectiveStoreId
@@ -17457,18 +17453,7 @@ const handleSubmit = async (e) => {
     }, [storeProducts, fiscalProducts, fiscalProductsById]);
 
     const manualInvoiceTotals = useMemo(() => {
-      const products = (manualInvoiceForm.items || []).reduce((sum, item) => (
-        sum + roundCurrency(Number(item.quantity || 0) * Number(item.unitPrice || 0))
-      ), 0);
-      const discount = (manualInvoiceForm.items || []).reduce((sum, item) => sum + roundCurrency(Number(item.discount || 0)), 0);
-      return {
-        products: roundCurrency(products),
-        discount: roundCurrency(discount),
-        freight: roundCurrency(Number(manualInvoiceForm.freight || 0)),
-        insurance: roundCurrency(Number(manualInvoiceForm.insurance || 0)),
-        other: roundCurrency(Number(manualInvoiceForm.other || 0)),
-        invoice: roundCurrency(products - discount + Number(manualInvoiceForm.freight || 0) + Number(manualInvoiceForm.insurance || 0) + Number(manualInvoiceForm.other || 0))
-      };
+      return fiscalDraftTotals(manualInvoiceForm);
     }, [manualInvoiceForm.items, manualInvoiceForm.freight, manualInvoiceForm.insurance, manualInvoiceForm.other]);
 
     const ordersById = useMemo(() => {
@@ -17748,12 +17733,12 @@ const handleSubmit = async (e) => {
 
     const getInvoiceDiscount = useCallback((invoice) => {
       const order = getInvoiceOrder(invoice);
-      return Number(invoice?.discount ?? invoice?.desconto ?? order?.desconto ?? order?.cupom?.valorDesconto ?? 0) || 0;
+      return Number(invoice?.totals?.discount ?? invoice?.manualInvoice?.discount ?? invoice?.discount ?? invoice?.desconto ?? order?.desconto ?? order?.cupom?.valorDesconto ?? 0) || 0;
     }, [getInvoiceOrder]);
 
     const getInvoiceFreight = useCallback((invoice) => {
       const order = getInvoiceOrder(invoice);
-      return Number(invoice?.freight ?? invoice?.frete ?? order?.frete ?? order?.taxaEntrega ?? 0) || 0;
+      return Number(invoice?.totals?.freight ?? invoice?.manualInvoice?.freight ?? invoice?.freight ?? invoice?.frete ?? order?.frete ?? order?.taxaEntrega ?? 0) || 0;
     }, [getInvoiceOrder]);
 
     const getInvoiceChange = useCallback((invoice) => {
@@ -17812,7 +17797,9 @@ const handleSubmit = async (e) => {
 
     const fiscalReturnReason = useCallback((invoice) => {
       if (!invoice) return '';
+      const original = invoice.status === 'rejected' ? invoice.issuanceRejection || invoice.serviceResult?.duplicateIssueResult : null;
       const directReason = [
+        original?.xMotivo,
         invoice.xMotivo,
         invoice.serviceResult?.xMotivo,
         invoice.error,
@@ -17924,6 +17911,19 @@ const handleSubmit = async (e) => {
     }, [invoices, invoiceFilters, fiscalReturnReason, getInvoiceCustomerDocument, getInvoiceCustomerName, getInvoiceIssuerDocument, getInvoiceItems, getInvoiceOrder, getInvoiceOrigin, getInvoiceOriginLabel, getInvoicePaymentMethod, getInvoiceValue, matchesInvoiceStatusFilter]);
 
     const shouldShowFiscalReason = (invoice) => ['rejected', 'denied', 'pending_return'].includes(invoice?.status);
+    const isDuplicateInvoiceRejection = useCallback((invoice) => {
+      const cStat = Number(invoice?.cStat ?? invoice?.serviceResult?.cStat ?? 0);
+      const reason = normalizeSearchText([
+        invoice?.xMotivo,
+        invoice?.error,
+        invoice?.message,
+        invoice?.detail,
+        invoice?.serviceResult?.xMotivo,
+        invoice?.serviceResult?.error,
+        fiscalReturnReason(invoice)
+      ].filter(Boolean).join(' '));
+      return invoice?.status === 'rejected' && ([204, 539].includes(cStat) || reason.includes('duplicidade de nf-e') || reason.includes('duplicidade de nfe'));
+    }, [fiscalReturnReason]);
 
     const fiscalStats = useMemo(() => ({
       authorized: invoices.filter((item) => item.status === 'authorized').length,
@@ -17987,8 +17987,9 @@ const handleSubmit = async (e) => {
       if (invoice.status === 'authorized') return 'Este pedido já possui nota autorizada.';
       if (invoice.status === 'cancelled') return 'Este pedido já possui nota cancelada.';
       if (invoice.status === 'validating' || invoice.status === 'pending_return') return 'Este pedido possui nota em processamento.';
+      if (isDuplicateInvoiceRejection(invoice)) return 'Este pedido possui nota rejeitada por duplicidade. Consulte o retorno antes de tentar emitir outra.';
       return '';
-    }, [invoicesByOrderId]);
+    }, [invoicesByOrderId, isDuplicateInvoiceRejection]);
 
     const buildOrderEditItemFromProduct = useCallback((product, previous = {}) => {
       const productId = String(product?.id || previous.produtoId || previous.productId || previous.id || '').trim();
@@ -18223,7 +18224,12 @@ const handleSubmit = async (e) => {
           cupom: null,
           updatedAt: new Date()
         };
-        await updateItem('pedidos', orderToEditBeforeInvoice.id, payload, effectiveStoreId);
+        if (isAccountant) {
+          const updatePreInvoiceOrder = httpsCallable(functions, 'fiscalUpdatePreInvoiceOrder');
+          await updatePreInvoiceOrder(callablePayload({orderId: orderToEditBeforeInvoice.id, order: payload}));
+        } else {
+          await updateItem('pedidos', orderToEditBeforeInvoice.id, payload, effectiveStoreId);
+        }
         setValidationByOrder((prev) => {
           const next = {...prev};
           delete next[orderToEditBeforeInvoice.id];
@@ -18444,6 +18450,7 @@ const handleSubmit = async (e) => {
         setMessage({type: 'error', text: error?.message || 'Não foi possível visualizar o rascunho.'});
       }
     };
+
 
     const handleValidateOrder = async (order) => {
       if (isReadOnly) return;
@@ -18908,7 +18915,8 @@ const handleSubmit = async (e) => {
             await downloadInvoiceArtifact(result.invoiceId, 'danfePdf');
           }
         } else {
-          setMessage({ type: result.status === 'pending_return' ? 'error' : 'success', text: result.xMotivo || 'Consulta fiscal concluída.' });
+          setMessage({ type: ['pending_return', 'rejected', 'denied'].includes(result.status) ? 'error' : 'success',
+            text: result.lastConsultation ? `Consulta SEFAZ: ${result.lastConsultation.xMotivo || 'Retorno recebido'}. A rejeição original foi preservada.` : result.xMotivo || 'Consulta fiscal concluída.' });
         }
       } catch (error) {
         console.error('[NotaFiscal] Consulta de retorno fiscal falhou:', error);
@@ -19257,7 +19265,7 @@ const handleSubmit = async (e) => {
         [
           ['Valor total dos produtos', productsTotal],
           ['Valor do frete', freight],
-          ['Valor do seguro', taxes.insurance || taxes.seguro || invoice?.insurance],
+          ['Valor do seguro', invoice?.totals?.insurance ?? taxes.insurance ?? taxes.seguro ?? invoice?.insurance],
           ['Desconto', discount],
           ['Outras despesas', taxes.otherExpenses || taxes.outrasDespesas || invoice?.otherExpenses],
           ['Valor total da nota', invoiceTotal]
@@ -19271,7 +19279,7 @@ const handleSubmit = async (e) => {
         sectionTitle('Transportador/Volumes Transportados', y);
         y += 2;
         field(margin, y, 54, 11, 'Razão social', transport.legalName || transport.razaoSocial, { blank: true, maxLines: 1 });
-        field(margin + 54, y, 32, 11, 'Frete por conta de', transport.freightMode || transport.modalidadeFrete || (freight > 0 ? '0 - Remetente' : '9 - Sem frete'), { maxLines: 1 });
+        field(margin + 54, y, 32, 11, 'Frete por conta de', transport.freightMode ?? transport.modalidadeFrete ?? invoice?.manualInvoice?.freightMode ?? '9 - Sem ocorrência de transporte', { maxLines: 1 });
         field(margin + 86, y, 24, 11, 'Código ANTT', transport.anttCode || transport.codigoAntt, { blank: true, maxLines: 1 });
         field(margin + 110, y, 26, 11, 'Placa do veículo', transport.vehiclePlate || transport.placaVeiculo, { blank: true, maxLines: 1 });
         field(margin + 136, y, 10, 11, 'UF', transport.vehicleUf || transport.ufPlaca, { blank: true, maxLines: 1 });
@@ -19513,8 +19521,8 @@ const handleSubmit = async (e) => {
           },
           settings: {
             environment: settingsForm.environment,
-            nfeSeries: Number(settingsForm.nfeSeries || 1),
-            nfceSeries: Number(settingsForm.nfceSeries || 1),
+            nfeSeries: Number(settingsForm.nfeSeries ?? 1),
+            nfceSeries: Number(settingsForm.nfceSeries ?? 1),
             operationNature: settingsForm.operationNature,
             defaultPaymentMethodCode: settingsForm.defaultPaymentMethodCode,
             defaultPresence: Number(settingsForm.defaultPresence || 2),
@@ -19531,6 +19539,7 @@ const handleSubmit = async (e) => {
           }));
         }
         setMessage({ type: 'success', text: 'Configuração fiscal salva.' });
+        setNumberingReloadKey((value) => value + 1);
       } catch (error) {
         console.error('[NotaFiscal] Erro ao salvar configuração:', error);
         setMessage({ type: 'error', text: error?.message || 'Não foi possível salvar a configuração fiscal.' });
@@ -19857,12 +19866,21 @@ const handleSubmit = async (e) => {
 
         const summary = { created: 0, updated: 0, errors: 0 };
         for (const chunk of chunks) {
-          const batch = writeBatch(db);
-          chunk.forEach((item) => {
-            batch.set(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', item.id), item.payload, { merge: true });
-          });
           try {
-            await batch.commit();
+            if (isAccountant) {
+              const saveProducts = httpsCallable(functions, 'fiscalSaveProducts');
+              const products = chunk.map((item) => ({
+                id: item.id,
+                ...Object.fromEntries(Object.entries(item.payload).filter(([field]) => !['createdAt', 'updatedAt'].includes(field)))
+              }));
+              await saveProducts(callablePayload({ products }));
+            } else {
+              const batch = writeBatch(db);
+              chunk.forEach((item) => {
+                batch.set(doc(db, 'lojas', effectiveStoreId, 'fiscalProducts', item.id), item.payload, { merge: true });
+              });
+              await batch.commit();
+            }
             chunk.forEach((item) => {
               if (item.action === 'created') summary.created += 1;
               if (item.action === 'updated') summary.updated += 1;
@@ -19892,6 +19910,17 @@ const handleSubmit = async (e) => {
     };
 
     const [fiscalPaymentByOrder, setFiscalPaymentByOrder] = useState({});
+    const handleDeleteFiscalProduct = async (row) => {
+      if (!row?.id || !effectiveStoreId) return;
+      if (isAccountant) {
+        const deleteProduct = httpsCallable(functions, 'fiscalDeleteProduct');
+        await deleteProduct(callablePayload({ productId: row.id }));
+        setMessage({ type: 'success', text: 'Produto fiscal excluído.' });
+        return;
+      }
+      await deleteItem('fiscalProducts', row.id, effectiveStoreId);
+    };
+
     const orderColumns = [
       { header: 'Pedido', render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.slice(0, 8) || '-'}</span> },
       { header: 'Cliente', key: 'clienteNome' },
@@ -19937,14 +19966,14 @@ const handleSubmit = async (e) => {
     ];
 
     const invoiceActions = [
-      { icon: Eye, label: 'Ver detalhes', onClick: (row) => setInvoiceToView(row) },
-      { icon: Copy, label: 'Clonar Nota Fiscal', onClick: handleOpenCloneInvoice, isVisible: (row) => !isReadOnly && ['authorized', 'rejected', 'cancelled'].includes(row.status), isDisabled: () => cloneBusy },
       { icon: Edit, label: 'Editar rascunho', onClick: handleEditManualDraft, isVisible: (row) => !isReadOnly && row.status === 'draft' && !row.orderId },
       { icon: Eye, label: 'Visualizar Nota', onClick: (row) => row.orderId ? handleViewOrderDraft(row) : handlePreviewManualDraft(row), isVisible: (row) => row.status === 'draft' },
+      { icon: Copy, label: 'Clonar Nota Fiscal', onClick: handleOpenCloneInvoice, isVisible: (row) => !isReadOnly && ['authorized', 'rejected', 'cancelled'].includes(row.status), isDisabled: () => cloneBusy },
+      { icon: Eye, label: 'Ver detalhes', onClick: (row) => setInvoiceToView(row) },
       { icon: FileText, label: 'Baixar/visualizar DANFE PDF', onClick: handleDownloadInvoicePdf, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
       { icon: Printer, label: 'Exportar DANFE A4', onClick: handleExportDanfeA4, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
       { icon: Download, label: 'Baixar XML', onClick: handleDownloadInvoiceXml, isVisible: (row) => ['authorized', 'cancelled'].includes(row.status) },
-      { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && row.status === 'pending_return' && Boolean(row.receipt) },
+      { icon: RefreshCw, label: 'Consultar retorno', onClick: handleRefreshInvoice, isVisible: (row) => !isReadOnly && (row.status === 'pending_return' || isDuplicateInvoiceRejection(row)) },
       { icon: X, label: 'Cancelar nota', onClick: handleOpenCancelInvoice, isVisible: (row) => !isReadOnly && row.status === 'authorized' }
     ];
 
@@ -19958,7 +19987,7 @@ const handleSubmit = async (e) => {
 
     const productActions = isReadOnly ? [] : [
       { icon: Edit, label: 'Editar', onClick: handleEditFiscalProduct },
-      { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('fiscalProducts', row.id, effectiveStoreId) }) }
+      { icon: Trash2, label: 'Excluir', onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => handleDeleteFiscalProduct(row) }) }
     ];
 
     const DetailSection = ({ title, children }) => (
@@ -20000,7 +20029,7 @@ const handleSubmit = async (e) => {
           </div>
           <div className="flex items-center gap-2 px-4 py-2 bg-white border rounded-xl shadow-sm text-sm text-gray-700">
             <CheckCircle className="w-4 h-4 text-green-600" />
-            {isReadOnly ? 'Consulta contábil' : `Ambiente: ${settingsForm.environment === 'production' ? 'Produção' : 'Homologação'}`}
+            {isAccountant ? 'Administração fiscal (Contador)' : `Ambiente: ${settingsForm.environment === 'production' ? 'Produção' : 'Homologação'}`}
           </div>
         </div>
 
@@ -20273,10 +20302,11 @@ const handleSubmit = async (e) => {
         )}
 
         {activeTab === 'configuracao' && (
+          <div className="space-y-6">
           <form onSubmit={handleSaveFiscalConfig} className="space-y-6">
-            {isReadOnly && (
+            {isAccountant && (
               <div className="p-4 rounded-xl border border-blue-200 bg-blue-50 text-sm text-blue-800">
-                Perfil Contador: consulta habilitada. Alterações fiscais, emissão e cancelamento não estão disponíveis.
+                Perfil Contador: administração fiscal habilitada para as lojas vinculadas. A URL global do serviço permanece exclusiva do Dono.
               </div>
             )}
             <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100 space-y-4">
@@ -20346,15 +20376,15 @@ const handleSubmit = async (e) => {
                   <option value="homologation">Homologação</option>
                   <option value="production">Produção</option>
                 </Select>
-                <Input disabled={isReadOnly} label="Série NF-e 55" type="number" value={settingsForm.nfeSeries || 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfeSeries: e.target.value })} />
-                <Input disabled={isReadOnly} label="Série NFC-e 65" type="number" value={settingsForm.nfceSeries || 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfceSeries: e.target.value })} />
+                <Input disabled={isReadOnly} label="Série NF-e 55" type="number" min={0} max={999} step={1} required value={settingsForm.nfeSeries ?? 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfeSeries: e.target.value })} />
+                <Input disabled={isReadOnly} label="Série NFC-e 65" type="number" min={0} max={999} step={1} required value={settingsForm.nfceSeries ?? 1} onChange={(e) => setSettingsForm({ ...settingsForm, nfceSeries: e.target.value })} />
                 <Input disabled={isReadOnly} label="Natureza da operação" value={settingsForm.operationNature || ''} onChange={(e) => setSettingsForm({ ...settingsForm, operationNature: e.target.value })} />
                 <Input disabled={isReadOnly} label="Pagamento padrão" value={settingsForm.defaultPaymentMethodCode || '99'} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPaymentMethodCode: e.target.value })} />
                 <Input disabled={isReadOnly} label="Indicador de presença" type="number" value={settingsForm.defaultPresence || 2} onChange={(e) => setSettingsForm({ ...settingsForm, defaultPresence: e.target.value })} />
-                {isPlatformAdmin && (
+                {(isPlatformAdmin || isAccountant) && (
                   <div className="md:col-span-3">
                     <Input
-                      disabled={isReadOnly}
+                      disabled={isAccountant}
                       label="URL única do serviço fiscal (Cloud Run) - plataforma"
                       value={settingsForm.serviceUrl || ''}
                       placeholder="https://fiscal-service-xxxxx-rj.a.run.app"
@@ -20363,6 +20393,7 @@ const handleSubmit = async (e) => {
                     <p className="mt-1 text-xs text-gray-500">
                       Configuração global protegida; não pertence a uma loja.
                       {platformService?.configured ? ` Origem atual: ${platformService.source || 'backend'}.` : ' Ainda não configurada.'}
+                      {isAccountant ? ' Configuração exclusiva do Dono.' : ''}
                     </p>
                   </div>
                 )}
@@ -20372,6 +20403,8 @@ const handleSubmit = async (e) => {
               </div>}
             </div>
           </form>
+          <FiscalNumberingControls key={effectiveStoreId} call={callNumbering} reloadKey={numberingReloadKey} canManage={canViewFullFiscalDocument} Modal={Modal} Button={Button} />
+          </div>
         )}
 
         <Modal isOpen={showProductModal} onClose={() => { setShowProductModal(false); setProductCorrectionOrderId(''); resetProductForm(); }} title={editingFiscalProduct ? 'Editar produto fiscal' : 'Novo produto fiscal'} size="lg">
@@ -20908,11 +20941,13 @@ const handleSubmit = async (e) => {
 
             <section className="rounded-xl border border-gray-100 bg-gray-50 p-4">
               <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Input label="Frete" type="number" min="0" step="0.01" value={manualInvoiceForm.freight ?? ''} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, freight: event.target.value}))} />
+                <Input label="Frete (R$)" type="number" min="0" step="0.01" value={manualInvoiceForm.freight ?? ''} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, freight: event.target.value}))} />
                 <Input label="Seguro" type="number" min="0" step="0.01" value={manualInvoiceForm.insurance ?? ''} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, insurance: event.target.value}))} />
                 <Input label="Outras despesas" type="number" min="0" step="0.01" value={manualInvoiceForm.other ?? ''} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, other: event.target.value}))} />
                 <Input label="Natureza da operação" value={manualInvoiceForm.operationNature ?? ''} placeholder="Usar configuração atual da loja" onChange={(event) => setManualInvoiceForm((prev) => ({...prev, operationNature: event.target.value}))} />
-                <Input label="Modalidade de frete" value={manualInvoiceForm.freightMode ?? '9'} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, freightMode: event.target.value}))} />
+                <Select label="Modalidade de frete" value={manualInvoiceForm.freightMode ?? '9'} onChange={(event) => setManualInvoiceForm((prev) => ({...prev, freightMode: event.target.value}))}>
+                  {[['0', '0 — Contratação por conta do remetente (CIF)'], ['1', '1 — Contratação por conta do destinatário (FOB)'], ['2', '2 — Contratação por conta de terceiros'], ['3', '3 — Transporte próprio do remetente'], ['4', '4 — Transporte próprio do destinatário'], ['9', '9 — Sem ocorrência de transporte']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </Select>
                 <Input label="Indicador de presença" value={manualInvoiceForm.presence ?? ''} placeholder="Usar configuração atual da loja" onChange={(event) => setManualInvoiceForm((prev) => ({...prev, presence: event.target.value}))} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -21057,7 +21092,8 @@ const handleSubmit = async (e) => {
                     <DetailField label="Emissão" value={invoice.status === 'draft' ? 'Não emitida' : formatDateTime(invoice.issuedAt || invoice.createdAt)} />
                     <DetailField label="Protocolo de autorização" value={invoice.protocol || '-'} mono />
                     <DetailField label="Autorização" value={formatDateTime(invoice.authorizedAt || invoice.serviceResult?.authorizedAt || (invoice.status === 'authorized' ? invoice.updatedAt : null))} />
-                    <DetailField label="Motivo/status SEFAZ" value={reason || '-'} full />
+                    <DetailField label="Motivo/status SEFAZ" value={`${invoice.status === 'rejected' ? invoice.issuanceRejection?.cStat ?? invoice.serviceResult?.duplicateIssueResult?.cStat ?? invoice.cStat ?? '-' : invoice.cStat ?? '-'} — ${reason || '-'}`} full />
+                    {(invoice.lastConsultation || invoice.serviceResult?.duplicateIssueResult) && <DetailField label="Última consulta SEFAZ (informação adicional)" value={`${(invoice.lastConsultation || invoice.serviceResult)?.cStat ?? '-'} — ${(invoice.lastConsultation || invoice.serviceResult)?.xMotivo || '-'}${invoice.lastConsultation?.at ? ` · ${formatDateTime(invoice.lastConsultation.at)}` : ''}`} full />}
                     <DetailField label="Observação" value={invoice.additionalInfo || '-'} full />
                     <DetailField label="Justificativa de cancelamento" value={invoice.cancelReason || '-'} full />
                     {invoice.cancelRequestedAt && <DetailField label="Cancelamento solicitado" value={formatDateTime(invoice.cancelRequestedAt)} />}
@@ -21178,7 +21214,7 @@ const handleSubmit = async (e) => {
                   </div>
                 </DetailSection>
                 <DetailSection title="Histórico fiscal">
-                  <div className="space-y-2 text-sm">{(invoice.history || []).map((entry, index) => <div key={index} className="rounded-lg border border-gray-100 bg-white p-2"><strong>{statusLabel[entry.status] || entry.action || entry.status}</strong> · {formatDateTime(entry.at)} · {entry.by || '-'}{entry.message ? ` · ${entry.message}` : ''}{entry.protocol ? ` · protocolo ${entry.protocol}` : ''}</div>)}</div>
+                  <FiscalInvoiceHistory history={invoice.history} statusLabel={statusLabel} formatDateTime={formatDateTime} />
                 </DetailSection>
               </div>
             );
