@@ -1,5 +1,12 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Fase9 encerrada no DEV — 04/11/2026
+
+**Fase9=100%; Fase10=87,50%; Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Esta seção prevalece sobre estados anteriores preservados abaixo. Sessão Dono fornecida pelo proprietário: conciliação por loja, estado vazio, consulta de pedido existente PAID/R$1,00, referências do provider, aviso de execução externa e gravação bloqueada sem referência/atesto conferidos em Chrome real; formulário cancelado, sem registrar operação. Layout desktop/estreito sem overflow horizontal nas dimensões CSS efetivamente registradas (zoom do Chrome impede afirmar390CSS exatos). Nenhuma operação financeira/fiscal/pedido executada. Com implementação,1.120testes PASS, review, build/lint/diff e API/Rules/Hosting DEV já verificados, o último aceite da Fase9 foi concluído. [Evidência](evidence/preprod-mission-2026-11-04/phase9-staff-acceptance-dev.json).
+
+Restam SMS Enterprise/grant temporário real, C15 claim Google/e-mail e C16 consolidação. Dono autorizou **até1SMS ao celular homologado final0290 somente para sessão temporária**, sem claim permanente; não pedir autorização novamente para esse envio, não reenviar além do limite. Nenhum envio concluído no ponto deste registro. Pré-checagem Garavelo retornou canais vazios antes de enviar; usar apenas configuração DEV legítima existente, sem copiar/habilitar flags. Não reabrir C14 nem aceites antigos.
+
+
 ## Estado vigente — publicação concluída em 04/11/2026
 
 Esta seção prevalece sobre os checkpoints históricos abaixo. **Não refazer implementação nem deploy.** Runtime `4e264054ca05364ecda12b392974428ea61dce68`, push DEV concluído; API `api-00070-jib` ACTIVE (59/59 hashes,145 Functions restantes inalteradas, env/bindings preservados), Rules `19bc50df-ace4-453f-8bce-fae33bce3bcf` com SHA840d546545e6be5d504fe8324021baae2f61b8ca17693f113ef3183a938781f1, Hosting61/61 hashes/cache/rotas corretos. Dez negativas API remotas PASS sem pedido/transação real. Integração d6d5016e preservou o DEV paralelo fiscal/cliente em vez de sobrescrever.

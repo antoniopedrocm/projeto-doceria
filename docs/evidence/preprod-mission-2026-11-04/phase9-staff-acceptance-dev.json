@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "runtimeCommit": "4e264054ca05364ecda12b392974428ea61dce68",
+  "checkedAt": "2026-11-04T22:18:05.502Z",
+  "actor": "Actual authenticated Owner session supplied by owner",
+  "storeId": "ana-guimaraes-doceria-matriz",
+  "source": "Chrome real DEV UI; read-only",
+  "checks": {
+    "storeScopedList": true,
+    "emptyState": true,
+    "existingPaidPaymentLookup": true,
+    "paidAmount": 1,
+    "providerReferenceFieldsPresent": true,
+    "externalExecutionDisclaimer": true,
+    "registrationDisabledWithoutEvidenceAndAttestation": true,
+    "formCancelledWithoutSaving": true,
+    "desktopAndNarrowPresentation": true
+  },
+  "viewports": {
+    "desktopCss": {
+      "width": 2560,
+      "height": 1185,
+      "scrollWidth": 2560
+    },
+    "narrowCss": {
+      "width": 500,
+      "height": 1066,
+      "scrollWidth": 500
+    },
+    "note": "Chrome zoom affects CSS dimensions; viewport override requested1920x889/390x800. Actual DOM sizes recorded; not an assertion of exact390 CSS width. Previous real public-entry390x800 and component regression remain separate."
+  },
+  "screenshots": [
+    "reconciliation-staff-desktop-dev.jpg",
+    "reconciliation-staff-narrow-dev.jpg"
+  ],
+  "realPayment": false,
+  "realRefund": false,
+  "realCancellation": false,
+  "realInvoice": false,
+  "orderMutation": false,
+  "financialRegistration": false,
+  "production": false,
+  "phase9": 100,
+  "phase10": 87.5,
+  "globalFormal": 97,
+  "phase13": 0
+}

@@ -1,5 +1,12 @@
 # FINAL DEV PRE-PROD REPORT
 
+## Fase9 encerrada no DEV — 04/11/2026
+
+**Fase9=100%; Fase10=87,50%; Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Esta seção prevalece sobre estados anteriores preservados abaixo. Sessão Dono fornecida pelo proprietário: conciliação por loja, estado vazio, consulta de pedido existente PAID/R$1,00, referências do provider, aviso de execução externa e gravação bloqueada sem referência/atesto conferidos em Chrome real; formulário cancelado, sem registrar operação. Layout desktop/estreito sem overflow horizontal nas dimensões CSS efetivamente registradas (zoom do Chrome impede afirmar390CSS exatos). Nenhuma operação financeira/fiscal/pedido executada. Com implementação,1.120testes PASS, review, build/lint/diff e API/Rules/Hosting DEV já verificados, o último aceite da Fase9 foi concluído. [Evidência](evidence/preprod-mission-2026-11-04/phase9-staff-acceptance-dev.json).
+
+Restam SMS Enterprise/grant temporário real, C15 claim Google/e-mail e C16 consolidação. Dono autorizou **até1SMS ao celular homologado final0290 somente para sessão temporária**, sem claim permanente; não pedir autorização novamente para esse envio, não reenviar além do limite. Nenhum envio concluído no ponto deste registro. Pré-checagem Garavelo retornou canais vazios antes de enviar; usar apenas configuração DEV legítima existente, sem copiar/habilitar flags. Não reabrir C14 nem aceites antigos.
+
+
 04/11/2026 — DEV `crmdoceria-9959e`, branch `feature/infinitepay-customer-auth`, worktree `C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree`. Runtime publicado4e264054. Relatório de fechamento técnico; aceites humanos abaixo continuam abertos. **PROD READY: NÃO.**
 
 | # | Item | Resultado e limite |
@@ -8,7 +15,7 @@
 |2|Refresh CRM|PASS das quatro seções com loja/Auth/capability preservadas; evidência anterior mantida.|
 |3|SMS Enterprise|Implementado/testado/publicado; falta SMS/grant e claim reais autorizados. Entrada pública desktop/mobile PASS não comprova entrega OTP.|
 |4|Admin Preview|PASS preservado; sem novo ciclo manual. previewSessionId comum LOW futuro.|
-|5|Fase9|Implementação, testes, segurança do delta, build/lint e deploy DEV concluídos; falta aceite autenticado da nova conciliação.|
+|5|Fase9|100%, implementação/testes/security/build/lint/deploy e homologação autenticada Staff concluídos.|
 |6|Fase10|14/16 critérios PASS. C13 processo concluído; C14 disposição dos14remanescentes aprovada. C15/C16 pendentes.|
 |7|Edição de pedidos|PASS preservado; formulário completo/status separados e proteções financeiras/fiscais/estoque auditadas em regressão.|
 |8|Entrega/retirada|PASS preservado, configuração/readiness/guard por loja; nenhuma flag/tarifa real alterada.|
@@ -28,9 +35,9 @@
 |22|Real SMS|NÃO. Autorização específica solicitada, sem envio por implicação.|
 |23|NF real|NÃO.|
 |24|WhatsApp real|NÃO.|
-|25|Fase9 final|75%; só100% após homologação DEV restante.|
+|25|Fase9 final|100%, concluída no DEV com evidência de aceite Staff somente leitura.|
 |26|Fase10 final|87,50%, fora da ponderação histórica e obrigatória pré-PROD.|
-|27|Global formal final|95,00%; pesos preservados. Fase9=100% levará97,00%, sem autorizar PROD por si só.|
+|27|Global formal final|97,00%;2p.p. históricos da Fase9 aplicados sem reponderação; PROD continua bloqueada.|
 |28|Fase13|0%; não iniciada.|
 |29|Prod ready review|Preparado com gates/evidências/responsáveis, inventário futuro e plano de backup/rollback; não declarar DEV READY FOR PROD REVIEW ainda.|
 |30|Prod alterada|NÃO; nenhum acesso ou deploy em ana-guimaraes. Mercado Pago não iniciado.|
