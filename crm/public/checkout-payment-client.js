@@ -36,7 +36,8 @@ export function redirectToPayment(data) {
   if(data.payment_status==='PAID') {window.location.href=`./payment-return.html?order_nsu=${encodeURIComponent(data.paymentId)}`;return;}
   if(!data.checkoutUrl) throw new Error('Seu pedido está aguardando confirmação. Consulte Minha Conta.');
   const url=new URL(data.checkoutUrl);
-  if(url.protocol!=='https:' || !(url.hostname==='infinitepay.io'||url.hostname.endsWith('.infinitepay.io'))) throw new Error('Link de pagamento inválido.');
+  if(url.protocol!=='https:' || url.username || url.password || (url.port && url.port!=='443') ||
+    !(url.hostname==='infinitepay.io'||url.hostname.endsWith('.infinitepay.io')||url.hostname==='checkout.infinitepay.com.br')) throw new Error('Link de pagamento inválido.');
   window.location.assign(url.href);
 }
 let onlineEnabled=false;

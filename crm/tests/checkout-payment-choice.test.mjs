@@ -44,6 +44,8 @@ test('redirecionamento online mantém allowlist e retorno de pagamento já confi
   const assigned=[],location={assign:url=>assigned.push(url)},storage=new Map();
   const redirect=vm.runInNewContext('('+expression+')',{window:{location},URL,key:'pending',sessionStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)}});
   redirect({paymentId:'test',checkoutUrl:'https://buy.infinitepay.io/test'});assert.deepEqual(assigned,['https://buy.infinitepay.io/test']);
+  redirect({paymentId:'test',checkoutUrl:'https://checkout.infinitepay.com.br/test'});assert.equal(assigned.at(-1),'https://checkout.infinitepay.com.br/test');
+  for(const checkoutUrl of ['https://checkout.infinitepay.com.br.evil.test','http://buy.infinitepay.io/test','https://user:secret@buy.infinitepay.io/test','https://buy.infinitepay.io:444/test','https://infinitepay.io.evil.test'])assert.throws(()=>redirect({checkoutUrl}),/inválido/);
   assert.throws(()=>redirect({checkoutUrl:'https://example.test/not-provider'}),/inválido/);
   assert.throws(()=>redirect({}),/aguardando/);
   redirect({paymentId:'test',payment_status:'PAID'});assert.equal(location.href,'./payment-return.html?order_nsu=test');
