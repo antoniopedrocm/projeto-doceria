@@ -7,7 +7,7 @@ test('Rules publicadas recusam reprecificação antiga e aceitam novo status iso
  const env=await initializeTestEnvironment({projectId:'demo-doceria-checkout',firestore:{host:'127.0.0.1',port:8080,rules:fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8')}});
  const p='lojas/status-rule-store/pedidos/paid',order={lojaId:'status-rule-store',status:'Pendente',paymentId:'payment-fixture',payment_status:'PAID',order_status:'CONFIRMED',requiresReview:false,paymentMode:'ONLINE_NOW',paymentMethod:'PIX',total:1,itens:[{id:'fixture',preco:1,quantity:1}]};
  try {
-  await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();await setDoc(doc(db,'users/status-staff'),{role:'dono',ativo:true});await setDoc(doc(db,'users/status-accountant'),{role:'contador',ativo:true});await setDoc(doc(db,p),order);});
+  await env.withSecurityRulesDisabled(async c=>{const db=c.firestore();await setDoc(doc(db,'users/status-staff'),{role:'dono',ativo:true});await setDoc(doc(db,'users/status-accountant'),{role:'contador',ativo:true});await setDoc(doc(db,'lojas/status-rule-store'),{nome:'Loja fixture'});await setDoc(doc(db,p),order);});
   const staff=env.authenticatedContext('status-staff').firestore();
   // The old modal hydrated live catalogue fields even when only status was changed.
   await assertFails(updateDoc(doc(staff,p),{status:'Finalizado',itens:[{...order.itens[0],estoque:5,produtoId:'fixture'}]}));
