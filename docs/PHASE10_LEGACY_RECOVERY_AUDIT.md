@@ -2,6 +2,8 @@
 
 ## Decisão vigente registrada em 04/11/2026
 
+Runtime4e264054 publicado e conferido no DEV em04/11; suíte final1.120PASS inclui registry/claim/migração/rollback/grants/isolamento. Isso encerra publicação e regressão automatizada dos gaps, **não C15/C16**. Falta SMS Enterprise autorizado com claim real pós-Google e pós-e-mail e aceite consolidado, conforme [roteiro mínimo atual](PRODUCTION_READINESS_REVIEW.md). Nenhum SMS enviado; não remover owners, criar identity falsa ou liberar órfãos para fabricar aceite. Fotografia de dados abaixo é de01/11; aprovação dos14caseIds é específica, não afirma inventário remoto em tempo real.
+
 O Dono aprovou explicitamente “Aprovar preservação sem atribuição” para os 14 caseIds do inventário do commit4d894ddf. C14 passa a **PASS por disposição segura formal**, sem apagar, fundir, corrigir telefone ou conceder ownership. Originais permanecem privados e não atribuídos até prova futura. [Registro exato da decisão](evidence/phase10-remnants-owner-decision.json). Isso encerra a decisão dos remanescentes desta fotografia; não afirma que os dados foram recuperados nem aprova migração.
 
 **Fase10 = 87,50% (14/16): C01–C14 PASS; C15 e C16 pendentes.** A declaração de81,25% abaixo fica como histórico anterior à resposta. C15 exige claim real Google/e-mail com SMS Enterprise autorizado; C16 exige homologação consolidada do estado publicado. Fase9=75%, global95,00%, Fase13=0%. PROD bloqueada.

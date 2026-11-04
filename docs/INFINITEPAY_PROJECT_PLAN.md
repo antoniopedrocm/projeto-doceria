@@ -4,13 +4,19 @@
 
 **PROD BLOQUEADA. Fase 9 e Fase 10 precisam atingir 100% antes de qualquer autorização para produção. Fase 10 tornou-se gate obrigatório de produção por decisão do proprietário.** Continua fora da ponderação global histórica; nenhum peso é alterado nesta revisão.
 
-- **Fase 9 = 75%. CONTRATO OFICIAL INFINITEPAY OBTIDO:** respostas formais do suporte de 25/10/2026 conferidas. Não registrar mais “obter contrato oficial dos eventos não pagos/estornos” como pendência atual. Faltam implementação, testes, deploy DEV e homologação de paid/payment_failed/canceled/refunded/settled, parser/seleção, operações esperadas, reconciliação pendente, webhook não assinado/POST forjado e efeitos idempotentes sobre estado/estoque/cupom/financeiro.
+- **Fase 9 = 75%. CONTRATO OFICIAL INFINITEPAY OBTIDO:** respostas formais do suporte de25/10/2026 conferidas. Implementação, testes, review do delta, build/lint, push e deploy seletivo DEV concluídos em04/11 no runtime4e264054: eventos financeiros, operações externas esperadas, reconciliação, webhook não assinado e efeitos idempotentes. API59/59hashes, Rules correspondentes à fonte testada e Hosting61/61hashes verificados. **Falta homologação autenticada da nova conciliação Staff**; não elevar a100% apenas por publicação. Contrato não é pendência.
 - **Fase 10 = 87,50% (14/16 critérios comprovados; decisão registrada em04/11). Obrigatória pré-PROD, sem contribuição global.** C13 concluído com procedimento operacional de revisão/aprovação/rollback e 23 testes emulados. C14 concluído pela aprovação explícita do Dono de preservar os14 remanescentes sem atribuição até prova futura, conforme inventário4d894ddf; nenhuma migração/ownership concedido. C15 (claim real Google/e-mail com Enterprise) e C16 (aceite consolidado) pendentes. SMS, lookup ou C02 isolados não encerram a fase. Evidências atuais em PHASE10_LEGACY_RECOVERY_AUDIT.md; histórico anterior preservado.
 - **Global formal = 95,00%; Fase 13 = 0%; Fases 11/12 = 100% do escopo histórico.** Fechar Fase 9 leva a 97,00%, sem autorizar PROD enquanto Fase 10 < 100% ou outro gate estiver pendente. Rebaseline para dar peso à Fase 10 somente mediante decisão explícita futura, preservando histórico.
 - Também obrigatórios: **Nota Fiscal, SMS Enterprise, Refresh CRM, Admin Preview técnico, configurações PROD, backup/rollback, security/regression tests e autorização explícita do proprietário**, todos PASS. Esta decisão não publica código nem concede autorização de acesso/alteração PROD.
 
 [PRE-PROD GATE REVIEW](PREPROD_GATE_REVIEW.md) · [Auditoria Fase 10: definição, 20 itens e cálculo](PHASE10_LEGACY_RECOVERY_AUDIT.md) · [Contrato recebido](INFINITEPAY_SUPPORT_CONTRACT_2026-10-25.md). Esta seção prevalece sobre descrições históricas incompatíveis abaixo.
 
+
+## Entrega DEV e gates vigentes — 04/11/2026
+
+Runtime4e264054 enviado ao origin e publicado somente em `crmdoceria-9959e`; 145 outras Functions e env/bindings preservados. Merge d6d5016e manteve os ajustes fiscal/cliente já publicados por outro worktree. Regressão consolidada **1.120 execuções PASS** (590 React,154 unidades,169 emulação,45 Rules,162 públicos), build/lint PASS, scan selado de43arquivos sem candidatos novos e review/testes direcionados dos guards posteriores. Nota Fiscal/Refresh/Admin Preview e complementos aprovados permanecem PASS.
+
+**Fase9=75%; Fase10=87,50%; Global95,00%; Fase13=0%.** Pendentes: aceite Staff da nova conciliação, SMS Enterprise autorizado/claim real Google e e-mail (C15), depois consolidação C16. Os14remanescentes aprovados permanecem privados sem atribuição; não reabrir C14 nem executar migração arbitrária. Nenhum pagamento, SMS, nota ou WhatsApp real, nenhuma consulta/alteração PROD. Mercado Pago não iniciado. [Checkpoint exato](CHECKPOINT_PREPROD_MISSION.md), [review atual e roteiro mínimo](PRODUCTION_READINESS_REVIEW.md), [evidência](evidence/preprod-mission-2026-11-04/validation.json).
 
 ## Fase 0 — baseline e levantamento (2026-09-08)
 

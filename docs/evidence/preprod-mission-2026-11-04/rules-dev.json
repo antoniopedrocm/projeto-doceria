@@ -1,0 +1,10 @@
+{
+  "project": "crmdoceria-9959e",
+  "commit": "4e264054ca05364ecda12b392974428ea61dce68",
+  "checkedAt": "2026-11-04T19:08:00.855Z",
+  "production": false,
+  "ruleset": "projects/crmdoceria-9959e/rulesets/19bc50df-ace4-453f-8bce-fae33bce3bcf",
+  "sha256": "840d546545e6be5d504fe8324021baae2f61b8ca17693f113ef3183a938781f1",
+  "remoteSourceSha256": "840d546545e6be5d504fe8324021baae2f61b8ca17693f113ef3183a938781f1",
+  "normalizedSourceMatched": true
+}

@@ -1,5 +1,9 @@
 # Readiness interno pré-PROD — revisão vigente 2026-10-31
 
+## Atualização vigente — 04/11/2026
+
+Os registros de31/10 abaixo são históricos. **Admin Preview, Refresh CRM e Nota Fiscal são PASS** no escopo seguro da missão, juntamente com complementos homologados. Runtime4e264054 publicado/verificado somente no DEV; regressão1.120PASS, build/lint/artefatos remotos PASS. Fase9 permanece75% aguardando novo aceite Staff da conciliação; Fase10=87,50% (14/16), aguardando C15 claim Google/e-mail com SMS Enterprise autorizado e C16 aceite consolidado. Global95,00%, Fase130%, nenhum peso alterado. **PROD READY: NÃO**, sem autorização ou consulta PROD. [Review controlador atual](PRODUCTION_READINESS_REVIEW.md), [checkpoint](CHECKPOINT_PREPROD_MISSION.md). Não repetir gates já aprovados nem fazer novo deploy apenas para esta documentação.
+
 ## Gate vigente — decisão do proprietário em 31/10/2026
 
 **PROD READY: NÃO. Fases 9 E 10 obrigatoriamente em 100%, mais todos os demais gates PASS e autorização explícita final. Fase 10 tornou-se gate obrigatório de produção por decisão do proprietário.** Nenhum peso histórico foi alterado: Fase9 75%, Global95,00%, Fase13 0%; Fase10 75% auditado (12/16) e fora da ponderação. Fase9 em100% produz97,00% formal, sem liberar produção com Fase10 pendente.

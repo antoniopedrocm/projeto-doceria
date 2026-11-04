@@ -1,5 +1,11 @@
 # PRE-PROD GATE REVIEW
 
+## Atualização vigente — 04/11/2026
+
+**PROD READY: NÃO.** Esta atualização prevalece sobre a revisão histórica de31/10 abaixo. Admin Preview, Nota Fiscal (fila real +fixture segura sem emissão), Refresh CRM e complementos já homologados: **PASS**, sem reabertura. Fase9: implementação/testes/security do delta/build/lint/push e deploy DEV concluídos no runtime4e264054; falta aceite autenticado da nova conciliação, permanecendo75%. Fase10:87,50% (14/16), C13/C14 concluídos e decisão dos14remanescentes aprovada, C15 claim real Google/e-mail com Enterprise e C16 consolidação pendentes. Nenhum SMS real autorizado/enviado nesta missão. Global95,00%, Fase130%, pesos preservados.
+
+Regressão final **1.120 execuções PASS**; API59/59hashes e145Functions inalteradas, Rules correspondentes à fonte testada, Hosting61/61hashes/cache/rotas e10negativas remotas PASS. [Review vigente com gates/roteiros/inventário e rollback](PRODUCTION_READINESS_REVIEW.md), [checkpoint exato da retomada](CHECKPOINT_PREPROD_MISSION.md), [evidência consolidada](evidence/preprod-mission-2026-11-04/validation.json). Sem acesso/alteração PROD, novo pagamento, nota, SMS ou WhatsApp real; Mercado Pago não iniciado.
+
 **31/10/2026 — PROD READY: NÃO.** Ambiente de execução: DEV `crmdoceria-9959e`; produção não autorizada nem consultada. Revisão documental/código na base `2507adfdf3c877e41197d885a5d5c85d159c6656`, sem implementação grande, alteração remota ou deploy.
 
 Decisão do proprietário: **Fase 9 = 100% E Fase 10 = 100%** antes de qualquer autorização para produção. Fase 10 tornou-se gate obrigatório de produção por decisão do proprietário. Os demais gates abaixo também exigem PASS e autorização explícita final. Obrigatoriedade não cria peso global: Fase 9 **75%**, global formal **95,00%**, Fase 13 **0%** preservados. Fase 10 aferida em **75% (12/16 critérios de evidência)**, fora da ponderação global. Fases 11/12 continuam 100% do escopo histórico, sem conferir aprovação automática aos complementos.

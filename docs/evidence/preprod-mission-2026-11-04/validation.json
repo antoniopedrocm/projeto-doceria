@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "runtimeCommit": "4e264054ca05364ecda12b392974428ea61dce68",
+  "checkedAt": "2026-11-04T19:17:31.593Z",
+  "production": false,
+  "suites": [
+    {
+      "name": "React CRA",
+      "tests": 590,
+      "suites": 58,
+      "result": "PASS"
+    },
+    {
+      "name": "Functions unit",
+      "tests": 154,
+      "result": "PASS"
+    },
+    {
+      "name": "Auth/Firestore integration",
+      "tests": 169,
+      "result": "PASS"
+    },
+    {
+      "name": "Firestore Rules",
+      "tests": 45,
+      "result": "PASS"
+    },
+    {
+      "name": "Public modules and canonical session",
+      "tests": 162,
+      "result": "PASS"
+    }
+  ],
+  "totalTestExecutions": 1120,
+  "note": "Final suites only; earlier reruns are not added. Provider and OTP effects mocked in emulators; no real financial/fiscal/messaging mutation.",
+  "build": {
+    "result": "PASS",
+    "bundle": "static/js/main.8fbe8fb2.js",
+    "mainGzipKb": 455.21,
+    "webConfig": "DEV verified before build",
+    "warnings": [
+      "Existing NativeAudio source maps absent",
+      "Existing browser support metadata stale"
+    ]
+  },
+  "lint": {
+    "result": "PASS",
+    "errors": 0,
+    "knownWarnings": {
+      "App": 66,
+      "FiscalNumberingControls": 1
+    },
+    "scope": "Changed runtime/UI/test files and integrated App; not an assertion of repository-wide zero warnings"
+  },
+  "security": {
+    "scanId": "e9ded481-1023-4cac-a0a5-22bcbecf6cec",
+    "state": "COMPLETE",
+    "base": "adeb9841405fb1f85182dff32c2b97ebe43fb737",
+    "head": "43f8e0c08e1a0fa636ef7fe6fe64e7a886140898",
+    "reviewedFiles": 43,
+    "newCandidates": 0,
+    "coverage": "Pinned D/E delta and supporting paths; not entire repository. Later Rules/merged DEV source verified separately with targeted review and final regression.",
+    "partialMeasuredTokens": {
+      "total": 12498696,
+      "input": 12465471,
+      "cachedInput": 12066560,
+      "output": 33225,
+      "missingThreadCount": 6
+    }
+  },
+  "noRealPayment": true,
+  "noRealSms": true,
+  "noRealInvoice": true,
+  "noWhatsApp": true,
+  "noProductionAccess": true
+}

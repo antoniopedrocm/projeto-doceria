@@ -26,4 +26,6 @@ Claim permanente continua exigindo Google/e-mail real e desafio próprio `CUSTOM
 
 ## Validação em andamento
 
+Atualização04/11/2026: runtime4e264054 publicado/verificado no DEV (API/Rules/Hosting); regressão consolidada1.120PASS, revisão de segurança do delta concluída e build/lint PASS. Entrada pública temporária desktop1920×889/mobile390×800 e retorno amigável Garavelo conferidos sem envio de SMS, sem shell privado ou overflow horizontal. **Ainda falta aceite real Enterprise/grant e claim Google/e-mail C15**, mediante autorização específica; não é claim concluído. [Evidências atuais](evidence/preprod-mission-2026-11-04/validation.json), [gates/roteiro](PRODUCTION_READINESS_REVIEW.md). O parágrafo abaixo preserva a aferição inicial local.
+
 27 testes HTTP/retorno, 24 emulados de grants/claim/privacidade e 88 React de Customer/logout/preview passaram; 4 testes públicos de escolha/header/redirect passaram. Provider/SMS são simulados em emuladores. Nenhum SMS, pagamento, nota ou WhatsApp real realizado. Build DEV passou (avisos anteriores de sourcemap Native Audio; +3,51 kB gzip nesta aferição); lint focado passou. Publicação, revisão de segurança e aceite desktop/mobile deste novo contrato ainda pendentes; isso não fecha Fase 9/10.

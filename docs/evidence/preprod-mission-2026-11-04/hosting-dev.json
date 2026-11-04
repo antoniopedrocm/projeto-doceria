@@ -1,0 +1,72 @@
+{
+  "project": "crmdoceria-9959e",
+  "commit": "4e264054ca05364ecda12b392974428ea61dce68",
+  "checkedAt": "2026-11-04T19:10:02.144Z",
+  "production": false,
+  "hostingHashesMatched": 61,
+  "htmlCache": "no-cache, max-age=0, must-revalidate",
+  "assetCache": "public, max-age=31536000, immutable",
+  "friendlyRoutes": [
+    {
+      "route": "/cardapio-matriz",
+      "status": 200
+    },
+    {
+      "route": "/cardapio-garavelo",
+      "status": 200
+    }
+  ],
+  "negativeApiChecks": [
+    {
+      "route": "/checkout/payment-status",
+      "eventType": null,
+      "status": 404
+    },
+    {
+      "route": "/customer/phone-session/account",
+      "eventType": null,
+      "status": 403
+    },
+    {
+      "route": "/staff/payment-reconciliation/list",
+      "eventType": null,
+      "status": 401
+    },
+    {
+      "route": "/staff/payment-reconciliation/register",
+      "eventType": null,
+      "status": 401
+    },
+    {
+      "route": "/checkout/webhook",
+      "eventType": "paid",
+      "status": 404
+    },
+    {
+      "route": "/checkout/webhook",
+      "eventType": "payment_failed",
+      "status": 404
+    },
+    {
+      "route": "/checkout/webhook",
+      "eventType": "created",
+      "status": 404
+    },
+    {
+      "route": "/checkout/webhook",
+      "eventType": "settled",
+      "status": 404
+    },
+    {
+      "route": "/checkout/webhook",
+      "eventType": "canceled",
+      "status": 404
+    },
+    {
+      "route": "/checkout/webhook",
+      "eventType": "refunded",
+      "status": 404
+    }
+  ],
+  "noRealOrderPaymentSmsOrFiscalMutation": true
+}

@@ -1,5 +1,17 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — publicação concluída em 04/11/2026
+
+Esta seção prevalece sobre os checkpoints históricos abaixo. **Não refazer implementação nem deploy.** Runtime `4e264054ca05364ecda12b392974428ea61dce68`, push DEV concluído; API `api-00070-jib` ACTIVE (59/59 hashes,145 Functions restantes inalteradas, env/bindings preservados), Rules `19bc50df-ace4-453f-8bce-fae33bce3bcf` com SHA840d546545e6be5d504fe8324021baae2f61b8ca17693f113ef3183a938781f1, Hosting61/61 hashes/cache/rotas corretos. Dez negativas API remotas PASS sem pedido/transação real. Integração d6d5016e preservou o DEV paralelo fiscal/cliente em vez de sobrescrever.
+
+Validação final:590 React +154 unitários +169 integração emulada +45 Rules +162 públicos = **1.120 execuções PASS**. Build PASS main.8fbe8fb2.js,455,21kB gzip. Lint0erros (66warnings App+1FiscalNumberingControls preexistentes/importados). Scan43arquivos D/E concluído/selado,0novos candidatos; Rules posteriores verificadas separadamente. Evidências sanitizadas em `docs/evidence/preprod-mission-2026-11-04/`.
+
+A/B/C PASS: Admin Preview preservado; fiscal fila real PIX/cartão/histórico +fixture segura AGREED_LATER sem emitir; refresh quatro seções preservando loja/Auth/capability. Complementos já aprovados permanecem PASS. Entrada temporária SMS pública desktop1920×889/mobile390×800 e retorno amigável Garavelo conferidos sem enviar SMS; nenhum shell privado/overflow horizontal/erro de console nessa navegação.
+
+**Próximo ponto exato:** homologação autenticada da nova conciliação (Chrome sem sessão Staff; login humano solicitado), autorização específica de SMS Enterprise e claim real Google/e-mail C15, depois aceite consolidado C16. Não obter tokens/credenciais da sessão nem enviar SMS para contornar o gate. Roteiro mínimo e inventário/plano de rollback em `PRODUCTION_READINESS_REVIEW.md`.
+
+**Fase9=75%; Fase10=87,50% (14/16); Global formal=95,00%; Fase13=0%.** C14 concluído pela aprovação dos14remanescentes preservados sem atribuição, sem escrita remota. Implementação/testes/publicação não substituem homologação final. Nenhum pagamento, SMS, NF ou WhatsApp real realizado. Nenhuma consulta/alteração PROD; Mercado Pago não iniciado. DEV ainda não está READY FOR PROD REVIEW.
+
 Fonte: pedido do proprietário em anexo bfd82ef6-eb6f-4e04-bb62-c2d34d279484/Pasted text.txt, lido integralmente. Workspace C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree; branch feature/infinitepay-customer-auth; projeto crmdoceria-9959e. Base36fdce3c. PROD absolutamente não autorizada. Não iniciar Mercado Pago.
 
 ## Estado
@@ -44,3 +56,20 @@ Fase9 75%, Fase10 75% auditado/fora da ponderação, Global95,00%, Fase13 0%. S�
 - Dono aprovou os14 remanescentes do inventário4d894ddf como preservados sem atribuição até prova futura. Evidência phase10-remnants-owner-decision.json; zero escrita remota. C14PASS; Fase10=87,50% (14/16), C15/C16pendentes. Fase9=75%, global95,00%, Fase13=0%.
 - Scan de segurança existente e9ded481-1023-4cac-a0a5-22bcbecf6cec, range imutável adeb9841..43f8e0c0, retomado. Worker de preflight anterior falhou por limite de uso; helper executado diretamente pelo agente principal, resultado ready sem editar configuração persistente. Revisão substantiva em andamento.
 - Próximo: concluir revisão/fixes/testes necessários, publicar somente artefatos alterados no DEV e homologar. Runtime novo ainda não publicado. Não declarar Fase9/10=100 antes dos gates exigidos. PROD continua intocada.
+
+## Checkpoint técnico 04/11 — delta revisado e DEV paralelo preservado
+
+- Scan e9ded481-1023-4cac-a0a5-22bcbecf6cec finalizado no range imutável adeb9841..43f8e0c0:43 fontes/testes revisados,0 candidatos novos; arquitetura independente e dois revisores de superfícies. Não representa auditoria integral do legado. Relatório selado no estado local Codex Security; preservar o scan, não reiniciar.
+- A revisão encontrou controles antigos fora do delta: Staff podia ler raw checkoutPayments/receipts/contextos e dados de outra loja; SDK permitia alterar paymentMethod confirmado e criar pedido root publicamente.65400b78 adicionou escopo de loja/servidor, proteção financeira e testes antes/depois. Refinamento de permissão financeiro e orçamento de expressões das Rules ainda em validação local; não publicar antes de passar.
+- Auditoria remota somente leitura constatou146Functions/api-00069-ger/ruleset1bbf0053 e Hostinge4f90e581a527321, diferentes do checkpoint anterior. Download de source mostrou correspondência EXATA com codex/dev-owned-client-edit(c465f750) para index/fiscal/clone/package/Rules. Integração não destrutiva d6d5016e preserva esses9commits DEV já publicados (fiscal/numeração/cliente/configuração Web); nenhuma consulta ou alteração PROD.
+- a16a41b2 alinha allowlist browser/provider, incluindo checkout.infinitepay.com.br e recusando userinfo/porta/host falso.4testes públicos PASS. Push atéa16a41b2 concluído; testes/Rules posteriores ainda locais.
+- Build pós-integração PASS:main.8fbe8fb2.js,455,21kB gzip. Config Web DEV validada antes do build. Lint0erros;66warnings App+1FiscalNumberingControls importados/preexistentes.590React e154unitários PASS. Rodada ampla169emulados PASS após corrigir fixtures (Staff sem loja e telefones em colisão entre suítes), sem enfraquecer ownership.
+- Nova suíte pública:160/161 inicialmente PASS; único teste antigo rejeitava slug futuro agora suportado pelo resolver público. Correção apenas de teste,23casos return-path/rotas PASS; rodada completa em execução. Rules45casos em revalidação: simplificada repetição que alcançava limite1000expressões. Não registrar PASS da rodada final antes do resultado.
+- Staging anterior `.deploy-preprod-a16a41b2`:59fontes runtime e61Hosting,13módulos conferidos por sourcemap. É staging local, NÃO deploy. Baseline privada atual emTEMP/mission-dev-before-private.json. Usar guard de revisão/versão para não sobrepor trabalho paralelo.
+- PRODUCTION_READINESS_REVIEW.md preparado localmente com gates, inventário futuro e backup/rollback; atualizar com publicação/QA reais ao concluir. Não presumir SMS/claim real. Percentuais: Fase9=75%, Fase10=87,50%, Global95,00%, Fase13=0%.
+
+## Publicação em andamento — 04/11
+
+- fe64ca28 fecha permissão financeira com orçamento de Rules corrigido, preservando despesas de fornecedor conforme capability histórica.4e264054 isola fixtures e atualiza teste de alias futuro. Ambos enviados ao DEV. Suítes finais:590React/154unitários/169emulados/45Rules/162públicos PASS (1.120execuções, sem somar rodadas anteriores). Lint direcionado dos testes alterados PASS e diff-check PASS.
+- Artefato final `.deploy-preprod-4e264054`:59runtime/61Hosting,13módulos conferidos pelo sourcemap; mesmo bundle main.8fbe8fb2.js do build validado. Config de negócio/bindings da API atual preservados, sem valores em evidência pública. Scripts de deploy/verify emTEMP são restritos a API→Rules→Hosting no DEV e verificam baseline/hashes.
+- API em publicação seletiva; NÃO presumir conclusão até verificar estado ACTIVE,59hashes e145Functions inalteradas. Em seguida Rules, depois Hosting61hashes/cache/rotas/negativas e QA autenticado seguro. Aguardar esse resultado antes de elevar Fase9/global. SMS real/claim e homologação consolidada continuam pendentes; nenhuma autorização de envio recebida.

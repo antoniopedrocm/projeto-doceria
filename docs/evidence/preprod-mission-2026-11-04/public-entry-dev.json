@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "runtimeCommit": "4e264054ca05364ecda12b392974428ea61dce68",
+  "checkedAt": "2026-11-04T19:19:51.483Z",
+  "surface": "Actual DEV public entry in in-app browser",
+  "viewports": [
+    {
+      "width": 1920,
+      "height": 889,
+      "documentClientWidth": 1905,
+      "documentScrollWidth": 1905,
+      "screenshot": "phone-entry-desktop-dev.jpg"
+    },
+    {
+      "width": 390,
+      "height": 800,
+      "documentClientWidth": 375,
+      "documentScrollWidth": 375,
+      "screenshot": "phone-entry-mobile-dev.jpg"
+    }
+  ],
+  "privateShellWithoutGrant": false,
+  "smsEntryVisible": true,
+  "realSmsSent": false,
+  "returnPathObserved": "/cardapio-garavelo",
+  "consoleErrors": 0,
+  "staffSessionAvailable": false,
+  "staffHandoffRequested": true,
+  "authorizationForRealSmsRequestedSeparately": true,
+  "acceptanceScope": "Public presentation only; not private grant, OTP delivery or permanent claim acceptance.",
+  "production": false
+}
