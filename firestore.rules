@@ -74,24 +74,45 @@ function staffStoreIds() {
 }
 
 function staffCanAccessStore(lojaId) {
-  return isSignedIn() && (lojaId in staffStoreIds()
-    || (isOwnerUser() && staffStoreIds().size() == 0));
+  let profile = currentUserData();
+  let stores = staffStoreIds();
+  return isSignedIn() && (lojaId in stores
+    || (ownerDataRole(profile.get('role', '')) && stores.size() == 0));
 }
 
 function canWriteStoreData(lojaId) {
-  return canStaffWrite() && staffCanAccessStore(lojaId) && storeNotDeleting(lojaId);
+  return staffCanAccessStore(lojaId) && currentUserData().get('role', '') != 'contador' && storeNotDeleting(lojaId);
+}
+
+function staffCanWriteFinance(collection) {
+  let profile = currentUserData();
+  let custom = exists(/databases/$(database)/documents/customProfiles/$(request.auth.uid))
+    ? get(/databases/$(database)/documents/customProfiles/$(request.auth.uid)).data : {};
+  let permissions = custom.get('permissions', profile.get('permissions', {}));
+  // Callers already enforce active non-accountant Staff and store scope. Avoid
+  // repeating the full authorization chain within the Rules expression budget.
+  let management = ownerDataRole(profile.get('role', '')) || profile.get('role', '') == 'gerente';
+  // Supplier expenses are an existing attendant capability (the backend forces
+  // fornecedores=true for that role). Receivables still require financeiro.
+  return permissions.get('financeiro', management) == true
+    || (collection == 'contas_a_pagar' && (profile.get('role', '') in ['atendente', 'funcionario']
+      || permissions.get('fornecedores', management) == true));
 }
 
 function canReadLegacyOrder(data) {
   let store = data.get('lojaId', data.get('storeId', ''));
   return isSignedIn() && ((store is string && store != '' && staffCanAccessStore(store))
-    || (store == '' && isOwnerUser() && staffStoreIds().size() == 0));
+    || (store == '' && ownerDataRole(currentUserData().get('role', '')) && staffStoreIds().size() == 0));
+}
+
+function ownerDataRole(role) {
+  return role in [
+    'dono', 'owner', 'admin', 'adm', 'administrador', 'administradora', 'administrador_master'
+  ];
 }
 
 function isOwnerUser() {
-  return hasCurrentUserProfile() && currentUserData().role in [
-    'dono', 'owner', 'admin', 'adm', 'administrador', 'administradora', 'administrador_master'
-  ];
+  return hasCurrentUserProfile() && ownerDataRole(currentUserData().role);
 }
 
 function isManagerUser() {
@@ -816,11 +837,11 @@ match /lojas/{lojaId} {
   // pelas Functions e nao podem ser disfarçadas por uma alteracao posterior.
   match /contas_a_pagar/{contaId} {
     allow read: if canReadStoreCollection(lojaId, 'contas_a_pagar');
-    allow create: if (canWriteStoreData(lojaId)) && !isCashExpenseWithdrawal(request.resource.data);
-    allow update: if (canWriteStoreData(lojaId))
+    allow create: if (canWriteStoreData(lojaId)) && staffCanWriteFinance('contas_a_pagar') && !isCashExpenseWithdrawal(request.resource.data);
+    allow update: if (canWriteStoreData(lojaId)) && staffCanWriteFinance('contas_a_pagar')
       && !isCashExpenseWithdrawal(resource.data)
       && !isCashExpenseWithdrawal(request.resource.data);
-    allow delete: if (canWriteStoreData(lojaId)) && !isCashExpenseWithdrawal(resource.data);
+    allow delete: if (canWriteStoreData(lojaId)) && staffCanWriteFinance('contas_a_pagar') && !isCashExpenseWithdrawal(resource.data);
   }
 
   match /{collection}/{document=**} {
@@ -837,7 +858,8 @@ match /lojas/{lojaId} {
       && collection != 'alertas'
       && collection != 'configuracoesInternas'
       && canReadStoreCollection(lojaId, collection);
-    allow write: if (canWriteStoreData(lojaId))
+    allow write: if collection != 'pedidos' && collection != 'contas_a_pagar' && (canWriteStoreData(lojaId))
+      && (collection != 'contas_a_receber' || staffCanWriteFinance(collection))
       && collection != 'fulfillmentAudit'
       && collection != 'configuracoes'
       && collection != 'info'
@@ -921,7 +943,8 @@ match /fechamentosEntreLojas/{fechamentoId} {
 
 // --- REGRAS PARA OUTRAS COLEÇÕES (Acesso somente para usuários autenticados no CRM) ---
 match /{collection}/{document=**} {
-  allow read: if isSignedIn()
+  allow read: if collection != 'lojas' && collection != 'integrations' && isSignedIn()
+    && (!(collection in ['contas_a_pagar', 'contas_a_receber']) || canReadLegacyOrder(resource.data))
     && collection != 'lojas'
     && collection != 'pedidos'
     && collection != 'checkoutPayments'
@@ -939,7 +962,11 @@ match /{collection}/{document=**} {
     && collection != 'fechamentosEntreLojas'
     && (!isReadOnlyAccountant()
       || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
-  allow write: if canStaffWrite()
+  allow write: if collection != 'lojas' && collection != 'integrations' && canStaffWrite()
+    && (!(collection in ['contas_a_pagar', 'contas_a_receber']) || (staffCanWriteFinance(collection)
+      && (request.method == 'create' ? canReadLegacyOrder(request.resource.data) : canReadLegacyOrder(resource.data))
+      && (request.method != 'update' || (request.resource.data.get('lojaId', null) == resource.data.get('lojaId', null)
+        && request.resource.data.get('storeId', null) == resource.data.get('storeId', null)))))
     && collection != 'clientes'
     && collection != 'pedidos'
     && collection != 'storefrontAliases'

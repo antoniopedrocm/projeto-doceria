@@ -48,13 +48,33 @@ test('assigned Staff reads/writes only its stores; Owner without assignment reta
    await assertSucceeds(getDocs(collection(db,'lojas/boundary-a/pedidos')));
    await assertFails(getDoc(doc(db,'lojas/boundary-b/pedidos/paid')));
    await assertFails(getDocs(collection(db,'lojas/boundary-b/pedidos')));
-   await assertSucceeds(updateDoc(doc(db,'lojas/boundary-a/contas_a_receber/fixture'),{valor:11}));
+   if(uid==='attendant')await assertFails(updateDoc(doc(db,'lojas/boundary-a/contas_a_receber/fixture'),{valor:11}));
+   else await assertSucceeds(updateDoc(doc(db,'lojas/boundary-a/contas_a_receber/fixture'),{valor:11}));
    await assertFails(updateDoc(doc(db,'lojas/boundary-b/contas_a_receber/fixture'),{valor:999}));
   }
   const owner=env.authenticatedContext('owner').firestore();
   await assertSucceeds(getDocs(collection(owner,'lojas/boundary-b/pedidos')));
   await assertSucceeds(updateDoc(doc(owner,'lojas/boundary-b/contas_a_receber/fixture'),{valor:12}));
   for(const uid of ['unassigned','inactive','customer'])await assertFails(getDoc(doc(env.authenticatedContext(uid).firestore(),'lojas/boundary-a/pedidos/paid')));
+ }finally{await env.cleanup();}
+});
+test('finance permission is live and cannot be bypassed through store or legacy root SDK writes',async()=>{
+ const env=await environment('demo-preprod-boundary-finance');
+ try {
+  await env.withSecurityRulesDisabled(async c=>{
+   const db=c.firestore();await setDoc(doc(db,'users/no-finance'),{role:'gerente',lojaIds:['boundary-a'],permissions:{financeiro:false,fornecedores:false}});
+   await setDoc(doc(db,'users/custom-denied'),{role:'gerente',lojaIds:['boundary-a'],permissions:{financeiro:true}});
+   await setDoc(doc(db,'customProfiles/custom-denied'),{permissions:{financeiro:false,fornecedores:false}});
+   await setDoc(doc(db,'contas_a_receber/root-b'),{lojaId:'boundary-b',valor:10});
+  });
+  for(const uid of ['attendant','no-finance','custom-denied']){
+   const db=env.authenticatedContext(uid).firestore();await assertFails(updateDoc(doc(db,'lojas/boundary-a/contas_a_receber/fixture'),{valor:999}));
+   if(uid==='attendant')await assertSucceeds(setDoc(doc(db,'lojas/boundary-a/contas_a_pagar/fixture-expense'),{tipo:'fornecedor',valor:10}));
+   else await assertFails(setDoc(doc(db,'lojas/boundary-a/contas_a_pagar/forged'),{valor:999}));
+   await assertFails(setDoc(doc(db,'contas_a_receber/forged'),{lojaId:'boundary-a',valor:999}));
+  }
+  const manager=env.authenticatedContext('manager').firestore();await assertFails(getDoc(doc(manager,'contas_a_receber/root-b')));await assertFails(updateDoc(doc(manager,'contas_a_receber/root-b'),{valor:999}));
+  await assertSucceeds(getDoc(doc(env.authenticatedContext('owner').firestore(),'contas_a_receber/root-b')));
  }finally{await env.cleanup();}
 });
 test('paid order permits operational status but blocks forged payment method/status and adjustment metadata',async()=>{
