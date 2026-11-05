@@ -1,5 +1,13 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — correção SMS publicada, reteste aguardando autorização
+
+**Não refazer código, testes ou deploy.** Commit funcional `fb89b0fd12a0c3b9afbadc196dcf0eb821c09fa7`, push concluído, Hosting DEV versão `84e5e496890c3d26` verificado61/61hashes, main.63105160.js;146Functions e Rules inalteradas/cache/slugs preservados. Build/lint/diffPASS,597React/164públicos PASS,41ApplicationGate repetidos após asserção final. Tentativa inicial de deploy interrompida no predeploy por script ausente no staging; guard copiado intacto e publicação concluída, sem remover proteção.
+
+O único SMS autorizado foi recebido e confirmado pelo titular, sem OTP em chat/log/Git e sem salvar perfil. Falha antiga pagehide comprovada e corrigida; saída temporária também separada do logout forte. Reteste REAL do handoff/refresh/saída ainda NÃO concluído; a prova anterior foi legitimamente revogada. Pedido separado enviado para **mais1SMS ao mesmo final0290**, só temporário, **ainda não autorizado neste checkpoint**. Não reenviar por conta própria. Staff continua autenticado e painel financeiro visível; carrinhos locais Matriz/Garavelo restaurados a vazio. Nenhum pedido/pagamento/nota/WhatsApp criado/executado.
+
+**Próximo ponto exato:** aguardar nova autorização ou roteiro manual; se autorizada, registrar novo limite antes do único clique, titular confirma código na aplicação; conferir aviso temporário, histórico/endereço autorizado sem salvar, refresh e encerramento sem alterar Auth Staff. Não reconstruir grant revogado nem reutilizar OTP consumido. C15 claim permanente Google/e-mail requer propósito/autorização próprios e continua pendente; depois C16. Fase9=100%, Fase10=87,50%, Global97,00%, Fase13=0%; PROD bloqueada/intocada. Ver `SMS_TEMPORARY_SESSION_HANDOFF.md` e evidência sms-handoff-hosting-dev.json.
+
 ## Correção em fechamento — SMS real confirmado, handoff identificado e corrigido
 
 O titular respondeu “código confirmado”; UI abriu Editar Perfil, sem salvar. Entrega/validação do1SMS PASS. Porém o handler pagehide dos cardápios revogava a prova antes da Área do Cliente: aceite do handoff FAIL, sem inflar Fase10. Também identificado logout temporário ligado ao logout forte; não acionado na sessão real. Correção frontend implementada/testada: preservar apenas grant privado válido na navegação/BFCache; revogar ao expirar/trocar identidade; separar endPhoneSession de logout global e revalidar contexto existente sem signOut/FCM. Contrato e evidência em `SMS_TEMPORARY_SESSION_HANDOFF.md` e sms-enterprise-live-dev.json.

@@ -13,7 +13,7 @@ Restam SMS Enterprise/grant temporário real, C15 claim Google/e-mail e C16 cons
 |---|---|---|
 |1|Nota Fiscal|PASS seguro: PIX/cartão/históricos na fila real; AGREED_LATER/select obrigatório/mapping em fixture; nenhuma emissão real. Causa do pedido ausente era status operacional Pendente, não paymentMode.|
 |2|Refresh CRM|PASS das quatro seções com loja/Auth/capability preservadas; evidência anterior mantida.|
-|3|SMS Enterprise|Implementado/testado/publicado; falta SMS/grant e claim reais autorizados. Entrada pública desktop/mobile PASS não comprova entrega OTP.|
+|3|SMS Enterprise|1SMS autorizado entregue/confirmado; perfil protegido abriu. Handoff antigo falhou no pagehide; correção fb89b0fd publicada/verificada61/61hashes,597React/164públicos PASS. Reteste real requer nova autorização1SMS; claim C15 separado.|
 |4|Admin Preview|PASS preservado; sem novo ciclo manual. previewSessionId comum LOW futuro.|
 |5|Fase9|100%, implementação/testes/security/build/lint/deploy e homologação autenticada Staff concluídos.|
 |6|Fase10|14/16 critérios PASS. C13 processo concluído; C14 disposição dos14remanescentes aprovada. C15/C16 pendentes.|
@@ -30,9 +30,9 @@ Restam SMS Enterprise/grant temporário real, C15 claim Google/e-mail e C16 cons
 |17|Commits|D b5892db3; inventário4d894ddf; E43f8e0c0; decisãof13febe0; guards65400b78/fe64ca28; merge DEV d6d5016e; redirecta16a41b2; fixtures4e264054. Checkpoint/evidências documentais em commit posterior.|
 |18|Push DEV|Runtime4e264054 enviado ao origin/feature/infinitepay-customer-auth. Sem push PROD.|
 |19|Deploys DEV|Somente functions:api, firestore:rules e hosting. API api-00070-jib59/59hashes;145Functions inalteradas/env/bindings preservados; Rules fonte idêntica; Hosting61/61hashes/cache e10negativas remotas PASS.|
-|20|Manual homologations|Aceites antigos preservados; NF/Refresh conferidos, entrada pública temporária desktop/mobile real conferida. Nova conciliação Staff e SMS/claim consolidados ainda abertos.|
+|20|Manual homologations|NF/Refresh/aceites antigos preservados, conciliação Staff concluída e SMS real confirmado. Reteste do handoff temporário/saída e claim C15/C16 ainda abertos.|
 |21|Real payment|NÃO.|
-|22|Real SMS|NÃO. Autorização específica solicitada, sem envio por implicação.|
+|22|Real SMS|SIM, exatamente1 envio autorizado pelo Dono ao final0290 e confirmado pelo titular. Nenhum reenvio nem claim permanente.|
 |23|NF real|NÃO.|
 |24|WhatsApp real|NÃO.|
 |25|Fase9 final|100%, concluída no DEV com evidência de aceite Staff somente leitura.|
@@ -41,7 +41,7 @@ Restam SMS Enterprise/grant temporário real, C15 claim Google/e-mail e C16 cons
 |28|Fase13|0%; não iniciada.|
 |29|Prod ready review|Preparado com gates/evidências/responsáveis, inventário futuro e plano de backup/rollback; não declarar DEV READY FOR PROD REVIEW ainda.|
 |30|Prod alterada|NÃO; nenhum acesso ou deploy em ana-guimaraes. Mercado Pago não iniciado.|
-|31|Blockers restantes|Aceite Staff da conciliação; autorização/execução segura do Enterprise temporário; C15 claim real Google/e-mail; C16 consolidação. Configuração efetiva/cutover PROD e autorização final pertencem à futura revisão autorizada.|
+|31|Blockers restantes|Reteste autorizado de handoff/refresh/saída temporária após correção; C15 claim real Google/e-mail; C16 consolidação. Configuração efetiva/cutover PROD e autorização final pertencem à futura revisão autorizada.|
 
 ## Retomada exata
 
