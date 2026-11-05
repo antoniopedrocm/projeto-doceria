@@ -1,6 +1,12 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
-## Estado vigente — sessão temporária SMS PASS
+## Estado vigente — 05/11/2026: C15 preparado, sem caso autorizado
+
+**Fase 10 = 87,50% (14/16). C15 e C16 continuam pendentes. Fase 9 = 100%, global formal = 97,00%, Fase 13 = 0%; PROD READY: NÃO.** [Pré-checagem real sanitizada](evidence/phase10-c15-preflight-2026-11-05-dev.json): 18 Customers/4 aliases; 2 canônicos com proprietários e SMS liberado; 8 sem owner, com celular/índice válidos e sem mapping, mas fora da allowlist; 4 sem telefone/índice válidos. Não há caso pronto na política atual da Matriz. Política configurada não equivale a teste do provedor ao vivo.
+
+[Roteiro C15/C16](PHASE10_C15_EXECUTION.md) e ferramenta somente leitura preparados. Aguardam seleção dos titulares/cadastros e identidades DEV legítimas, proposta e aprovações específicas de vínculo permanente/destinatário/novo SMS. Não desfazer owners, ampliar allowlist ou alterar os 14 remanescentes C14 automaticamente. Zero escrita remota/claim/SMS nesta retomada. [Runtime DEV preservado](evidence/preprod-current-dev-2026-11-05.json); nenhum novo deploy. Esta seção prevalece sobre o histórico abaixo.
+
+## Fechamento anterior — sessão temporária SMS PASS
 
 **Fase9=100%; Fase10=87,50% (14/16); Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Gate SMS Enterprise temporário concluído no DEV:2envios com autorizações específicas separadas, titular confirmou só na aplicação; navegação/grant privado,12endereços, histórico/detalhe, refresh e saída preservando Staff PASS. Nenhum novo pedido/pagamento/NF/WhatsApp, mutação de perfil/endereço ou claim permanente. Carrinhos locais restaurados a0; não há autorização de novo SMS.
 

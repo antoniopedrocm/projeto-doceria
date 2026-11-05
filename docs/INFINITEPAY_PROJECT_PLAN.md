@@ -1,6 +1,12 @@
 # Autenticação de clientes e pagamento online
 
-## Estado vigente — sessão temporária SMS PASS
+## Estado vigente — 05/11/2026: próxima etapa C15 preparada
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%. PROD READY: NÃO.** Repositório e runtime DEV conferidos, sem divergência ou necessidade de novo deploy. Preparados [roteiro C15/C16](PHASE10_C15_EXECUTION.md) e pré-checagem somente leitura: os dois destinatários liberados já possuem owner; oito cadastros sem owner têm celular/índice válidos, mas não estão liberados. Zero casos prontos na política atual da Matriz; nenhum SMS, claim ou escrita remota executado nesta retomada.
+
+C15 depende de seleção dos casos/titulares Google/e-mail e aprovações específicas de vínculo permanente, destinatário e novo envio; as duas autorizações temporárias anteriores foram consumidas. C16 vem após C15. Não elevar percentuais por preparação documental/testes auxiliares nem reabrir gates concluídos. Fase 10 permanece obrigatória pré-PROD e fora da ponderação global. [Checkpoint](CHECKPOINT_PREPROD_MISSION.md), [dados atuais](evidence/phase10-c15-preflight-2026-11-05-dev.json). Esta seção prevalece sobre os estados históricos abaixo.
+
+## Fechamento anterior — sessão temporária SMS PASS
 
 **Fase9=100%; Fase10=87,50% (14/16); Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Gate SMS Enterprise temporário concluído no DEV:2envios com autorizações específicas separadas, titular confirmou só na aplicação; navegação/grant privado,12endereços, histórico/detalhe, refresh e saída preservando Staff PASS. Nenhum novo pedido/pagamento/NF/WhatsApp, mutação de perfil/endereço ou claim permanente. Carrinhos locais restaurados a0; não há autorização de novo SMS.
 

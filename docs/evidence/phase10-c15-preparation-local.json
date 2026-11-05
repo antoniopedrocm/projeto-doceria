@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "date": "2026-11-05",
+  "project": "crmdoceria-9959e",
+  "scope": "Read-only operational C15 preflight and execution documentation; no application runtime changes",
+  "tests": {
+    "command": "node --test scripts/phase10-claim-preflight.test.cjs",
+    "passed": 8,
+    "failed": 0,
+    "acceptanceLimit": "Classifier, masking and DEV scope guards only; not real Google/password claim acceptance"
+  },
+  "syntax": {
+    "files": ["scripts/phase10-claim-preflight.cjs", "scripts/phase10-claim-preflight.test.cjs"],
+    "nodeCheck": "PASS"
+  },
+  "lint": {
+    "tool": "Existing ESLint installation and repository config",
+    "commonJsOverride": {"env": {"node": true, "es2022": true}, "parserOptions": {"sourceType": "script"}},
+    "errors": 0,
+    "warnings": 0,
+    "dependencyNotices": ["Existing baseline-browser-mapping and Browserslist metadata age notices; dependencies unchanged"]
+  },
+  "build": "Not required: scripts/docs only; previous validated runtime preserved",
+  "deploy": "Not required: no Hosting/Functions/Rules changes",
+  "livePreflight": "phase10-c15-preflight-2026-11-05-dev.json",
+  "runtimeCheck": "preprod-current-dev-2026-11-05.json",
+  "remoteWrites": 0,
+  "smsSends": 0,
+  "permanentClaimsPerformed": 0,
+  "phase9Percent": 100,
+  "phase10Percent": 87.5,
+  "globalFormalPercent": 97,
+  "phase13Percent": 0,
+  "production": false
+}

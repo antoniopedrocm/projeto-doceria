@@ -1,6 +1,16 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
-## Estado vigente — sessão temporária SMS PASS
+## Estado vigente — 05/11/2026: preparação C15 concluída, seleção pendente
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%. PROD READY: NÃO.** Retomada em `85aa41f2`, tracked limpo, HEAD/origin iguais após fetch. [Conferência DEV somente leitura](evidence/preprod-current-dev-2026-11-05.json): 146 Functions, API `api-00070-jib`, Rules `19bc50df-ace4-453f-8bce-fae33bce3bcf`, Hosting `f960c57c592945d0`/`main.08ad2156.js`, todos correspondentes ao fechamento anterior. Não refazer build/deploy ou os aceites já PASS.
+
+Próxima etapa C15 preparada com ferramenta somente leitura e [roteiro concreto](PHASE10_C15_EXECUTION.md). [Pré-checagem real](evidence/phase10-c15-preflight-2026-11-05-dev.json): 18 Customers, 4 aliases excluídos, 14 canônicos/não classificados; os 2 com SMS liberado já possuem proprietários; 8 sem owner têm celular/índice válidos, mas não estão na allowlist; 4 sem telefone/índice válidos. **0 casos prontos sob a política atual da Matriz.** Nenhuma liberação, owner, Auth, dado legado ou configuração foi alterado; 0 SMS, 0 claims e 0 escritas remotas nesta retomada. A política configurada não comprova disponibilidade do provedor ao vivo.
+
+**Próximo ponto exato:** aguardar indicação dos cadastros/titulares e contas DEV legítimas dos dois cenários Google/e-mail; preparar proposta específica e obter autorização de vínculo permanente/liberação do destinatário e limite de SMS antes de executar. As autorizações de 2 SMS temporários foram consumidas. Não remover owners ou usar grants temporários como claim; C14 permanece encerrado. Depois C15 real e C16 consolidado. A pré-checagem e seus testes não elevam percentuais. Esta seção prevalece sobre os registros históricos abaixo.
+
+[Validação desta preparação](evidence/phase10-c15-preparation-local.json): 8/8 testes, sintaxe e lint sem erros/avisos nos dois scripts; diff-check PASS. Somente ferramenta operacional, evidências sanitizadas e documentação; nenhum arquivo de runtime alterado. Build/deploy não necessários, artefatos já homologados preservados. Avisos de idade de metadados de dependências existentes não exigem atualização nesta tarefa.
+
+## Fechamento anterior — sessão temporária SMS PASS
 
 **Fase9=100%; Fase10=87,50% (14/16); Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Gate SMS Enterprise temporário concluído no DEV:2envios com autorizações específicas separadas, titular confirmou só na aplicação; navegação/grant privado,12endereços, histórico/detalhe, refresh e saída preservando Staff PASS. Nenhum novo pedido/pagamento/NF/WhatsApp, mutação de perfil/endereço ou claim permanente. Carrinhos locais restaurados a0; não há autorização de novo SMS.
 

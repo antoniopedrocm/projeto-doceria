@@ -1,6 +1,12 @@
 # FINAL DEV PRE-PROD REPORT
 
-## Estado vigente — sessão temporária SMS PASS
+## Estado vigente — 05/11/2026: preparação C15
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%. PROD READY: NÃO.** Repositório e runtime DEV consistentes. [Pré-checagem somente leitura](evidence/phase10-c15-preflight-2026-11-05-dev.json) e [roteiro C15/C16](PHASE10_C15_EXECUTION.md) concluídos: zero casos prontos na política atual da Matriz; os dois destinatários liberados têm owner, oito cadastros sem owner e com celular/índice válidos não estão liberados. Aguardar seleção dos titulares/contas e aprovações específicas; não mudar owners ou allowlist automaticamente.
+
+Nenhum SMS, claim, escrita remota, build ou deploy novo nesta retomada. Os gates já PASS são preservados. C15 real Google/e-mail e C16 consolidado permanecem pendentes; preparação não altera percentuais. [Checkpoint atualizado](CHECKPOINT_PREPROD_MISSION.md). Esta seção prevalece sobre o histórico abaixo.
+
+## Fechamento anterior — sessão temporária SMS PASS
 
 **Fase9=100%; Fase10=87,50% (14/16); Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Gate SMS Enterprise temporário concluído no DEV:2envios com autorizações específicas separadas, titular confirmou só na aplicação; navegação/grant privado,12endereços, histórico/detalhe, refresh e saída preservando Staff PASS. Nenhum novo pedido/pagamento/NF/WhatsApp, mutação de perfil/endereço ou claim permanente. Carrinhos locais restaurados a0; não há autorização de novo SMS.
 
@@ -30,7 +36,7 @@ Restam SMS Enterprise/grant temporário real, C15 claim Google/e-mail e C16 cons
 |8|Entrega/retirada|PASS preservado, configuração/readiness/guard por loja; nenhuma flag/tarifa real alterada.|
 |9|Gestão de lojas|PASS Dono preservado; seletor separado de gestão estrutural e negativos403 cobertos.|
 |10|URLs amigáveis|PASS preservado; abertura direta200 Matriz/Garavelo, origem Garavelo mantida na entrada pública.|
-|11|Customer logout|PASS forte preservado; fluxo temporário expira/revoga/limpa com limite; aceite SMS real pendente.|
+|11|Customer logout|PASS forte preservado; saída temporária real preservou Staff, conforme fechamento SMS; claim permanente C15 separado.|
 |12|Regression tests|1.120 execuções finais PASS:590 React,154 unitários,169 integração,45 Rules,162 públicos. Não somar reruns.|
 |13|Security review|Scan selado43arquivos D/E,0novos candidatos; guards posteriores/DEV paralelo revisados e testados separadamente. Não é clearance de todo o repositório/PROD.|
 |14|Build|PASS, main.8fbe8fb2.js,455,21kB gzip, Web config DEV validada. Warnings antigos NativeAudio/browser metadata.|

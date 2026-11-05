@@ -1,0 +1,330 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "storeId": "ana-guimaraes-doceria-matriz",
+  "database": "(default)",
+  "databaseEdition": "STANDARD",
+  "checkedAt": "2026-11-05T18:09:25.773Z",
+  "readOnly": true,
+  "sourceFingerprint": "89f027e8be0dcfcd6543a819fef2f4cdf2381bbbde1f32a51d8e1d735fc126f8",
+  "queries": [
+    {
+      "collection": "integrations/customerRegistry/phones",
+      "fields": [
+        "state",
+        "normalizedPhone",
+        "customerId"
+      ],
+      "documents": 10
+    },
+    {
+      "collection": "clientes",
+      "fields": [
+        "telefone",
+        "phone_number",
+        "normalizedPhone",
+        "authOwnerUid",
+        "authOwnerUids",
+        "identityRegistryVersion",
+        "canonicalStatus",
+        "legacyCustomerIds"
+      ],
+      "documents": 18
+    },
+    {
+      "collection": "customerAuthIdentities",
+      "fields": [
+        "uid",
+        "customerId",
+        "provider"
+      ],
+      "documents": 4
+    },
+    {
+      "collection": "integrations/customerRegistry/uids",
+      "fields": [
+        "uid",
+        "customerId"
+      ],
+      "documents": 4
+    }
+  ],
+  "customerDocuments": 18,
+  "aliasesExcluded": 4,
+  "canonicalOrUnclassified": 14,
+  "dataReadyCases": 0,
+  "existingOwnerCases": 2,
+  "cases": [
+    {
+      "caseId": "72f99a605f6f471b",
+      "ownerCount": 0,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "ef5f712e635f0635",
+      "ownerCount": 3,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 3,
+      "identityMappings": 3,
+      "smsConfigured": true,
+      "recipientAllowlisted": true,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "EXISTING_OWNER_DO_NOT_REASSIGN"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "fa0078f9e61faed1",
+      "ownerCount": 0,
+      "validMobile": false,
+      "indexReady": false,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "MISSING_OR_INVALID_PHONE",
+        "PHONE_INDEX_NOT_CANONICAL_READY",
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "6b0cb34978514988",
+      "ownerCount": 0,
+      "validMobile": false,
+      "indexReady": false,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "MISSING_OR_INVALID_PHONE",
+        "PHONE_INDEX_NOT_CANONICAL_READY",
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "01a721be8c238c0b",
+      "ownerCount": 0,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "55909178172b2298",
+      "ownerCount": 0,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "dbfea68b2bd92f0c",
+      "ownerCount": 0,
+      "validMobile": false,
+      "indexReady": false,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "MISSING_OR_INVALID_PHONE",
+        "PHONE_INDEX_NOT_CANONICAL_READY",
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "1cddb7d70c104969",
+      "ownerCount": 0,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "a403670c5b1f4151",
+      "ownerCount": 0,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "2d89cd75cca089b0",
+      "ownerCount": 0,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "d9ee9b15fc864653",
+      "ownerCount": 0,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "8d265f9771790ccf",
+      "ownerCount": 0,
+      "validMobile": false,
+      "indexReady": false,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "MISSING_OR_INVALID_PHONE",
+        "PHONE_INDEX_NOT_CANONICAL_READY",
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "577ace8fc6bcfb4d",
+      "ownerCount": 1,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 1,
+      "identityMappings": 1,
+      "smsConfigured": true,
+      "recipientAllowlisted": true,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "EXISTING_OWNER_DO_NOT_REASSIGN"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    },
+    {
+      "caseId": "69a648e5cabea773",
+      "ownerCount": 0,
+      "validMobile": true,
+      "indexReady": true,
+      "uidMappings": 0,
+      "identityMappings": 0,
+      "smsConfigured": true,
+      "recipientAllowlisted": false,
+      "eligibility": "BLOCKED_DATA_PRECHECK",
+      "reasons": [
+        "RECIPIENT_NOT_ALLOWLISTED"
+      ],
+      "participantSelected": false,
+      "destinationIdentityProvided": false,
+      "permanentClaimApproved": false,
+      "smsSendApproved": false
+    }
+  ],
+  "limits": [
+    "Data-only readiness is not permission or proof of ownership",
+    "No provider status, Auth token, claim challenge, OTP or SMS operation called",
+    "Destination identity must be verified after actual Google/password login",
+    "Each provider scenario must exercise a real claim; re-login of an existing owner is not a second claim",
+    "Other-phone recipients require case-specific approval; no automatic allowlist update"
+  ],
+  "permanentClaimsPerformed": 0,
+  "smsSends": 0,
+  "remoteWrites": 0,
+  "production": false
+}

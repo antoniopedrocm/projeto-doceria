@@ -1,6 +1,12 @@
 # Production Readiness Review — DEV
 
-## Estado vigente — sessão temporária SMS PASS
+## Estado vigente — 05/11/2026: C15 aguarda casos legítimos
+
+**PROD READY: NÃO. Fase 9 = 100%; Fase 10 = 87,50%; global formal = 97,00%; Fase 13 = 0%.** [Conferência remota DEV](evidence/preprod-current-dev-2026-11-05.json) sem divergência de Hosting/API/Rules. [Pré-checagem C15](evidence/phase10-c15-preflight-2026-11-05-dev.json): zero casos prontos sob a política atual da Matriz; destinatários liberados já têm proprietário, e os oito canônicos sem owner com celular/índice válidos estão fora da allowlist. Não alterar ownership ou allowlist automaticamente.
+
+Próxima ação: selecionar titulares/casos reais e identidades Google/e-mail, preparar proposta e obter aprovações específicas de claim permanente/destinatário/limite de SMS, seguindo [roteiro C15/C16](PHASE10_C15_EXECUTION.md). Dois SMS temporários já consumidos; este preparo não enviou SMS nem escreveu dados remotos. Gate temporário SMS e demais PASS preservados; C15 e C16 ainda abertos. Nenhum build/deploy novo necessário para ferramenta operacional/docs. Esta seção prevalece sobre o histórico abaixo.
+
+## Fechamento anterior — sessão temporária SMS PASS
 
 **Fase9=100%; Fase10=87,50% (14/16); Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Gate SMS Enterprise temporário concluído no DEV:2envios com autorizações específicas separadas, titular confirmou só na aplicação; navegação/grant privado,12endereços, histórico/detalhe, refresh e saída preservando Staff PASS. Nenhum novo pedido/pagamento/NF/WhatsApp, mutação de perfil/endereço ou claim permanente. Carrinhos locais restaurados a0; não há autorização de novo SMS.
 
@@ -32,7 +38,7 @@ Revisão em andamento, 04/11/2026. Ambiente autorizado: `C:/Users/antonio.pedro/
 | Entrega/retirada | PASS preservado | Aceite74a5c732; guard backend/readiness por loja | Nenhum já homologado | Dono/Staff | Não alterar flags ou tarifas reais para testar |
 | Gestão exclusiva Dono | PASS preservado | Aceite9959c630; Owner autorizado DEV; testes de403 e dependências | Nenhum já homologado | Dono | Não criar/inativar/excluir lojas reais |
 | URLs amigáveis/return path | PASS preservado | Aceitebacb754c e fluxos autenticados; /cardapio-matriz e /cardapio-garavelo | Nenhum já homologado | Customer | Preservar origem por aba e compatibilidade antiga |
-| Customer logout | PASS preservado + regressão | Aceiteb5457075; novo grant limpo/revogação limitada; auth null encerra loading | Novo fluxo temporário precisa do aceite SMS, sem reabrir o logout forte aprovado | Executor/Customer | Validar expiração/saída temporária no roteiro mínimo |
+| Customer logout | PASS preservado + regressão | Aceiteb5457075; novo grant limpo/revogação limitada; auth null encerra loading; saída temporária real preservou Staff | Nenhum neste gate; claim permanente é separado | Executor/Customer | Preservar aceites fortes e temporários concluídos |
 | Regressão consolidada | PASS automatizado |590 React,154 unitários,169 integração emulada,45 Rules,162 públicos:1.120 execuções finais PASS | Aceites reais específicos SMS/claim e nova UI financeira continuam separados | Executor | Preservar evidência validation.json; não repetir suítes sem mudança/falha |
 | Segurança | PASS do delta, guards direcionados e acesso legítimo Staff | Scan selado de43 arquivos sem candidatos novos; Rules45PASS,10negativas API e consulta Staff real PASS | Não é auditoria integral do repositório; Storage/PROD permanecem inventário futuro | Executor/Staff | Preservar; não inferir autorização PROD |
 | Build/lint/diff | PASS local | Build main.8fbe8fb2.js;455,21kB gzip; lint0erros; diff-check | Warnings importados:66 App e1 FiscalNumberingControls; sourcemaps NativeAudio ausentes | Executor | Preservar evidência; não confundir warnings preexistentes com erro novo |
