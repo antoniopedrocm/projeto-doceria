@@ -1,5 +1,19 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Correção em fechamento — SMS real confirmado, handoff identificado e corrigido
+
+O titular respondeu “código confirmado”; UI abriu Editar Perfil, sem salvar. Entrega/validação do1SMS PASS. Porém o handler pagehide dos cardápios revogava a prova antes da Área do Cliente: aceite do handoff FAIL, sem inflar Fase10. Também identificado logout temporário ligado ao logout forte; não acionado na sessão real. Correção frontend implementada/testada: preservar apenas grant privado válido na navegação/BFCache; revogar ao expirar/trocar identidade; separar endPhoneSession de logout global e revalidar contexto existente sem signOut/FCM. Contrato e evidência em `SMS_TEMPORARY_SESSION_HANDOFF.md` e sms-enterprise-live-dev.json.
+
+597React/164públicos PASS, ApplicationGate41PASS após asserção final, buildmain.63105160.js455,33kB e lint/diffPASS. Backend/Rules inalterados. Próximo: commit/push e **Hosting DEV somente**, conferir hashes; depois pedir autorização NOVA para1SMS de reteste do handoff/refresh/saída. A autorização anterior foi consumida. Ambos os carrinhos locais vazios, nenhuma mutação de Customer/pedido/pagamento/NF. Fase9=100%, Fase10=87,50%, Global97,00%, Fase13=0%; PROD intocada.
+
+## Ponto exato — aguardando código do titular em 04/11/2026
+
+**Fase9=100%, Global97,00%**, fechamento4773ac5e enviado ao origin. Fase10=87,50%; Fase13=0%; PROD bloqueada. **Único envio SMS autorizado já executado** no cardápio Matriz: UI abriu campo de código e cooldown de reenvio; titular solicitado a digitar código exclusivamente na aplicação. Evidência `preprod-mission-2026-11-04/sms-enterprise-live-dev.json`. **NÃO clicar Reenviar nem solicitar outro SMS com esta autorização.** Nenhum OTP coletado/armazenado, claim permanente não autorizado.
+
+Aba de handoff: navegador integrado, cardápio Matriz, modal “Confirme que este número é seu”, destinatário mascarado final0290. Após o titular confirmar: não salvar perfil; validar somente sessão privada temporária/mesmo histórico e endereços, refresh e saída/expiração, preservando Staff. Um item foi adicionado somente ao carrinho local vazio da Matriz para alcançar a identificação por telefone; remover apenas esse item ao encerrar, sem Confirmar Pedido. Carrinho temporário do Garavelo já restaurado a vazio. Não houve criação de pedido/pagamento/reserva, mudança de perfil/endereço/configuração ou NF.
+
+Se a sessão/OTP expirar, registrar resultado e manter gate aberto; **não reenviar automaticamente**. O envio único já consumiu o limite autorizado. C15 Google/e-mail com claim próprio e C16 consolidação continuam separados e não são aprovados por esta autorização.
+
 ## Fase9 encerrada no DEV — 04/11/2026
 
 **Fase9=100%; Fase10=87,50%; Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Esta seção prevalece sobre estados anteriores preservados abaixo. Sessão Dono fornecida pelo proprietário: conciliação por loja, estado vazio, consulta de pedido existente PAID/R$1,00, referências do provider, aviso de execução externa e gravação bloqueada sem referência/atesto conferidos em Chrome real; formulário cancelado, sem registrar operação. Layout desktop/estreito sem overflow horizontal nas dimensões CSS efetivamente registradas (zoom do Chrome impede afirmar390CSS exatos). Nenhuma operação financeira/fiscal/pedido executada. Com implementação,1.120testes PASS, review, build/lint/diff e API/Rules/Hosting DEV já verificados, o último aceite da Fase9 foi concluído. [Evidência](evidence/preprod-mission-2026-11-04/phase9-staff-acceptance-dev.json).

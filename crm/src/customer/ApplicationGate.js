@@ -3,7 +3,7 @@ import {storePerfMark} from '../performance/storeBootstrapPerf';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {onIdTokenChanged} from 'firebase/auth';
 import {auth} from '../firebaseConfig';
-import {legacyAuth,prepareCanonicalSession,logoutCanonicalSession,syncSessionCart} from './customerRuntime';
+import {legacyAuth,prepareCanonicalSession,logoutCanonicalSession,endPhoneSession,syncSessionCart} from './customerRuntime';
 import {isCustomerPath} from './customerContext';
 import {permittedContext} from './userCapabilities';
 import CustomerShell from './CustomerShell';
@@ -90,6 +90,21 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
   const openStaff=useCallback(()=>changeContext('staff'),[changeContext]);
   const revalidateStaff=useCallback(()=>changeContext('staff'),[changeContext]);
   const logoutFlight=useRef(null);
+  const phoneLogoutFlight=useRef(null);
+  const endTemporaryAccess=useCallback(()=>{
+    if(phoneLogoutFlight.current)return phoneLogoutFlight.current;
+    const state=control.current;state.generation++;state.contextGeneration++;state.activeContext=null;state.requestedContext=null;
+    setView({kind:'loading'});
+    phoneLogoutFlight.current=(async()=>{
+      try {await endPhoneSession();}catch{ /* Local proof was removed before remote cleanup. */ }
+      if(auth.currentUser && !auth.currentUser.isAnonymous) {
+        await state.resolve?.({requested:'staff'});return;
+      }
+      state.generation++;state.uid=null;
+      window.history.replaceState(null,'','/area-cliente');setView({kind:'customer-login'});
+    })().finally(()=>{phoneLogoutFlight.current=null;});
+    return phoneLogoutFlight.current;
+  },[]);
   const logout=useCallback(()=>{
     if(logoutFlight.current) return logoutFlight.current;
     const state=control.current;state.generation++;state.contextGeneration++;state.activeContext=null;state.requestedContext=null;
@@ -117,7 +132,7 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
   if(view.kind==='admin-denied') return <main className="p-8"><p role="alert">Acesso administrativo não autorizado.</p></main>;
   if(view.kind==='staff') return <StaffApplication key={`${view.uid}:staff:${view.contextGeneration}`} staffUid={view.uid}
     staffProfile={view.capabilities.staff} canOpenCustomer={view.capabilities.isCustomer} onCustomerContext={openCustomer} onLogout={logout} onStaffAccessLost={revalidateStaff}/>;
-  if(view.kind==='customer-phone') return <LegacyCustomerShell session={view.session} apiBase={customerApiBase} onLogout={logout}/>;
+  if(view.kind==='customer-phone') return <LegacyCustomerShell session={view.session} apiBase={customerApiBase} onLogout={endTemporaryAccess}/>;
   if(['customer','customer-login','onboarding'].includes(view.kind)) return <CustomerShell key={`${view.uid || 'login'}:customer:${view.contextGeneration || 0}`}
     onCustomerResolved={view.kind==='onboarding'?openCustomer:undefined} sessionAuth={auth} uid={view.uid || null} canOpenStaff={view.capabilities?.isStaff===true} onStaffContext={openStaff} onLogout={logout} sessionMessage={view.message}/>;
   return <>{view.message && <p role="alert">{view.message}</p>}<StaffApplication onLogout={logout}/></>;

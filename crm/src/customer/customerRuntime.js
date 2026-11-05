@@ -20,14 +20,24 @@ export const prepareCanonicalSession=()=>{
 };
 export const syncSessionCart=async(uid,options)=>(await sessionModule()).syncPrivateCart(window.sessionStorage,uid,options);
 let logout;
-export const logoutCanonicalSession=async()=>{
+let phoneLogout;
+export const endPhoneSession=()=>{
+  if(phoneLogout)return phoneLogout;
   const phoneSession=readPhoneSession();clearPhoneSession();
-  if(phoneSession) {
-    // Local revocation is immediate. A failed remote cleanup cannot trap logout.
+  if(!phoneSession)return Promise.resolve();
+  phoneLogout=(async()=>{
+    // Ending temporary SMS access must not sign out an existing Staff/Customer.
     const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),2000);
-    try {await fetch(customerApiBase+'/customer/phone-session/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:phoneSession}),signal:controller.signal});}catch{}finally{clearTimeout(timer);}
-  }
+    let timer;
+    try {await Promise.race([
+      fetch(customerApiBase+'/customer/phone-session/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:phoneSession}),signal:controller.signal}),
+      new Promise(resolve=>{timer=setTimeout(()=>{controller.abort();resolve();},2000);}),
+    ]);}catch{}finally{clearTimeout(timer);controller.abort();}
+  })().finally(()=>{phoneLogout=null;});
+  return phoneLogout;
+};
+export const logoutCanonicalSession=async()=>{
+  await endPhoneSession();
   if(!logout) {
     const module=await sessionModule();
     if(!logout) logout=module.createCanonicalLogout({auth,legacyAuth,signOut:sdk.signOut,storage:window.sessionStorage,

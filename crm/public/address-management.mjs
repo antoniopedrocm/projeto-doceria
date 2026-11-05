@@ -7,6 +7,17 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
   function closeDialog(){if(interval) clock.clearInterval(interval);interval=null;disposeCaptcha?.();disposeCaptcha=null;dialog?.remove();dialog=null;}
   function invalidate(){const old=activeScope;generation++;grant=null;activeScope=null;clock.clearTimeout(expiryTimer);closeDialog();if(old) {try {const saved=JSON.parse(document.defaultView.sessionStorage.getItem('customerPhoneSession_v1') || 'null');if(saved?.checkoutIdentityToken===old.checkoutIdentityToken) document.defaultView.sessionStorage.removeItem('customerPhoneSession_v1');}catch{} void request('revoke',{},old).catch(()=>{});}}
   const unsubscribe=identity.subscribe?.(invalidate);
+  const privateSessionReady=()=>grant?.customerSession?.purpose==='CUSTOMER_PRIVATE_SESSION' && grant.expiresAt>now() && same(activeScope);
+  function pageHide(){
+    // Hand the server-validated, per-tab proof to Customer Area navigation.
+    // Address-only/WhatsApp grants still end when leaving the menu.
+    if(!privateSessionReady()){invalidate();return;}
+    clock.clearTimeout(expiryTimer);expiryTimer=null;closeDialog();
+  }
+  function pageShow(){
+    if(!privateSessionReady()){invalidate();return;}
+    clock.clearTimeout(expiryTimer);expiryTimer=clock.setTimeout(invalidate,Math.max(0,grant.expiresAt-now()));
+  }
   function modal(title) {
     closeDialog();const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-3';
     const panel=document.createElement('section');panel.className='bg-white rounded-lg p-4 w-full max-w-lg max-h-[90vh] overflow-y-auto';panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');
@@ -111,5 +122,5 @@ export function createPhoneAddressManager({document,identity,storeId,request,onA
       }catch(error){view.message.textContent=error.message;}finally{save.disabled=false;view.cancel.disabled=false;}};
     });
   }
-  return {perform,authorize,invalidate,getTrustState(){return identity.get().mode==='legacy_phone'?(grant && grant.expiresAt>now() && same(activeScope)?'legacy_phone_verified':'legacy_phone_unverified'):identity.get().mode;},destroy(){invalidate();unsubscribe?.();}};
+  return {perform,authorize,invalidate,pageHide,pageShow,getTrustState(){return identity.get().mode==='legacy_phone'?(grant && grant.expiresAt>now() && same(activeScope)?'legacy_phone_verified':'legacy_phone_unverified'):identity.get().mode;},destroy(){invalidate();unsubscribe?.();}};
 }

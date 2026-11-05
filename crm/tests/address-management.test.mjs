@@ -3,8 +3,8 @@ import {createPhoneAddressManager} from '../public/address-management.mjs';
 const {JSDOM}=createRequire(import.meta.url)('jsdom');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const option={id:'opaque-address',nickname:'Casa',summary:'Rua ••, nº •• · Bueno',saved:true};
-function fixture({channels=['sms'],sendError}={}){
-  const dom=new JSDOM('<main>Checkout preservado</main>');let state={mode:'legacy_phone',token:'context-a',revision:2},time=1000,verified=false;
+function fixture({channels=['sms'],sendError,privateSession=false}={}){
+  const dom=new JSDOM('<main>Checkout preservado</main>',{url:'https://dev.example.test'});let state={mode:'legacy_phone',token:'context-a',revision:2},time=1000,verified=false;
   const watchers=new Set(),intervals=new Map(),timeouts=new Map();let timerId=0;
   const identity={get:()=>state,subscribe:listener=>{watchers.add(listener);return()=>watchers.delete(listener);}};
   const calls=[],changes=[],profiles=[];
@@ -12,7 +12,7 @@ function fixture({channels=['sms'],sendError}={}){
     calls.push({method,data,scope});
     if(method==='status')return {channels,phoneMasked:'••••0001',resendSeconds:45,firebase:{projectId:'doceria-sms-dev-fixture'}};
     if(method==='start'){if(sendError)throw sendError;return {challengeId:'challenge',expiresAt:time+300000,resendAt:time+45000};}
-    if(method==='verify'){if(data.code!=='123456')throw Error('Código incorreto.');verified=true;return {addressSessionToken:'limited-proof',expiresAt:time+600000,purpose:'ADDRESS_MANAGEMENT'};}
+    if(method==='verify'){if(data.code!=='123456')throw Error('Código incorreto.');verified=true;return {addressSessionToken:'limited-proof',expiresAt:time+600000,purpose:'ADDRESS_MANAGEMENT',...(privateSession?{customerSession:{purpose:'CUSTOMER_PRIVATE_SESSION',checkoutIdentityToken:state.token,expiresAt:time+600000}}:{})};}
     if(method==='manage'){
       assert.equal(verified,true);assert.equal(data.addressSessionToken,'limited-proof');
       if(data.operation==='read')return {address:{id:data.addressId,nickname:data.addressId==='other-opaque'?'Trabalho':'Casa',street:'Rua privada',number:'10',city:'Goiânia',neighborhood:'Bueno',cep:'74230000',complement:'Apto privado'}};
@@ -128,4 +128,31 @@ test('grant reutilizado entre endereços/perfil sem novo SMS e expiração volta
     f.advance(600001);assert.equal(f.dom.window.document.querySelector('input[name="nome"]'),null);
     await f.manager.perform('profile');assert.match(f.dom.window.document.body.textContent,/Confirme que este número é seu/);
   }finally{f.close();}
+});
+
+test('SMS private proof survives page navigation without remote revoke; BFCache re-arms expiry without extending TTL',async()=>{
+  const f=fixture({privateSession:true});try{
+    await f.manager.perform('profile');await f.click('Enviar código por SMS');await f.confirm();
+    const key='customerPhoneSession_v1',proof=f.dom.window.sessionStorage.getItem(key);assert.ok(proof);
+    f.manager.pageHide();await tick();
+    assert.equal(f.dom.window.sessionStorage.getItem(key),proof);assert.equal(f.calls.some(c=>c.method==='revoke'),false);
+    assert.equal(f.dom.window.document.querySelector('[role="dialog"]'),null);assert.equal(f.timeouts.size,0);
+    f.advance(100000);f.manager.pageShow();assert.equal(f.timeouts.size,1);
+    assert.equal(f.dom.window.sessionStorage.getItem(key),proof);
+    f.advance(500001);await tick();assert.equal(f.dom.window.sessionStorage.getItem(key),null);
+    assert.equal(f.calls.filter(c=>c.method==='start').length,1);assert.equal(f.calls.filter(c=>c.method==='revoke').length,1);
+  }finally{f.close();}
+});
+
+test('address-only proof and expired private proof are revoked when leaving; identity change still invalidates handoff',async()=>{
+  const old=fixture();try{await old.manager.perform('profile');await old.click('Enviar código por SMS');await old.confirm();old.manager.pageHide();await tick();assert.equal(old.calls.filter(c=>c.method==='revoke').length,1);}finally{old.close();}
+  for(const transition of ['expired','identity']){
+    const f=fixture({privateSession:true});try{
+      await f.manager.perform('profile');await f.click('Enviar código por SMS');await f.confirm();f.manager.pageHide();
+      if(transition==='expired'){f.advance(600001);f.manager.pageShow();}else f.change({mode:'guest',token:'new-context',revision:3});
+      await tick();assert.equal(f.dom.window.sessionStorage.getItem('customerPhoneSession_v1'),null);
+      assert.equal(f.manager.getTrustState(),transition==='identity'?'guest':'legacy_phone_unverified');
+      assert.ok(f.calls.some(c=>c.method==='revoke'));
+    }finally{f.close();}
+  }
 });

@@ -2426,8 +2426,8 @@
                     onAddresses:(addresses,promotedId)=>{currentClient.enderecos=mergeCheckoutAddressOptions(addresses,(currentClient.enderecos || []).filter(a=>a.id!==promotedId));openAddressManagementModal(currentClient);persistCheckoutState();},
                     onProfile:publicName=>{currentClient.nome=publicName;currentClient.nomeAbreviado=publicName;delete currentClient.aniversario;openAddressManagementModal(currentClient);persistCheckoutState();}
                 });
-                window.addEventListener('pagehide',()=>phoneAddressManager.invalidate());
-                window.addEventListener('pageshow',event=>{if(event.persisted)phoneAddressManager.invalidate();});
+                window.addEventListener('pagehide',()=>phoneAddressManager.pageHide());
+                window.addEventListener('pageshow',event=>{if(event.persisted)phoneAddressManager.pageShow();});
             }
             return phoneAddressManager;
         }

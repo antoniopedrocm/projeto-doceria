@@ -2,12 +2,12 @@ import React,{act} from 'react';
 import {createRoot} from 'react-dom/client';
 import ApplicationGate from './ApplicationGate';
 import {auth} from '../firebaseConfig';
-import {legacyAuth,prepareCanonicalSession,logoutCanonicalSession} from './customerRuntime';
+import {legacyAuth,prepareCanonicalSession,logoutCanonicalSession,endPhoneSession} from './customerRuntime';
 import {onIdTokenChanged} from 'firebase/auth';
 import {staffStoreSelectionKey} from '../stores/staffDirectory';
 import useStaffSection,{staffSectionKey} from '../stores/useStaffSection';
 jest.mock('../firebaseConfig',()=>({auth:{currentUser:null}}));
-jest.mock('./customerRuntime',()=>({legacyAuth:{currentUser:null},prepareCanonicalSession:jest.fn(async()=> 'READY'),syncSessionCart:jest.fn(async()=>{}),logoutCanonicalSession:jest.fn(async()=>{})}));
+jest.mock('./customerRuntime',()=>({legacyAuth:{currentUser:null},prepareCanonicalSession:jest.fn(async()=> 'READY'),syncSessionCart:jest.fn(async()=>{}),logoutCanonicalSession:jest.fn(async()=>{}),endPhoneSession:jest.fn(async()=>{})}));
 jest.mock('firebase/auth',()=>({onIdTokenChanged:jest.fn()}));
 jest.mock('./CustomerShell',()=>({__esModule:true,default:props=><div>Customer:{props.uid||'login'}{props.canOpenStaff && <button onClick={props.onStaffContext}>Ir para o CRM</button>}<button onClick={props.onLogout}>Sair Customer</button></div>}));
 jest.mock('./LegacyCustomerShell',()=>({__esModule:true,default:props=><div>Temporary SMS:{props.session.storeId}<button onClick={props.onLogout}>Sair SMS</button></div>}));
@@ -20,6 +20,7 @@ beforeEach(()=>{
   staff=jest.fn(props=><div>{props.staffUid?'CRM:'+props.staffUid:'Login único'}{props.canOpenCustomer && <button onClick={props.onCustomerContext}>Área do Cliente</button>}<button onClick={props.onLogout}>Sair Staff</button></div>);
   auth.currentUser=null;legacyAuth.currentUser=null;window.history.replaceState(null,'','/');sessionStorage.clear();
   prepareCanonicalSession.mockResolvedValue('READY');logoutCanonicalSession.mockImplementation(async()=>{auth.currentUser=null;for(const fn of listeners.get(auth)||[])fn(null);});
+  endPhoneSession.mockImplementation(async()=>{sessionStorage.removeItem('customerPhoneSession_v1');});
   onIdTokenChanged.mockImplementation((a,fn)=>{const callbacks=listeners.get(a)||new Set();callbacks.add(fn);listeners.set(a,callbacks);return ()=>callbacks.delete(fn);});
 });
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();jest.clearAllMocks();});
@@ -64,6 +65,30 @@ test('temporary SMS context can reach its server-guarded shell with Auth null wi
   expect(auth.currentUser).toBeNull();expect(resolver).not.toHaveBeenCalled();expect(staff).not.toHaveBeenCalled();expect(prepareCanonicalSession).not.toHaveBeenCalled();
   expect(window.location.pathname).toBe('/minha-conta');
 });
+test.each(['staff','customer',null])('ending temporary SMS access preserves underlying %s Auth and exits without global logout',async kind=>{
+  window.history.replaceState(null,'','/minha-conta');
+  sessionStorage.setItem('customerPhoneSession_v1',JSON.stringify({purpose:'CUSTOMER_PRIVATE_SESSION',storeId:'phone-store',checkoutIdentityToken:'a'.repeat(64),checkoutIdentityRevision:1,addressSessionToken:'b'.repeat(64),expiresAt:Date.now()+600000}));
+  sessionStorage.setItem(staffStoreSelectionKey('a'),JSON.stringify('store-a'));
+  const user=kind?identity('a'):null;
+  resolver.mockImplementation(async u=>caps(u.uid,kind==='staff',kind==='customer'));
+  await mount();await emit(user);expect(host.textContent).toContain('Temporary SMS');
+  await click('Sair SMS');
+  expect(endPhoneSession).toHaveBeenCalledTimes(1);expect(logoutCanonicalSession).not.toHaveBeenCalled();
+  expect(auth.currentUser).toBe(user);expect(host.textContent).not.toContain('Temporary SMS');
+  expect(host.textContent).not.toContain('Carregando acesso');expect(sessionStorage.getItem('customerPhoneSession_v1')).toBeNull();
+  expect(host.textContent).toContain(kind==='staff'?'CRM:a':kind==='customer'?'Customer:a':'Customer:login');
+  expect(JSON.parse(sessionStorage.getItem(staffStoreSelectionKey('a')))).toBe('store-a');
+});
+
+test('temporary logout without Auth completes even if canonical preparation would never finish',async()=>{
+  window.history.replaceState(null,'','/area-cliente');
+  sessionStorage.setItem('customerPhoneSession_v1',JSON.stringify({purpose:'CUSTOMER_PRIVATE_SESSION',storeId:'phone-store',checkoutIdentityToken:'a'.repeat(64),checkoutIdentityRevision:1,addressSessionToken:'b'.repeat(64),expiresAt:Date.now()+600000}));
+  prepareCanonicalSession.mockImplementation(()=>new Promise(()=>{}));
+  await mount();await emit(null);await click('Sair SMS');
+  expect(host.textContent).toContain('Customer:login');expect(prepareCanonicalSession).not.toHaveBeenCalled();
+  expect(logoutCanonicalSession).not.toHaveBeenCalled();
+});
+
 test('inactive Staff cannot be restored from cache; Customer stays valid',async()=>{
   await mount();await emit(identity('a'));await click('Área do Cliente');resolver.mockResolvedValue(caps('a',false,true));await click('Ir para o CRM');expect(host.textContent).toContain('Customer:a');expect(host.textContent).not.toContain('CRM:a');expect(host.textContent).not.toContain('Ir para o CRM');
 });
