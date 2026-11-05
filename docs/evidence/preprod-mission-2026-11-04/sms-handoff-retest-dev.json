@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "runtimeCommit": "fb89b0fd12a0c3b9afbadc196dcf0eb821c09fa7",
+  "ownerAuthorization": "Autorizo mais 1 SMS",
+  "recipientSuffix": "0290",
+  "purpose": "Retest temporary private session navigation, refresh and ending without Staff logout",
+  "maximumAdditionalSendActions": 1,
+  "sendActionBudgetConsumed": true,
+  "sendActionsExecuted": 1,
+  "sendActionStatus": "One additional SMS received and verified by the recipient, no resend",
+  "humanCodeEntryHandoff": false,
+  "recipientDeliveryConfirmed": true,
+  "otpVerificationComplete": true,
+  "recipientReply": "código confirmado",
+  "actualDevChecks": {
+    "temporaryNoticeVisible": true,
+    "profileAddressCards": 12,
+    "refreshPreservedProfileRouteAndTemporaryAccess": true,
+    "historyVisibleOrderActions": 20,
+    "ownOrderDetailLoaded": true,
+    "temporaryExitReturnedToStaffRoot": true,
+    "temporaryNoticeRemovedOnExit": true,
+    "staffNavigationPreserved": true,
+    "localCartRestoredToEmpty": true,
+    "profileOrAddressMutation": false,
+    "newOrderOrPayment": false
+  },
+  "responsiveChecks": {
+    "desktopProfile": {"viewportWidth":1920,"clientWidth":1905,"scrollWidth":1905},
+    "mobileProfile": {"viewportWidth":390,"clientWidth":375,"scrollWidth":375},
+    "mobileOrderHistoryBeforeCssFix": {"clientWidth":375,"scrollWidth":670},
+    "mobileOrderDetailBeforeCssFix": {"clientWidth":375,"scrollWidth":668},
+    "followup": "Scoped wrapping fix validated with actual component and fictional data in temporary-orders-visual-local.json; no further SMS required for CSS-only verification"
+  },
+  "verifiedNoticeScreenshot": "sms-handoff-verified-notice-dev.jpg",
+  "screenshotWithoutOtpField": "sms-handoff-retest-request-dev.jpg",
+  "automaticResendAllowed": false,
+  "permanentClaimAuthorized": false,
+  "production": false
+}

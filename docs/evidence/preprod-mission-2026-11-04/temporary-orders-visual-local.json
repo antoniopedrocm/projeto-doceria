@@ -1,0 +1,130 @@
+{
+  "scope": "Actual LegacyCustomerShell rendered locally with fictional read-only request overrides; no real Customer/API/OTP data",
+  "before": {
+    "viewport": 390,
+    "clientWidth": 375,
+    "scrollWidth": 658
+  },
+  "after": [
+    {
+      "viewport": 320,
+      "screen": "orders",
+      "clientWidth": 305,
+      "mainOverflowY": "visible",
+      "scrollWidth": 305
+    },
+    {
+      "viewport": 320,
+      "screen": "detail",
+      "clientWidth": 305,
+      "mainOverflowY": "visible",
+      "scrollWidth": 305
+    },
+    {
+      "viewport": 375,
+      "screen": "orders",
+      "clientWidth": 360,
+      "mainOverflowY": "visible",
+      "scrollWidth": 360
+    },
+    {
+      "viewport": 375,
+      "screen": "detail",
+      "clientWidth": 360,
+      "mainOverflowY": "visible",
+      "scrollWidth": 360
+    },
+    {
+      "viewport": 390,
+      "screen": "orders",
+      "clientWidth": 375,
+      "mainOverflowY": "visible",
+      "scrollWidth": 375
+    },
+    {
+      "viewport": 390,
+      "screen": "detail",
+      "clientWidth": 375,
+      "mainOverflowY": "visible",
+      "scrollWidth": 375
+    },
+    {
+      "viewport": 430,
+      "screen": "orders",
+      "clientWidth": 415,
+      "mainOverflowY": "visible",
+      "scrollWidth": 415
+    },
+    {
+      "viewport": 430,
+      "screen": "detail",
+      "clientWidth": 415,
+      "mainOverflowY": "visible",
+      "scrollWidth": 415
+    },
+    {
+      "viewport": 768,
+      "screen": "orders",
+      "clientWidth": 753,
+      "mainOverflowY": "visible",
+      "scrollWidth": 753
+    },
+    {
+      "viewport": 768,
+      "screen": "detail",
+      "clientWidth": 753,
+      "mainOverflowY": "visible",
+      "scrollWidth": 753
+    },
+    {
+      "viewport": 1024,
+      "screen": "orders",
+      "clientWidth": 1009,
+      "mainOverflowY": "visible",
+      "scrollWidth": 1009
+    },
+    {
+      "viewport": 1024,
+      "screen": "detail",
+      "clientWidth": 1009,
+      "mainOverflowY": "visible",
+      "scrollWidth": 1009
+    },
+    {
+      "viewport": 1366,
+      "screen": "orders",
+      "clientWidth": 1351,
+      "mainOverflowY": "visible",
+      "scrollWidth": 1351
+    },
+    {
+      "viewport": 1366,
+      "screen": "detail",
+      "clientWidth": 1351,
+      "mainOverflowY": "visible",
+      "scrollWidth": 1351
+    },
+    {
+      "viewport": 1920,
+      "screen": "orders",
+      "clientWidth": 1905,
+      "mainOverflowY": "visible",
+      "scrollWidth": 1905
+    },
+    {
+      "viewport": 1920,
+      "screen": "detail",
+      "clientWidth": 1905,
+      "mainOverflowY": "visible",
+      "scrollWidth": 1905
+    }
+  ],
+  "screenshots": [
+    "temporary-orders-before-fixture.jpg",
+    "temporary-orders-390-fixture.jpg",
+    "temporary-detail-390-fixture.jpg",
+    "temporary-orders-1920-fixture.jpg",
+    "temporary-detail-1920-fixture.jpg"
+  ],
+  "production": false
+}

@@ -1,5 +1,13 @@
 # Sessão privada SMS — navegação e saída temporária
 
+## Reteste real após correção — PASS funcional
+
+O Dono autorizou separadamente “Autorizo mais 1 SMS”. Esse único envio adicional foi recebido e confirmado pelo titular só na aplicação, sem reenvio. No DEV/main.63105160: aviso temporário visível,12endereços, refresh mantendo `/minha-conta` e grant, histórico com20ações, detalhe autorizado e saída para CRM `/` com Staff preservado PASS. Nenhum perfil/endereço foi salvo; nenhuma compra, NF ou WhatsApp. Carrinho inicialmente vazio restaurado a0 após o teste. As duas autorizações específicas foram consumidas; **não enviar outro SMS**. [Evidência real](evidence/preprod-mission-2026-11-04/sms-handoff-retest-dev.json).
+
+Perfil real em1920×889 e390×800 sem overflow. Histórico/detalhe mobile tinham referências hash longas extravasando o card (670/668px para375px úteis). Ajuste restrito à classe `customer-phone-orders` e `overflow-wrap:anywhere` nos cards; IDs, payloads e telas Customer fortes preservados. Fixture do componente real reproduziu658/375px antes e validou16cenários após, sem overflow ou scroll interno, em320/375/390/430/768/1024/1366/1920. Capturas com dados fictícios revisadas; não confundir com imagens da conta real. [QA visual isolado](evidence/preprod-mission-2026-11-04/temporary-orders-visual-local.json).
+
+41testes LegacyCustomerShell/CustomerShell PASS; lint/diffPASS; buildDEVmain.08ad2156.js455,34kB eCSSmain.a5070aae.css14,61kB. Warnings anteriores preservados. Publicação do complemento de CSS deve ser conferida no checkpoint. Não precisa de novo SMS para essa alteração de apresentação. **C15 claim permanente Google/e-mail e C16 consolidação continuam pendentes**, Fase10=87,50%. Fase9=100%, Global97,00%, Fase13=0%; PROD bloqueada.
+
 DEV04/11/2026, complemento da missão. **Fase9=100%, Global97,00%; Fase10=87,50%, Fase13=0%; PROD bloqueada.** Não altera backend, OTP/provedor, TTL, grants/ownership, pagamentos, fiscal ou fluxo de logout forte.
 
 ## Reprodução real e causa

@@ -5,6 +5,9 @@
 .customer-self-account [data-profile] .customer-account-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;max-width:1280px;width:100%;align-items:start}
 .customer-self-account [data-profile] .customer-panel{min-width:0;padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 3px #00000006}
 .customer-self-account [data-profile] .customer-panel h2{margin:0;color:#111827;font-size:18px;font-weight:600;line-height:1.4}
+/* Temporary SMS order references may be full immutable hashes. Keep them inside
+   the card without changing IDs or the approved strong-Customer screens. */
+.customer-phone-orders [data-profile] .customer-panel{overflow-wrap:anywhere}
 .customer-self-account [data-profile] .customer-panel-heading{margin:0 0 24px}
 .customer-self-account [data-profile] .customer-panel-heading>p,.customer-self-account [data-profile] .customer-section-heading p{margin:6px 0 0;font-size:13px;color:#6b7280;line-height:1.6}
 .customer-self-account [data-profile] .customer-profile-card{display:grid;grid-template-columns:minmax(0,900px) minmax(0,1fr)}

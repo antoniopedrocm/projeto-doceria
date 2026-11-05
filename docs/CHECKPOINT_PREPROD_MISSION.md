@@ -1,5 +1,17 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Reteste SMS funcional PASS — ajuste visual estreito em fechamento
+
+Segundo SMS solicitado com autorização “Autorizo mais 1 SMS”,1/1, confirmado pelo titular somente na aplicação. Navegação menu→ÁreaCliente mostrou aviso temporário no runtimefb89b0fd/main.63105160; perfil12endereços, refresh `/minha-conta`, histórico20ações de pedido e detalhe autorizado PASS. Saída temporária retirou aviso e retornou ao CRM `/` com menu Staff, sem logout forte. Carrinho local Matriz restaurado a0. **Não enviar mais SMS: as duas autorizações separadas foram consumidas.** Nenhum perfil/endereço/pedido/pagamento/NF/WhatsApp alterado; claim permanente não autorizado.
+
+Perfil desktop1920×889/mobile390×800 sem overflow. Histórico/detalhe temporários apresentaram overflow mobile por hashes longos; corrigidos somente com classe `customer-phone-orders` e overflow-wrap nos seus cards, mantendo IDs/API e telas fortes intactos. Fixture do componente real com dados fictícios reproduziu658px/375px antes; depois16cenários (histórico/detalhe em320,375,390,430,768,1024,1366,1920) sem overflow e sem scroll interno,4capturas desktop/mobile revisadas. Ver temporary-orders-visual-local.json. Próximo: testes relevantes/build/lint/diff, commit/push e Hosting DEV CSS somente; conferir hashes e atualizar gate SMS. Não repetir OTP para uma correção de CSS. C15 claim Google/e-mail e C16 consolidação seguem pendentes; Fase10=87,50%, Fase9=100%, Global97,00%, Fase13=0%, PROD bloqueada.
+
+## Reteste autorizado — mais1SMS temporário
+
+**Envio adicional já executado,1/1; NÃO reenviar.** Campo do código e cooldown visíveis no navegador integrado, aba3 `/cardapio-matriz`; handoff marcado e titular solicitado a confirmar só na aplicação. Aguardar resposta “código confirmado”; não ler valor do input nem capturar OTP. Após confirmar, cancelar editor sem salvar e abrir Minha Conta para validar grant temporário/refresh/saída preservando Auth Staff. Prova temporária tem TTL original; se expirar, registrar sem ampliar autorização. No total da missão foram solicitados2SMS, cada um com autorização específica separada.
+
+O Dono respondeu “Autorizo mais 1 SMS” para o reteste da correçãofb89b0fd no mesmo final0290, somente temporário, sem claim permanente. Evidência separada `preprod-mission-2026-11-04/sms-handoff-retest-dev.json` controla o limite atual. Não confundir com a autorização anterior já consumida. Antes de qualquer retomada, consultar esse arquivo: se budget consumido ou clique executado, **não reenviar**. Fluxo UI na Matriz, carrinho inicialmente vazio;1item adicionado só localmente para acessar identificação, sem pedido. Aguardar código exclusivamente na aplicação após envio; não coletar OTP em chat/log/Git. Fase9=100%, Fase10=87,50%, Global97,00%, Fase13=0%; PROD bloqueada.
+
 ## Estado vigente — correção SMS publicada, reteste aguardando autorização
 
 **Não refazer código, testes ou deploy.** Commit funcional `fb89b0fd12a0c3b9afbadc196dcf0eb821c09fa7`, push concluído, Hosting DEV versão `84e5e496890c3d26` verificado61/61hashes, main.63105160.js;146Functions e Rules inalteradas/cache/slugs preservados. Build/lint/diffPASS,597React/164públicos PASS,41ApplicationGate repetidos após asserção final. Tentativa inicial de deploy interrompida no predeploy por script ausente no staging; guard copiado intacto e publicação concluída, sem remover proteção.
