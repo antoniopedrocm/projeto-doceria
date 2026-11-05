@@ -1,0 +1,14 @@
+{
+  "project": "crmdoceria-9959e",
+  "commit": "a4a5cdfe3541ce4d6e5ef8db53767766a45a248b",
+  "checkedAt": "2026-11-05T01:11:37.366Z",
+  "hostingVersion": "sites/crmdoceria-9959e/versions/f960c57c592945d0",
+  "hostingHashesMatched": 61,
+  "main": "static/js/main.08ad2156.js",
+  "functionsUnchanged": 146,
+  "rulesUnchanged": true,
+  "htmlCache": "no-cache, max-age=0, must-revalidate",
+  "assetCache": "public, max-age=31536000, immutable",
+  "friendlyRoutes": true,
+  "production": false
+}

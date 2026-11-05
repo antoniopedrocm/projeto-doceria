@@ -1,5 +1,14 @@
 # FINAL DEV PRE-PROD REPORT
 
+## Estado vigente — sessão temporária SMS PASS
+
+**Fase9=100%; Fase10=87,50% (14/16); Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Gate SMS Enterprise temporário concluído no DEV:2envios com autorizações específicas separadas, titular confirmou só na aplicação; navegação/grant privado,12endereços, histórico/detalhe, refresh e saída preservando Staff PASS. Nenhum novo pedido/pagamento/NF/WhatsApp, mutação de perfil/endereço ou claim permanente. Carrinhos locais restaurados a0; não há autorização de novo SMS.
+
+Correção de handoff/saída fb89b0fd homologada em conta real; complemento visual restrito a hashes longos a4a5cdfe publicado no Hosting DEV versãof960c57c592945d0,61/61hashes,146Functions/Rules inalteradas/cache/slugs preservados.41testes focados e16cenários visuais do componente real com dados fictícios PASS, buildmain.08ad2156.js455,34kB/CSSa5070aae14,61kB, lint/diffPASS; regressão anterior597React/164públicos preservada sem somar repetições. [Fechamento do gate](evidence/preprod-mission-2026-11-04/sms-temporary-gate-final-dev.json), [causa/correções](SMS_TEMPORARY_SESSION_HANDOFF.md).
+
+**Próximo ponto exato: C15.** Solicitada ao Dono indicação dos cadastros legados sem proprietário e contas DEV legítimas/titulares para cenários Google/e-mail. Não desvincular C02/final0290, falsificar Auth ou conceder ownership para fabricar aceite. Preparar caso concreto e aprovação própria de claim/SMS; a autorização temporária não os abrange. Depois C16 consolidado; não elevar Fase10 por fechar somente SMS. Não refazer Fase9 ou gates já PASS. Registros abaixo são históricos e esta seção prevalece.
+
+
 ## Fase9 encerrada no DEV — 04/11/2026
 
 **Fase9=100%; Fase10=87,50%; Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Esta seção prevalece sobre estados anteriores preservados abaixo. Sessão Dono fornecida pelo proprietário: conciliação por loja, estado vazio, consulta de pedido existente PAID/R$1,00, referências do provider, aviso de execução externa e gravação bloqueada sem referência/atesto conferidos em Chrome real; formulário cancelado, sem registrar operação. Layout desktop/estreito sem overflow horizontal nas dimensões CSS efetivamente registradas (zoom do Chrome impede afirmar390CSS exatos). Nenhuma operação financeira/fiscal/pedido executada. Com implementação,1.120testes PASS, review, build/lint/diff e API/Rules/Hosting DEV já verificados, o último aceite da Fase9 foi concluído. [Evidência](evidence/preprod-mission-2026-11-04/phase9-staff-acceptance-dev.json).
@@ -13,7 +22,7 @@ Restam SMS Enterprise/grant temporário real, C15 claim Google/e-mail e C16 cons
 |---|---|---|
 |1|Nota Fiscal|PASS seguro: PIX/cartão/históricos na fila real; AGREED_LATER/select obrigatório/mapping em fixture; nenhuma emissão real. Causa do pedido ausente era status operacional Pendente, não paymentMode.|
 |2|Refresh CRM|PASS das quatro seções com loja/Auth/capability preservadas; evidência anterior mantida.|
-|3|SMS Enterprise|1SMS autorizado entregue/confirmado; perfil protegido abriu. Handoff antigo falhou no pagehide; correção fb89b0fd publicada/verificada61/61hashes,597React/164públicos PASS. Reteste real requer nova autorização1SMS; claim C15 separado.|
+|3|SMS Enterprise|PASS temporário:2SMS com autorizações separadas, handoff/refresh/histórico/detalhe/saída preservando Staff reais PASS. CSS de referências longas corrigido,16fixtures e41testes PASS, a4a5cdfe publicado61/61hashes. C15 claim permanente separado.|
 |4|Admin Preview|PASS preservado; sem novo ciclo manual. previewSessionId comum LOW futuro.|
 |5|Fase9|100%, implementação/testes/security/build/lint/deploy e homologação autenticada Staff concluídos.|
 |6|Fase10|14/16 critérios PASS. C13 processo concluído; C14 disposição dos14remanescentes aprovada. C15/C16 pendentes.|
@@ -30,9 +39,9 @@ Restam SMS Enterprise/grant temporário real, C15 claim Google/e-mail e C16 cons
 |17|Commits|D b5892db3; inventário4d894ddf; E43f8e0c0; decisãof13febe0; guards65400b78/fe64ca28; merge DEV d6d5016e; redirecta16a41b2; fixtures4e264054. Checkpoint/evidências documentais em commit posterior.|
 |18|Push DEV|Runtime4e264054 enviado ao origin/feature/infinitepay-customer-auth. Sem push PROD.|
 |19|Deploys DEV|Somente functions:api, firestore:rules e hosting. API api-00070-jib59/59hashes;145Functions inalteradas/env/bindings preservados; Rules fonte idêntica; Hosting61/61hashes/cache e10negativas remotas PASS.|
-|20|Manual homologations|NF/Refresh/aceites antigos preservados, conciliação Staff concluída e SMS real confirmado. Reteste do handoff temporário/saída e claim C15/C16 ainda abertos.|
+|20|Manual homologations|NF/Refresh/aceites antigos preservados, conciliação Staff e SMS temporário com handoff/refresh/saída concluídos. C15 claim permanente e C16 consolidação ainda abertos.|
 |21|Real payment|NÃO.|
-|22|Real SMS|SIM, exatamente1 envio autorizado pelo Dono ao final0290 e confirmado pelo titular. Nenhum reenvio nem claim permanente.|
+|22|Real SMS|SIM,2envios ao final0290, cada um autorizado separadamente e confirmado pelo titular. Nenhum reenvio automático nem claim permanente.|
 |23|NF real|NÃO.|
 |24|WhatsApp real|NÃO.|
 |25|Fase9 final|100%, concluída no DEV com evidência de aceite Staff somente leitura.|
@@ -41,7 +50,7 @@ Restam SMS Enterprise/grant temporário real, C15 claim Google/e-mail e C16 cons
 |28|Fase13|0%; não iniciada.|
 |29|Prod ready review|Preparado com gates/evidências/responsáveis, inventário futuro e plano de backup/rollback; não declarar DEV READY FOR PROD REVIEW ainda.|
 |30|Prod alterada|NÃO; nenhum acesso ou deploy em ana-guimaraes. Mercado Pago não iniciado.|
-|31|Blockers restantes|Reteste autorizado de handoff/refresh/saída temporária após correção; C15 claim real Google/e-mail; C16 consolidação. Configuração efetiva/cutover PROD e autorização final pertencem à futura revisão autorizada.|
+|31|Blockers restantes|C15 claim real Google/e-mail com casos/titulares aprovados e C16 consolidação. Configuração efetiva/cutover PROD e autorização final pertencem à futura revisão autorizada.|
 
 ## Retomada exata
 

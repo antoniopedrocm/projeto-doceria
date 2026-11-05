@@ -1,5 +1,14 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
+## Estado vigente — sessão temporária SMS PASS
+
+**Fase9=100%; Fase10=87,50% (14/16); Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Gate SMS Enterprise temporário concluído no DEV:2envios com autorizações específicas separadas, titular confirmou só na aplicação; navegação/grant privado,12endereços, histórico/detalhe, refresh e saída preservando Staff PASS. Nenhum novo pedido/pagamento/NF/WhatsApp, mutação de perfil/endereço ou claim permanente. Carrinhos locais restaurados a0; não há autorização de novo SMS.
+
+Correção de handoff/saída fb89b0fd homologada em conta real; complemento visual restrito a hashes longos a4a5cdfe publicado no Hosting DEV versãof960c57c592945d0,61/61hashes,146Functions/Rules inalteradas/cache/slugs preservados.41testes focados e16cenários visuais do componente real com dados fictícios PASS, buildmain.08ad2156.js455,34kB/CSSa5070aae14,61kB, lint/diffPASS; regressão anterior597React/164públicos preservada sem somar repetições. [Fechamento do gate](evidence/preprod-mission-2026-11-04/sms-temporary-gate-final-dev.json), [causa/correções](SMS_TEMPORARY_SESSION_HANDOFF.md).
+
+**Próximo ponto exato: C15.** Solicitada ao Dono indicação dos cadastros legados sem proprietário e contas DEV legítimas/titulares para cenários Google/e-mail. Não desvincular C02/final0290, falsificar Auth ou conceder ownership para fabricar aceite. Preparar caso concreto e aprovação própria de claim/SMS; a autorização temporária não os abrange. Depois C16 consolidado; não elevar Fase10 por fechar somente SMS. Não refazer Fase9 ou gates já PASS. Registros abaixo são históricos e esta seção prevalece.
+
+
 ## Fase9 encerrada no DEV — 04/11/2026
 
 **Fase9=100%; Fase10=87,50%; Global formal=97,00%; Fase13=0%. PROD READY: NÃO.** Esta seção prevalece sobre estados anteriores preservados abaixo. Sessão Dono fornecida pelo proprietário: conciliação por loja, estado vazio, consulta de pedido existente PAID/R$1,00, referências do provider, aviso de execução externa e gravação bloqueada sem referência/atesto conferidos em Chrome real; formulário cancelado, sem registrar operação. Layout desktop/estreito sem overflow horizontal nas dimensões CSS efetivamente registradas (zoom do Chrome impede afirmar390CSS exatos). Nenhuma operação financeira/fiscal/pedido executada. Com implementação,1.120testes PASS, review, build/lint/diff e API/Rules/Hosting DEV já verificados, o último aceite da Fase9 foi concluído. [Evidência](evidence/preprod-mission-2026-11-04/phase9-staff-acceptance-dev.json).

@@ -2,6 +2,8 @@
 
 ## Reteste real após correção — PASS funcional
 
+**Complemento visual publicado/verificado:** a4a5cdfe, Hosting DEV f960c57c592945d0,61/61hashes,146Functions/Rules inalteradas. Gate SMS temporário **PASS**, sem novo envio para a correção de CSS. [Fechamento consolidado](evidence/preprod-mission-2026-11-04/sms-temporary-gate-final-dev.json), [Hosting](evidence/preprod-mission-2026-11-04/sms-orders-wrap-hosting-dev.json). C15/C16 permanecem abertos; esta autorização não cobre claim permanente.
+
 O Dono autorizou separadamente “Autorizo mais 1 SMS”. Esse único envio adicional foi recebido e confirmado pelo titular só na aplicação, sem reenvio. No DEV/main.63105160: aviso temporário visível,12endereços, refresh mantendo `/minha-conta` e grant, histórico com20ações, detalhe autorizado e saída para CRM `/` com Staff preservado PASS. Nenhum perfil/endereço foi salvo; nenhuma compra, NF ou WhatsApp. Carrinho inicialmente vazio restaurado a0 após o teste. As duas autorizações específicas foram consumidas; **não enviar outro SMS**. [Evidência real](evidence/preprod-mission-2026-11-04/sms-handoff-retest-dev.json).
 
 Perfil real em1920×889 e390×800 sem overflow. Histórico/detalhe mobile tinham referências hash longas extravasando o card (670/668px para375px úteis). Ajuste restrito à classe `customer-phone-orders` e `overflow-wrap:anywhere` nos cards; IDs, payloads e telas Customer fortes preservados. Fixture do componente real reproduziu658/375px antes e validou16cenários após, sem overflow ou scroll interno, em320/375/390/430/768/1024/1366/1920. Capturas com dados fictícios revisadas; não confundir com imagens da conta real. [QA visual isolado](evidence/preprod-mission-2026-11-04/temporary-orders-visual-local.json).

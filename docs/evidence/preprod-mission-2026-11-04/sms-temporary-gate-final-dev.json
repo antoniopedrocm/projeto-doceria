@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-05T01:13:25.856Z",
+  "gate": "SMS Enterprise temporary private access",
+  "result": "PASS",
+  "realSmsSendActions": 2,
+  "separatelyAuthorizedSendActions": [
+    1,
+    1
+  ],
+  "allRecipientsSuffix": "0290",
+  "noAutomaticResends": true,
+  "noOtpInChatLogsOrGit": true,
+  "functionalRuntime": "fb89b0fd12a0c3b9afbadc196dcf0eb821c09fa7",
+  "finalRuntime": "a4a5cdfe3541ce4d6e5ef8db53767766a45a248b",
+  "hostingVersion": "sites/crmdoceria-9959e/versions/f960c57c592945d0",
+  "realDevEvidence": "sms-handoff-retest-dev.json",
+  "responsiveFixtureEvidence": "temporary-orders-visual-local.json",
+  "deliveryEvidence": "sms-orders-wrap-hosting-dev.json",
+  "checks": {
+    "deliveryAndVerification": true,
+    "privateArea": true,
+    "profileAddressCards": 12,
+    "refreshPreservedProfileRoute": true,
+    "history": true,
+    "orderDetail": true,
+    "temporaryExitResumedStaff": true,
+    "cartRestoredEmpty": true
+  },
+  "visual": {
+    "realProfileDesktopMobile": true,
+    "longOrderReferenceBugFixed": true,
+    "isolatedProductionComponentChecks": 16,
+    "widths": [
+      320,
+      375,
+      390,
+      430,
+      768,
+      1024,
+      1366,
+      1920
+    ],
+    "screenshotsAreFictionalExceptCroppedTemporaryNotice": true
+  },
+  "tests": {
+    "priorReact": 597,
+    "priorPublic": 164,
+    "finalFocusedReact": 41,
+    "focusedResultsOverlapPriorSuites": true
+  },
+  "quality": {
+    "build": "PASS",
+    "lint": "PASS",
+    "diffCheck": "PASS",
+    "main": "static/js/main.08ad2156.js",
+    "mainGzipKb": 455.34,
+    "css": "static/css/main.a5070aae.css",
+    "cssGzipKb": 14.61
+  },
+  "phase9": 100,
+  "phase10": 87.5,
+  "globalFormal": 97,
+  "phase13": 0,
+  "permanentClaimAuthorized": false,
+  "permanentClaimPerformed": false,
+  "remaining": [
+    "C15 real post-Google and post-email legacy identity claim with approved legitimate participants",
+    "C16 consolidated acceptance after C15"
+  ],
+  "noRealOrderPaymentInvoiceWhatsApp": true,
+  "production": false
+}
