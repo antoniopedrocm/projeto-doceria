@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "storeId": "ana-guimaraes-doceria-matriz",
+  "caseId": "72f99a605f6f471b",
+  "phoneSuffix": "0811",
+  "uidFingerprint": "c5a1b2246c97f197",
+  "startedAt": "2026-11-06T12:56:26.851Z",
+  "state": "APPLIED_VERIFIED",
+  "databaseEdition": "STANDARD",
+  "recipientCountBefore": 2,
+  "recipientCountExpectedAfter": 3,
+  "otherFieldsBeforeFingerprint": "78f56caa179a56383b56761f2b6c10ee978e97c1333e2a58808b64c45f549d60",
+  "enterpriseProtectionReady": true,
+  "precheck": {
+    "owners": 0,
+    "destinationMappings": 0,
+    "provider": "email_password"
+  },
+  "remoteWriteAttempts": 1,
+  "remoteConfigurationWrites": 1,
+  "smsSends": 0,
+  "permanentClaims": 0,
+  "production": false,
+  "completedAt": "2026-11-06T12:56:27.092Z",
+  "otherFieldsPreserved": true,
+  "existingRecipientsPreserved": true,
+  "exactSingleAddition": true,
+  "recipientCountAfter": 3,
+  "policyVersionFingerprint": "dfe4ef48c122c169033f7d411fe461f88faedf514348175d6ff797abd5a39265",
+  "verificationHistory": [
+    {
+      "state": "VERIFY_MISMATCH_STOP",
+      "otherFieldsPreserved": false,
+      "reason": "Original JSON.stringify comparison was sensitive to map key order"
+    }
+  ],
+  "verificationMethod": "Firestore historical read immediately before update; deep object equality excluding only allowedRecipients",
+  "verifiedAt": "2026-11-06T12:57:14.506Z",
+  "otherFieldsCanonicalFingerprint": "68fc8c05ff7eeca7fadf60316cddd3e2a5d7b5ec18047d4dad50097b9c8777b7"
+}

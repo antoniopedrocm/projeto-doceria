@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-06T09:31:06.720Z",
+  "readOnly": true,
+  "caseId": "72f99a605f6f471b",
+  "phoneSuffix": "0811",
+  "scenario": "email_password",
+  "destination": {
+    "emailHint": "a***@icloud.com",
+    "emailFingerprint": "d41cb37ec21e8ade4cd114cbad28c91c3e10ac56f3e493242290dc515c4e2a05",
+    "authAccountExists": false,
+    "disabled": null,
+    "providers": [],
+    "uidFingerprint": null,
+    "identityMappings": 0,
+    "uidMappingPresent": false,
+    "ownedCustomerRecords": 0,
+    "linkedToDifferentCustomer": false
+  },
+  "candidate": {
+    "ownerCount": 0,
+    "canonicalStatus": "CANONICAL",
+    "indexReady": true,
+    "versionFingerprint": "86017021fb99e6e74431aae947a058f8b48d8d80fa2922d8313a1a1d6e921800"
+  },
+  "recipientAllowlisted": false,
+  "blockers": [
+    "AUTH_ACCOUNT_NOT_CREATED",
+    "RECIPIENT_NOT_ALLOWLISTED"
+  ],
+  "controlOfPhoneConfirmed": false,
+  "actualDestinationSignInConfirmed": false,
+  "permanentClaimApproved": false,
+  "smsSendApproved": false,
+  "remoteWrites": 0,
+  "smsSends": 0,
+  "permanentClaims": 0,
+  "production": false
+}

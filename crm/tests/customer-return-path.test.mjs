@@ -1,10 +1,16 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {CUSTOMER_RETURN_PATH_KEY,safeCustomerReturnPath,customerAreaEntryPath,customerMenuDestination} from '../src/storefront/storeRoutes.mjs';
+import {CUSTOMER_RETURN_PATH_KEY,PUBLIC_HOME_PATH,isPublicHomeLocation,safeCustomerReturnPath,customerAreaEntryPath,customerMenuDestination} from '../src/storefront/storeRoutes.mjs';
 import {createCanonicalLogout} from '../public/canonical-session.mjs';
 const storage=()=>{const data=new Map();return {getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value),removeItem:key=>data.delete(key)};};
 const origin=store=>'/cardapio-'+store;
 const incoming=path=>'?returnTo='+encodeURIComponent(path);
+test('origem recuperada do checkout permanece disponível depois de logout remover o contexto privado',()=>{
+  const tab=storage();tab.setItem('checkoutState_v1',JSON.stringify({storeId:'ana-guimaraes-doceria-garavelo'}));
+  assert.equal(customerMenuDestination(tab),'/cardapio-garavelo');
+  tab.removeItem('checkoutState_v1');
+  assert.equal(customerMenuDestination(tab),'/cardapio-garavelo');
+});
 for(const store of ['matriz','garavelo'])test(store+' → entrada → refresh/login → logout canônico → mesma origem, sem dados privados',async()=>{
   const path=origin(store),tab=storage(),entry=customerAreaEntryPath({pathname:path,search:''});
   assert.equal(entry,'/area-cliente'+incoming(path));
@@ -30,9 +36,9 @@ test('aliases auditados e canais existentes são preservados sem inventar associ
 });
 test('returnTo externo, ambíguo, privado ou malformado nunca é aceito',()=>{
   for(const path of ['https://evil.test','//evil.test','javascript:alert(1)','data:text/html,x','/\\evil.test','/cardapio/../admin','/admin/customer-preview/id','/minha-conta','/cardapio?store=../private','/cardapio?store=foo%0A','/cardapio?store=a&store=b','/cardapio?channel=festas','/cardapio?store=a&next=https://evil.test','/cardapio?store=a&token=private','/cardapio?store=a#outside','/cardapio?store=a?store=b','/%2f/evil.test','/cardapio?store=']) {
-    assert.equal(safeCustomerReturnPath(path),null,path);const tab=storage();assert.equal(customerMenuDestination(tab,incoming(path)),'/',path);assert.equal(tab.getItem(CUSTOMER_RETURN_PATH_KEY),null,path);
+    assert.equal(safeCustomerReturnPath(path),null,path);const tab=storage();assert.equal(customerMenuDestination(tab,incoming(path)),PUBLIC_HOME_PATH,path);assert.equal(tab.getItem(CUSTOMER_RETURN_PATH_KEY),null,path);
   }
-  assert.equal(customerMenuDestination(storage(),incoming(origin('matriz'))+'&returnTo='+encodeURIComponent(origin('garavelo'))),'/');
+  assert.equal(customerMenuDestination(storage(),incoming(origin('matriz'))+'&returnTo='+encodeURIComponent(origin('garavelo'))),PUBLIC_HOME_PATH);
 });
 test('slug público futuro é navegação interna; resolução canônica continua no backend, sem fallback Matriz',()=>{
   assert.equal(safeCustomerReturnPath('/cardapio-futuro'),'/cardapio-futuro');
@@ -43,10 +49,16 @@ test('entrada transporta só pathname/search público; nunca credenciais, hash o
   assert.equal(entry,'/area-cliente'+incoming('/cardapio?store=garavelo&channel=festas'));assert.doesNotMatch(entry,/private|token|email|evil/);
 });
 test('acesso direto usa home pública; contexto público legado válido continua útil; storage corrompido falha seguro',()=>{
-  assert.equal(customerMenuDestination(storage()),'/');assert.equal(customerAreaEntryPath({pathname:'/cardapio',search:''}),'/area-cliente');
+  assert.equal(customerMenuDestination(storage()),PUBLIC_HOME_PATH);assert.equal(customerAreaEntryPath({pathname:'/cardapio',search:''}),'/area-cliente');
   const tab=storage();tab.setItem(CUSTOMER_RETURN_PATH_KEY,'https://evil.test');tab.setItem('checkoutState_v1',JSON.stringify({storeId:'loja-futura'}));
-  assert.equal(customerMenuDestination(tab),'/cardapio?store=loja-futura');assert.equal(tab.getItem(CUSTOMER_RETURN_PATH_KEY),null);
-  tab.setItem('checkoutState_v1','corrupt');assert.equal(customerMenuDestination(tab),'/');
+  assert.equal(customerMenuDestination(tab),'/cardapio?store=loja-futura');assert.equal(tab.getItem(CUSTOMER_RETURN_PATH_KEY),'/cardapio?store=loja-futura');
+  tab.removeItem(CUSTOMER_RETURN_PATH_KEY);tab.setItem('checkoutState_v1','corrupt');assert.equal(customerMenuDestination(tab),PUBLIC_HOME_PATH);
   const blocked={getItem:()=>{throw Error('blocked');},setItem:()=>{throw Error('blocked');}};
-  assert.equal(customerMenuDestination(blocked),'/');assert.equal(customerMenuDestination(blocked,incoming(origin('garavelo'))),origin('garavelo'));
+  assert.equal(customerMenuDestination(blocked),PUBLIC_HOME_PATH);assert.equal(customerMenuDestination(blocked,incoming(origin('garavelo'))),origin('garavelo'));
+});
+test('fallback explícito seleciona a home pública sem aceitar contexto privado como retorno',()=>{
+  const destination=customerMenuDestination(storage()),url=new URL(destination,'https://example.test');
+  assert.equal(isPublicHomeLocation(url),true);
+  for(const path of ['/','/?public=0','/?public=1&public=0','/area-cliente?public=1','/admin?public=1'])assert.equal(isPublicHomeLocation(new URL(path,url)),false,path);
+  assert.equal(safeCustomerReturnPath(PUBLIC_HOME_PATH),null);
 });

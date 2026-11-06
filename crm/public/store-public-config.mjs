@@ -1,6 +1,6 @@
 /* global globalThis */
 import {apiBaseUrl} from './checkout-environment.js';
-import {storeMenuUrl,resolvePublicMenuRoute} from './store-links.mjs';
+import {storeMenuUrl,resolvePublicMenuRoute,rememberCustomerMenuOrigin} from './store-links.mjs';
 export {storeMenuUrl};
 export async function fetchPublicStore(input, {fetchImpl=fetch, base=apiBaseUrl}={}) {
   const query = new URLSearchParams(Object.entries(input).filter(([,v])=>v != null));
@@ -9,7 +9,7 @@ export async function fetchPublicStore(input, {fetchImpl=fetch, base=apiBaseUrl}
   if (!response.ok) throw Object.assign(new Error(data.code || 'STORE_CONFIG_UNAVAILABLE'),{code:data.code});
   return data;
 }
-export async function bootstrapPublicStore({location=window.location, document=window.document, history=globalThis.window?.history, fetchImpl=fetch}={}) {
+export async function bootstrapPublicStore({location=window.location, document=window.document, history=globalThis.window?.history, storage, fetchImpl=fetch}={}) {
   const route = resolvePublicMenuRoute(location);
   try {
     if (route.kind === 'not-found') throw Object.assign(Error('STORE_NOT_FOUND'),{code:'STORE_NOT_FOUND'});
@@ -40,6 +40,8 @@ export async function bootstrapPublicStore({location=window.location, document=w
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {canonical=document.createElement('link');canonical.rel='canonical';document.head.append(canonical);}
     canonical.setAttribute('href',canonicalPath);
+    // Remember only a publicly validated menu, independently of login/checkout.
+    try {rememberCustomerMenuOrigin(storage || globalThis.window?.sessionStorage,canonicalPath);} catch { /* Storage is optional. */ }
     return config;
   } catch(e) {
     const panel=document.getElementById('loading-message');

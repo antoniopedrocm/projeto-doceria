@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-06T12:58:35.182Z",
+  "readOnly": true,
+  "caseId": "72f99a605f6f471b",
+  "phoneSuffix": "0811",
+  "uidFingerprint": "c5a1b2246c97f197",
+  "customerIdFingerprint": "754d435c7cabf64978f2cf152f0d7c43355d9b0ccd5cd4cafab562f122dace3e",
+  "customerDocumentCount": 18,
+  "addressSourceKeys": [
+    "enderecos"
+  ],
+  "addressCount": 1,
+  "addressSourcesFingerprint": "db9d6d1956fe1e9abb40e199c570f039efc7dd1fb2b58e3284c16000fcb1ae13",
+  "historyReferencesFingerprint": "21f10c015797de69ec0eae4fbb0aa3ee77790efca6c5d781a01c1022a36428ed",
+  "orderCount": 2,
+  "rootOrderCount": 1,
+  "reviewedRootReferences": 1,
+  "orderVersionFingerprint": "6a2e235e9d190428b796b8f2053acf9081cc475be1a677acbeb7d29ad91a95bc",
+  "remoteWrites": 0,
+  "smsSends": 0,
+  "permanentClaims": 0,
+  "production": false
+}

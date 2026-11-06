@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "caseId": "72f99a605f6f471b",
+  "storeId": "ana-guimaraes-doceria-matriz",
+  "phoneSuffix": "0811",
+  "destinationEmailHint": "a***@icloud.com",
+  "expectedUidFingerprint": "c5a1b2246c97f197",
+  "provider": "email_password",
+  "approval": {
+    "dateLocal": "2026-11-06",
+    "source": "Owner explicit reply in current conversation",
+    "quote": "Autorizo liberação, 1 SMS e vínculo",
+    "allowlistAddition": true,
+    "smsLimit": 1,
+    "permanentClaimAfterValidPhoneProof": true,
+    "otherRecipientsOrLimitsChanges": false,
+    "production": false
+  },
+  "budget": {
+    "state": "CONSUMED_VERIFIED_ONE_SUCCESSFUL_SEND_DO_NOT_RESEND",
+    "sendAttemptsAuthorized": 1,
+    "agentSendAttempts": 0,
+    "humanSendAttemptConfirmed": true,
+    "automaticResendAllowed": false,
+    "nextStep": "Backend verification passed; await read-only UI acceptance, refresh and logout/relogin with the same password account; no SMS or new claim",
+    "successfulHumanSmsStartCount": 1,
+    "successfulHumanConfirmCount": 1,
+    "remainingSendBudget": 0
+  },
+  "claimState": "TECHNICALLY_VERIFIED_LINKED_UX_PENDING",
+  "humanResult": "vinculado",
+  "noOtpTokenPasswordOrFullContactStored": true
+}

@@ -1,4 +1,4 @@
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {CUSTOMER_LINKS,customerRoute,menuDestination} from './customerContext';
 import {logoutCanonicalSession,runtimeFor,loadCustomerController} from './customerRuntime';
 import CustomerFrame,{CustomerHome} from './CustomerFrame';
@@ -10,6 +10,7 @@ import LegacyPhoneAccess from './LegacyPhoneAccess';
 export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCustomerResolved,onStaffContext,onLogout=logoutCanonicalSession,sessionMessage='',loadController=loadCustomerController}) {
   const [route,setRoute]=useState(()=>customerRoute(window.location.pathname,window.location.search));
   const [menuPath]=useState(()=>menuDestination(sessionStorage,window.location.search));
+  const returnToMenu=useCallback(()=>{window.location.assign(menuDestination(sessionStorage,window.location.search));},[]);
   const [message,setMessage]=useState(uid?'Carregando sua conta…':'');
   const [customer,setCustomer]=useState(null);
   const [logoutState,setLogoutState]=useState('idle');
@@ -25,7 +26,7 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
       const runtime=runtimeFor(sessionAuth);
       const navigate=url=>{const target=new URL(url,window.location.origin);window.location.assign(target.pathname+target.search);};
       controller=module.installCustomerAccount({host:host.current,runtime,createAccountButton:false,showCheckoutAddressAction:false,inlineLogin:!uid,
-        onMenu:()=>window.location.assign(menuPath),
+        onMenu:returnToMenu,
         onSession:value=>{if(active && !retired.current && sessionAuth.currentUser?.uid===uid) {setCustomer(value);setMessage('');if(value?.accountLinked) onCustomerResolved?.();}},
         onLogout:()=>{if(active && !retired.current){setCustomer(null);setMessage('Entre com Google ou e-mail para acessar sua conta.');}},
         onRoute:value=>{if(active && !retired.current && value==='home' && routeRef.current.screen!=='home') go('/area-cliente');},
@@ -37,7 +38,7 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
       controller.ready.then(()=>{if(active) return open();}).catch(()=>{if(active) setMessage('Não foi possível carregar esta página. Tente novamente.');});
     }).catch(()=>{if(active) setMessage('Não foi possível carregar sua conta. Tente novamente.');});
     return ()=>{active=false;manager.current=null;controller?.dispose();};
-  },[sessionAuth,uid,loadController,onCustomerResolved,menuPath]); // Controller lifecycle follows the authenticated UID, never a route.
+  },[sessionAuth,uid,loadController,onCustomerResolved,returnToMenu]); // Controller lifecycle follows the authenticated UID, never a route.
   useEffect(()=>{
     let active=true;
     if(window.location.pathname!==route.path) window.history.replaceState(null,'',route.path);
@@ -57,7 +58,6 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
     }).finally(()=>{logoutFlight.current=null;});
     return logoutFlight.current;
   };
-  const returnToMenu=()=>{window.location.assign(menuPath);};
   const openStaff=()=>{onStaffContext?.();};
   // Auth null is a public entry, never the private frame with a pending Customer.
   if(!uid || logoutState!=='idle') return <div className="customer-shell customer-login-shell">

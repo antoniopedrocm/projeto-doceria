@@ -199,7 +199,7 @@ export function installCustomerAccount({onCustomer=()=>{}, onSession=()=>{}, onL
       accountEntry=link;
     }
     // Header entry is navigation. Auth/onboarding stay with the canonical gate.
-    accountEntry.href=customerAreaEntryPath(window.location);
+    accountEntry.href=customerAreaEntryPath(window.location,window.sessionStorage);
     accountEntry.removeAttribute('aria-haspopup');accountEntry.removeAttribute('aria-expanded');
   }
   // Embedded profile/history and checkout authentication still use this API.

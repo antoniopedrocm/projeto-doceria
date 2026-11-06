@@ -38,6 +38,8 @@ export function resolvePublicMenuRoute({pathname = '', search = ''} = {}) {
 }
 
 export const CUSTOMER_RETURN_PATH_KEY = 'customer-public-return-v1';
+export const PUBLIC_HOME_PATH = '/?public=1';
+export const isPublicHomeLocation = ({pathname,search}={}) => pathname==='/' && new URLSearchParams(search || '').getAll('public').length===1 && new URLSearchParams(search || '').get('public')==='1';
 const safeId = validStoreId;
 
 // Public navigation only: never an Auth callback, identity or authorization source.
@@ -51,11 +53,18 @@ export function safeCustomerReturnPath(value) {
   return ['menu','alias'].includes(route.kind) ? route.canonicalPath : null;
 }
 
-export function customerAreaEntryPath(location) {
+export function rememberCustomerMenuOrigin(storage,value) {
+  const origin=safeCustomerReturnPath(value);
+  if(origin) {try {storage?.setItem(CUSTOMER_RETURN_PATH_KEY,origin);} catch { /* Public navigation remains usable without storage. */ }}
+  return origin;
+}
+
+export function customerAreaEntryPath(location,storage) {
   const params = new URLSearchParams(location?.search || '');
   // Drop unrelated query data, including login/debug parameters, at the source.
   for (const key of [...params.keys()]) if (!['store', 'channel'].includes(key)) params.delete(key);
   const origin = safeCustomerReturnPath((location?.pathname || '') + (params.toString() ? '?' + params.toString() : ''));
+  rememberCustomerMenuOrigin(storage,origin);
   return '/area-cliente' + (origin ? '?returnTo=' + encodeURIComponent(origin) : '');
 }
 
@@ -70,7 +79,7 @@ export function customerMenuDestination(storage, search = '') {
     if (origin) {try {if (origin !== stored) storage.setItem(CUSTOMER_RETURN_PATH_KEY,origin);} catch {} return origin;}
     if (stored) storage.removeItem(CUSTOMER_RETURN_PATH_KEY);
     const context = JSON.parse(storage?.getItem('checkoutState_v1') || '{}');
-    if (safeId(context?.storeId)) return storeMenuUrl(context.storeId);
+    if (safeId(context?.storeId)) return rememberCustomerMenuOrigin(storage,storeMenuUrl(context.storeId));
   } catch { /* Storage is optional; the public home is always a safe fallback. */ }
-  return '/';
+  return PUBLIC_HOME_PATH;
 }

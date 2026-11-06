@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-06T13:17:22.290Z",
+  "readOnly": true,
+  "caseId": "72f99a605f6f471b",
+  "phoneSuffix": "0811",
+  "provider": "email_password",
+  "uidFingerprint": "c5a1b2246c97f197",
+  "result": "TECHNICAL_CLAIM_PASS_UX_PENDING",
+  "checks": {
+    "sameOriginalCustomer": true,
+    "soleApprovedOwner": true,
+    "canonicalCustomer": true,
+    "phoneOwnershipVerified": true,
+    "uidMappingCorrect": true,
+    "providerMappingCorrect": true,
+    "addressSourcesPreserved": true,
+    "historyReferencesPreserved": true,
+    "ordersUnmodified": true,
+    "noAdditionalCustomerDocument": true,
+    "oneConsumedClaim": true,
+    "oneMatchingAudit": true,
+    "oneSuccessfulStart": true,
+    "oneSuccessfulConfirm": true,
+    "logsNotCapped": true
+  },
+  "customerDocumentCountBefore": 18,
+  "customerDocumentCountAfter": 18,
+  "addressCount": 1,
+  "orderCount": 2,
+  "rootOrderCount": 1,
+  "challengeMetadata": [
+    {
+      "status": "consumed",
+      "purpose": "CUSTOMER_IDENTITY_CLAIM",
+      "attempts": 1,
+      "consumedAt": 1793970874123
+    }
+  ],
+  "matchingAuditCount": 1,
+  "httpLogs": {
+    "counts": {
+      "customerphoneclaimconfirm:200": 1,
+      "customerphoneclaimstart:200": 1,
+      "customerphoneclaimstatus:200": 1
+    },
+    "requests": [
+      {
+        "at": "2026-11-06T13:14:30.127285Z",
+        "service": "customerphoneclaimconfirm",
+        "status": 200
+      },
+      {
+        "at": "2026-11-06T13:11:50.061618Z",
+        "service": "customerphoneclaimstart",
+        "status": 200
+      },
+      {
+        "at": "2026-11-06T13:11:39.582395Z",
+        "service": "customerphoneclaimstatus",
+        "status": 200
+      }
+    ],
+    "capped": false
+  },
+  "humanReported": "vinculado",
+  "ux": {
+    "profileAndOrdersVisible": null,
+    "refresh": null,
+    "logoutAndRelogin": null,
+    "returnToOrigin": "FAIL_USER_REPORTED_RETURNS_TO_AREA_CLIENTE"
+  },
+  "agentRemoteWrites": 0,
+  "agentSmsSends": 0,
+  "approvedHumanSmsStartCount": 1,
+  "production": false
+}

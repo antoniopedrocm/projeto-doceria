@@ -73,3 +73,14 @@ test('Hosting encaminha slugs novos/inválidos para o template único e mantém 
  assert.equal(config.cleanUrls,true);assert.deepEqual(config.rewrites,[{source:'/cardapio-*',destination:'/cardapio.html'},{source:'**',destination:'/index.html'}]);
  assert.equal(fs.existsSync(new URL('../public/cardapio-apfood.html',import.meta.url)),false);
 });
+test('bootstrap público lembra a origem validada por aba, sem depender de checkout/login',async()=>{
+ const tab=store();
+ for(const slug of ['cardapio-matriz','cardapio-garavelo']) {
+  const dom=new JSDOM('<div id="loading-message"></div>',{url:'https://dev.test/'+slug});
+  await bootstrapPublicStore({location:dom.window.location,history:dom.window.history,document:dom.window.document,storage:tab,fetchImpl:async()=>({ok:true,json:async()=>fixture(PUBLIC_MENU_ROUTES[slug])})});
+  assert.equal(tab.getItem(CUSTOMER_RETURN_PATH_KEY),'/'+slug);assert.equal(customerMenuDestination(tab),'/'+slug);assert.equal(tab.getItem('checkoutState_v1'),null);dom.window.close();
+ }
+ const dom=new JSDOM('<div id="loading-message"></div>',{url:'https://dev.test/cardapio-matriz'});
+ await bootstrapPublicStore({location:dom.window.location,document:dom.window.document,storage:tab,fetchImpl:async()=>({ok:true,json:async()=>({...fixture(PUBLIC_MENU_ROUTES['cardapio-matriz']),active:false})})});
+ assert.equal(tab.getItem(CUSTOMER_RETURN_PATH_KEY),'/cardapio-garavelo');dom.window.close();
+});

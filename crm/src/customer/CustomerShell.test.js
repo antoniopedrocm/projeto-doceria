@@ -52,8 +52,18 @@ test.each(['google.com','password'])('entrada/login %s e refresh conservam retor
 });
 test('acesso direto sem origem retorna à home pública e não ao diretório genérico',async()=>{
   const assign=jest.fn(),navigation=jest.spyOn(window,'location','get').mockReturnValue({pathname:'/area-cliente',search:'',origin:'http://localhost',assign});
-  try {session.currentUser=null;await mount({uid:null});await click('Voltar ao Cardápio');expect(assign).toHaveBeenCalledWith('/');}
+  try {session.currentUser=null;await mount({uid:null});await click('Voltar ao Cardápio');expect(assign).toHaveBeenCalledWith('/?public=1');}
   finally {navigation.mockRestore();}
+});
+
+test('retorno recupera origem que chegou após montar a conta e persiste sem contexto privado',async()=>{
+  const assign=jest.fn(),navigation=jest.spyOn(window,'location','get').mockReturnValue({pathname:'/area-cliente',search:'',origin:'http://localhost',assign});
+  try {
+    await mount();sessionStorage.setItem('checkoutState_v1',JSON.stringify({storeId:'ana-guimaraes-doceria-garavelo'}));
+    await click('Voltar ao Cardápio');expect(assign).toHaveBeenLastCalledWith('/cardapio-garavelo');
+    sessionStorage.removeItem('checkoutState_v1');await click('Voltar ao Cardápio');expect(assign).toHaveBeenLastCalledWith('/cardapio-garavelo');
+    expect(logoutCanonicalSession).not.toHaveBeenCalled();
+  } finally {navigation.mockRestore();}
 });
 
 test('erro tardio da rota anterior não altera a sessão Customer seguinte',async()=>{let reject;controller.openAccount.mockImplementation(()=>new Promise((_,no)=>{reject=no;}));await mount();await click('Meus Pedidos');const rejectA=reject;await mount({uid:'b',sessionAuth:{app:{name:'[DEFAULT]'},currentUser:{uid:'b'}}});await act(async()=>rejectA(Error('private-a')));expect(host.textContent).not.toContain('Não foi possível carregar esta página.');expect(host.textContent).not.toContain('private-a');});

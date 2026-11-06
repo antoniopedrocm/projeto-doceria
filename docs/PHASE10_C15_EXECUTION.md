@@ -2,6 +2,30 @@
 
 ## Caso indicado após publicação — final 0811
 
+### Pós-vínculo e-mail/senha — técnico PASS, UX pendente
+
+Em 06/11, titular respondeu “vinculado”. [Verificação DEV às 10:17 UTC−3](evidence/phase10-c15-0811-after-claim-dev.json): 15 pós-condições PASS; Customer/UID/mappings canônicos corretos, único owner autorizado, telefone verificado; 1 endereço/referências históricas preservados por fingerprint; 2 pedidos com versões inalteradas; 18 Customers antes/depois, sem novo documento. Único challenge consumido em 1 confirmação e auditoria `identity_claim_verified` registrada. 1 status/start/confirm HTTP 200; **limite de 1 SMS consumido, não reenviar**. Nenhuma escrita/envio adicional na conferência.
+
+Ainda falta aceite do titular na UI: endereço/pedidos visíveis, refresh, logout/relogin pela mesma conta sem novo claim/SMS e retorno Matriz. Não salvar dados nem executar compra/recompra. Após PASS, C15-E pode ser fechado; o claim real Google precisa de outro cadastro sem owner e titular legítimo. Não usar esta conta já vinculada como segunda recuperação independente. C15 completo/C16 continuam pendentes, Fase 10 87,50% e global formal 97,00%.
+
+### Liberação autorizada aplicada — 06/11
+
+Dono autorizou explicitamente **liberação, 1 SMS e vínculo**. [Controle do limite](evidence/phase10-c15-0811-authorization-dev.json), [configuração verificada](evidence/phase10-c15-0811-allowlist-dev.json): revalidação do UID password sem vínculo e do Customer sem owner; atualização condicional somente do array allowedRecipients da Matriz, 2 → 3, todos os demais campos e destinatários preservados. Enterprise obrigatório confirmado, nenhum bypass. Verificação corrigiu comparação sensível à ordem das chaves mediante leitura histórica/igualdade profunda, sem repetir escrita. Não requer deploy.
+
+[Baseline antes do claim](evidence/phase10-c15-0811-before-claim-dev.json): 18 Customers, 1 endereço, 2 pedidos referenciados (1 root revisado e 1 subcoleção). São contagens atuais; não repetir a fotografia antiga de 1 pedido como dado atual. Handoff reserva a única tentativa autorizada: titular clica Enviar código uma vez no modal da sessão anônima existente, digita/confirmando somente na aplicação. Não reenviar sem nova autorização; antes de retomar qualquer ação, consultar orçamento e resultado real. Envio/claim ainda não comprovados. Depois conferir fingerprints, UID/canônico/auditoria/desafio consumido e UX de refresh/logout. Cenário Google independente e C16 continuam pendentes; Fase 10 87,50%, global formal 97,00%.
+
+### Diagnóstico de envio em 06/11 às 09:53 UTC−3
+
+Cadastro normal/e-mail autorizado pelo Dono e realizado pelo titular: conta agora existe com provider `password`, sem mapping forte e Customer original continua sem owner. [Evidência](evidence/phase10-c15-sms-block-0811-dev.json). Seis POST de `customerPhoneClaimStatus` retornaram 503; nenhuma chamada start/confirm nem challenge criado para esse UID. Causa comprovada: destinatário fora da allowlist SMS DEV Matriz; `address-verification-provider.js:20` não disponibiliza canal, e `customer-phone-claim.js:19` retorna `unavailable` antes de enviar. Não diagnosticar como falha de entrega do provedor ou como erro COOP.
+
+Preparada proposta específica: adicionar só final 0811 à allowlist da Matriz, mantendo política/limites/destinatários existentes; até 1 SMS; confirmação manual na aplicação vincula permanentemente o Customer selecionado à conta indicada. **Ainda aguarda autorização específica de política/claim e limite explícito**; pedido anterior de avisar sobre SMS foi preservado, não interpretado como liberação irrestrita. Prova por telefone não pode ser substituída pela verificação de e-mail. Revalidar dados antes de executar. 5 testes focados PASS, sem mudança de runtime/deploy/envio real. C15 permanece pendente.
+
+### Atualização de 06/11 — conta de destino informada e conferida
+
+Dono informou o e-mail legítimo do cenário e-mail/senha. [Evidência sanitizada](evidence/phase10-c15-destination-0811-dev.json), consulta DEV de 06/11 às 06:31 UTC−3: a conta **ainda não existe no Firebase Auth**, candidato sem owner e índice READY; destinatário fora da allowlist. Não criar via Admin SDK, escolher senha, substituir UID ou usar sessão Customer já existente. A sessão autenticada encontrada no navegador integrado foi preservada. O titular deve confirmar controle do telefone e autorizar/realizar cadastro normal em janela anônima DEV, mantendo senha e eventual verificação de e-mail somente na aplicação. Parar antes de solicitar SMS/claim. Depois do login humano, revalidar identidade/caso e obter aprovação específica para destinatário, limite de envio e vínculo. Nenhuma dessas permissões está implícita na indicação do e-mail ou na autorização geral de deploy DEV.
+
+0 escritas remotas/SMS/claims nesta preparação; nenhum delta de runtime/build/deploy. C15 e C16 continuam pendentes, Fase 10 = 87,50%, global formal = 97,00%. Os parágrafos abaixo descrevem a fotografia anterior e não significam que o e-mail ainda precise ser informado.
+
 Em **06/11/2026**, o Dono selecionou **e-mail/senha** para este candidato, mantendo a exigência de equivalência com Google. Ambos já usam o mesmo registry/claim no runtime publicado e foram testados com mocks e SDK emulado; nenhuma configuração por telefone/provider precisa ser adicionada para essa equivalência. Faltam o e-mail da conta DEV legítima e a confirmação de controle do SMS pelo titular. Indicação não é autorização de envio/vínculo nem aprovação de novo UID sobre Customer que já tenha owner.
 
 Indicação do Dono conferida somente no DEV: caseId `72f99a605f6f471b`, canônico/índice READY, nenhum owner/mapping forte/e-mail de contato; um endereço e um pedido root com referência histórica revisada, sem conflitos encontrados. [Fotografia específica sanitizada](evidence/phase10-c15-candidate-0811-dev.json). Sem inferir loja do pedido ou usar telefone como prova de propriedade.

@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-06T12:53:03.782Z",
+  "readOnly": true,
+  "caseId": "72f99a605f6f471b",
+  "phoneSuffix": "0811",
+  "storeId": "ana-guimaraes-doceria-matriz",
+  "destination": {
+    "emailHint": "a***@icloud.com",
+    "authAccountExists": true,
+    "emailVerified": false,
+    "disabled": false,
+    "providers": [
+      "password"
+    ],
+    "uidFingerprint": "c5a1b2246c97f197",
+    "identityMappings": 0,
+    "linkedToDifferentCustomer": false
+  },
+  "candidate": {
+    "ownerCount": 0,
+    "ownedByDestination": false,
+    "indexReady": true,
+    "canonicalStatus": "CANONICAL",
+    "versionFingerprint": "4956aa60b9e3d0daddb820ae5abd4061ee4a5379121ac894ecc9d15b04fb9d45"
+  },
+  "smsPolicy": {
+    "enabled": true,
+    "configurationShapeValid": true,
+    "recipientAllowlisted": false,
+    "versionFingerprint": "ad6e61cacb79f13878f2102552747fa14c7076f59cafe0ba9ca82de9c3fdf91c"
+  },
+  "selectedUidChallenges": [],
+  "httpLogs": {
+    "from": "2026-11-06T09:30:00Z",
+    "capped": false,
+    "counts": {
+      "customerphoneclaimstatus:503": 6,
+      "customerphoneclaimstatus:204": 5
+    },
+    "requests": [
+      {
+        "at": "2026-11-06T12:50:12.949229Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 503,
+        "method": "POST"
+      },
+      {
+        "at": "2026-11-06T12:50:12.769683Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 204,
+        "method": "OPTIONS"
+      },
+      {
+        "at": "2026-11-06T12:50:06.455063Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 503,
+        "method": "POST"
+      },
+      {
+        "at": "2026-11-06T12:50:06.290284Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 204,
+        "method": "OPTIONS"
+      },
+      {
+        "at": "2026-11-06T12:49:57.359663Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 503,
+        "method": "POST"
+      },
+      {
+        "at": "2026-11-06T12:49:53.209526Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 503,
+        "method": "POST"
+      },
+      {
+        "at": "2026-11-06T12:49:53.038583Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 204,
+        "method": "OPTIONS"
+      },
+      {
+        "at": "2026-11-06T12:49:44.438100Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 503,
+        "method": "POST"
+      },
+      {
+        "at": "2026-11-06T12:49:44.270791Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 204,
+        "method": "OPTIONS"
+      },
+      {
+        "at": "2026-11-06T12:49:33.408327Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 503,
+        "method": "POST"
+      },
+      {
+        "at": "2026-11-06T12:49:30.502672Z",
+        "service": "customerphoneclaimstatus",
+        "revision": "customerphoneclaimstatus-00003-kay",
+        "status": 204,
+        "method": "OPTIONS"
+      }
+    ]
+  },
+  "finding": "RECIPIENT_NOT_ALLOWLISTED_BLOCKS_STATUS_BEFORE_SMS_START",
+  "remoteWrites": 0,
+  "smsSends": 0,
+  "permanentClaims": 0,
+  "production": false
+}
