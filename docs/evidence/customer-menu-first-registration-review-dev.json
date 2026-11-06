@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "dateLocal": "2026-11-06",
+  "publishedFunctionalCommit": "125dad90",
+  "hostingVersion": "75f46bb8c26f95e6",
+  "humanAcceptance": {
+    "currentLinkedAccountReturn": "PASS",
+    "reply": "PASS",
+    "clarification": "Failure happened only on first account creation from menu; subsequent return now works",
+    "newLiveFirstRegistrationPerformed": false,
+    "individualAddressOrderCountRefreshReloginAttestation": "Not separately confirmed by this reply"
+  },
+  "audit": {
+    "realPublicControllerRegistrationAndClaim": "Password × Matriz/Garavelo × checkout modal/customer inline entry; all SDK/provider/HTTP boundaries synthetic",
+    "realGateAndShellFirstIdentityTransition": "Password/Google × Matriz/Garavelo; signed out → NEEDS_PHONE → linked → remount → profile/orders → return; IO synthetic",
+    "runtimeGapReproducedInPublishedCode": false,
+    "newRuntimeChangesRequired": false
+  },
+  "validation": {
+    "newTests": 8,
+    "focusedReact": {"passed": 11, "failed": 0},
+    "focusedNode": {"passed": 4, "failed": 0},
+    "focusedExecutionTotal": 15,
+    "previous771RuntimeTestsPreserved": true,
+    "newBuildOrDeployRequired": false,
+    "lint": {"errors": 0, "warnings": 0},
+    "diffCheck": "PASS"
+  },
+  "remaining": [
+    "No live replay of first registration on the already owned Customer",
+    "Confirm remaining individual C15-E UI checks without writes if not already checked",
+    "Select independent unowned legacy Customer and legitimate Google identity for C15-G",
+    "Separate case-specific SMS and permanent-claim authorization for Google case",
+    "C16 consolidated acceptance after C15"
+  ],
+  "smsSends": 0,
+  "claims": 0,
+  "remoteWrites": 0,
+  "production": false,
+  "phase9Percent": 100,
+  "phase10Percent": 87.5,
+  "formalGlobalPercent": 97,
+  "phase13Percent": 0
+}

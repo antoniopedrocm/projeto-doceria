@@ -7,22 +7,43 @@ import {loadCustomerController,logoutCanonicalSession,prepareCanonicalSession} f
 jest.mock('../firebaseConfig',()=>({auth:{app:{name:'[DEFAULT]'},currentUser:null}}));
 jest.mock('firebase/auth',()=>({onIdTokenChanged:jest.fn()}));
 jest.mock('./customerRuntime',()=>({legacyAuth:{currentUser:null},runtimeFor:()=>({}),loadCustomerController:jest.fn(),prepareCanonicalSession:jest.fn(async()=>'READY'),syncSessionCart:jest.fn(async()=>{}),logoutCanonicalSession:jest.fn()}));
-let host,root,observers,controllers;
+let host,root,observers,controllers,fixtureLinked;
 const caps=async user=>({uid:user.uid,isCustomer:true,isStaff:true,customerState:'CUSTOMER_RESOLVED',staff:{role:'dono'}});
 const staff=()=> <div>Staff shell</div>;
 beforeEach(()=>{
   sessionStorage.clear();
   global.IS_REACT_ACT_ENVIRONMENT=true;host=document.createElement('div');document.body.append(host);root=createRoot(host);observers=new Set();controllers=[];
+  fixtureLinked=true;
   auth.currentUser={uid:'fixture-customer',providerData:[{providerId:'google.com'}]};
   prepareCanonicalSession.mockResolvedValue('READY');
   onIdTokenChanged.mockImplementation((session,fn)=>{if(session===auth)observers.add(fn);return()=>observers.delete(fn);});
   loadCustomerController.mockResolvedValue({installCustomerAccount:options=>{
     const node=document.createElement('section');options.host.append(node);
-    if(auth.currentUser){node.textContent='Private fixture profile';options.onSession({nome:'Customer fixture',accountLinked:true});}
+    if(auth.currentUser){node.textContent=fixtureLinked?'Private fixture profile':'Onboarding fixture';options.onSession({nome:'Customer fixture',accountLinked:fixtureLinked});}
     else {node.innerHTML='<button>Entrar com Google</button><button>Entrar com e-mail</button>';}
-    const controller={ready:Promise.resolve(),openAccount:jest.fn(async()=>{}),openOrder:jest.fn(async()=>{}),dispose:jest.fn(()=>node.remove())};controllers.push(controller);return controller;
+    const controller={ready:Promise.resolve(),openAccount:jest.fn(async()=>{}),openOrder:jest.fn(async()=>{}),dispose:jest.fn(()=>node.remove()),options};controllers.push(controller);return controller;
   }});
   logoutCanonicalSession.mockImplementation(async()=>{auth.currentUser=null;for(const fn of observers)fn(null);});
+});
+
+test.each([['password','matriz'],['password','garavelo'],['google.com','matriz'],['google.com','garavelo']])('primeiro acesso %s/%s: login → NEEDS_PHONE → claim → remount conserva origem sem reabrir prova',async(provider,store)=>{
+  fixtureLinked=false;auth.currentUser=null;
+  const firstCapabilities=async user=>({uid:user.uid,isCustomer:fixtureLinked,isStaff:false,customerState:fixtureLinked?'CUSTOMER_RESOLVED':'NEEDS_PHONE'});
+  const destination='/cardapio-'+store;
+  window.history.replaceState(null,'','/area-cliente?returnTo='+encodeURIComponent(destination));
+  await mount(firstCapabilities);await observe();expect(host.querySelector('aside')).toBeNull();
+  auth.currentUser={uid:'first-access-fixture',providerData:[{providerId:provider}]};await observe();
+  expect(host.textContent).toContain('Onboarding fixture');expect(host.textContent).not.toContain('Staff shell');
+  const onboarding=controllers.at(-1);expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(destination);
+  sessionStorage.clear();fixtureLinked=true;
+  await act(async()=>onboarding.options.onSession({nome:'Customer fixture',accountLinked:true}));
+  expect(onboarding.dispose).toHaveBeenCalled();expect(host.textContent).toContain('Private fixture profile');
+  expect(host.textContent).not.toContain('Onboarding fixture');expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(destination);
+  await clickCustomerButton('Minha Conta');await clickCustomerButton('Meus Pedidos');
+  expect(new URLSearchParams(window.location.search).get('returnTo')).toBe(destination);
+  const assign=jest.fn(),navigation=jest.spyOn(window,'location','get').mockReturnValue({pathname:window.location.pathname,search:window.location.search,origin:window.location.origin,assign});
+  try {await clickCustomerButton('Voltar ao Cardápio');expect(assign).toHaveBeenCalledWith(destination);expect(logoutCanonicalSession).not.toHaveBeenCalled();}
+  finally {navigation.mockRestore();}
 });
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();jest.clearAllMocks();});
 // This integration uses the real gate and shell; Firebase/controller IO are boundaries.

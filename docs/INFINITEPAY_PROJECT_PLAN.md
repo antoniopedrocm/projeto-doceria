@@ -1,5 +1,9 @@
 # Autenticação de clientes e pagamento online
 
+## Estado vigente — 06/11/2026: retorno pós-vínculo aprovado; C15-G ainda pendente
+
+Titular respondeu PASS ao retorno atual e delimitou o erro à primeira criação pelo cardápio. Auditoria adicional do runtime publicado `125dad90` passou em 8 novos cenários sintéticos de cadastro/onboarding/claim/remontagem e preservação da origem; nenhuma nova alteração funcional/deploy necessária. [Registro](evidence/customer-menu-first-registration-review-dev.json), [checkpoint](CHECKPOINT_PREPROD_MISSION.md). Claim e-mail/senha técnico e retorno humano PASS; confirmar apenas checks individuais restantes e selecionar outro Customer/conta Google legítimos para C15-G, com autorização própria. Não repetir SMS/claim final 0811. C15/C16 ainda pendentes. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.**
+
 ## Estado vigente — 06/11/2026: retorno C15 v2 publicado, aceite ainda pendente
 
 Novo complemento **`125dad90`**/Hosting DEV **`75f46bb8c26f95e6`**, após titular reprovar retorno v1 para fallback público. 771 testes PASS, build/lint/diff PASS; 61 arquivos locais conferidos, backend/Rules preservados. URLs internas/saída conservam origem allowlisted; smoke de perfil → pedidos → refresh → retorno Matriz PASS na sessão disponível. [Checkpoint](CHECKPOINT_PREPROD_MISSION.md), [relatório](CUSTOMER_MENU_RETURN_FIX.md). O aceite da conta recém-vinculada permanece pendente e o diagnóstico de sua URL foi solicitado; nenhum novo SMS/claim. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.**

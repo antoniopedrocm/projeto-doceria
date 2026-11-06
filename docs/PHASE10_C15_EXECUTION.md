@@ -2,6 +2,12 @@
 
 ## Caso indicado após publicação — final 0811
 
+### Retorno atual PASS; delimitação do primeiro cadastro
+
+Titular respondeu **PASS** ao retorno após o vínculo e esclareceu que só a primeira criação a partir do cardápio apresentou falha. [Evidência de aceite/auditoria](evidence/customer-menu-first-registration-review-dev.json). Foram acrescentados 8 testes sintéticos de primeira criação/onboarding/claim/remontagem/origem no código já publicado: 4 Node (password, modal/inline, Matriz/Garavelo) e 4 React (Google/password, Matriz/Garavelo). Todos passaram, sem lacuna adicional comprovada que exija outro runtime/deploy. Não tratar simulação como novo claim real nem refazer a conta/prova já concluída.
+
+C15-E tem claim técnico e retorno pós-vínculo humano PASS; contagem visível de 1 endereço/2 pedidos e refresh/logout/relogin ainda não atestados individualmente. Pedir somente essa confirmação e seleção do caso Google independente; nenhum novo SMS autorizado. C15 geral/C16 pendentes, Fase 10 87,50%, global formal 97,00%.
+
 ### Retorno v2 publicado — nenhum novo vínculo/SMS
 
 Titular reprovou o primeiro complemento por cair em `/?public=1`. Segundo patch **`125dad90`**, push/Hosting **`75f46bb8c26f95e6`**, 61 arquivos locais conferidos, backend/Rules preservados. Origem validada acompanha URLs internas e saída, fica em memória e pode ser recuperada de referrer público da mesma origem; sem inferir Matriz. [Relatório](CUSTOMER_MENU_RETURN_FIX.md), [release](evidence/customer-menu-return-v2-after-dev.json), [smoke com sessão existente](evidence/customer-menu-return-v2-browser-dev.json). 771 testes PASS, build/lint/diff PASS. **Aceite do caso C15-E ainda pendente**; foi solicitado caminho após Minha Conta/momento da perda. Não repetir o SMS já consumido/claim confirmado. Não elevar 87,50% nem considerar Google/C16 concluídos por esses testes.

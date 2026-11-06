@@ -1,5 +1,15 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 06/11/2026: retorno pós-vínculo PASS; primeiro acesso auditado sem nova mutação
+
+Titular respondeu **PASS** ao retorno na conta vinculada e delimitou o erro à **primeira criação de conta a partir do cardápio**; retornos seguintes já funcionam. [Aceite delimitado e auditoria](evidence/customer-menu-first-registration-review-dev.json). Não continuar pedindo repetição do mesmo retorno já PASS. Claim e-mail/senha técnico, Customer original e dados preservados permanecem PASS; único SMS final 0811 consumido, não reenviar nem desfazer ownership.
+
+Auditoria de primeiro acesso no runtime publicado **`125dad90`**: 4 novos testes Node com controlador/DOM reais para registro por e-mail, onboarding/claim sintético, modal de checkout/entrada inline × Matriz/Garavelo; 4 novos React para gate + shell reais, primeira identidade Google/password → NEEDS_PHONE → vínculo → remontagem → perfil/pedidos → retorno. **8 novos cenários PASS**; execução focada total **11 React + 4 Node = 15 PASS**, 771 testes anteriores do runtime preservados, sem somar retestes como novos. **Nenhuma lacuna adicional reproduzida no runtime atual**. Somente testes/documentação locais; sem nova conta real, SMS, claim, escrita remota, build ou deploy. O primeiro acesso real não foi repetido e não recebe novo PASS por simulação.
+
+**Próximo ponto exato:** confirmar apenas os checks individuais C15-E ainda não explicitamente atestados (1 endereço/2 pedidos, refresh da conta e logout/relogin), sem salvar dados nem SMS; solicitar outro cadastro legado sem owner e conta Google legítima para C15-G. Preparar proposta/autorização específica somente depois de seleção/verificação. Não reutilizar final 0811 já vinculado como claim Google independente. Depois consolidar C16. Hosting **`75f46bb8c26f95e6`** permanece, sem necessidade de republicar testes.
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Lint dos dois testes 0 erros/0 avisos e diff-check PASS. Os registros de aceite pendente do retorno abaixo são históricos e foram superados somente quanto ao retorno pós-vínculo.
+
 ## Estado vigente — 06/11/2026: complemento v2 publicado; aceite específico pendente
 
 Commit funcional **`125dad90`**, push DEV e Hosting **`75f46bb8c26f95e6`** concluídos. [Artefatos](evidence/customer-menu-return-v2-after-dev.json): **61/61 hashes locais**, 2 inicializadores reservados Firebase conferidos separadamente, SPA/cache preservados; fingerprint das 133 Functions retornadas pela API v2 regional e Rules inalterados. Nenhum deploy de backend/Rules/dados. **614 React + 157 públicos = 771 PASS** (9 casos novos, sem somar retestes), build `main.2eb0fbc5.js` 456,07 kB gzip, lint 0 erros/2 avisos existentes, diff-check PASS.
