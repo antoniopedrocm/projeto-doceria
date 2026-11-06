@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "dateLocal": "2026-11-06",
+  "functionalCommit": "92da223c",
+  "hostingVersion": "16bdcc6a2499d5df",
+  "browser": "in-app browser, existing authenticated dual-role session preserved",
+  "checks": {
+    "publicFallbackLoadsPublicHomeInsteadOfCustomer": "PASS",
+    "publicDirectoryLoadsFriendlyStoreLinks": "PASS",
+    "matrixMenuToCustomerToReturn": "PASS /cardapio-matriz",
+    "garaveloMenuToCustomerRefreshToReturn": "PASS /cardapio-garavelo",
+    "desktopPublicHome": {"width": 1920, "height": 889, "scrollWidth": 1905, "horizontalOverflow": false},
+    "mobilePublicHome": {"width": 390, "height": 800, "scrollWidth": 375, "horizontalOverflow": false}
+  },
+  "screenshots": ["customer-menu-return-public-desktop-dev.jpg", "customer-menu-return-public-mobile-dev.jpg"],
+  "limitations": [
+    "The existing automated browser identity is not the newly linked email/password case",
+    "Logout was not performed in that existing session; logout/cleanup covered by automated tests",
+    "Newly linked case still needs owner confirmation of the corrected return and remaining C15-E UI checks"
+  ],
+  "cleanup": {"viewportReset": true, "temporaryTabClosed": true, "localPreviewStopped": true},
+  "smsSends": 0,
+  "claims": 0,
+  "profileAddressOrderPaymentMutations": 0,
+  "production": false
+}

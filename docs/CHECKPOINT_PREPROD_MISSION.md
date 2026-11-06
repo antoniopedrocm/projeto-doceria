@@ -1,5 +1,15 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 06/11/2026: retorno corrigido e Hosting DEV verificado
+
+Complemento funcional **`92da223c`**, push DEV concluído e Hosting **`16bdcc6a2499d5df`** publicado. [Relatório](CUSTOMER_MENU_RETURN_FIX.md), [artefatos remotos](evidence/customer-menu-return-after-dev.json): **61/61 arquivos locais iguais**, 2 inicializadores gerenciados pelo Firebase conferidos como DEV; cache/rewrites/rotas SPA corretos. Backend não publicado: fingerprint de 133 Functions da API v2 regional e Rules inalterados. Esse número é o recorte v2, não substitui inventário multigeração anterior. **606 React + 156 públicos = 762 PASS**, build/lint/diff PASS, avisos existentes documentados.
+
+[Chrome integrado, sessão dual-role já existente](evidence/customer-menu-return-browser-dev.json): Matriz → Minha Conta → voltar PASS; Garavelo → Minha Conta → refresh → voltar PASS. Home pública `/?public=1` carrega links reais, desktop 1920×889/mobile 390×800 sem overflow; não volta à conta. Origem conhecida continua tendo prioridade sobre fallback. Não foi acessada a janela anônima da conta C15-E nem realizado logout da sessão disponível. Cleanup de tab/viewport/preview concluído; capturas públicas sanitizadas.
+
+**Próximo ponto exato:** pedir ao titular reteste do retorno na mesma conta e-mail/senha já vinculada, partindo de `/cardapio-matriz`, sem novo SMS/claim. Confirmar também se endereço, 2 pedidos, refresh e logout/relogin do roteiro anterior passaram (não presumir PASS pela resposta que só apontou navegação). Se PASS, encerrar subcenário C15-E; ainda falta outro Customer/titular Google independente, depois C16. SMS final 0811 **1/1 consumido**, vínculo original confirmado, 18 Customers/1 endereço/2 pedidos preservados na evidência técnica. Não reabrir ou repetir operação já concluída.
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Nenhum SMS, claim, edição de perfil/endereço, pedido/pagamento/NF/WhatsApp ou acesso PROD durante esse bugfix. Registros abaixo são históricos.
+
 ## Estado vigente — 06/11/2026: aceite de retorno FAIL, correção frontend validada localmente
 
 Titular informou **Voltar ao Cardápio → `/area-cliente`**. Não registrar C15-E como PASS final. Claim técnico permanece válido, único SMS consumido; não refazer vínculo/prova. [Diagnóstico e patch restrito de navegação](CUSTOMER_MENU_RETURN_FIX.md): contexto público recuperado do checkout não persistia após limpeza privada; fallback `/` passava pelo gate e voltava à conta. Regressão reproduzida antes do patch. Sem leitura da sessão privada do titular para presumir a origem exata ausente.

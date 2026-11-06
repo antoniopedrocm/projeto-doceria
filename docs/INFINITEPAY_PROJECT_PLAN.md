@@ -1,5 +1,9 @@
 # Autenticação de clientes e pagamento online
 
+## Estado vigente — 06/11/2026: complemento de retorno C15 publicado
+
+Relato de Voltar ao Cardápio cair na conta tratado em **`92da223c`**, push e Hosting DEV **`16bdcc6a2499d5df`**. 762 testes PASS, build/lint/diff PASS; 61 hashes locais remotos conferidos/cache/SPA corretos, backend/Rules não publicados. [Relatório](CUSTOMER_MENU_RETURN_FIX.md), [navegador](evidence/customer-menu-return-browser-dev.json). Matriz/Garavelo e fallback público passaram na sessão já existente do navegador; titular ainda precisa aprovar o retorno e demais checks C15-E na conta recém-vinculada. O claim técnico permanece PASS, único SMS consumido, sem repetir prova. Google independente/C16 pendentes. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.**
+
 ## Estado vigente — 06/11/2026: C15 e-mail/senha tecnicamente comprovado
 
 Titular confirmou vínculo; [15 pós-condições técnicas PASS no DEV](evidence/phase10-c15-0811-after-claim-dev.json): Customer original/único owner/mappings corretos, 18 Customers antes/depois, 1 endereço e 2 pedidos preservados, desafio consumido e auditoria registrada. **1 SMS autorizado consumido**, sem reenvio permitido. Próximo: aceite UI do caso e-mail/senha (histórico/endereço, refresh, logout/relogin, origem Matriz); depois caso real Google independente e C16. Sem código/build/deploy novo. [Checkpoint](CHECKPOINT_PREPROD_MISSION.md). **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Um subcenário técnico não encerra C15 nem eleva percentuais.

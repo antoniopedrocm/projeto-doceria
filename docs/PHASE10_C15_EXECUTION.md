@@ -2,6 +2,12 @@
 
 ## Caso indicado após publicação — final 0811
 
+### Complemento de navegação publicado — reteste do titular pendente
+
+Titular informou retorno incorreto para `/area-cliente`, sem aprovar C15-E integralmente. Corrigido em **`92da223c`**, push/Hosting DEV **`16bdcc6a2499d5df`**, 61 hashes locais conferidos, backend/Rules não publicados. [Diagnóstico](CUSTOMER_MENU_RETURN_FIX.md). Origem pública validada/persistida por aba; contexto recuperado sobrevive ao cleanup; fallback público explícito evita o gate. 762 testes PASS, build/lint/diff PASS.
+
+[Navegador real com sessão existente distinta](evidence/customer-menu-return-browser-dev.json): Matriz e Garavelo retornam corretamente, inclusive refresh; home pública desktop/mobile sem loop. Falta somente titular retestar navegação pela conta já vinculada e confirmar os demais checks C15-E anteriormente solicitados. **Não refazer SMS ou vínculo**, limite 1/1 consumido. C15 geral ainda requer caso Google independente; C16 posterior. Percentuais mantidos.
+
 ### Pós-vínculo e-mail/senha — técnico PASS, UX pendente
 
 Em 06/11, titular respondeu “vinculado”. [Verificação DEV às 10:17 UTC−3](evidence/phase10-c15-0811-after-claim-dev.json): 15 pós-condições PASS; Customer/UID/mappings canônicos corretos, único owner autorizado, telefone verificado; 1 endereço/referências históricas preservados por fingerprint; 2 pedidos com versões inalteradas; 18 Customers antes/depois, sem novo documento. Único challenge consumido em 1 confirmação e auditoria `identity_claim_verified` registrada. 1 status/start/confirm HTTP 200; **limite de 1 SMS consumido, não reenviar**. Nenhuma escrita/envio adicional na conferência.

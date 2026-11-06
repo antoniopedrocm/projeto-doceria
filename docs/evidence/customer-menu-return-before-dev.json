@@ -4,6 +4,7 @@
   "checkedAt": "2026-11-06T13:43:21.512Z",
   "mode": "before",
   "functions": {
+    "inventoryApi": "Cloud Functions v2, us-central1; this count is not a cross-generation total",
     "count": 133,
     "fingerprint": "91ff14a1306986fde2dbdc06022cdd0750ce65802058be9a53d899b7ef816d31"
   },
