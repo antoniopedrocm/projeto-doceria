@@ -2,9 +2,11 @@
 
 ## Caso indicado após publicação — final 0811
 
+Em **06/11/2026**, o Dono selecionou **e-mail/senha** para este candidato, mantendo a exigência de equivalência com Google. Ambos já usam o mesmo registry/claim no runtime publicado e foram testados com mocks e SDK emulado; nenhuma configuração por telefone/provider precisa ser adicionada para essa equivalência. Faltam o e-mail da conta DEV legítima e a confirmação de controle do SMS pelo titular. Indicação não é autorização de envio/vínculo nem aprovação de novo UID sobre Customer que já tenha owner.
+
 Indicação do Dono conferida somente no DEV: caseId `72f99a605f6f471b`, canônico/índice READY, nenhum owner/mapping forte/e-mail de contato; um endereço e um pedido root com referência histórica revisada, sem conflitos encontrados. [Fotografia específica sanitizada](evidence/phase10-c15-candidate-0811-dev.json). Sem inferir loja do pedido ou usar telefone como prova de propriedade.
 
-O destinatário não está na allowlist atual da política SMS Matriz. Ainda faltam conta de destino/método e confirmação de controle do telefone; nenhum envio, claim ou alteração de política autorizado/executado. Depois da identificação forte legítima, preparar proposta exata e aprovação própria de vínculo/liberação/SMS. Este é candidato para **um** dos cenários Google/e-mail; não reaproveitar um claim concluído como segunda recuperação independente. Runtime `a36d558c` já publicado e verificado; não refazer deploy/testes. Fase 10 permanece 87,50%, global formal 97,00%, C15/C16 pendentes.
+Na fotografia de 05/11, o destinatário não está na allowlist da política SMS Matriz; revalidar antes de uma operação autorizada. Ainda faltam conta de destino e confirmação de controle do telefone; nenhum envio, claim ou alteração de política autorizado/executado. Depois da identificação forte legítima, preparar proposta exata e aprovação própria de vínculo/liberação/SMS. Este é candidato para o cenário **e-mail/senha**; não reaproveitar um claim concluído como segunda recuperação Google independente. Runtime `a36d558c` já publicado e verificado; não refazer deploy/testes. Fase 10 permanece 87,50%, global formal 97,00%, C15/C16 pendentes.
 
 ## Estado em 05/11/2026
 
