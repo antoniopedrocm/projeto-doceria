@@ -1,6 +1,10 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
-## Estado vigente — 05/11/2026: C15 preparado, sem caso autorizado
+## Estado local vigente — 05/11/2026: OPÇÃO B implementada para revisão
+
+Proprietário autorizou correções pontuais locais de índice ausente, endereços legados e referências históricas. Patch sobre `1a0ede75` validado localmente e aguardando revisão, **sem commit/push/deploy ou operação remota**. [Comportamentos, arquivos e limites](PHASE10_LOCAL_COMPATIBILITY_FIXES.md), [checkpoint](CHECKPOINT_PREPROD_MISSION.md). As reproduções sintéticas não representam novos aceites reais. C01–C14 preservados, C15/C16 pendentes; Fase 9 = 100%, Fase 10 = 87,50%, global formal = 97,00%, Fase 13 = 0%. PROD não autorizada.
+
+## Preparação anterior — 05/11/2026: C15 preparado, sem caso autorizado
 
 **Fase 10 = 87,50% (14/16). C15 e C16 continuam pendentes. Fase 9 = 100%, global formal = 97,00%, Fase 13 = 0%; PROD READY: NÃO.** [Pré-checagem real sanitizada](evidence/phase10-c15-preflight-2026-11-05-dev.json): 18 Customers/4 aliases; 2 canônicos com proprietários e SMS liberado; 8 sem owner, com celular/índice válidos e sem mapping, mas fora da allowlist; 4 sem telefone/índice válidos. Não há caso pronto na política atual da Matriz. Política configurada não equivale a teste do provedor ao vivo.
 

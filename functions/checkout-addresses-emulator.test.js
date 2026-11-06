@@ -113,7 +113,7 @@ test('sem endereço retorna lista vazia; telefone duplicado não escolhe cadastr
   await seedRegistry(db);await assert.rejects(()=>find('62985550004'),e=>e.code==='failed-precondition');
   assert.deepEqual((await customer.get()).data().enderecos,source);
 });
-test('HTTP Salvar sem SMS → nova identificação → lista mascarada → frete/snapshot persistidos e Online bloqueado',async()=>{
+test('HTTP Salvar sem SMS → nova identificação → lista mascarada → frete/snapshot preservados; Online exige idempotência',async()=>{
   const input={storeId:store,checkoutIdentityToken:lookup.checkoutIdentity.token,checkoutIdentityRevision:lookup.checkoutIdentity.revision,
     requestId:'abcdef12-1234-4234-8234-123456789abc',address:{nickname:'Casa da minha Mãe',street:'Rua nova privada',number:'87',city:'Goiânia',neighborhood:'Centro',cep:'74000000',complement:'Sala confidencial',referencia:'Portão interno',isDefault:true,lat:-16,lng:-49}};
   const save=async body=>{const r=await originalFetch(base+'/checkout/addresses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:r.status,cache:r.headers.get('cache-control'),data:await r.json()};};
@@ -129,7 +129,12 @@ test('HTTP Salvar sem SMS → nova identificação → lista mascarada → frete
   await db.doc(`lojas/${store}/produtos/weak-saved-product`).set({nome:'Fixture',preco:10,estoque:2,ativo:true});
   await db.doc(`lojas/${store}/configuracoesInternas/infinitepay`).set({enabled:true,handle:'merchant-test',redirectUrl:'https://example.com/return',webhookUrl:'https://example.com/webhook'});
   const orderBody={...ref,cliente:{id:'forged',nome:'Fixture',telefone:phone,endereco:'Texto adulterado'},itens:[{produtoId:'weak-saved-product',quantity:1,preco:10}],pagamento:{forma:'Online'},subtotal:10,valorFrete:8,distanciaFreteKm:4};
-  assert.equal((await request('/checkout/confirmar',orderBody)).status,401);
+  // LEGACY_PHONE online was enabled by b5892db3. A request missing the existing
+  // idempotency key must fail validation, without creating an online order.
+  const beforeOnline=(await db.collection(`lojas/${store}/pedidos`).get()).size;
+  const invalidOnline=await request('/checkout/confirmar',orderBody);
+  assert.equal(invalidOnline.status,400);assert.match(JSON.stringify(invalidOnline.data),/Identificador do pedido inválido/);
+  assert.equal((await db.collection(`lojas/${store}/pedidos`).get()).size,beforeOnline);
   const confirmed=await request('/checkout/confirmar',{...orderBody,pagamento:{forma:'Dinheiro'}});assert.equal(confirmed.status,200,JSON.stringify(confirmed));
   const order=(await db.doc(`lojas/${store}/pedidos/${confirmed.data.id}`).get()).data();assert.equal(order.clienteEndereco,saved.enderecoCompleto);assert.equal(order.ownerUid,undefined);assert.equal(order.clienteId,customer.id);
   assert.equal((await customer.get()).data().enderecos.find(a=>a.id===saved.id).nickname,'Casa da minha Mãe');

@@ -1,10 +1,11 @@
 /* eslint-env es2020 */
 const {HttpsError} = require('firebase-functions/v2/https');
 const {ownsCustomer,customerOwnerUids}=require('./customer-ownership');
-const {FieldPath} = require('firebase-admin/firestore');
+const {FieldPath,Filter} = require('firebase-admin/firestore');
 const PAGE_SIZE = 20;
 const SCAN_BATCH_SIZE = 100;
 const MAX_SCAN_CANDIDATES = 1000;
+const customerReferenceFields=['clienteId','customerId','clientId'];
 const orderPathPattern = /^lojas\/([a-zA-Z0-9_-]{1,150})\/pedidos\/([a-zA-Z0-9_-]{1,150})$/;
 const legacyOrderPathPattern=/^pedidos\/([a-zA-Z0-9_-]{1,150})$/;
 const validOrderPath=path=>orderPathPattern.test(path) || legacyOrderPathPattern.test(path);
@@ -102,8 +103,14 @@ function createCustomerOrders({db,resolve,authorizeRead}) {
     if(!customer.exists || !ownsCustomer(customer.data(),identity.user.uid)) throw new HttpsError('permission-denied','Cadastro não autorizado.');
     return {...identity,...customerReadContext(identity.customerId,customer.data())};
   }
+  const referencesOwnedCustomer=(data,identity)=>{
+    const references=customerReferenceFields.map(field=>data[field]).filter(value=>value!==undefined && value!==null && value!=='');
+    // Every supplied reference must agree with the reviewed canonical family.
+    // An alternate field must never override a foreign/invalid primary reference.
+    return references.length>0 && references.every(value=>typeof value==='string' && identity.customerIds.includes(value));
+  };
   const owns=(snapshot,identity)=>snapshot.exists && validOrderPath(snapshot.ref.path) &&
-    identity.customerIds.includes(snapshot.data().clienteId) && (!snapshot.data().ownerUid || identity.ownerUids.includes(snapshot.data().ownerUid)) &&
+    referencesOwnedCustomer(snapshot.data(),identity) && (!snapshot.data().ownerUid || identity.ownerUids.includes(snapshot.data().ownerUid)) &&
     (!legacyOrderPathPattern.test(snapshot.ref.path) || identity.legacyOrderPaths.includes(snapshot.ref.path)) &&
     (!identity.allowedStoreIds || identity.allowedStoreIds.includes(snapshot.ref.path.match(orderPathPattern)?.[1]));
   async function storeNames(snapshots) {
@@ -114,7 +121,7 @@ function createCustomerOrders({db,resolve,authorizeRead}) {
   }
   async function list(request) {
     const identity=await authorized(request);
-    const queries=identity.customerIds.map(id=>db.collectionGroup('pedidos').where('clienteId','==',id).orderBy(FieldPath.documentId()));
+    const queries=identity.customerIds.map(id=>db.collectionGroup('pedidos').where(Filter.or(...customerReferenceFields.map(field=>Filter.where(field,'==',id)))).orderBy(FieldPath.documentId()));
     let previous=null;
     const cursor=request.data?.cursor;
     if(cursor!==undefined && cursor!==null) {
@@ -126,7 +133,7 @@ function createCustomerOrders({db,resolve,authorizeRead}) {
     // candidates in bounded physical batches, retaining the next logical page, never all data.
     // The physical cursor advances through rejected candidates; the public cursor is the
     // authorized boundary in normalized date/path order (not the physical document order).
-    const eligible=[];let scanned=0;
+    const eligible=[],seen=new Set();let scanned=0;
     for(const query of queries) {
     let physicalCursor=null,exhausted=false;
     for(let batch=0;batch<=MAX_SCAN_CANDIDATES/SCAN_BATCH_SIZE;batch++) {
@@ -139,6 +146,7 @@ function createCustomerOrders({db,resolve,authorizeRead}) {
         physicalCursor=candidate;scanned++;
         if(scanned>MAX_SCAN_CANDIDATES)
           throw new HttpsError('resource-exhausted','Histórico excede o limite seguro de consulta.');
+        if(seen.has(candidate.ref.path))continue;seen.add(candidate.ref.path);
         if(!owns(candidate,identity) || (previous && compareOrders(candidate,previous)<=0)) continue;
         eligible.push(candidate);eligible.sort(compareOrders);
         if(eligible.length>PAGE_SIZE+1) eligible.pop();

@@ -15,10 +15,11 @@ function fixture(provider='password') {
     getAll:async(...refs)=>Promise.all(refs.map(ref=>ref.get())),
     collectionGroup:name=>{
       assert.equal(name,'pedidos');let owner,start,limit;
-      const query={where:(field,op,value)=>{assert.equal(field,'clienteId');assert.equal(op,'==');owner=value;return query;},
+      let fields;
+      const query={where:filter=>{assert.equal(filter.operator,'OR');fields=filter.filters.map(f=>{assert.equal(f.operator,'==');return f.field;});owner=filter.filters[0].value;assert.ok(filter.filters.every(f=>f.value===owner));return query;},
         orderBy:field=>{assert.equal(field.toString(),'__name__');return query;},
         startAfter:value=>{start=value.ref.path;return query;},limit:value=>{limit=value;return query;},
-        get:async()=>{queries.push({owner,start,limit});let values=[...rows].filter(([path,d])=>path.includes('/pedidos/') && d.clienteId===owner)
+        get:async()=>{queries.push({owner,start,limit});let values=[...rows].filter(([path,d])=>path.includes('/pedidos/') && fields.some(field=>d[field]===owner))
           .sort(([p],[q])=>p===q?0:p>q?1:-1);
           if(start) values=values.slice(values.findIndex(([path])=>path===start)+1);
           return {docs:values.slice(0,limit).map(([path])=>snap(path))};}};

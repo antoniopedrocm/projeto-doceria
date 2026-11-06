@@ -1,6 +1,10 @@
 # Autenticação de clientes e pagamento online
 
-## Estado vigente — 05/11/2026: próxima etapa C15 preparada
+## Estado local vigente — 05/11/2026: correções pontuais aguardam revisão
+
+OPÇÃO B autorizada pelo proprietário somente no código/testes/documentação locais. [Patch de compatibilidade](PHASE10_LOCAL_COMPATIBILITY_FIXES.md) sobre `1a0ede75`, sem commit, push, deploy, dados remotos, SMS ou claim real. Aguardar revisão antes da publicação. Os artefatos DEV publicados permanecem no estado anterior. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** C15 real e C16 não são encerrados por testes simulados; pesos e critérios concluídos preservados.
+
+## Preparação anterior — 05/11/2026: próxima etapa C15 preparada
 
 **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%. PROD READY: NÃO.** Repositório e runtime DEV conferidos, sem divergência ou necessidade de novo deploy. Preparados [roteiro C15/C16](PHASE10_C15_EXECUTION.md) e pré-checagem somente leitura: os dois destinatários liberados já possuem owner; oito cadastros sem owner têm celular/índice válidos, mas não estão liberados. Zero casos prontos na política atual da Matriz; nenhum SMS, claim ou escrita remota executado nesta retomada.
 

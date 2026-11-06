@@ -1,0 +1,266 @@
+{
+  "schema": 1,
+  "checkedAt": "2026-11-05T21:37:53.659Z",
+  "project": "crmdoceria-9959e",
+  "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree",
+  "baseCommit": "1a0ede75",
+  "scope": "LOCAL ONLY; awaiting Owner review before commit/push/deploy",
+  "units": {
+    "files": [
+      "functions/address-verification-provider.test.js",
+      "functions/admin-customer-preview.test.js",
+      "functions/checkout-auth.test.js",
+      "functions/customer-area.test.js",
+      "functions/customer-legacy-compat.test.js",
+      "functions/customer-migration-writes.test.js",
+      "functions/customer-orders.test.js",
+      "functions/customer-phone.test.js",
+      "functions/customer-profile-security.test.js",
+      "functions/customer-profile.test.js",
+      "functions/customer-reorder-view.test.js",
+      "functions/customer-reorder.test.js",
+      "functions/customer-session.test.js",
+      "functions/recaptcha-enterprise.test.js",
+      "scripts/phase10-claim-preflight.test.cjs"
+    ],
+    "tests": 164,
+    "passed": 164,
+    "failed": 0
+  },
+  "public": {
+    "files": [
+      "crm/tests/address-management.test.mjs",
+      "crm/tests/canonical-auth.test.mjs",
+      "crm/tests/cart-hydration.test.cjs",
+      "crm/tests/checkout-addresses.test.mjs",
+      "crm/tests/checkout-identity.test.mjs",
+      "crm/tests/checkout-payment-choice.test.mjs",
+      "crm/tests/customer-account-entry.test.mjs",
+      "crm/tests/customer-account-styles.test.cjs",
+      "crm/tests/customer-auth-errors.test.mjs",
+      "crm/tests/customer-inline-login.test.mjs",
+      "crm/tests/customer-phone-claim.test.mjs",
+      "crm/tests/customer-return-path.test.mjs",
+      "crm/tests/fiscal-eligibility-audit.test.cjs",
+      "crm/tests/friendly-menu-routes.test.mjs",
+      "crm/tests/fulfillment-availability.test.cjs",
+      "crm/tests/full-order-edit-form.test.cjs",
+      "crm/tests/hosting-cache.test.cjs",
+      "crm/tests/legacy-address-save.test.mjs",
+      "crm/tests/legacy-address-trust.test.mjs",
+      "crm/tests/online-order-status-handler.test.cjs",
+      "crm/tests/online-order-status.test.mjs",
+      "crm/tests/public-auth-esm.test.mjs",
+      "crm/tests/sms-enterprise.test.mjs",
+      "crm/tests/staff-push-cross-tab.test.mjs",
+      "crm/tests/store-availability.test.mjs",
+      "crm/tests/storefront.test.mjs"
+    ],
+    "initial": {
+      "tests": 153,
+      "passed": 152,
+      "failed": 1
+    },
+    "focusedRetest": {
+      "file": "crm/tests/customer-account-styles.test.cjs",
+      "tests": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    "finalByTest": {
+      "tests": 153,
+      "passed": 153,
+      "failed": 0
+    },
+    "reason": "Pre-existing assertion rejected the approved a4a5cdfe overflow wrapping rule; exact single-selector/single-declaration exception only; no CSS changes"
+  },
+  "emulators": {
+    "localOnly": true,
+    "hosts": [
+      "127.0.0.1:8080",
+      "127.0.0.1:9099"
+    ],
+    "projects": "demo-* only",
+    "results": [
+      {
+        "file": "customer-registry-emulator.test.js",
+        "exitCode": 0,
+        "tests": 7,
+        "passed": 7,
+        "failed": 0
+      },
+      {
+        "file": "customer-phone-claim-emulator.test.js",
+        "exitCode": 0,
+        "tests": 8,
+        "passed": 8,
+        "failed": 0
+      },
+      {
+        "file": "customer-canonical-history-emulator.test.js",
+        "exitCode": 0,
+        "tests": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "file": "customer-orders-emulator.test.js",
+        "exitCode": 0,
+        "tests": 11,
+        "passed": 11,
+        "failed": 0
+      },
+      {
+        "file": "customer-profile-emulator.test.js",
+        "exitCode": 0,
+        "tests": 5,
+        "passed": 5,
+        "failed": 0
+      },
+      {
+        "file": "customer-registry-api-emulator.test.js",
+        "exitCode": 0,
+        "tests": 6,
+        "passed": 6,
+        "failed": 0
+      },
+      {
+        "file": "customer-migration-driver-emulator.test.js",
+        "exitCode": 0,
+        "tests": 2,
+        "passed": 2,
+        "failed": 0
+      },
+      {
+        "file": "customer-shell-emulator.test.js",
+        "exitCode": 0,
+        "tests": 4,
+        "passed": 4,
+        "failed": 0
+      },
+      {
+        "file": "customer-registry-rules.test.js",
+        "exitCode": 0,
+        "tests": 4,
+        "passed": 4,
+        "failed": 0
+      },
+      {
+        "file": "legacy-phone-emulator.test.js",
+        "exitCode": 0,
+        "tests": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "file": "legacy-customer-session-emulator.test.js",
+        "exitCode": 0,
+        "tests": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "file": "address-verification-emulator.test.js",
+        "exitCode": 0,
+        "tests": 16,
+        "passed": 16,
+        "failed": 0
+      },
+      {
+        "file": "checkout-addresses-emulator.test.js",
+        "exitCode": 0,
+        "tests": 9,
+        "passed": 9,
+        "failed": 0
+      },
+      {
+        "file": "admin-customer-preview-emulator.test.js",
+        "exitCode": 0,
+        "tests": 19,
+        "passed": 19,
+        "failed": 0
+      }
+    ],
+    "tests": 100,
+    "passed": 100,
+    "failed": 0,
+    "initialFailure": {
+      "file": "checkout-addresses-emulator.test.js",
+      "expected": 401,
+      "actual": 400,
+      "reason": "Outdated pre-b5892db3 assertion for LEGACY_PHONE online; request lacked idempotency key"
+    },
+    "focusedRetest": [
+      {
+        "file": "checkout-addresses-emulator.test.js",
+        "exitCode": 0,
+        "tests": 9,
+        "passed": 9,
+        "failed": 0
+      }
+    ],
+    "servicesStopped": true,
+    "runtimeWorkaround": "Child-process Java 21/TCP fallback for Windows Unix-domain loopback error; no persistent system/firewall change"
+  },
+  "totalFinalTests": 417,
+  "newTests": {
+    "mock": 19,
+    "emulatedSdk": 3,
+    "total": 22
+  },
+  "counting": "Final result per test; initial/focused/repeated executions are not added",
+  "lint": {
+    "errors": 0,
+    "warnings": 0,
+    "scope": [
+      "functions/customer-registry.js",
+      "functions/checkout-auth.js",
+      "functions/customer-orders.js",
+      "functions/customer-legacy.test-fixture.js",
+      "functions/customer-legacy-compat.test.js",
+      "functions/customer-orders.test.js",
+      "functions/customer-phone-claim-emulator.test.js",
+      "functions/checkout-addresses-emulator.test.js",
+      "crm/tests/customer-account-styles.test.cjs"
+    ],
+    "dependencyAgeNoticesOnly": true
+  },
+  "syntax": "PASS",
+  "diffCheck": "PASS",
+  "localIndexDefinitions": "PASS; not deployed",
+  "build": "Frontend build not needed; no UI runtime changed; backend parsed/loaded and exercised by SDK emulators",
+  "sourceSha256": {
+    "functions/customer-registry.js": "da680f0a6576c1a8d9c0f01da7cbc79d29d03fa99ef74051781dd434838ba76a",
+    "functions/checkout-auth.js": "1260ffd71f714ec1274a93be27544ff2fe905a9a32aa2eb5eb5929fbb56823ee",
+    "functions/customer-orders.js": "6675d331dc5795c4db1c33dc338708b0b9480070a30c9b69d66c3055e596b97f",
+    "firestore.indexes.json": "b88751cd5e5ee84c2c449e3bd8535adad18e5f1155ead2e17d38985e02e24dcc",
+    "functions/customer-legacy.test-fixture.js": "cac562247db43e06005c2035008cd20cda2ae0518e4e6c216471edc956a74068",
+    "functions/customer-legacy-compat.test.js": "17a03092b6d7bdb688235d9f0bfccee22ef662a392a15a31d91aac4c728c1fae",
+    "functions/customer-orders.test.js": "ae30b195cf28c2997ada318ae615a451f5da9ed46ba677fc56032e55e1319f19",
+    "functions/customer-phone-claim-emulator.test.js": "03e744c9598a34b1ba6eec5449db26369cd1fec05713a201c599218d7200c748",
+    "functions/checkout-addresses-emulator.test.js": "7c3d4af36bac64752e00f623b65240cee97f0d2e8e0d64e100e0dfed13c43241",
+    "crm/tests/customer-account-styles.test.cjs": "6664104017d400831cebbf617600c06dcce89c03d855c22182f792d867b94c6e"
+  },
+  "residualLimits": [
+    "Missing-index fallback proves complete coverage only up to 1000 phone metadata documents; excess/failure/conflict returns controlled regularization",
+    "Existing history candidate/page/alias limits and reviewed root paths remain enforced",
+    "Indexes and affected Functions must be reviewed and deployed to DEV under separate authorization; no remote performance/index assertions",
+    "Synthetic tests do not satisfy real C15 identity/phone proof acceptance"
+  ],
+  "commitsPerformed": 0,
+  "pushesPerformed": 0,
+  "deploysPerformed": 0,
+  "remoteFirebaseReads": 0,
+  "remoteFirebaseWrites": 0,
+  "realSmsSends": 0,
+  "realPermanentClaims": 0,
+  "productionAccess": false,
+  "indicators": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "globalFormal": 97,
+    "phase13": 0,
+    "C15": "PENDING",
+    "C16": "PENDING"
+  }
+}

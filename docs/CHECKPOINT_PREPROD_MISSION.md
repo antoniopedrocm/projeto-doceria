@@ -1,5 +1,21 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Retomada vigente — publicação DEV autorizada
+
+Proprietário pediu continuação após receber os 417 resultados locais e autorizou **“pode fazer o deploy em dev sempre que necessário”**. Etapa de revisão anterior superada para este release DEV; preparar commit/push, publicar somente índices e 15 Functions afetadas e verificar artefatos. [Plano concreto](PHASE10_DEV_RELEASE.md). Não repetir implementação/testes já aprovados. Pré-checagem confirmou hashes locais, API atual sem delta paralelo inesperado, 146 Functions, Hosting/Rules anteriores e dois grupos de env a preservar. Nenhuma publicação executada no ponto deste registro.
+
+**Fase 9 = 100%; Fase 10 = 87,50%; global formal = 97,00%; Fase 13 = 0%.** C15 real/C16 continuam pendentes. A autorização de deploy não inclui SMS, claim permanente, dados de clientes ou PROD. Registros abaixo são históricos.
+
+## Estado vigente — 05/11/2026: correções locais autorizadas, revisão antes de publicação
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%. PROD READY: NÃO.** Base `1a0ede75` confirmada, sem alterações tracked antes da autorização. Proprietário aprovou OPÇÃO B somente para código/testes/documentação locais; **não fazer commit, push ou deploy antes da revisão dos resultados**. Nenhuma consulta/escrita remota, SMS real, vínculo real ou operação PROD nesta execução.
+
+Implementação local: índice ausente não prova telefone novo; fallback transacional limitado, preservação do Customer ID e reparo pontual na prova/escrita autorizada. Compatibilidade `enderecos`/`endereco`/`address` sem reviver array excluído. Histórico aceita referências alternativas concordantes, mantendo owner/canônico/loja/`legacyOrderPaths` e limites. Índices correspondentes definidos apenas localmente. [Relatório e riscos](PHASE10_LOCAL_COMPATIBILITY_FIXES.md); [validação local](evidence/phase10-local-compatibility-2026-11-05.json).
+
+Validação final: **164 unidades + 153 públicos + 100 emulados = 417 PASS**, considerando retestes focados sem somar repetições; 22 cenários novos (19 mocks, 3 SDK emulado). Lint/sintaxe/diff PASS. Duas asserções antigas foram alinhadas aos contratos já publicados, sem mudança do CSS/checkout. Emuladores locais encerrados. Fallback ausente tem teto de 1.000 candidatos; excesso/falha/conflito exige regularização, não criação presumida. Nenhuma alteração staged ou commit desta entrega.
+
+**Próximo ponto exato:** apresentar resultados e aguardar revisão do proprietário. Código publicado anterior permanece inalterado; após autorização de release, conferir índices e Functions necessários, testar DEV e só então seguir C15 real/C16. Os casos/titulares e as autorizações específicas de claim/SMS continuam pendentes; as duas autorizações temporárias anteriores foram consumidas. Registros abaixo são históricos.
+
 ## Estado vigente — 05/11/2026: preparação C15 concluída, seleção pendente
 
 **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%. PROD READY: NÃO.** Retomada em `85aa41f2`, tracked limpo, HEAD/origin iguais após fetch. [Conferência DEV somente leitura](evidence/preprod-current-dev-2026-11-05.json): 146 Functions, API `api-00070-jib`, Rules `19bc50df-ace4-453f-8bce-fae33bce3bcf`, Hosting `f960c57c592945d0`/`main.08ad2156.js`, todos correspondentes ao fechamento anterior. Não refazer build/deploy ou os aceites já PASS.

@@ -6,6 +6,7 @@ const digest=value=>createHash('sha256').update(value).digest('hex');
 const failure=(code,message,status=409)=>Object.assign(new Error(message),{code,httpStatus:status});
 const review=()=>failure('CUSTOMER_PHONE_REVIEW','Este cadastro precisa de conferência antes de continuar.');
 const validId=value=>typeof value==='string' && /^[a-zA-Z0-9_-]{1,150}$/.test(value);
+const MAX_LEGACY_PHONE_CANDIDATES=1000;
 function createCustomerRegistry({db}) {
   // Existing integrations Rules deny every client read/write, including Staff.
   const root=db.doc('integrations/customerRegistry');
@@ -32,7 +33,25 @@ function createCustomerRegistry({db}) {
     const phone=normalizeCustomerPhone(value);
     const run=async transaction=>{
       await ready(transaction);const index=await transaction.get(phoneRef(phone));
-      if(!index.exists)return {phone,customerId:null,customer:null};
+      if(!index.exists) {
+        // Missing index is not evidence of a new phone. Inspect only phone metadata,
+        // in the same transaction; do not infer ownership or migrate source records.
+        let inventory;
+        try {inventory=await transaction.get(db.collection('clientes').select('telefone','phone_number','normalizedPhone','canonicalStatus').limit(MAX_LEGACY_PHONE_CANDIDATES+1));}
+        catch {throw failure('CUSTOMER_REGISTRY_COVERAGE_REQUIRED','Não foi possível conferir este cadastro. Solicite a regularização e tente novamente.',503);}
+        if(inventory.docs.length>MAX_LEGACY_PHONE_CANDIDATES)throw failure('CUSTOMER_REGISTRY_COVERAGE_REQUIRED','A cobertura deste telefone precisa de regularização antes de continuar.');
+        const matches=inventory.docs.filter(snapshot=>['telefone','phone_number','normalizedPhone'].some(field=>{
+          try{return normalizeCustomerPhone(snapshot.data()[field]).e164===phone.e164;}catch{return false;}
+        }));
+        if(!matches.length)return {phone,customerId:null,customer:null};
+        if(matches.length!==1 || !validId(matches[0].id) || matches[0].data().canonicalStatus==='ALIAS')throw review();
+        const ref=db.doc('clientes/'+matches[0].id),customer=await transaction.get(ref),data=customer.data();
+        if(!customer.exists)throw review();
+        const fields=['telefone','phone_number','normalizedPhone'].map(field=>data[field]).filter(v=>v!==undefined && v!==null && v!=='');
+        try {if(normalizeCustomerPhone(data.telefone || data.phone_number).e164!==phone.e164 || fields.some(v=>normalizeCustomerPhone(v).e164!==phone.e164))throw review();}
+        catch {throw review();}
+        return {phone,customerId:ref.id,customer,indexMissing:true};
+      }
       const data=index.data();if(data.state!=='READY' || data.normalizedPhone!==phone.e164 || !validId(data.customerId)) throw review();
       const ref=db.doc('clientes/'+data.customerId),customer=await transaction.get(ref);
       if(!customer.exists || customer.data().canonicalStatus==='ALIAS') throw review();
@@ -97,7 +116,7 @@ function createCustomerRegistry({db}) {
           tx.create(ref,{nome,telefone:phone.national,phone_number:phone.e164,normalizedPhone:phone.e164,authOwnerUid:identity.user.uid,authOwnerUids:[identity.user.uid],
             phone_verified_at:null,phoneOwnership:'UNVERIFIED',canonicalStatus:'CANONICAL',identityRegistryVersion:1,legacyCustomerIds:[],enderecos:[],criadoEm:FieldValue.serverTimestamp(),atualizadoEm:FieldValue.serverTimestamp()});
           tx.create(phoneRef(phone),{state:'READY',normalizedPhone:phone.e164,customerId,updatedAt:FieldValue.serverTimestamp()});
-        }
+        } else if(existing.indexMissing)tx.create(phoneRef(phone),{state:'READY',normalizedPhone:phone.e164,customerId,updatedAt:FieldValue.serverTimestamp()});
       }
       tx.set(identityRef(identity),{provider:identity.provider,subject:identity.sub,customerId,uid:identity.user.uid,updatedAt:FieldValue.serverTimestamp()});
       tx.set(uidRef(identity.user.uid),{uid:identity.user.uid,customerId,updatedAt:FieldValue.serverTimestamp()});
@@ -113,6 +132,7 @@ function createCustomerRegistry({db}) {
       if((mapping.exists && mapping.data().customerId!==existing.customerId) || (uid.exists && uid.data().customerId!==existing.customerId)) throw review();
       const owners=customerOwnerUids(existing.customer.data());
       if(owners.some(owner=>owner!==identity.user.uid))throw review();
+      if(existing.indexMissing)tx.create(phoneRef(existing.phone),{state:'READY',normalizedPhone:existing.phone.e164,customerId:existing.customerId,updatedAt:FieldValue.serverTimestamp()});
       tx.update(existing.customer.ref,{authOwnerUid:identity.user.uid,authOwnerUids:[identity.user.uid],identityRegistryVersion:1,
         phoneOwnership:'VERIFIED',phone_verified_at:FieldValue.serverTimestamp(),atualizadoEm:FieldValue.serverTimestamp()});
       tx.set(identityRef(identity),{provider:identity.provider,subject:identity.sub,customerId:existing.customerId,uid:identity.user.uid,updatedAt:FieldValue.serverTimestamp()});
@@ -124,4 +144,4 @@ function createCustomerRegistry({db}) {
   }
   return {resolvePhone,resolveId,createOrGet,createForStrong,resolveStrongIdentity,couponState,attachVerifiedClaim,assertPhoneUnchanged,phoneRef,aliasRef,uidRef,identityRef};
 }
-module.exports={createCustomerRegistry};
+module.exports={createCustomerRegistry,MAX_LEGACY_PHONE_CANDIDATES};

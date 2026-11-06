@@ -5,6 +5,7 @@ const {createCustomerOrders} = require('./customer-orders');
 const {createCustomerRegistry}=require('./customer-registry');
 const {normalizeCustomerPhone}=require('./customer-phone');
 const {ownsCustomer}=require('./customer-ownership');
+const {historicalAddresses}=require('./customer-migration-plan');
 const {createCustomerReorder} = require('./customer-reorder');
 const digest = (provider, subject) => createHash('sha256').update(`${provider}:${subject}`).digest('hex');
 const fail = (code, message) => { throw new HttpsError(code, message); };
@@ -44,6 +45,11 @@ function addressRecords(customerId, values) {
     return {...address, id, isDefault};
   });
 }
+// A persisted array (including []) is authoritative: never revive deleted legacy
+// addresses. Materialize the same virtual records only during an authorized edit.
+function customerAddressRecords(customerId,data) {
+  return addressRecords(customerId,Array.isArray(data.enderecos)?data.enderecos:historicalAddresses(customerId,data));
+}
 function normalizeAddress(value) {
   const address=value && typeof value==='object' ? value : {};
   const clean=(field,max)=>String(address[field] || '').trim().slice(0,max);
@@ -77,7 +83,7 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
     const id = await identity(request);
     return registry.resolveStrongIdentity(id);
   }
-  const safeProfile = (id, d, identity) => ({id, accountLinked:true, nome: d.nome || '', telefone: d.telefone || '', aniversario: d.aniversario || '', enderecos: addressRecords(id, d.enderecos), email: identity.user.email || '', emailVerified: !!identity.user.emailVerified, authProvider: identity.provider, createdAt: d.criadoEm?.toDate?.().toISOString() || null});
+  const safeProfile = (id, d, identity) => ({id, accountLinked:true, nome: d.nome || '', telefone: d.telefone || d.phone_number || '', aniversario: d.aniversario || '', enderecos: customerAddressRecords(id, d), email: identity.user.email || '', emailVerified: !!identity.user.emailVerified, authProvider: identity.provider, createdAt: d.criadoEm?.toDate?.().toISOString() || null});
   async function account(request) {
     const id = await resolve(request);
     if (!id.customerId) return {needsPhone: true, nome: id.user.displayName || '', email: id.user.email || '', emailVerified: !!id.user.emailVerified, authProvider: id.provider};
@@ -118,7 +124,7 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
     await db.runTransaction(async tx=>{
       const ref=db.collection('clientes').doc(id.customerId);const snap=await tx.get(ref);
       if(!snap.exists || !ownsCustomer(snap.data(),id.user.uid)) fail('permission-denied','Cadastro não autorizado.');
-      let addresses=addressRecords(id.customerId, snap.data().enderecos);
+      let addresses=customerAddressRecords(id.customerId, snap.data());
       if(addresses.length>=20) fail('resource-exhausted','Você atingiu o limite de endereços salvos.');
       if(address.isDefault) addresses=addresses.map(item=>typeof item==='object'?{...item,isDefault:false}:item);
       addresses.push({...address,id:randomUUID(),isDefault:address.isDefault || addresses.length===0,criadoEm:new Date().toISOString()});
@@ -134,7 +140,7 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
     await db.runTransaction(async tx=>{
       const ref=db.collection('clientes').doc(id.customerId);const snap=await tx.get(ref);
       if(!ownsCustomer(snap.data(),id.user.uid)) fail('permission-denied','Cadastro não autorizado.');
-      const addresses=addressRecords(id.customerId, snap.data().enderecos);
+      const addresses=customerAddressRecords(id.customerId, snap.data());
       const position=request.data.addressId ? addresses.findIndex(a=>a.id===request.data.addressId) : index;
       const address=addresses[position];
       if(!address || (!request.data.addressId && address.enderecoCompleto!==request.data.expectedAddress)) fail('failed-precondition','Os endereços mudaram. Abra sua conta novamente.');
@@ -153,7 +159,7 @@ function createCustomerAccount({admin, db, getStoreAvailability=()=> 'CONFIG_UNA
     await db.runTransaction(async tx=>{
       const ref=db.collection('clientes').doc(id.customerId); const snap=await tx.get(ref);
       if(!snap.exists || !ownsCustomer(snap.data(),id.user.uid)) fail('permission-denied','Cadastro não autorizado.');
-      let addresses=addressRecords(id.customerId,snap.data().enderecos);
+      let addresses=customerAddressRecords(id.customerId,snap.data());
       const index=addresses.findIndex(a=>a.id===request.data.addressId);
       if(index<0) fail('not-found','Endereço não encontrado. Atualize sua conta.');
       // Merge with the owned record before normalization: omission preserves, explicit empty clears.
