@@ -1,5 +1,9 @@
 # Autenticação de clientes e pagamento online
 
+## Estado vigente — 05/11/2026: compatibilidade de legado publicada no DEV
+
+Proprietário autorizou deploy DEV conforme necessário. Runtime **`a36d558c`**, push e publicação seletiva concluídos: dois índices READY, 15 Functions ACTIVE/58 arquivos conferidos por alvo, env/secrets preservados, 131 outras Functions e Hosting/Rules inalterados. 417 testes locais preservados e 15 negativas remotas PASS, sem Customer/telefone/SMS/claim/operação financeira real. [Release](PHASE10_DEV_RELEASE.md), [checkpoint](CHECKPOINT_PREPROD_MISSION.md). **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** C15 ainda exige casos/titulares aprovados e prova real específica; C16 vem depois. Não reabrir critérios concluídos, não reponderar pesos, não inferir autorização PROD/SMS da autorização DEV. Registros abaixo são históricos.
+
 ## Estado local vigente — 05/11/2026: correções pontuais aguardam revisão
 
 OPÇÃO B autorizada pelo proprietário somente no código/testes/documentação locais. [Patch de compatibilidade](PHASE10_LOCAL_COMPATIBILITY_FIXES.md) sobre `1a0ede75`, sem commit, push, deploy, dados remotos, SMS ou claim real. Aguardar revisão antes da publicação. Os artefatos DEV publicados permanecem no estado anterior. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** C15 real e C16 não são encerrados por testes simulados; pesos e critérios concluídos preservados.

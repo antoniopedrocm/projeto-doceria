@@ -28,4 +28,12 @@ Depois da publicação verificada, C15 continua dependendo de titulares/casos Go
 
 **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.**
 
-Estado deste documento: preparação autorizada; resultados de publicação serão acrescentados após a verificação remota.
+## Publicação concluída e verificada
+
+Runtime **`a36d558c7130815e9f3dcdde6862ae0c38a5c7af`** commitado/enviado à branch DEV e publicado exclusivamente em `crmdoceria-9959e`. Dois índices READY antes das Functions; as definições anteriores (22 compostos e 5 overrides) foram preservadas, sem exclusão.
+
+As **15 Functions estão ACTIVE**, com 58 hashes de runtime conferidos em cada uma das 15 fontes baixadas. API **`api-00071-qeh`**, lookup **`lookupclientbyphone-00047-niz`**. Variáveis de negócio e bindings de secrets iguais aos anteriores em todos os alvos; os dois grupos impediram propagar env fiscal para os callables Customer. **Outras 131 Functions inalteradas.**
+
+**15 negativas remotas PASS:** os 13 callables Customer rejeitaram ausência de Auth com 401/UNAUTHENTICATED; lookup vazio retornou 400/INVALID_ARGUMENT antes de consultar cadastro; API sem Auth retornou 401. Não foram enviados telefone/Customer/prova reais nem criado pedido, pagamento, nota, SMS ou WhatsApp.
+
+Hosting permanece **`f960c57c592945d0`** e Rules **`19bc50df-ace4-453f-8bce-fae33bce3bcf`**, sem deploy desses recursos. [Evidência sanitizada da publicação](evidence/phase10-compatibility-release-dev.json). A evidência local dos 417 testes continua preservada; não soma novamente os retestes. Publicação técnica concluída, C15/C16 reais ainda pendentes.

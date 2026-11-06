@@ -1,5 +1,11 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
+## Estado vigente — patch publicado, C15 real pendente
+
+Correções pontuais **`a36d558c`** publicadas e verificadas somente no DEV após autorização do Dono: dois índices READY, 15 Functions ACTIVE/58 arquivos por fonte, env/bindings preservados e 131 outras Functions/Hosting/Rules inalterados. 417 testes locais e 15 negativas remotas PASS; nenhum SMS/claim/Customer/pedido real alterado. [Evidência de release](evidence/phase10-compatibility-release-dev.json), [relatório](PHASE10_DEV_RELEASE.md).
+
+**C01–C14 preservados; C15/C16 pendentes. Fase 9 = 100%, Fase 10 = 87,50%, global formal = 97,00%, Fase 13 = 0%; PROD READY: NÃO.** Próximo ponto é selecionar titulares/casos legítimos Google/e-mail e obter aprovações específicas de vínculo/SMS. Publicação não substitui prova real. Pré-checagem anterior não é inventário remoto novo de clientes; não foram refeitas consultas de dados de clientes nesta publicação. Registros abaixo são históricos.
+
 ## Estado local vigente — 05/11/2026: OPÇÃO B implementada para revisão
 
 Proprietário autorizou correções pontuais locais de índice ausente, endereços legados e referências históricas. Patch sobre `1a0ede75` validado localmente e aguardando revisão, **sem commit/push/deploy ou operação remota**. [Comportamentos, arquivos e limites](PHASE10_LOCAL_COMPATIBILITY_FIXES.md), [checkpoint](CHECKPOINT_PREPROD_MISSION.md). As reproduções sintéticas não representam novos aceites reais. C01–C14 preservados, C15/C16 pendentes; Fase 9 = 100%, Fase 10 = 87,50%, global formal = 97,00%, Fase 13 = 0%. PROD não autorizada.

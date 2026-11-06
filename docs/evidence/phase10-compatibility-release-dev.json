@@ -1,0 +1,242 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "commit": "a36d558c7130815e9f3dcdde6862ae0c38a5c7af",
+  "checkedAt": "2026-11-06T00:47:45.764Z",
+  "functionsTotal": 146,
+  "functionsUpdated": [
+    {
+      "id": "lookupClientByPhone",
+      "revision": "lookupclientbyphone-00047-niz",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerAddAddress",
+      "revision": "customeraddaddress-00005-yes",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerCompleteProfile",
+      "revision": "customercompleteprofile-00005-cep",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerPhoneClaimStatus",
+      "revision": "customerphoneclaimstatus-00003-kay",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerUpdate",
+      "revision": "customerupdate-00005-hov",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerOrderDetail",
+      "revision": "customerorderdetail-00004-gas",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerOrders",
+      "revision": "customerorders-00005-rid",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerReorderPreview",
+      "revision": "customerreorderpreview-00005-nol",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerAccount",
+      "revision": "customeraccount-00005-koz",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerDeleteAddress",
+      "revision": "customerdeleteaddress-00005-lal",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerPhoneClaimConfirm",
+      "revision": "customerphoneclaimconfirm-00003-mac",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "api",
+      "revision": "api-00071-qeh",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerUpdateAddress",
+      "revision": "customerupdateaddress-00004-qeq",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerPhoneClaimStart",
+      "revision": "customerphoneclaimstart-00003-fub",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    },
+    {
+      "id": "customerSetDefaultAddress",
+      "revision": "customersetdefaultaddress-00004-vik",
+      "state": "ACTIVE",
+      "environmentPreserved": true,
+      "secretBindingsPreserved": true,
+      "runtimeHashesMatched": 58
+    }
+  ],
+  "otherFunctionsUnchanged": 131,
+  "runtimeFilesPerFunction": 58,
+  "sourceArchivesVerified": 15,
+  "indexes": {
+    "schema": 1,
+    "project": "crmdoceria-9959e",
+    "commit": "a36d558c7130815e9f3dcdde6862ae0c38a5c7af",
+    "checkedAt": "2026-11-06T00:42:13.033Z",
+    "fieldsReady": 2,
+    "states": [
+      {
+        "fieldPath": "customerId",
+        "state": "READY"
+      },
+      {
+        "fieldPath": "clientId",
+        "state": "READY"
+      }
+    ],
+    "compositeIndexesPreserved": 22,
+    "fieldOverridesPreserved": 5,
+    "deletedIndexes": 0,
+    "deletedFields": 0,
+    "production": false
+  },
+  "hostingUnchanged": true,
+  "hostingVersion": "sites/crmdoceria-9959e/versions/f960c57c592945d0",
+  "rulesUnchanged": true,
+  "ruleset": "projects/crmdoceria-9959e/rulesets/19bc50df-ace4-453f-8bce-fae33bce3bcf",
+  "anonymousNegativeChecks": [
+    {
+      "function": "customerAccount",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerCompleteProfile",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerPhoneClaimStatus",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerPhoneClaimStart",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerPhoneClaimConfirm",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerUpdate",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerOrders",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerOrderDetail",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerReorderPreview",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerAddAddress",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerDeleteAddress",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerUpdateAddress",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "customerSetDefaultAddress",
+      "status": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "function": "lookupClientByPhone",
+      "status": 400,
+      "error": "INVALID_ARGUMENT"
+    },
+    {
+      "function": "api",
+      "route": "/staff/payment-reconciliation/list",
+      "status": 401
+    }
+  ],
+  "noCustomerDataReadOrWrittenBySmoke": true,
+  "noRealSms": true,
+  "noRealClaim": true,
+  "noPaymentFiscalOrWhatsAppAction": true,
+  "production": false,
+  "stagingEnvironmentFileRemoved": true
+}

@@ -1,5 +1,11 @@
 # Production Readiness Review — DEV
 
+## Estado vigente — publicação complementar da Fase 10 concluída
+
+Runtime **`a36d558c`** e push/deploy seletivo DEV verificados: dois índices READY, 15 Functions ACTIVE, 58 arquivos por fonte, variáveis/bindings preservados, 131 outras Functions e Hosting/Rules inalterados. 417 testes locais preservados e 15 negativas remotas PASS. [Evidência](evidence/phase10-compatibility-release-dev.json), [release](PHASE10_DEV_RELEASE.md). Nenhum SMS, claim, pedido ou operação financeira/fiscal real nesta etapa. A autorização geral do Dono cobre deploy DEV quando necessário; não cobre PROD ou titularidade/mensageria.
+
+**PROD READY: NÃO. Fase 9 = 100%; Fase 10 = 87,50%; global formal = 97,00%; Fase 13 = 0%.** Restam seleção dos casos legítimos e provas reais C15 Google/e-mail, depois C16 consolidado. Gates já PASS e decisão dos remanescentes preservados. Inventário/configuração/backup efetivos PROD dependem da revisão futura autorizada. Registros abaixo são históricos.
+
 ## Estado vigente — 05/11/2026: C15 aguarda casos legítimos
 
 **PROD READY: NÃO. Fase 9 = 100%; Fase 10 = 87,50%; global formal = 97,00%; Fase 13 = 0%.** [Conferência remota DEV](evidence/preprod-current-dev-2026-11-05.json) sem divergência de Hosting/API/Rules. [Pré-checagem C15](evidence/phase10-c15-preflight-2026-11-05-dev.json): zero casos prontos sob a política atual da Matriz; destinatários liberados já têm proprietário, e os oito canônicos sem owner com celular/índice válidos estão fora da allowlist. Não alterar ownership ou allowlist automaticamente.

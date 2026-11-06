@@ -1,5 +1,11 @@
 # FINAL DEV PRE-PROD REPORT
 
+## Estado vigente — compatibilidade publicada no DEV
+
+**`a36d558c`** enviado à branch DEV e publicado com autorização do proprietário: dois índices READY, 15 Functions ACTIVE/58 arquivos conferidos por fonte, env/secrets preservados e 131 outras Functions/Hosting/Rules inalterados. 417 testes locais preservados, 15 negativas remotas PASS; nenhuma ação de Customer/SMS/claim/pedido/pagamento/NF/WhatsApp real. [Release e evidências](PHASE10_DEV_RELEASE.md), [checkpoint](CHECKPOINT_PREPROD_MISSION.md).
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** C15 exige casos/titulares legítimos e aprovações específicas de vínculo permanente/SMS; C16 vem após os aceites reais. Não elevar percentuais por publicação ou reexecutar gates concluídos. PROD não acessada. Registros abaixo são históricos.
+
 ## Estado vigente — 05/11/2026: preparação C15
 
 **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%. PROD READY: NÃO.** Repositório e runtime DEV consistentes. [Pré-checagem somente leitura](evidence/phase10-c15-preflight-2026-11-05-dev.json) e [roteiro C15/C16](PHASE10_C15_EXECUTION.md) concluídos: zero casos prontos na política atual da Matriz; os dois destinatários liberados têm owner, oito cadastros sem owner e com celular/índice válidos não estão liberados. Aguardar seleção dos titulares/contas e aprovações específicas; não mudar owners ou allowlist automaticamente.

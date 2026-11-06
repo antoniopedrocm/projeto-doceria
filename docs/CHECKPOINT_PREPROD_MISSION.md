@@ -1,5 +1,19 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — compatibilidade publicada no DEV e verificada
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%. PROD READY: NÃO.** Proprietário autorizou deploy DEV sempre que necessário após receber a revisão local. Runtime **`a36d558c7130815e9f3dcdde6862ae0c38a5c7af`**, commit/push concluídos, **15 Functions ACTIVE**, 58 hashes conferidos por função, env/bindings preservados e **131 outras Functions inalteradas**. API **`api-00071-qeh`**, lookup `lookupclientbyphone-00047-niz`. Dois índices READY; 22 compostos/5 overrides anteriores preservados, nenhuma exclusão. [Evidência de release](evidence/phase10-compatibility-release-dev.json), [relatório](PHASE10_DEV_RELEASE.md).
+
+Os **417 testes locais** e lint/sintaxe/diff PASS permanecem válidos e não foram refeitos sem necessidade; a publicação recebeu **15 negativas remotas PASS**, sem Customer/telefone/prova reais, sem SMS/claim/pedido/pagamento/NF/WhatsApp. Hosting `f960c57c592945d0` e Rules `19bc50df-ace4-453f-8bce-fae33bce3bcf` inalterados. Nenhuma consulta/alteração PROD. Não repetir código, índices ou deploy deste release sem nova mudança/falha.
+
+**Próximo ponto exato: C15 real.** Pergunta enviada ao Dono para selecionar cadastros legados/titulares e contas legítimas dos cenários Google/e-mail. Aguardar indicação, conferir somente os casos selecionados, preparar proposta específica de vínculo/destinatário e obter autorização própria de claim permanente e limite de SMS antes da execução. Dois SMS temporários anteriores consumidos; autorização geral de deploy DEV não autoriza novos SMS/claims nem PROD. Depois C16 consolidado. C01–C14 e decisões dos remanescentes preservados; nenhum percentual elevado por testes simulados ou publicação. Seções abaixo são históricas.
+
+## Publicação em andamento — índices READY, Customer concluído, API/lookup iniciados
+
+Commit funcional `a36d558c7130815e9f3dcdde6862ae0c38a5c7af` e push DEV concluídos. Dois índices (`pedidos.customerId`/`clientId`, COLLECTION_GROUP ASC) publicados e **READY**, 22 compostos/5 overrides anteriores preservados, nenhuma exclusão. Staging imutável `.deploy-phase10-a36d558c`, 58 arquivos; dois grupos para preservar env/bindings. **Customer (13 Functions) concluiu com exit 0** em `%TEMP%/phase10-deploy-customer.log`. CLI confirmou novas revisões ACTIVE antes de iniciar **API/lookup**, em andamento; acompanhar `%TEMP%/phase10-deploy-api.log`. Não repetir grupos sem conferir estado real/log.
+
+Após Customer ACTIVE em novas revisões: publicar somente API/lookup com seu env fiscal preservado; verificar hashes por fonte, variáveis/secrets, 131 Functions não relacionadas e Hosting/Rules inalterados. Smoke somente negativas sem Auth, sem Customer real/SMS/claim. Fase 9 = 100%; Fase 10 = 87,50%; global formal = 97,00%; Fase 13 = 0%. PROD não autorizada. Esta seção prevalece sobre a preparação abaixo.
+
 ## Retomada vigente — publicação DEV autorizada
 
 Proprietário pediu continuação após receber os 417 resultados locais e autorizou **“pode fazer o deploy em dev sempre que necessário”**. Etapa de revisão anterior superada para este release DEV; preparar commit/push, publicar somente índices e 15 Functions afetadas e verificar artefatos. [Plano concreto](PHASE10_DEV_RELEASE.md). Não repetir implementação/testes já aprovados. Pré-checagem confirmou hashes locais, API atual sem delta paralelo inesperado, 146 Functions, Hosting/Rules anteriores e dois grupos de env a preservar. Nenhuma publicação executada no ponto deste registro.
