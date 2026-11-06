@@ -2,6 +2,10 @@
 
 ## Caso indicado após publicação — final 0811
 
+### Retorno v2 publicado — nenhum novo vínculo/SMS
+
+Titular reprovou o primeiro complemento por cair em `/?public=1`. Segundo patch **`125dad90`**, push/Hosting **`75f46bb8c26f95e6`**, 61 arquivos locais conferidos, backend/Rules preservados. Origem validada acompanha URLs internas e saída, fica em memória e pode ser recuperada de referrer público da mesma origem; sem inferir Matriz. [Relatório](CUSTOMER_MENU_RETURN_FIX.md), [release](evidence/customer-menu-return-v2-after-dev.json), [smoke com sessão existente](evidence/customer-menu-return-v2-browser-dev.json). 771 testes PASS, build/lint/diff PASS. **Aceite do caso C15-E ainda pendente**; foi solicitado caminho após Minha Conta/momento da perda. Não repetir o SMS já consumido/claim confirmado. Não elevar 87,50% nem considerar Google/C16 concluídos por esses testes.
+
 ### Complemento de navegação publicado — reteste do titular pendente
 
 Titular informou retorno incorreto para `/area-cliente`, sem aprovar C15-E integralmente. Corrigido em **`92da223c`**, push/Hosting DEV **`16bdcc6a2499d5df`**, 61 hashes locais conferidos, backend/Rules não publicados. [Diagnóstico](CUSTOMER_MENU_RETURN_FIX.md). Origem pública validada/persistida por aba; contexto recuperado sobrevive ao cleanup; fallback público explícito evita o gate. 762 testes PASS, build/lint/diff PASS.

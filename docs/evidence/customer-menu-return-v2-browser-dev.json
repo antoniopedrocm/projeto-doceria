@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "dateLocal": "2026-11-06",
+  "functionalCommit": "125dad90",
+  "hostingVersion": "75f46bb8c26f95e6",
+  "browser": "in-app browser; existing dual-role session, distinct from nominated password account",
+  "steps": [
+    {"path": "/cardapio-matriz", "accountHref": "/area-cliente?returnTo=%2Fcardapio-matriz"},
+    {"path": "/area-cliente", "returnTo": "/cardapio-matriz"},
+    {"path": "/minha-conta", "returnTo": "/cardapio-matriz"},
+    {"path": "/meus-pedidos", "returnTo": "/cardapio-matriz"},
+    {"action": "refresh", "path": "/meus-pedidos", "returnTo": "/cardapio-matriz"},
+    {"action": "Voltar ao Cardápio", "path": "/cardapio-matriz"}
+  ],
+  "result": "PASS_AUTOMATED_SESSION_ONLY",
+  "customerOnlyPasswordGoogle": "PASS in real gate/shell synthetic IO integration tests; not a new live Google claim",
+  "nominatedAccountAcceptance": "PENDING; exact path after entry was requested from owner",
+  "privateProfileOrOrderPayloadSaved": false,
+  "screenshot": "customer-menu-return-v2-matriz-dev.jpg",
+  "cleanup": {"temporaryTabClosed": true, "existingAuthPreserved": true},
+  "smsSends": 0,
+  "claims": 0,
+  "businessDataMutations": 0,
+  "production": false
+}

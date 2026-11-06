@@ -1,5 +1,9 @@
 # Autenticação de clientes e pagamento online
 
+## Estado vigente — 06/11/2026: retorno C15 v2 publicado, aceite ainda pendente
+
+Novo complemento **`125dad90`**/Hosting DEV **`75f46bb8c26f95e6`**, após titular reprovar retorno v1 para fallback público. 771 testes PASS, build/lint/diff PASS; 61 arquivos locais conferidos, backend/Rules preservados. URLs internas/saída conservam origem allowlisted; smoke de perfil → pedidos → refresh → retorno Matriz PASS na sessão disponível. [Checkpoint](CHECKPOINT_PREPROD_MISSION.md), [relatório](CUSTOMER_MENU_RETURN_FIX.md). O aceite da conta recém-vinculada permanece pendente e o diagnóstico de sua URL foi solicitado; nenhum novo SMS/claim. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.**
+
 ## Estado vigente — 06/11/2026: complemento de retorno C15 publicado
 
 Relato de Voltar ao Cardápio cair na conta tratado em **`92da223c`**, push e Hosting DEV **`16bdcc6a2499d5df`**. 762 testes PASS, build/lint/diff PASS; 61 hashes locais remotos conferidos/cache/SPA corretos, backend/Rules não publicados. [Relatório](CUSTOMER_MENU_RETURN_FIX.md), [navegador](evidence/customer-menu-return-browser-dev.json). Matriz/Garavelo e fallback público passaram na sessão já existente do navegador; titular ainda precisa aprovar o retorno e demais checks C15-E na conta recém-vinculada. O claim técnico permanece PASS, único SMS consumido, sem repetir prova. Google independente/C16 pendentes. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.**

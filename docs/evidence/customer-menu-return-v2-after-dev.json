@@ -1,0 +1,433 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-06T15:05:33.084Z",
+  "mode": "after",
+  "functions": {
+    "count": 133,
+    "fingerprint": "91ff14a1306986fde2dbdc06022cdd0750ce65802058be9a53d899b7ef816d31",
+    "unchanged": true
+  },
+  "rules": {
+    "rulesetName": "projects/crmdoceria-9959e/rulesets/19bc50df-ace4-453f-8bce-fae33bce3bcf",
+    "unchanged": true
+  },
+  "hosting": {
+    "version": "sites/crmdoceria-9959e/versions/75f46bb8c26f95e6",
+    "releaseTime": "2026-11-06T15:04:52.206Z",
+    "files": [
+      {
+        "path": "address-management.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "address-verification-firebase.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "asset-manifest.json",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "audio/alarm.mp3",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "audio/alarm_old.mp3",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "audio/mixkit_vintage_warning_alarm_990.mp3",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "canonical-auth.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "canonical-session.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "cardapio-festa.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "cardapio-garavelo.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "cardapio-matriz.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "cardapio.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-addresses.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-environment.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-identity.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-payment-choice.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-payment-client.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-account-core.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-account.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-area.css",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-area.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-auth-errors.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-home.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-orders-view.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-phone-claim.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-profile.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-reorder-view.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-session.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "firebase-messaging-sw.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "firebaseClientConfig.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "fulfillment-availability.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "ic_launcher.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "ic_launcher_foreground.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "ic_launcher_round.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "index.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "legacy-address-save.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "logo.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "logo192.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "logo512.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "logotipo.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "logo_old.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "manifest.json",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "payment-return.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "payment-return.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "reorder-cart.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "slide/slide1.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "slide/slide2.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "slide/slide3.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "sms-enterprise.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "staff-push-cleanup.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "static/css/main.e526cf8e.css",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/css/main.e526cf8e.css.map",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/522.599bd7ea.chunk.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/522.599bd7ea.chunk.js.map",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/main.2eb0fbc5.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/main.2eb0fbc5.js.LICENSE.txt",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/main.2eb0fbc5.js.map",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "store-availability.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "store-links.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "store-public-config.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": ".well-known/assetlinks.json",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      }
+    ],
+    "fileCount": 61,
+    "allHashesMatch": true,
+    "routeChecks": [
+      {
+        "path": "/?public=1",
+        "status": 200,
+        "spaMatch": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "/area-cliente",
+        "status": 200,
+        "spaMatch": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "/minha-conta",
+        "status": 200,
+        "spaMatch": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "/meus-pedidos",
+        "status": 200,
+        "spaMatch": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      }
+    ],
+    "manifestFileCount": 63,
+    "platformManagedFiles": [
+      {
+        "path": "/__/firebase/init.js",
+        "status": 200,
+        "source": "Firebase managed SDK initialization",
+        "devProjectMatched": true
+      },
+      {
+        "path": "/__/firebase/init.json",
+        "status": 200,
+        "source": "Firebase managed SDK initialization",
+        "devProjectMatched": true
+      }
+    ],
+    "manifestFullyCovered": true,
+    "manifestVerifiedAt": "2026-11-06T15:06:13.686Z"
+  },
+  "production": false
+}

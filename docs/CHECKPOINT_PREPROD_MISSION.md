@@ -1,5 +1,15 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 06/11/2026: complemento v2 publicado; aceite específico pendente
+
+Commit funcional **`125dad90`**, push DEV e Hosting **`75f46bb8c26f95e6`** concluídos. [Artefatos](evidence/customer-menu-return-v2-after-dev.json): **61/61 hashes locais**, 2 inicializadores reservados Firebase conferidos separadamente, SPA/cache preservados; fingerprint das 133 Functions retornadas pela API v2 regional e Rules inalterados. Nenhum deploy de backend/Rules/dados. **614 React + 157 públicos = 771 PASS** (9 casos novos, sem somar retestes), build `main.2eb0fbc5.js` 456,07 kB gzip, lint 0 erros/2 avisos existentes, diff-check PASS.
+
+[Navegador integrado](evidence/customer-menu-return-v2-browser-dev.json), sessão dual-role já existente: Matriz → conta → Minha Conta → Meus Pedidos → refresh → Voltar ao Cardápio **PASS**, com `returnTo=/cardapio-matriz` nas URLs internas. Perfil/pedidos observados só por caminho/labels de navegação; nenhuma informação privada capturada em evidência. Tab temporária fechada, Auth preservado. Customer-only password/Google × Matriz/Garavelo com cleanup/refresh/logout/login cobertos por integração local de gate/shell reais com IO sintético; não registrar como claim Google real ou aceite do titular.
+
+**Próximo ponto exato:** aguardar retorno do titular sobre caminho após Minha Conta/momento da falha ou pedir reteste curto desta versão na conta já vinculada; não tratar o FAIL anterior como resolvido para essa conta sem confirmação. Se falhar, coletar somente pathname/search público antes/depois, sem credenciais, e investigar antes de outro patch. Se PASS, confirmar demais checks C15-E ainda não atestados; caso Google independente e C16 continuam pendentes. **Final 0811: 1/1 SMS consumido, claim confirmado — NÃO repetir.**
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Nenhum novo SMS/claim ou mutação de perfil/endereço/pedido/pagamento/NF/WhatsApp; PROD intocada. Registros abaixo são históricos.
+
 ## Estado vigente — 06/11/2026: retorno v1 ainda FAIL; complemento v2 validado localmente
 
 Titular informou retorno a **`/?public=1`**, em vez do cardápio. Aceite da conta C15-E continua FAIL para retorno; vínculo técnico permanece PASS, **1/1 SMS consumido**, sem reenvio. Pergunta pontual enviada: caminho após Minha Conta e momento da perda; ainda não observar/presumir storage/query da janela anônima. Nenhuma consulta privada extra necessária.
