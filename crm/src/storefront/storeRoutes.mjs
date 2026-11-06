@@ -68,11 +68,20 @@ export function customerAreaEntryPath(location,storage) {
   return '/area-cliente' + (origin ? '?returnTo=' + encodeURIComponent(origin) : '');
 }
 
-export function customerMenuDestination(storage, search = '') {
+export function customerMenuDestination(storage, search = '', {referrer,origin}={}) {
   const params = new URLSearchParams(typeof search === 'string' ? search : '');
   const values = params.getAll('returnTo');
   const incoming = values.length === 1 ? safeCustomerReturnPath(values[0]) : null;
   if (incoming) {try {storage?.setItem(CUSTOMER_RETURN_PATH_KEY, incoming);} catch {} return incoming;}
+  // Browser-provided same-origin referrer can recover a public entry whose query
+  // was lost. Private pages and external referrers never become return targets.
+  try {
+    const source=new URL(referrer);
+    if(source.origin===origin && !source.username && !source.password) {
+      const path=safeCustomerReturnPath(source.pathname+source.search);
+      if(path)return rememberCustomerMenuOrigin(storage,path);
+    }
+  } catch { /* Missing/invalid referrer does not select a store. */ }
   try {
     const stored = storage?.getItem(CUSTOMER_RETURN_PATH_KEY);
     const origin = safeCustomerReturnPath(stored);

@@ -66,6 +66,30 @@ test('retorno recupera origem que chegou após montar a conta e persiste sem con
   } finally {navigation.mockRestore();}
 });
 
+test('origem recebida pela URL sobrevive à navegação interna mesmo quando storage está indisponível',async()=>{
+  const assign=jest.fn(),location={pathname:'/area-cliente',search:'?returnTo=%2Fcardapio-matriz',origin:'http://localhost',assign};
+  const navigation=jest.spyOn(window,'location','get').mockReturnValue(location);
+  const read=jest.spyOn(Storage.prototype,'getItem').mockImplementation(()=>{throw Error('fixture storage unavailable');});
+  const write=jest.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw Error('fixture storage unavailable');});
+  try {
+    await mount();await click('Minha Conta');location.pathname='/minha-conta';location.search='';
+    await click('Voltar ao Cardápio');expect(assign).toHaveBeenLastCalledWith('/cardapio-matriz');
+    expect(logoutCanonicalSession).not.toHaveBeenCalled();
+  } finally {read.mockRestore();write.mockRestore();navigation.mockRestore();}
+});
+
+test.each(['matriz','garavelo'])('URLs internas carregam origem %s por perfil, histórico e refresh',async store=>{
+  window.history.replaceState(null,'','/area-cliente?returnTo='+encodeURIComponent('/cardapio-'+store));
+  await mount();await click('Minha Conta');expect(window.location.pathname).toBe('/minha-conta');
+  expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/cardapio-'+store);
+  await click('Meus Pedidos');expect(window.location.pathname).toBe('/meus-pedidos');
+  expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/cardapio-'+store);
+  sessionStorage.clear();
+  // eslint-disable-next-line testing-library/no-unnecessary-act
+  await act(async()=>{root.unmount();root=createRoot(host);});await mount();
+  expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/cardapio-'+store);
+});
+
 test('erro tardio da rota anterior não altera a sessão Customer seguinte',async()=>{let reject;controller.openAccount.mockImplementation(()=>new Promise((_,no)=>{reject=no;}));await mount();await click('Meus Pedidos');const rejectA=reject;await mount({uid:'b',sessionAuth:{app:{name:'[DEFAULT]'},currentUser:{uid:'b'}}});await act(async()=>rejectA(Error('private-a')));expect(host.textContent).not.toContain('Não foi possível carregar esta página.');expect(host.textContent).not.toContain('private-a');});
 
 test('dual-role gets CRM action in drawer and account menu; Customer-only never does',async()=>{const open=jest.fn();await mount({canOpenStaff:true,onStaffContext:open});await click('☰');expect(host.querySelector('aside').textContent).toContain('Ir para o CRM');await click('Minha conta ▾');expect(host.querySelector('[aria-label="Menu do usuário Customer"]').textContent).toContain('Ir para o CRM');await click('Ir para o CRM');expect(open).toHaveBeenCalledTimes(1);await mount({canOpenStaff:false});expect(host.textContent).not.toContain('Ir para o CRM');});

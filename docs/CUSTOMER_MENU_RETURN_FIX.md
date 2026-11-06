@@ -1,5 +1,13 @@
 # Retorno ao cardápio — complemento C15 DEV
 
+## Complemento 2 — origem explícita nas URLs internas
+
+O titular **não aprovou `92da223c`**: o retorno passou a `/?public=1`, ainda sem voltar ao cardápio conhecido. Não substituir esse FAIL pelo PASS anterior do navegador automatizado. Foi solicitada somente a URL após Minha Conta e o momento da falha, sem credenciais; causa exata do storage/query da janela anônima ainda não observada.
+
+Nova lacuna reproduzida antes do patch: `CustomerShell` conhecia a origem inicial, mas os links internos removiam `returnTo`; o clique reconsultava apenas query/storage e descartava a origem em memória. Correção mínima: conservar a primeira origem pública válida em memória; transportar `returnTo` validado em perfil, histórico, home e URLs de saída; preservar `store` de detalhe; captura da origem pública antes do cleanup no logout. Sem modificar signOut, resolver de identidade, permissões, SMS ou ownership. Referrer do navegador recupera uma entrada pública quando for mesma origem e passar pela allowlist; páginas privadas, externas, credenciais e parâmetros desconhecidos não viram destino. Sem origem comprovável, fallback público continua seguro; nunca inferir Matriz.
+
+[Validação local v2](evidence/customer-menu-return-v2-local.json): **614 React + 157 públicos = 771 PASS**, 9 cenários novos sem somar retestes. Integração usa gate e shell reais com IO fictício, Customer-only Google/password × Matriz/Garavelo, incluindo navegação interna, refresh, storage limpo e logout/login. Build `main.2eb0fbc5.js` 456,07 kB gzip (+290 B), lint 0 erros/2 avisos existentes, diff-check PASS. Publicação seletiva Hosting DEV a registrar abaixo. O resultado da conta C15-E permanece pendente de aceite real.
+
 ## Falha e diagnóstico
 
 Em 06/11/2026, o titular confirmou o claim e-mail/senha, mas informou que **Voltar ao Cardápio** terminava em `/area-cliente`. O vínculo técnico continua PASS; este relato reprova o retorno da interface e não autoriza repetir SMS ou claim.

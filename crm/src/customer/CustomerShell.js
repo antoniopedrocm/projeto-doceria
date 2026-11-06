@@ -1,5 +1,6 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
-import {CUSTOMER_LINKS,customerRoute,menuDestination} from './customerContext';
+import {CUSTOMER_LINKS,customerRoute,customerRouteUrl,menuDestination} from './customerContext';
+import {safeCustomerReturnPath} from '../storefront/storeRoutes.mjs';
 import {logoutCanonicalSession,runtimeFor,loadCustomerController} from './customerRuntime';
 import CustomerFrame,{CustomerHome} from './CustomerFrame';
 import {ArrowUpRight,Home,LogOut,ShoppingBag,UserRound} from 'lucide-react';
@@ -10,14 +11,21 @@ import LegacyPhoneAccess from './LegacyPhoneAccess';
 export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCustomerResolved,onStaffContext,onLogout=logoutCanonicalSession,sessionMessage='',loadController=loadCustomerController}) {
   const [route,setRoute]=useState(()=>customerRoute(window.location.pathname,window.location.search));
   const [menuPath]=useState(()=>menuDestination(sessionStorage,window.location.search));
-  const returnToMenu=useCallback(()=>{window.location.assign(menuDestination(sessionStorage,window.location.search));},[]);
+  const menuOrigin=useRef(safeCustomerReturnPath(menuPath));
+  const resolveMenuPath=useCallback(()=>{
+    const current=menuDestination(sessionStorage,window.location.search);
+    const valid=safeCustomerReturnPath(current);
+    if(valid && !menuOrigin.current)menuOrigin.current=valid;
+    return menuOrigin.current || current;
+  },[]);
+  const returnToMenu=useCallback(()=>{window.location.assign(resolveMenuPath());},[resolveMenuPath]);
   const [message,setMessage]=useState(uid?'Carregando sua conta…':'');
   const [customer,setCustomer]=useState(null);
   const [logoutState,setLogoutState]=useState('idle');
   const logoutFlight=useRef(null);
   const retired=useRef(false);
   const host=useRef(null),manager=useRef(null),routeRef=useRef(route);routeRef.current=route;
-  const go=path=>{const next=customerRoute(path);window.history.pushState(null,'',next.path);setRoute(next);};
+  const go=useCallback(path=>{const next=customerRoute(path);window.history.pushState(null,'',customerRouteUrl(next,resolveMenuPath()));setRoute(next);},[resolveMenuPath]);
   useEffect(()=>{
     let active=true;let controller;
     const open=async()=>{const r=routeRef.current;if(!retired.current && uid && controller && r.screen!=='home') {if(r.orderId) await controller.openOrder(r);else await controller.openAccount(r.screen);}};
@@ -38,16 +46,17 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
       controller.ready.then(()=>{if(active) return open();}).catch(()=>{if(active) setMessage('Não foi possível carregar esta página. Tente novamente.');});
     }).catch(()=>{if(active) setMessage('Não foi possível carregar sua conta. Tente novamente.');});
     return ()=>{active=false;manager.current=null;controller?.dispose();};
-  },[sessionAuth,uid,loadController,onCustomerResolved,returnToMenu]); // Controller lifecycle follows the authenticated UID, never a route.
+  },[sessionAuth,uid,loadController,onCustomerResolved,returnToMenu,go]); // Controller lifecycle follows the authenticated UID, never a route.
   useEffect(()=>{
     let active=true;
-    if(window.location.pathname!==route.path) window.history.replaceState(null,'',route.path);
+    const url=customerRouteUrl(route,resolveMenuPath());
+    if(window.location.pathname+window.location.search!==url) window.history.replaceState(null,'',url);
     if(uid && manager.current && route.screen!=='home') {
       const request=route.orderId?manager.current.openOrder(route):manager.current.openAccount(route.screen);
       request.catch(()=>{if(active) setMessage('Não foi possível carregar esta página. Tente novamente.');});
     }
     return ()=>{active=false;};
-  },[route,uid,sessionAuth]);
+  },[route,uid,sessionAuth,resolveMenuPath]);
   useEffect(()=>{const pop=()=>setRoute(customerRoute(window.location.pathname,window.location.search));window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
   const logout=()=>{
     if(logoutFlight.current) return logoutFlight.current;
@@ -67,7 +76,7 @@ export default function CustomerShell({sessionAuth,uid,canOpenStaff=false,onCust
       {logoutState==='pending'?<p role="status">Saindo da sua conta…</p>:<>
         {(sessionMessage || message) && (sessionMessage || message)!=='Entre com Google ou e-mail para acessar sua conta.' && <p role="status">{sessionMessage || message}</p>}
         {logoutState==='error' && <button type="button" onClick={logout}>Tentar sair novamente</button>}
-        {logoutState==='complete' && <a href="/area-cliente">Entrar na minha conta</a>}
+        {logoutState==='complete' && <a href={customerRouteUrl(customerRoute('/area-cliente'),menuOrigin.current)}>Entrar na minha conta</a>}
       </>}
       <div ref={host} hidden={logoutState!=='idle'}/>
       {logoutState==='idle' && <LegacyPhoneAccess menuPath={menuPath}/>}

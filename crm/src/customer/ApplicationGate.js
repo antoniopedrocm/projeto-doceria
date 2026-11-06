@@ -4,7 +4,7 @@ import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {onIdTokenChanged} from 'firebase/auth';
 import {auth} from '../firebaseConfig';
 import {legacyAuth,prepareCanonicalSession,logoutCanonicalSession,endPhoneSession,syncSessionCart} from './customerRuntime';
-import {isCustomerPath} from './customerContext';
+import {isCustomerPath,customerEntryDestination} from './customerContext';
 import {permittedContext} from './userCapabilities';
 import CustomerShell from './CustomerShell';
 import LegacyCustomerShell from './LegacyCustomerShell';
@@ -66,7 +66,7 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
           setView({kind:capabilities.customerState==='NEEDS_PHONE'?'onboarding':'blocked',uid,capabilities});
           return;
         }
-        if(context==='customer' && !isCustomerPath(window.location.pathname)) window.history.replaceState(null,'','/area-cliente');
+        if(context==='customer' && !isCustomerPath(window.location.pathname)) window.history.replaceState(null,'',customerEntryDestination(window.sessionStorage,window.location.search));
         if(context==='staff' && isCustomerPath(window.location.pathname)) window.history.replaceState(null,'','/');
         setView({kind:context,uid,capabilities,contextGeneration:state.contextGeneration,
           message:requested && requested!==context?'Este contexto não está autorizado para sua conta.':''});
@@ -93,6 +93,7 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
   const phoneLogoutFlight=useRef(null);
   const endTemporaryAccess=useCallback(()=>{
     if(phoneLogoutFlight.current)return phoneLogoutFlight.current;
+    const returnEntry=customerEntryDestination(window.sessionStorage,window.location.search);
     const state=control.current;state.generation++;state.contextGeneration++;state.activeContext=null;state.requestedContext=null;
     setView({kind:'loading'});
     phoneLogoutFlight.current=(async()=>{
@@ -101,12 +102,13 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
         await state.resolve?.({requested:'staff'});return;
       }
       state.generation++;state.uid=null;
-      window.history.replaceState(null,'','/area-cliente');setView({kind:'customer-login'});
+      window.history.replaceState(null,'',returnEntry);setView({kind:'customer-login'});
     })().finally(()=>{phoneLogoutFlight.current=null;});
     return phoneLogoutFlight.current;
   },[]);
   const logout=useCallback(()=>{
     if(logoutFlight.current) return logoutFlight.current;
+    const returnEntry=customerEntryDestination(window.sessionStorage,window.location.search);
     const state=control.current;state.generation++;state.contextGeneration++;state.activeContext=null;state.requestedContext=null;
     clearStaffUiState();
     setView({kind:'loading'});
@@ -122,7 +124,7 @@ export default function ApplicationGate({StaffApplication,resolveCapabilities}) 
         setView({kind:'blocked',message:'Não foi possível sair da conta. Tente novamente.'});return;
       }
       state.generation++;state.uid=null;
-      window.history.replaceState(null,'','/area-cliente');
+      window.history.replaceState(null,'',returnEntry);
       setView({kind:'customer-login'});
     })().finally(()=>{logoutFlight.current=null;});
     return logoutFlight.current;

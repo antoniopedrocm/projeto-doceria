@@ -1,5 +1,13 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 06/11/2026: retorno v1 ainda FAIL; complemento v2 validado localmente
+
+Titular informou retorno a **`/?public=1`**, em vez do cardápio. Aceite da conta C15-E continua FAIL para retorno; vínculo técnico permanece PASS, **1/1 SMS consumido**, sem reenvio. Pergunta pontual enviada: caminho após Minha Conta e momento da perda; ainda não observar/presumir storage/query da janela anônima. Nenhuma consulta privada extra necessária.
+
+[Complemento v2](CUSTOMER_MENU_RETURN_FIX.md): teste antes do patch reproduziu perda da origem inicial após navegação interna quando storage não a recuperava. Origem allowlisted mantida em memória e no `returnTo` das URLs internas/saída, inclusive antes do cleanup; referrer somente público de mesma origem pode recuperar entrada sem query. Preservado `store` no detalhe e Auth/ownership/permissões/SMS. **614 React + 157 públicos = 771 PASS**, incluindo gate + shell reais Customer-only (Google/password, Matriz/Garavelo) com refresh/storage limpo/logout/login. Build `main.2eb0fbc5.js` 456,07 kB gzip, lint 0 erros/2 avisos existentes, diff-check PASS. [Evidência local](evidence/customer-menu-return-v2-local.json).
+
+**Próximo ponto exato:** commit/push, Hosting DEV somente, conferir artefatos/cache/rotas e navegação interna no navegador; registrar sem chamar teste dual-role de aceite do caso password do titular. Não refazer C15 claim/SMS. Código anterior `92da223c`/Hosting `16bdcc6a2499d5df` segue publicado até o complemento. Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.
+
 ## Estado vigente — 06/11/2026: retorno corrigido e Hosting DEV verificado
 
 Complemento funcional **`92da223c`**, push DEV concluído e Hosting **`16bdcc6a2499d5df`** publicado. [Relatório](CUSTOMER_MENU_RETURN_FIX.md), [artefatos remotos](evidence/customer-menu-return-after-dev.json): **61/61 arquivos locais iguais**, 2 inicializadores gerenciados pelo Firebase conferidos como DEV; cache/rewrites/rotas SPA corretos. Backend não publicado: fingerprint de 133 Functions da API v2 regional e Rules inalterados. Esse número é o recorte v2, não substitui inventário multigeração anterior. **606 React + 156 públicos = 762 PASS**, build/lint/diff PASS, avisos existentes documentados.

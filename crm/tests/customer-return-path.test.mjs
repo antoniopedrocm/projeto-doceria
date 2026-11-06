@@ -62,3 +62,10 @@ test('fallback explícito seleciona a home pública sem aceitar contexto privado
   for(const path of ['/','/?public=0','/?public=1&public=0','/area-cliente?public=1','/admin?public=1'])assert.equal(isPublicHomeLocation(new URL(path,url)),false,path);
   assert.equal(safeCustomerReturnPath(PUBLIC_HOME_PATH),null);
 });
+test('referrer público de mesma origem recupera a loja quando returnTo/storage não chegaram',()=>{
+ const tab=storage(),origin='https://dev.test';
+ assert.equal(customerMenuDestination(tab,'',{origin,referrer:origin+'/cardapio-garavelo'}),'/cardapio-garavelo');
+ assert.equal(tab.getItem(CUSTOMER_RETURN_PATH_KEY),'/cardapio-garavelo');
+ assert.equal(customerMenuDestination(tab,incoming('/cardapio-matriz'),{origin,referrer:origin+'/cardapio-garavelo'}),'/cardapio-matriz');
+ for(const referrer of ['https://evil.test/cardapio-matriz',origin+'/minha-conta',origin+'/admin/customer-preview/id',origin+'/cardapio-matriz?token=private','javascript:alert(1)'])assert.equal(customerMenuDestination(storage(),'',{origin,referrer}),PUBLIC_HOME_PATH,referrer);
+});

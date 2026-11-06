@@ -1,4 +1,4 @@
-import {customerMenuDestination} from '../storefront/storeRoutes.mjs';
+import {customerMenuDestination,safeCustomerReturnPath} from '../storefront/storeRoutes.mjs';
 import {isActiveStaffProfile} from './staffRole';
 export const CUSTOMER_LINKS = [
   {path:'/area-cliente', label:'Página Inicial'},
@@ -17,4 +17,14 @@ export function customerRoute(path, search='') {
   return {path:'/area-cliente',screen:'home'};
 }
 export const isCustomerPath = path => path==='/area-cliente' || path==='/minha-conta' || path==='/meus-pedidos' || path.startsWith('/meus-pedidos/');
-export const menuDestination = customerMenuDestination;
+export const menuDestination = (storage,search='')=>customerMenuDestination(storage,search,{referrer:document.referrer,origin:window.location.origin});
+
+export function customerRouteUrl(route,returnPath) {
+  const query=new URLSearchParams();
+  if(route.orderId && route.storeId) query.set('store',route.storeId);
+  const origin=safeCustomerReturnPath(returnPath);
+  if(origin)query.set('returnTo',origin);
+  const search=query.toString();
+  return route.path+(search?'?'+search:'');
+}
+export const customerEntryDestination=(storage,search='')=>customerRouteUrl(customerRoute('/area-cliente'),menuDestination(storage,search));

@@ -110,6 +110,16 @@ test('Auth null removes private UI before pending legacy hydration completes',as
   expect(host.textContent).not.toContain('Carregando acesso');expect(host.textContent).not.toContain('Customer:a');
 });
 
+test('logout preserva a origem pública na URL mesmo se o cleanup remover todo storage da aba',async()=>{
+  window.history.replaceState(null,'','/minha-conta?returnTo=%2Fcardapio-garavelo');
+  resolver.mockImplementation(async u=>caps(u.uid,false,true));
+  await mount();await emit(identity('customer'));
+  logoutCanonicalSession.mockImplementationOnce(async()=>{sessionStorage.clear();auth.currentUser=null;for(const fn of listeners.get(auth)||[])fn(null);});
+  await click('Sair Customer');expect(window.location.pathname).toBe('/area-cliente');
+  expect(new URLSearchParams(window.location.search).get('returnTo')).toBe('/cardapio-garavelo');
+  expect(host.textContent).toContain('Customer:login');
+});
+
 test.each(['/area-cliente','/minha-conta','/meus-pedidos'])('logout from %s finishes at public Customer entry without rehydration',async path=>{
   window.history.replaceState(null,'',path);await mount();await emit(identity('a'));
   prepareCanonicalSession.mockImplementation(()=>new Promise(()=>{}));

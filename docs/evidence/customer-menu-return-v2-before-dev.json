@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-06T15:03:13.780Z",
+  "mode": "before",
+  "functions": {
+    "count": 133,
+    "fingerprint": "91ff14a1306986fde2dbdc06022cdd0750ce65802058be9a53d899b7ef816d31"
+  },
+  "rules": {
+    "rulesetName": "projects/crmdoceria-9959e/rulesets/19bc50df-ace4-453f-8bce-fae33bce3bcf"
+  },
+  "hosting": {
+    "version": "sites/crmdoceria-9959e/versions/16bdcc6a2499d5df",
+    "releaseTime": "2026-11-06T13:44:48.635Z"
+  },
+  "production": false
+}
