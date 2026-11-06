@@ -1,5 +1,11 @@
 # Fase 10 — execução de C15 e fechamento de C16
 
+## Caso indicado após publicação — final 0811
+
+Indicação do Dono conferida somente no DEV: caseId `72f99a605f6f471b`, canônico/índice READY, nenhum owner/mapping forte/e-mail de contato; um endereço e um pedido root com referência histórica revisada, sem conflitos encontrados. [Fotografia específica sanitizada](evidence/phase10-c15-candidate-0811-dev.json). Sem inferir loja do pedido ou usar telefone como prova de propriedade.
+
+O destinatário não está na allowlist atual da política SMS Matriz. Ainda faltam conta de destino/método e confirmação de controle do telefone; nenhum envio, claim ou alteração de política autorizado/executado. Depois da identificação forte legítima, preparar proposta exata e aprovação própria de vínculo/liberação/SMS. Este é candidato para **um** dos cenários Google/e-mail; não reaproveitar um claim concluído como segunda recuperação independente. Runtime `a36d558c` já publicado e verificado; não refazer deploy/testes. Fase 10 permanece 87,50%, global formal 97,00%, C15/C16 pendentes.
+
 ## Estado em 05/11/2026
 
 **C15 pendente; C16 pendente. Fase 10 = 87,50% (14/16), global formal = 97,00%, Fase 9 = 100%, Fase 13 = 0%. PROD não autorizada.** Esta preparação não substitui os dois claims reais previstos na rubrica de aceite.

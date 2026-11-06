@@ -1,5 +1,13 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — primeiro candidato C15 indicado, destino ainda pendente
+
+Dono indicou telefone final **0811**, sem e-mail vinculado, para preparar C15. Consulta DEV somente leitura confirmou caseId **`72f99a605f6f471b`**: Customer canônico/telefone/índice consistentes, **0 owners, 0 mappings UID/identidade forte e sem e-mail de contato**; **1 endereço** e **1 pedido root com referência revisada**, sem owner ou referências conflitantes. Não inferir loja do pedido root; a política SMS da Matriz é apenas o contexto explícito da pré-checagem. [Evidência sanitizada](evidence/phase10-c15-candidate-0811-dev.json).
+
+Número **fora da allowlist SMS atual**. Indicação do caso não autoriza alterar política, enviar código ou vincular Customer. **Próximo ponto:** aguardar conta DEV legítima e método (Google ou e-mail/senha) e confirmação de que o titular recebe o SMS. Pergunta específica enviada. Conferir a identidade de destino e preparar aprovação exata do vínculo/destinatário/limite de envio antes de qualquer escrita. Não usar uma conta que já pertença a outro Customer nem desvincular owners. Este candidato pode comprovar um dos dois cenários; o segundo continua necessário.
+
+0 escritas remotas/SMS/claims nesta etapa. Runtime `a36d558c` e publicação verificada preservados; não há código/build/deploy novo necessário. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Dois SMS temporários anteriores consumidos; nenhuma nova autorização implícita. Registros abaixo são históricos.
+
 ## Estado vigente — compatibilidade publicada no DEV e verificada
 
 **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%. PROD READY: NÃO.** Proprietário autorizou deploy DEV sempre que necessário após receber a revisão local. Runtime **`a36d558c7130815e9f3dcdde6862ae0c38a5c7af`**, commit/push concluídos, **15 Functions ACTIVE**, 58 hashes conferidos por função, env/bindings preservados e **131 outras Functions inalteradas**. API **`api-00071-qeh`**, lookup `lookupclientbyphone-00047-niz`. Dois índices READY; 22 compostos/5 overrides anteriores preservados, nenhuma exclusão. [Evidência de release](evidence/phase10-compatibility-release-dev.json), [relatório](PHASE10_DEV_RELEASE.md).
