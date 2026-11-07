@@ -1,5 +1,11 @@
 # Checkout visitante — recuperação de tentativa e conflito 409
 
+## Publicação DEV verificada — 07/11/2026
+
+Commit funcional **`4a19dba2d6b575619a1191c14d576b75b3beaf3d`**, push DEV concluído. API **`api-00073-zuv`** ACTIVE e Hosting **`5e6363d665c9bd74`** publicados exclusivamente em `crmdoceria-9959e`. [Evidência remota](evidence/guest-attempt-recovery-dev.json): **62/62 arquivos** iguais, 7 rotas e 4 GETs públicos/config PASS; cache preservado, 145 outras Functions e Rules inalteradas. A primeira preparação falhou lendo metadados do banco antes do upload; repetição do mesmo artefato concluiu, sem criar/alterar banco. **Aceite manual do complemento: PENDENTE.**
+
+Titular confirmou depois da publicação: **Pagar Agora abriu a InfinitePay; fechou a página sem pagar e depois tentou Combinar Pagamento**. Isso confirma a sequência da classe reproduzida. Fechar a página do provider não cancela o pedido/link. A correlação com a chave específica da aba não foi coletada; os limites da consulta abaixo continuam válidos. Não pedir nova compra/pagamento para homologar o aviso.
+
 ## Relato e diagnóstico — 07/11/2026
 
 Titular reprovou o aceite de `d87174b6` e forneceu screenshot/stack: ao confirmar **Combinar Pagamento**, `/checkout/confirmar` devolve 409 “O pedido já foi enviado com outros dados. Consulte o pedido existente.”; cliques posteriores param em `ensureCheckoutNotBlocked`.
@@ -8,7 +14,7 @@ Condição exata em `functions/index.js`: o documento da tentativa determinísti
 
 **Classe de regressão reproduzida antes do patch** em teste do handler real: tentativa online anterior + seleção Combinar → POST divergente, embora devesse orientar a recuperação; 1 envio indevido em vez de 0. Depois do patch, consulta a tentativa e orienta o usuário sem criar outro pedido. O teste HTTP confirma que o backend continua rejeitando trocar o modo/dados da tentativa existente.
 
-Leitura projetada DEV em Firestore STANDARD, últimos 15 pedidos da Matriz, sem solicitar nome/telefone/endereço/UID: um candidato Guest recente tinha ONLINE_NOW/PENDING, subtotal R$ 1,00, total R$ 14,44, link READY e revisão do contexto 4, depois 9. A tela do relato mostra novo total R$ 14,46 e Combinar. **É evidência compatível, não correlação definitiva com a chave da aba**. O campo de storage não estava disponível no escopo DOM do navegador; nenhuma chave/token foi coletada ou alterada. História da tentativa foi perguntada ao titular; não presumir sua resposta. Observada somente a aba DEV já aberta, sem clicar Confirmar/alterar formulário. Nada de Customer/provedor/PROD consultado; nenhuma escrita de dados remotos.
+Leitura projetada DEV em Firestore STANDARD, últimos 15 pedidos da Matriz, sem solicitar nome/telefone/endereço/UID: um candidato Guest recente tinha ONLINE_NOW/PENDING, subtotal R$ 1,00, total R$ 14,44, link READY e revisão do contexto 4, depois 9. A tela do relato mostra novo total R$ 14,46 e Combinar. **É evidência compatível, não correlação definitiva com a chave da aba**. O campo de storage não estava disponível no escopo DOM do navegador; nenhuma chave/token foi coletada ou alterada. A confirmação posterior do titular está registrada no topo. Observada somente a aba DEV já aberta, sem clicar Confirmar/alterar formulário. Nada de Customer/provedor/PROD consultado; nenhuma escrita de dados remotos.
 
 ## Correção delimitada
 
@@ -38,6 +44,6 @@ Build DEV guardado `crmdoceria-9959e` PASS; bundle `main.e4b94788.js`, 456,38 kB
 
 ## Estado de entrega
 
-Preparado para commit/push e API/Hosting DEV, conforme autorização vigente de publicar o ajuste para validação. Registrar abaixo a publicação efetiva depois de verificar os artefatos. **O FAIL do titular não é substituído por testes locais; novo aceite permanece pendente.** Não solicitar compra/pagamento real para validar. Fluxos financeiros de mudança de método em link online ainda ativo não estão autorizados: o usuário deve consultar a tentativa/loja, não criar uma segunda cobrança silenciosamente.
+Commit/push e API/Hosting DEV concluídos conforme evidência no topo. **O FAIL anterior do titular não é substituído por testes locais; novo aceite permanece pendente.** Não solicitar compra/pagamento real para validar. Fluxos financeiros de mudança de método em link online ainda ativo não estão autorizados: o usuário deve consultar a tentativa/loja, não criar uma segunda cobrança silenciosamente.
 
 **Fase 9 100% formal histórico; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.**

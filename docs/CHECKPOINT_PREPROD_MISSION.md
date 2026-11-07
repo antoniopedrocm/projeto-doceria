@@ -1,5 +1,13 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: recuperação do visitante publicada; sequência confirmada pelo titular
+
+Último ponto concluído: commit funcional **`4a19dba2`**, push `origin/feature/infinitepay-customer-auth` e deploy somente **API + Hosting DEV**. API **`api-00073-zuv`** ACTIVE; Hosting **`5e6363d665c9bd74`**, release `2026-11-07T19:47:09.286Z`. [Diagnóstico/entrega](GUEST_CHECKOUT_ATTEMPT_RECOVERY.md), [evidência sanitizada](evidence/guest-attempt-recovery-dev.json). **62/62 hashes**, 7 rotas e 4 GETs PASS; 145 outras Functions e Rules inalteradas. Tentativa inicial de preparação falhou antes do upload lendo metadados; mesmo artefato repetido com sucesso, sem mudança de banco. Untracked antigos preservados e excluídos do pacote.
+
+Titular confirmou a sequência: Pagar Agora funcionou, abriu InfinitePay e fechou sem pagar, depois selecionou Combinar. Fechar o checkout do provider não cancela a tentativa. Correção consulta e apresenta o pagamento conhecido antes de enviar pedido divergente; mantém chave/idempotência, não converte/cancela pedido ou cria substituto silenciosamente. Correlação exata com storage da aba não coletada. **198 testes distintos PASS**, build/lint do delta/diff-check PASS; visual local sintético desktop/mobile PASS. Sem pedido/pagamento/refund/SMS/claim/WhatsApp real pelo agente nem alteração de dados de negócio.
+
+**Próximo ponto exato:** titular recarregar o cardápio DEV e conferir o aviso/consulta da tentativa pendente em Continuar como visitante, sem Confirmar Pedido/pagar. Aceite anterior FAIL preservado; **aceite desta correção PENDENTE**. Não repetir deploy, C15/C16, SMS ou vínculos. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.**
+
 ## Estado vigente — 07/11/2026: conflito do visitante reproduzido; recuperação validada localmente
 
 Titular detalhou FAIL: Combinar → HTTP409 de tentativa já existente, depois bloqueio por `ensureCheckoutNotBlocked`. [Diagnóstico e complemento](GUEST_CHECKOUT_ATTEMPT_RECOVERY.md). Não remover idempotência nem trocar chave cegamente. Teste do handler real falhou antes do patch e passou depois: tentativa online conhecida é consultada/orientada antes de um POST divergente. Leitura projetada de metadados DEV encontrou candidato Guest online pendente compatível; vínculo exato com a chave da aba ainda não comprovado. Nenhum nome/telefone/endereço/UID/token solicitado/coletado nessa consulta. Aba do erro observada sem submissão/alteração de dados.
