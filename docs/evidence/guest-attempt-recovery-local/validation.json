@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "date": "2026-11-07",
+  "baseCommit": "2929efac410b0c48a977889d3df6abc40d7a07e0",
+  "project": "crmdoceria-9959e",
+  "scope": "Local Guest attempt-recovery patch; read-only DEV metadata, synthetic tests",
+  "diagnosis": {
+    "serverCondition": "Existing deterministic order differs by fingerprint/owner/Customer; guard retained",
+    "reproducedBeforePatch": "Real handler sent one conflicting confirmation where zero were expected for known online pending attempt",
+    "frontendIssue": "Pending key reused across changed form and conflict converted into persistent generic block",
+    "exactUserBrowserKeyCorrelation": "Not proven; no session storage/token collected"
+  },
+  "metadataRead": {
+    "databaseEdition": "STANDARD",
+    "project": "crmdoceria-9959e",
+    "scope": "Read-only projection, last 15 orders, only Guest metadata retained; no contact/identity fields requested",
+    "candidateCaseId": "4b27d0e99ccb0b69",
+    "candidatePaymentMode": "ONLINE_NOW",
+    "candidatePaymentStatus": "PENDING",
+    "candidateLinkState": "READY",
+    "reservationExpiresAt": "2026-11-07T19:25:26.802Z",
+    "originalContextRevision": 4,
+    "laterContextRevision": 9,
+    "notDefinitiveBrowserCorrelation": true,
+    "contactOrUidFieldsRequested": false,
+    "providerCalls": false,
+    "businessDataWrites": 0
+  },
+  "tests": {
+    "unitAndWhatsAppPassed": 47,
+    "integrationPassed": 92,
+    "integrationSuites": [
+      {
+        "file": "checkout-http.test.js",
+        "exitCode": 0,
+        "tests": 32,
+        "passed": 32,
+        "failed": 0
+      },
+      {
+        "file": "guest-checkout-emulator.test.js",
+        "exitCode": 0,
+        "tests": 2,
+        "passed": 2,
+        "failed": 0
+      },
+      {
+        "file": "payment-financial-events-emulator.test.js",
+        "exitCode": 0,
+        "tests": 15,
+        "passed": 15,
+        "failed": 0
+      },
+      {
+        "file": "payment-contract-emulator.test.js",
+        "exitCode": 0,
+        "tests": 20,
+        "passed": 20,
+        "failed": 0
+      },
+      {
+        "file": "checkout-emulator.test.js",
+        "exitCode": 0,
+        "tests": 9,
+        "passed": 9,
+        "failed": 0
+      },
+      {
+        "file": "checkout-reservation-emulator.test.js",
+        "exitCode": 0,
+        "tests": 9,
+        "passed": 9,
+        "failed": 0
+      },
+      {
+        "file": "payment-settings-emulator.test.js",
+        "exitCode": 0,
+        "tests": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "file": "agreed-payment-rules.test.js",
+        "exitCode": 0,
+        "tests": 1,
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "file": "checkout-identity-rules.test.js",
+        "exitCode": 0,
+        "tests": 1,
+        "passed": 1,
+        "failed": 0
+      }
+    ],
+    "publicPassed": 41,
+    "reactPassed": 18,
+    "uniqueTotalPassed": 198,
+    "newTestsFrom182Baseline": 16,
+    "failedFinal": 0,
+    "retriesOrHistoricalRunsAdded": false
+  },
+  "build": {
+    "result": "PASS",
+    "firebaseClientGuard": "crmdoceria-9959e",
+    "bundle": "main.e4b94788.js",
+    "reportedGzip": "456.38 kB",
+    "publicSourceBuildMatches": 5,
+    "runtimeDependenciesAdded": 0,
+    "warnings": "Existing native-audio sourcemaps and stale browser datasets"
+  },
+  "lint": {
+    "files": 18,
+    "errors": 0,
+    "warnings": 0,
+    "indexBaselineErrors": 6,
+    "indexCurrentErrors": 6,
+    "indexNewDiagnostics": 0,
+    "result": "PASS for delta; preexisting diagnostics retained"
+  },
+  "diffCheck": "PASS",
+  "visual": {
+    "desktop": "1920x889 PASS",
+    "mobile": "390x800 PASS",
+    "fixturesOnly": true,
+    "scenarios": 2,
+    "details": "visual-review.json"
+  },
+  "safeguards": {
+    "blindKeyRotation": false,
+    "automaticSecondOrder": false,
+    "pendingOrPaidOrUnknownClearsKey": false,
+    "terminalRetirement": "Only server-confirmed EXPIRED/CANCELLED/REFUNDED without review; confirmation phase only; original key still current",
+    "previewClearsKey": false,
+    "onlineResumption": "Same key and backend matching guard",
+    "backendIdempotencyGuardChanged": false,
+    "customerAuthChanged": false,
+    "providerRefundOrCancellationApiAdded": false
+  },
+  "sourcesSha256": {
+    "functions/index.js": "dd54c75b08ad3ac64d7891788248b635be89db9537adc58cde9d72554605ee9f",
+    "functions/checkout-http.test.js": "a49fb70656d369dbb63e4b36247fc00bfd507f275816007618c4337061a05e37",
+    "crm/public/cardapio.html": "a2175f518212307cf122ad4bcf78120e87cc13ace705ca23e5dff31e868669b8",
+    "crm/public/guest-payment-attempt.mjs": "398cf747170ce38b3665b726f1ef265c0b3e30b0d31e42fab4d8afe7580a53d7",
+    "crm/tests/guest-payment-attempt.test.mjs": "b21cb14b0eae2fcd8c2f9b1a57eac073da15336d8f012a4662e60f83f2dc6301",
+    "crm/tests/guest-checkout-payment.test.mjs": "1b35d7003b983bfab737cafd08484f1399053247230f0873c75c73aae600e471",
+    "crm/tests/guest-checkout-visual-review.cjs": "a46a1ae26d40a35fa9001639e69c028fce4cc1ca94acf6f6e7db493d1cc672a3"
+  },
+  "realChargesRefundsSmsClaimsWhatsApp": 0,
+  "productionAccess": false,
+  "deployed": false,
+  "manualAcceptance": "FAIL reported for previous release; new patch pending DEV retest",
+  "percentages": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "productionReady": false
+}

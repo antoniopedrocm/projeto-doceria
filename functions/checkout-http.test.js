@@ -545,7 +545,8 @@ test('GUEST online concorrente/replay mantém uma reserva/link e recusa mudança
   assert.equal(links,prior+1);assert.equal((await f.product.get()).get('estoque'),7);
   const replay=await send(f.input,null);assert.equal(replay.status,200);assert.equal(replay.data.id,good.data.id);assert.equal(links,prior+1);
   assert.equal((await send({...f.input,cliente:{...f.input.cliente,telefone:'62988887777'}},null)).status,409);
-  assert.equal((await send({...f.input,pagamento:{mode:'AGREED_LATER',forma:'A combinar'}},null)).status,409);
+  const conflict=await send({...f.input,pagamento:{mode:'AGREED_LATER',forma:'A combinar'}},null);
+  assert.equal(conflict.status,409);assert.equal(conflict.data.code,'CHECKOUT_ATTEMPT_CONFLICT');
 });
 test('GUEST com telefone novo compra sem criar/vincular cadastro e não reutiliza telefone inválido',async()=>{
   const f=await guestFixture(),count=(await db.collection('clientes').get()).size,prior=links;
@@ -605,6 +606,27 @@ test('GUEST não ignora preço, frete, estoque, loja inativa ou disponibilidade 
     const disabled=await send(f.input,null);assert.notEqual(disabled.status,200);
   } finally {await definition.delete();await storeRef.set(original);}
   assert.equal(links,prior);assert.equal((await f.product.get()).get('estoque'),8);
+});
+
+test('Guest troca para combinar somente depois de encerramento confirmado; chave nova não duplica reserva anterior',async()=>{
+ const {inspectGuestPaymentAttempt}=await import('../crm/public/guest-payment-attempt.mjs');
+ const f=await guestFixture(),priorLinks=links,created=await send(f.input,null);assert.equal(created.status,200,JSON.stringify(created));
+ const key='doceria-payment-pending',values=new Map([[key,JSON.stringify({idempotencyKey:f.input.idempotencyKey,paymentId:created.data.paymentId})],['doceria-payment-return:'+created.data.paymentId,JSON.stringify({token:created.data.paymentReturnToken})]]);
+ const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+ const request=async body=>{const r=await originalFetch(base+'/checkout/payment-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {ok:r.ok,data:await r.json()};};
+ const kept=values.get(key);assert.equal((await inspectGuestPaymentAttempt({storage,request})).blocked,true);assert.equal(values.get(key),kept);
+ assert.equal((await f.product.get()).get('estoque'),7);assert.equal(links,priorLinks+1);
+ await db.doc('checkoutPayments/'+created.data.paymentId).update({expiresAt:admin.firestore.Timestamp.fromMillis(1)});
+ assert.equal((await inspectGuestPaymentAttempt({storage,request})).blocked,false);assert.equal(values.has(key),false);
+ assert.equal((await f.product.get()).get('estoque'),8);
+ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),source=fs.readFileSync(path.join(__dirname,'../crm/public/checkout-payment-client.js'),'utf8');
+ const attempt=vm.runInNewContext(source.slice(source.indexOf('export function paymentAttempt'),source.indexOf('export function redirectToPayment')).replace('export ','')+';paymentAttempt;',{key,sessionStorage:storage,crypto:{randomUUID:require('node:crypto').randomUUID}});
+ const fresh=attempt();assert.notEqual(fresh,f.input.idempotencyKey);assert.equal(attempt(),fresh);
+ const input={...f.input,idempotencyKey:fresh,pagamento:{mode:'AGREED_LATER',forma:'A combinar'}};
+ const offline=await send(input,null);assert.equal(offline.status,200,JSON.stringify(offline));assert.notEqual(offline.data.id,created.data.id);
+ assert.equal((await send(input,null)).data.id,offline.data.id);assert.equal((await f.product.get()).get('estoque'),7);assert.equal(links,priorLinks+1);
+ assert.equal((await db.doc(`lojas/${store}/pedidos/${created.data.id}`).get()).get('payment_status'),'EXPIRED');
+ assert.equal((await db.doc(`lojas/${store}/pedidos/${offline.data.id}`).get()).get('paymentStatus'),'PENDING');
 });
 
 test('HTTP distingue loja fechada de configuração operacional indisponível',async()=>{

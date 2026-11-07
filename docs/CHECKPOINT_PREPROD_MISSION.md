@@ -1,5 +1,23 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: conflito do visitante reproduzido; recuperação validada localmente
+
+Titular detalhou FAIL: Combinar → HTTP409 de tentativa já existente, depois bloqueio por `ensureCheckoutNotBlocked`. [Diagnóstico e complemento](GUEST_CHECKOUT_ATTEMPT_RECOVERY.md). Não remover idempotência nem trocar chave cegamente. Teste do handler real falhou antes do patch e passou depois: tentativa online conhecida é consultada/orientada antes de um POST divergente. Leitura projetada de metadados DEV encontrou candidato Guest online pendente compatível; vínculo exato com a chave da aba ainda não comprovado. Nenhum nome/telefone/endereço/UID/token solicitado/coletado nessa consulta. Aba do erro observada sem submissão/alteração de dados.
+
+Patch local: preview/aviso + Consultar pagamento existente; novo pedido Combinar continua válido quando não há tentativa online em aberto. Retomada online conserva chave/link. Chave antiga só é retirada na confirmação atual após estado terminal confirmado pelo servidor, sem revisão; preview/erro/PAID/desconhecido não a retiram. 409 recebe código explícito e deixa de congelar o Guest; backend mantém a mesma rejeição de dados divergentes. Sem conversão/cancelamento de link ou pagamento automático.
+
+**198 testes distintos PASS** (47 unitários/WhatsApp, 92 emulados, 41 públicos, 18 React), build DEV/lint do delta/diff-check PASS; 6 débitos anteriores de index.js mantidos. Visual local desktop/mobile do aviso PASS. G1/G2/G3/Auth/Phone/estoque/cupom preservados. [Evidência](evidence/guest-attempt-recovery-local/validation.json). Nenhuma compra/pagamento/refund/SMS/claim/WhatsApp ou escrita de dados remotos pelo agente.
+
+**Próximo ponto exato:** commit/push do complemento delimitado e publicar API + Hosting DEV conforme autorização vigente, verificar artefatos e pedir aceite sem nova compra. O FAIL anterior permanece histórico; não registrar resolvido antes do reteste do titular. Não repetir C15/C16/SMS/vínculos. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.**
+
+## Estado vigente — 07/11/2026: aceite do checkout visitante FAIL; descrição da falha pendente
+
+Titular respondeu **“Encontrei uma falha”** ao roteiro DEV do artefato `d87174b6`. **Não registrar PASS nem encerrar este ajuste.** Etapa, sintoma, mensagem e viewport ainda não informados; solicitados em uma pergunta pontual, sem reprodução com pedido/pagamento real. Não atribuir causa a backend, autenticação ou layout sem evidência.
+
+Retomada confirmou HEAD `2929efac` e tracked limpo antes deste registro. Publicação permanece API `api-00072-dez` / Hosting `270329a6cd225290`; evidência técnica anterior e 182 testes locais preservados, sem tratá-los como substitutos do aceite. Nenhum código, commit/push/deploy ou dado remoto alterado nesta investigação inicial. **Próximo ponto exato:** obter a descrição, reproduzir a etapa com segurança e corrigir apenas a lacuna comprovada. Não repetir compra, pagamento, SMS ou vínculo.
+
+**Fase 9 100% formal histórico; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.** Registros de publicação abaixo são históricos; o aceite manual mais recente é FAIL.
+
 ## Estado vigente — 07/11/2026: visitante + G1/G2/G3 publicados no DEV; aceite do titular pendente
 
 Autorização de publicação do Dono executada. Commit funcional **`d87174b6`**, push DEV concluído; API **`api-00072-dez`** ACTIVE e Hosting **`270329a6cd225290`** publicados em `crmdoceria-9959e`, somente a partir do worktree DEV conferido. [Publicação/verificação](GUEST_CHECKOUT_DEV_RELEASE.md), [evidência](evidence/guest-checkout-dev-release.json). Untracked anteriores/functions.yaml ficaram fora do pacote.

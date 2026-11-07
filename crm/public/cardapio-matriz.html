@@ -727,6 +727,10 @@
                         <option value="AGREED_LATER">Combinar Pagamento</option>
                     </select>
                     <p id="guest-payment-choice-help" class="text-sm text-gray-600 mt-2" aria-live="polite"></p>
+                    <div id="guest-pending-payment" class="hidden mt-3 p-3 border border-amber-200 bg-amber-50 rounded-lg text-sm text-gray-800" role="status" aria-live="polite">
+                        <p id="guest-pending-payment-message"></p>
+                        <a id="guest-pending-payment-link" class="hidden inline-block mt-3 font-semibold text-pink-700 underline focus:outline-none focus:ring-2 focus:ring-pink-500 rounded" href="/payment-return.html">Consultar pagamento existente</a>
+                    </div>
                     <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
                     <input id="guest-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="guest-whatsapp-consent-help">
                     <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
@@ -1212,8 +1216,9 @@
         import {createLegacyAddressSaver} from './legacy-address-save.mjs';
         import {createPhoneAddressManager} from './address-management.mjs';
         import {createSmsRecaptcha} from './address-verification-firebase.mjs';
-        import {checkoutHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
+        import {checkoutHeaders, paymentStatusHeaders, paymentAttempt, redirectToPayment, enableOnlinePayment, syncOnlinePaymentOption} from './checkout-payment-client.js?v=20261015-fcm-delete';
         import {paymentSelection, resetPaymentChoice} from './checkout-payment-choice.mjs';
+        import {inspectGuestPaymentAttempt} from './guest-payment-attempt.mjs';
         import {fetchPublicStore} from './store-public-config.mjs';
         import {STORE_AVAILABILITY, getStoreAvailabilityMessage} from './store-availability.mjs';
         import {fulfillmentBanner} from './fulfillment-availability.mjs';
@@ -2120,6 +2125,7 @@
                 if(appliedCupom) removeCupom();
                 identificationModal.classList.add('hidden');
                 guestCheckoutModal.classList.remove('hidden');
+                void previewGuestPayment();
                 window.initGuestAddressFlow?.();
                 window.showGuestAddressStep?.(window.guestAddressFlowState?.currentStep || 1);
                 updateGuestSummary();
@@ -2183,6 +2189,7 @@
             });
 
             sendWhatsappButton.addEventListener('click', handleGuestOrder);
+            guestPaymentMethodSelect.addEventListener('change',()=>{void previewGuestPayment();});
             confirmOrderButton.addEventListener('click', handlePlatformOrder);
             document.getElementById('guest-address-step2-confirm-btn')?.addEventListener('click', async () => {
                 const normalizedLatLng = window.normalizeGuestLatLng?.(window.guestCurrentLatLng);
@@ -3164,6 +3171,31 @@
             persistCheckoutState();
         }
 
+        let guestPaymentPreviewGeneration=0;
+        function showGuestPendingPayment(pending) {
+            const notice=document.getElementById('guest-pending-payment');
+            const message=document.getElementById('guest-pending-payment-message');
+            const link=document.getElementById('guest-pending-payment-link');
+            notice.classList.toggle('hidden',!pending?.blocked);
+            message.textContent=pending?.message || '';
+            const canConsult=/^[a-f0-9]{64}$/.test(pending?.paymentId || '');
+            link.classList.toggle('hidden',!canConsult);
+            if(canConsult)link.href='/payment-return.html?order_nsu='+encodeURIComponent(pending.paymentId);
+        }
+        async function inspectCurrentGuestPayment(paymentMode,retireTerminal=true) {
+            return inspectGuestPaymentAttempt({storage:sessionStorage,paymentMode,retireTerminal,request:async body=>{
+                const response=await fetch(API_BASE_URL+'/checkout/payment-status',{method:'POST',headers:await paymentStatusHeaders(true),body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
+                return {ok:response.ok,data:await response.json()};
+            }});
+        }
+        async function previewGuestPayment() {
+            const current=++guestPaymentPreviewGeneration,identity=checkoutIdentity.get(),mode=guestPaymentMethodSelect.value;
+            if(identity.mode!==CHECKOUT_MODES.GUEST) return;
+            const prior=await inspectCurrentGuestPayment(mode,false);
+            if(current!==guestPaymentPreviewGeneration || checkoutIdentity.get().revision!==identity.revision || checkoutIdentity.get().mode!==CHECKOUT_MODES.GUEST || guestPaymentMethodSelect.value!==mode || document.getElementById('guest-checkout-modal').classList.contains('hidden')) return;
+            showGuestPendingPayment(prior);
+        }
+
         async function handleGuestOrder() {
             if (sendWhatsappButton.disabled) return;
             const name = guestNameInput.value.trim();
@@ -3221,12 +3253,16 @@
 				const identity=checkoutIdentity.get();
 				const selection=paymentSelection(paymentMethod,identity.mode===CHECKOUT_MODES.GUEST && !!identity.token);
 				if(selection.mode==='ONLINE_NOW' && guestPaymentMethodSelect.selectedOptions[0]?.disabled) throw new Error('Pagamento online indisponível nesta loja. Tente novamente ou escolha Combinar Pagamento.');
+				const prior=await inspectCurrentGuestPayment(selection.mode);
+				showGuestPendingPayment(prior);
+				if(prior.blocked) {showToast(prior.message,true);return;}
 				await finalizeOrder({
 					clienteNome: name,
 					clienteEndereco: fullAddress,
 					telefone: phone,
 					formaPagamento: selection.forma,
-					paymentMode: selection.mode
+					paymentMode: selection.mode,
+					pendingPaymentId: prior.paymentId || null
 				}, null, false);
 
 			} catch (error) {
@@ -3326,7 +3362,7 @@
                         throw new Error('STORE_CLOSED');
                     }
                     const backendMessage = responseData?.message || 'Não foi possível confirmar o pedido no servidor.';
-                    throw new Error(backendMessage);
+                    throw Object.assign(new Error(backendMessage),{code:responseData?.code});
                 }
 
                 if (!responseData?.ok || !responseData?.id) {
@@ -3376,6 +3412,10 @@
             } catch (error) {
                 console.error("Erro ao salvar pedido:", error);
                 const friendlyMessage = mapCriticalCheckoutError(error, 'Erro ao confirmar o pedido.');
+                if (!isPlatform && error.code==='CHECKOUT_ATTEMPT_CONFLICT') {
+                    showGuestPendingPayment({blocked:true,paymentId:clientInfo.pendingPaymentId,message:'Esta tentativa já possui um pedido com outros dados. As alterações não foram enviadas. Consulte o pedido existente ou fale com a loja antes de confirmar outro.'});
+                    throw error;
+                }
                 setCheckoutBlockingIssue('pedido', friendlyMessage);
                 showToast(friendlyMessage, true);
                 throw error;

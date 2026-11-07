@@ -1,5 +1,7 @@
 # Checkout visitante + InfinitePay G1/G2/G3 — publicação DEV
 
+> **Aceite mais recente — 07/11/2026: FAIL.** Titular informou “Encontrei uma falha”, ainda sem etapa/sintoma/viewport. Descrição solicitada antes de diagnosticar ou alterar código. Verificações técnicas abaixo permanecem válidas no seu escopo, sem representar aprovação manual. Nenhuma nova publicação nesta investigação inicial.
+
 ## Publicado e verificado — 07/11/2026
 
 Commit funcional **`d87174b6a5fa0c08c085948f67d5d3a0bd118e1a`**, push `origin/feature/infinitepay-customer-auth` concluído. Somente **API(us-central1)** atualizada para **`api-00072-dez`**, ACTIVE/Node22; depois Hosting **`270329a6cd225290`**, release `2026-11-07T18:43:34.280Z`. [Evidência sanitizada](evidence/guest-checkout-dev-release.json). Publicados Guest e G1/G2/G3 no mesmo artefato, sem recriar links de pagamentos anteriores.

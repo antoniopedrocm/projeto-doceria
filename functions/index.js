@@ -1941,7 +1941,7 @@ app.post("/checkout/confirmar", async (req, res) => {
       }
       if(explicitPaymentMode) {
         const existing=await transaction.get(orderRef);
-        if(existing.exists && (existing.get('checkoutFingerprint')!==fingerprint || existing.get('ownerUid')!==ownerUid || existing.get('clienteId')!==checkoutCustomerId)) throw paymentError('O pedido já foi enviado com outros dados. Consulte o pedido existente.',409);
+        if(existing.exists && (existing.get('checkoutFingerprint')!==fingerprint || existing.get('ownerUid')!==ownerUid || existing.get('clienteId')!==checkoutCustomerId)) throw Object.assign(paymentError('O pedido já foi enviado com outros dados. Consulte o pedido existente.',409),{code:'CHECKOUT_ATTEMPT_CONFLICT'});
         if(existing.exists && !online) {
           const saved=existing.data();
           assertFreightClaims(req.body,saved,cliente.endereco==='Retirar na Loja');
