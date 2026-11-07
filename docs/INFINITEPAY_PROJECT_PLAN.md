@@ -1,5 +1,11 @@
 # Autenticação de clientes e pagamento online
 
+## Estado vigente — 07/11/2026: confirmação técnica CloudWalk de 06/11 incorporada
+
+[Contrato oficial fornecido pelo Dono](INFINITEPAY_SUPPORT_CONTRACT_2026-11-06.md), [auditoria de impacto](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md): webhook sem assinatura, aprovação por consulta oficial server-side; oito eventos selecionáveis, sem consulta pública de falha/refund/cancelamento/liquidação ou estorno parcial. Retry em não 2xx sem limite/intervalo divulgado; API Key `inchk_` exclusivamente backend para options, não exigida pelo fluxo simples atual. Provider não exige homologação separada; API granular/MCP anunciados são futuros.
+
+18 testes locais com mocks PASS, sem provider/Firebase real. Complementos identificados e ainda **não implementados**: G1 criação de links só com `webhook_url` (aprovações), apesar dos handlers não pagos; G2 `expired/overdue` sem registro durável; G3 delimitar refund integral e impedir registro parcial como integral. G1 é lacuna preexistente comprovada; preservar handlers, testes e aceites anteriores, corrigindo somente os pontos delimitados após autorização. **Fase 9 formal 100% conforme aceite anterior, com complementos pré-PROD abertos; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY: NÃO.** Sem mudança funcional, build/deploy, pagamento ou PROD. C15/C16 mantêm pendências e evidências já registradas. Estados anteriores abaixo são históricos.
+
 ## Estado vigente — 07/11/2026: acesso Google da Ana e preservação PASS
 
 [Homologação do caso 8602](PHASE10_C15_GOOGLE_8602.md) no perfil Chrome separado da Ana: 2 endereços/1 pedido, refresh, detalhe, retorno Matriz, logout com refresh desautenticado, Google relogin sem SMS/claim e dual-role PASS. [8 verificações posteriores](evidence/phase10-google-8602-data-preservation-dev.json) confirmam Customer/owner/índices/pedido preservados. C15-E integralmente aceito. O caso Google já tinha proprietário: acesso existente não é primeiro claim, que segue não demonstrado. Delimitar próximo plano respeitando uso do mesmo caso sem remover owner, duplicar cadastro ou alterar aceite silenciosamente. C15 geral/C16 pendentes; **Fase 9 100%; Fase 10 87,50% (14/16); global formal 97,00%; Fase 13 0%; PROD READY: NÃO**. Sem código/build/deploy, SMS/claim ou edição de dados novos. Estados anteriores abaixo são históricos.

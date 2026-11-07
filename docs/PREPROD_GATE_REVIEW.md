@@ -1,5 +1,11 @@
 # PRE-PROD GATE REVIEW
 
+## Estado vigente — 07/11/2026: complementos contratuais financeiros delimitados
+
+Confirmação Ricardo/CloudWalk de 06/11 incorporada no [contrato vigente](INFINITEPAY_SUPPORT_CONTRACT_2026-11-06.md). [Auditoria](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md) preservou confirmação PAID/isolamento/idempotência e identificou G1 (alto funcional: links só notificam aprovação), G2 (médio: expired/overdue apenas HOLD/log) e G3 (médio operacional: estorno integral implícito sem proteção explícita para parcial). Correções funcionais não autorizadas nesta execução e não implementadas; 18 testes com mocks PASS não as homologam.
+
+**Fase 9 100% formal pelo aceite histórico preservado; complementos G1/G2/G3 abertos antes de PROD. Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY: NÃO.** Não reiniciar fases ou aceitar gates por documentação. C15-E e acesso Google existente PASS preservados, claim inicial Google/C16 pendentes. Sem Firebase remoto, build/deploy, SMS/pagamento/estorno ou PROD nesta auditoria. Próximo: aprovação do patch mínimo, depois DEV e retomada dos gates Customer. Histórico abaixo não dispensa esses complementos.
+
 ## Estado vigente — 07/11/2026: Google existente e preservação PASS
 
 [Google no perfil separado da Ana](PHASE10_C15_GOOGLE_8602.md) passou em acesso a 2 endereços/1 pedido, refresh/detalhe/retorno, logout/refresh/relogin sem SMS/claim e atalho dual-role; 8 verificações posteriores confirmam Customer/pedido preservados. C15-E completo preservado. Primeiro claim Google de legado sem owner não foi demonstrado pelo cadastro já vinculado; C15 geral/C16 continuam pendentes. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY: NÃO.** Não reabrir testes de acesso concluídos, remover owner ou alterar rubrica silenciosamente. Sem runtime/build/deploy ou escrita administrativa nova; estados anteriores abaixo são históricos.

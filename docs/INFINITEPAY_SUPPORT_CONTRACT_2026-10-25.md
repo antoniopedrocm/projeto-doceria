@@ -1,5 +1,9 @@
 # Contrato InfinitePay recebido — revisão de 31/10/2026
 
+## Confirmação posterior — 06/11/2026
+
+[Contrato técnico vigente confirmado por Ricardo/CloudWalk](INFINITEPAY_SUPPORT_CONTRACT_2026-11-06.md), transcrito pelo Dono em 07/11. Lista agora oito eventos (`expired`/`overdue` incluídos), esclarece retry em qualquer não 2xx sem intervalo/quantidade divulgados, API Key somente backend para options e ausência de APIs de refund/consulta desses estados. [Auditoria de impacto](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md): proteções anteriores preservadas, G1/G2/G3 propostos sem mudança funcional. O estado 75% abaixo é a fotografia histórica de 31/10; Fase 9 formal atual 100% pelo aceite de 04/11, com complementos de 06/11 ainda pendentes de correção/homologação. Global formal 97,00%, Fase 10 87,50%, Fase 13 0%; PROD não autorizada.
+
 **CONTRATO OBTIDO.** Duas respostas de Gabriel/InfinitePay de **25/10/2026, 09:14 e 09:37 (UTC−3)** foram localizadas e lidas nesta revisão. A segunda esclarece a assimetria da primeira e prevalece nesse ponto. Não há pendência genérica de “obter o contrato”. O recebimento não implementa nem homologa a Fase 9.
 
 Fontes primárias privadas: [resposta inicial](https://mail.google.com/mail/u/0/#all/1a172fc0a16ba009) e [esclarecimento final](https://mail.google.com/mail/u/0/#all/1a17310c0584bb54), assunto “Dúvidas técnicas sobre webhooks e reconciliação do Checkout Integrado”. Somente leitura; nenhuma mensagem enviada. Este documento resume a especificação recebida, sem copiar headers, assinaturas de e-mail, contatos pessoais ou credenciais.
@@ -14,8 +18,8 @@ Fontes primárias privadas: [resposta inicial](https://mail.google.com/mail/u/0/
 | Cancelamento/estorno | Não há consulta autenticada desses estados nem API pública de refund no contrato informado. A equipe opera no App/Conta. Eventos `canceled`/`refunded` precisam corresponder a operação interna esperada e verificável; caso contrário, ficam pendentes de reconciliação/investigação. |
 | Liquidação | `settled` é notificação por webhook sem consulta de liquidação via API. Não produz novo pagamento, consumo de estoque ou liberação operacional. Acompanhamento no App/Conta é humano. |
 | Envelope | Campo `event_type` distingue eventos; `invoice_type` também integra o publicador. Exemplo de aprovação inclui invoice_slug, valores, parcelas, método, referências, recibo e itens. transaction_nsu pode faltar antes do pagamento. ID único de evento, timestamps, versionamento e ordem garantida não estão documentados. |
-| Retry | Duplicidade é possível e a ordem não é garantida. Deduplicação deve distinguir evento e transação. O suporte informa retry limitado sem intervalos/contagem publicados e orientação HTTP 200 no processamento, 400 em erro. A política local de retenção/retry precisa ser especificada/testada, sem inventar garantia de entrega. |
-| Formatos | `webhook_url` continua suportado para aprovação; `webhook:{url,events}` permite os seis eventos. Receber todos exige adequar a criação do link; não presumir que o modo simples já os assina/seleciona. |
+| Retry | Duplicidade é possível e a ordem não é garantida. Deduplicação deve distinguir evento e transação. Confirmação de 06/11: qualquer resposta não 2xx pode provocar reenvio, sem intervalo/quantidade divulgados; 200 no processamento e preferência por 400 no erro. Não manter a antiga descrição “retry limitado” como garantia documentada. |
+| Formatos | `webhook_url` continua suportado para aprovação; `webhook:{url,events}` permite selecionar eventos. Eram seis os nomes registrados nesta revisão; a confirmação de 06/11 acrescenta expired/overdue. Receber todos exige adequar a criação do link; não presumir que o modo simples já os seleciona. |
 | Credencial | API Key não é requisito do webhook. O suporte a relaciona a `options` individuais. Não é prova de origem do POST. URLs atuais são api.checkout.infinitepay.io/links e /payment_check. |
 | Devolução parcial | Não há semântica específica publicada no contrato recebido; não inferir estorno integral de sinal parcial nem implementar endpoint privado. |
 

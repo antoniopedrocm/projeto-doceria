@@ -1,0 +1,218 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-07T15:23:03.360Z",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "branch": "feature/infinitepay-customer-auth",
+  "auditedHead": "e55b09efb129eb53b80f529be8c168d77aee873d",
+  "scope": "Local contract/code audit and offline mocks only; no production or remote Firebase/provider calls",
+  "officialConfirmation": {
+    "date": "2026-11-06",
+    "author": "Ricardo Cici / CloudWalk",
+    "provenance": "Complete support reply transcribed by Owner in this conversation; Gmail not queried",
+    "publicDocumentation": "https://www.infinitepay.io/checkout-documentacao",
+    "futureApiOrMcpNotAssumedAvailable": true
+  },
+  "sourceHashes": [
+    {
+      "file": "functions/payment-signal-policy.js",
+      "sha256": "e92ce1dd7404e62849945bfd1cd5eac89d3467cd326e5b69b8cb860a92d8c2c8"
+    },
+    {
+      "file": "functions/checkout-payment.js",
+      "sha256": "24b3994003198fc6a986cd2eed5f94052313e038fbc5155c93a3583ae141962b"
+    },
+    {
+      "file": "functions/payment-verification.js",
+      "sha256": "b84859d82ad894471004ebaff20e939f1db52e0b070229f10f7c2f283465cce7"
+    },
+    {
+      "file": "functions/payment-financial-events.js",
+      "sha256": "515b8ef264d3fbb524bdc525ff86cd43f41dda7d5e40f5c753bd4d6e8d003866"
+    },
+    {
+      "file": "functions/checkout-reservation.js",
+      "sha256": "10cf6ac1b0496a3e9ffac1fa71c3a26edfea89177644fe18501a19bfbde00ea4"
+    },
+    {
+      "file": "functions/payment-return-auth.js",
+      "sha256": "1093ade82cb88954a881db916bb3de43a0ea936b58352dec24c923797ed6aa8e"
+    },
+    {
+      "file": "functions/payment-settings.js",
+      "sha256": "0f1ef6e6c4024e889d193c8a94345fc7378f151ac45756ffd1a3604513786afb"
+    },
+    {
+      "file": "functions/index.js",
+      "sha256": "acb80d07f9d5c025359bdc2ae8eaf7a6c2360665d8eebd9fe22c4ff7d187a81b"
+    },
+    {
+      "file": "crm/src/components/PaymentReconciliation.js",
+      "sha256": "18708e2691fa92d20ce1573c09ba3048d7f8fa0bf6f6812dab126c7d7cb0bf80"
+    },
+    {
+      "file": "crm/src/orderFinancialRecognition.js",
+      "sha256": "a17860fe32746165832581db862c2cdcc64628ab77888126c63438ceff42515a"
+    },
+    {
+      "file": "firestore.rules",
+      "sha256": "840d546545e6be5d504fe8324021baae2f61b8ca17693f113ef3183a938781f1"
+    }
+  ],
+  "eventPolicy": {
+    "configuredNames": [
+      "created",
+      "paid",
+      "settled",
+      "canceled",
+      "refunded",
+      "payment_failed"
+    ],
+    "officialEvents": [
+      "created",
+      "paid",
+      "payment_failed",
+      "refunded",
+      "canceled",
+      "expired",
+      "overdue",
+      "settled"
+    ],
+    "observed": [
+      {
+        "event": "created",
+        "action": "FINANCIAL_EVENT",
+        "reason": "UNSIGNED_PROVIDER_EVENT",
+        "durableEventDispatch": true
+      },
+      {
+        "event": "paid",
+        "action": "FINANCIAL_EVENT",
+        "reason": "UNSIGNED_PROVIDER_EVENT",
+        "durableEventDispatch": true
+      },
+      {
+        "event": "payment_failed",
+        "action": "FINANCIAL_EVENT",
+        "reason": "UNSIGNED_PROVIDER_EVENT",
+        "durableEventDispatch": true
+      },
+      {
+        "event": "refunded",
+        "action": "FINANCIAL_EVENT",
+        "reason": "UNSIGNED_PROVIDER_EVENT",
+        "durableEventDispatch": true
+      },
+      {
+        "event": "canceled",
+        "action": "FINANCIAL_EVENT",
+        "reason": "UNSIGNED_PROVIDER_EVENT",
+        "durableEventDispatch": true
+      },
+      {
+        "event": "expired",
+        "action": "HOLD",
+        "reason": "UNKNOWN_PROVIDER_EVENT",
+        "durableEventDispatch": false
+      },
+      {
+        "event": "overdue",
+        "action": "HOLD",
+        "reason": "UNKNOWN_PROVIDER_EVENT",
+        "durableEventDispatch": false
+      },
+      {
+        "event": "settled",
+        "action": "FINANCIAL_EVENT",
+        "reason": "UNSIGNED_PROVIDER_EVENT",
+        "durableEventDispatch": true
+      }
+    ]
+  },
+  "linkPayloadProbe": {
+    "inMemoryFirestoreOnly": true,
+    "providerFullyMocked": true,
+    "createCallsAcrossTwoStarts": 1,
+    "webhookUrlPresent": true,
+    "webhookObjectPresent": false,
+    "optionsPresent": false,
+    "gap": "Only approved-payment notification subscribed by current link creation"
+  },
+  "paymentAmounts": {
+    "originalAmountChecked": true,
+    "buyerPaidAmountMayExceedOriginal": true
+  },
+  "tests": {
+    "files": [
+      "functions/checkout-payment.test.js",
+      "functions/payment-signal-policy.test.js",
+      "functions/payment-verification.test.js",
+      "functions/payment-return-auth.test.js",
+      "functions/infinitepay-diagnostics.test.js",
+      "functions/checkout-reservation.test.js"
+    ],
+    "exitCode": 0,
+    "tests": 18,
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0,
+    "providerMocked": true,
+    "realFirebaseCalls": 0,
+    "realProviderCalls": 0,
+    "emulatorIntegrationSuitesNotRepeated": true
+  },
+  "priorEvidence": [
+    "docs/evidence/preprod-mission-2026-11-04/validation.json",
+    "docs/evidence/preprod-mission-2026-11-04/phase9-staff-acceptance-dev.json"
+  ],
+  "functionalChanges": 0,
+  "deploys": 0,
+  "realPayments": 0,
+  "realSms": 0,
+  "remoteDataWrites": 0,
+  "production": false,
+  "formalIndicators": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "globalFormal": 97,
+    "phase13": 0
+  },
+  "newContractComplementsHomologated": false,
+  "productionReady": false,
+  "gaps": [
+    {
+      "id": "G1",
+      "risk": "HIGH_FUNCTIONAL",
+      "preExisting": true,
+      "source": "functions/checkout-payment.js:102",
+      "issue": "webhook_url approval-only; selected financial events absent from creation payload",
+      "functionalCorrectionImplemented": false
+    },
+    {
+      "id": "G2",
+      "risk": "MEDIUM_OBSERVABILITY",
+      "source": "functions/payment-signal-policy.js:2",
+      "issue": "expired/overdue HOLD and warning only, no durable store event",
+      "functionalCorrectionImplemented": false
+    },
+    {
+      "id": "G3",
+      "risk": "MEDIUM_OPERATIONAL_FINANCIAL",
+      "source": "functions/payment-financial-events.js:80",
+      "uiSource": "crm/src/components/PaymentReconciliation.js:52",
+      "issue": "Full refund amount implicit; generic execution attestation does not explicitly exclude partial execution; no actual incorrect refund observed",
+      "functionalCorrectionImplemented": false
+    }
+  ],
+  "auditScopeNote": "Manual targeted contract/control review; source hashes bind files, do not imply full review of entire index/rules or a repository-wide security scan",
+  "quality": {
+    "runtimeFilesUnchanged": 11,
+    "financialCoreUnchangedSince": "43f8e0c0",
+    "newDocumentRelativeLinksResolved": 8,
+    "docsOnlyTrackedDiff": true,
+    "build": "Not necessary; no functional changes",
+    "lint": "Runtime lint not repeated; docs/JSON only",
+    "diffCheck": "PASS verified separately",
+    "formalAcceptanceAdded": false
+  }
+}

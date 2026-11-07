@@ -1,5 +1,11 @@
 # Fase 9 — reavaliação documental dos eventos InfinitePay
 
+## Revisão vigente — confirmação CloudWalk de 06/11/2026
+
+[Contrato atual](INFINITEPAY_SUPPORT_CONTRACT_2026-11-06.md), [auditoria de impacto no HEAD e evidência local](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md). Ausência de assinatura confirmada; `/payment_check` só confirma pagamento; oito eventos selecionáveis; nenhum limite/intervalo de retry divulgado; API Key somente backend para options, não obrigatória para o fluxo simples. API granular/MCP anunciados ainda futuros. Não manter a investigação histórica de API Key/assinatura como requisito disponível ou faltante para webhook atual.
+
+Implementação/testes/aceite de 04/11 preservados, Fase 9 formal 100%. Identificados complementos G1 (payload de criação ainda só `webhook_url`), G2 (`expired/overdue` sem fila durável) e G3 (refund integral sem delimitação explícita de parcial); não implementados/homologados nesta revisão. Global formal 97,00%, Fase 10 87,50%, Fase 13 0%; PROD READY NÃO. As seções abaixo são históricas e não reabrem genericamente fases ou a obtenção do contrato.
+
 ## Revisão vigente — contrato recebido e conferido em 31/10/2026
 
 As respostas formais do suporte de25/10 estão disponíveis e encerram a pendência de obter o contrato: [resumo e fontes](INFINITEPAY_SUPPORT_CONTRACT_2026-10-25.md). A revisão histórica de20–21/10 abaixo não é o gate atual. Webhook sem assinatura, event_type, payment_check de aprovação, operações esperadas/execução verificável para cancelamento/refund e settled informativo precisam ser implementados/testados/homologados. Fase9 permanece75%; Fase10 agora é gate obrigatório, ambos devem atingir100% antes de PROD. [PRE-PROD GATE REVIEW](PREPROD_GATE_REVIEW.md).

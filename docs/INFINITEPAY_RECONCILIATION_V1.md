@@ -1,5 +1,11 @@
 # Eventos e conciliação InfinitePay V1 — DEV
 
+## Estado vigente — confirmação de 06/11/2026 auditada em 07/11
+
+Contrato mais recente: [Ricardo/CloudWalk — 06/11](INFINITEPAY_SUPPORT_CONTRACT_2026-11-06.md). [Auditoria de impacto](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md): a tabela abaixo descreve o **processador atual**, não comprova que todos os eventos foram selecionados na criação dos links. O payload atual usa somente `webhook_url` (aprovação); `expired/overdue` ficam em HOLD/log, sem registro na fila da loja. Complementos G1/G2 propostos, não implementados. Estorno atual tem escopo integral implícito; não registrar operação parcial por este formulário. G3 propõe atesto e validação explícita de montante integral, sem inventar API de refund ou alterar estado financeiro por webhook isolado.
+
+`/payment_check` é consulta oficial server-side de aprovação; não verifica cancelamento/refund/settled. A API Key não é autenticação do webhook e não é requisito do fluxo simples atual, que não envia options. Suporte não divulga limites/intervalos de reenvio e não exige homologação separada, preservando-se os gates DEV do projeto. Fase 9 formal 100% pelo aceite de 04/11 preservado; compatibilidade ampliada de 06/11 pendente dos complementos. Fase 10 87,50%, global formal 97,00%, Fase 13 0%; PROD bloqueada.
+
 Contrato de origem: [resposta formal do suporte de 25/10/2026](INFINITEPAY_SUPPORT_CONTRACT_2026-10-25.md). Implementação da missão pré-PROD em 01/11. A integração não executa cancelamento ou refund na InfinitePay; o provider não fornece a consulta autenticada desses dois resultados neste contrato.
 
 ## Autoridade e transições
@@ -43,4 +49,4 @@ A revisão de uma aprovação com valor/pedido incompatível permanece manual e 
 
 ## Evidência e gate
 
-Suítes com Firestore/Auth emulados, provider simulado, eventos forjados, concorrência e falhas estão no checkpoint. Nenhum pagamento/estorno real, emissão fiscal, SMS ou WhatsApp foi executado. Commit, publicação DEV, revisão de segurança e homologação do artefato final são obrigatórios antes de elevar Fase 9 a 100%. Nesta etapa de implementação, mantém 75% e global95,00%.
+Suítes com Firestore/Auth emulados, provider simulado, eventos forjados, concorrência e falhas estão no checkpoint. [Aceite Staff de 04/11](evidence/preprod-mission-2026-11-04/phase9-staff-acceptance-dev.json) concluiu a Fase 9 formal em 100%, com global 97,00%; não houve pagamento/estorno real, emissão fiscal, SMS ou WhatsApp nesse aceite. A confirmação posterior de 06/11 originou G1/G2/G3 documentados acima; os 18 testes locais da auditoria passaram, mas não implementam/homologam esses complementos nem alteram percentuais. Não reiniciar trabalho já aceito e não apresentar o 100% histórico como aprovação de mudanças ainda não feitas.
