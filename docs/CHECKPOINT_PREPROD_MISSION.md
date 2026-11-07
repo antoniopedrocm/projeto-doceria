@@ -1,5 +1,13 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: entrega final do ciclo do checkout, frete e concorrência publicada
+
+Último ponto concluído: **`83dc6b47`**, push DEV, Hosting **`760a8a952968f481`** (`2026-11-07T21:19:35.879Z`). API **`api-00074-fix`** preservada da entrega `a2bf20fe`. [Relatório](CHECKOUT_COMPLETION_LIFECYCLE.md), [evidência final](evidence/checkout-cycle-guard-dev.json): **62/62 hashes**, 7 rotas e 4 GETs PASS; 65 arquivos backend iguais ao artefato anterior, todas as 146 Functions e Rules inalteradas no complemento somente Hosting. Worktree/projeto DEV explícitos, sem dados reais, pagamento, cancelamento, SMS, vínculo, WhatsApp ou PROD.
+
+**235 testes relevantes distintos PASS**: 70 públicos, 93 emulados, 35 unitários/WhatsApp, 37 navegação/hydration. Teste adicional comprovou consulta de recuperação e Confirmar simultâneos: falhava antes, agora não produz erro tardio nem reenvio após finalizar o carrinho. Build DEV/lint do delta/diff-check PASS; visual/reload de fixtures preservado, sem alteração de layout neste complemento. Não somar totais anteriores.
+
+**Próximo ponto exato:** aceite do titular em DEV após Ctrl+R. Recuperação de pedido antigo pode finalizar o carrinho residual uma vez como **Pedido já registrado**, com consulta preservada; não cria/transforma/cancela o pedido anterior. A próxima compra começa com novo carrinho/formulário/frete/chave; Combinar finaliza normalmente, online limpa antes do provider. Conferir frete A calcular/recalculado, sem confirmar outra compra/pagamento apenas para testar. Não repetir build/deploy/SMS/claims já concluídos. FAIL anterior permanece histórico até aceite novo. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.**
+
 ## Estado vigente — 07/11/2026: ciclo normal do checkout e frete publicados; aceite pendente
 
 Último ponto concluído: commit funcional **`a2bf20fe`**, push na branch DEV, API **`api-00074-fix`** ACTIVE + Hosting **`42bc085fb3971ba2`**, release `2026-11-07T21:10:20.228Z`, exclusivamente `crmdoceria-9959e` e worktree DEV conferido. [Contrato/entrega](CHECKOUT_COMPLETION_LIFECYCLE.md), [evidência remota](evidence/checkout-cycle-dev.json). **62/62 hashes**, 7 rotas, 4 GETs PASS; 145 outras Functions e Rules inalteradas. Sem deploy de Rules/índices/dados; sem pedido/pagamento/refund/SMS/claim/WhatsApp real, Customer privado ou PROD na verificação.

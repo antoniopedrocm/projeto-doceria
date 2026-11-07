@@ -1,0 +1,511 @@
+{
+  "schema": 1,
+  "date": "2026-11-07",
+  "project": "crmdoceria-9959e",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "sourceCommit": "83dc6b47b6f81354aa7fa42ef2edb82889413d1d",
+  "branch": "feature/infinitepay-customer-auth",
+  "authorization": "Existing owner DEV publication authorization; latest owner direction is normal checkout completion and fresh next purchase, without cancellation",
+  "deployment": {
+    "functions": [],
+    "hostingOnlyFollowup": true,
+    "apiState": "ACTIVE",
+    "apiRevision": "api-00074-fix",
+    "previousHostingVersion": "sites/crmdoceria-9959e/versions/42bc085fb3971ba2",
+    "hostingVersion": "sites/crmdoceria-9959e/versions/760a8a952968f481",
+    "hostingReleaseTime": "2026-11-07T21:19:35.879Z"
+  },
+  "staging": {
+    "runtimeTrackedFiles": 65,
+    "runtimeUnchangedFromPreviousApiRelease": true,
+    "hostingFiles": 62,
+    "manifestSha256": "f13f6afba5169be7209e16e7c52ba04602e431bd92dc70a60f909bba85a5bc6c",
+    "untrackedRuntimeExcluded": true
+  },
+  "preservation": {
+    "functionsV2": 146,
+    "functionsV1": 0,
+    "unrelatedFunctions": 145,
+    "unrelatedSha256": "9ca3c1d25cb2eab3d38a3355da93e0e2925e1cf4e33648cf779cec40c2db4d37",
+    "unrelatedFunctionsUnchanged": true,
+    "rulesUnchanged": true,
+    "rulesetName": "projects/crmdoceria-9959e/rulesets/19bc50df-ace4-453f-8bce-fae33bce3bcf",
+    "rulesIndexesOtherFunctionsDeployed": false,
+    "cancellationEndpointAdded": false,
+    "providerCancellationOrRefunds": 0,
+    "businessDataWritesByAgent": 0,
+    "realOrdersPaymentsSmsClaimsWhatsApp": 0,
+    "productionAccess": false,
+    "all146FunctionsUnchanged": true
+  },
+  "verification": {
+    "schema": 1,
+    "project": "crmdoceria-9959e",
+    "commit": "83dc6b47b6f81354aa7fa42ef2edb82889413d1d",
+    "checkedAt": "2026-11-07T21:20:39.978Z",
+    "scope": "Read-only HTTP artifact/route/API checks; no Customer/Auth/checkout context/order/provider requests",
+    "files": [
+      {
+        "path": ".well-known/assetlinks.json",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "address-management.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "address-verification-firebase.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "asset-manifest.json",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "audio/alarm.mp3",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "audio/alarm_old.mp3",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "audio/mixkit_vintage_warning_alarm_990.mp3",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "canonical-auth.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "canonical-session.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "cardapio-festa.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "cardapio-garavelo.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "cardapio-matriz.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "cardapio.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-addresses.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-environment.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-identity.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-payment-choice.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "checkout-payment-client.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-account-core.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-account.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-area.css",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-area.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-auth-errors.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-home.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-orders-view.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-phone-claim.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-profile.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-reorder-view.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "customer-session.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "firebase-messaging-sw.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "firebaseClientConfig.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "fulfillment-availability.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "guest-payment-attempt.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "ic_launcher.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "ic_launcher_foreground.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "ic_launcher_round.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "index.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "legacy-address-save.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "logo.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "logo192.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "logo512.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "logotipo.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "logo_old.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "manifest.json",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "payment-return.html",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "payment-return.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "reorder-cart.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "slide/slide1.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "slide/slide2.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "slide/slide3.png",
+        "status": 200,
+        "match": true,
+        "cacheControl": "max-age=3600"
+      },
+      {
+        "path": "sms-enterprise.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "staff-push-cleanup.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "static/css/main.e526cf8e.css",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/css/main.e526cf8e.css.map",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/522.599bd7ea.chunk.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/522.599bd7ea.chunk.js.map",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/main.e4b94788.js",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/main.e4b94788.js.LICENSE.txt",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "static/js/main.e4b94788.js.map",
+        "status": 200,
+        "match": true,
+        "cacheControl": "public, max-age=31536000, immutable"
+      },
+      {
+        "path": "store-availability.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "store-links.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "store-public-config.mjs",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      }
+    ],
+    "totalMatching": 62,
+    "routes": [
+      {
+        "path": "/area-cliente",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "/minha-conta",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "/meus-pedidos",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "/cardapio-matriz",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "/cardapio-garavelo",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "/cardapio?store=ana-guimaraes-doceria-matriz",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      },
+      {
+        "path": "/cardapio?store=ana-guimaraes-doceria-garavelo",
+        "status": 200,
+        "match": true,
+        "cacheControl": "no-cache, max-age=0, must-revalidate"
+      }
+    ],
+    "firebaseManagedConfigProject": "crmdoceria-9959e",
+    "apiReadOnlyChecks": [
+      {
+        "path": "/store/public-config?storeId=ana-guimaraes-doceria-matriz",
+        "status": 200,
+        "storeId": "ana-guimaraes-doceria-matriz"
+      },
+      {
+        "path": "/checkout/config?lojaId=ana-guimaraes-doceria-matriz",
+        "status": 200,
+        "enabled": true
+      },
+      {
+        "path": "/store/public-config?storeId=ana-guimaraes-doceria-garavelo",
+        "status": 200,
+        "storeId": "ana-guimaraes-doceria-garavelo"
+      },
+      {
+        "path": "/checkout/config?lojaId=ana-guimaraes-doceria-garavelo",
+        "status": 200,
+        "enabled": true
+      }
+    ]
+  },
+  "quality": {
+    "testsPassed": 235,
+    "publicTests": 70,
+    "integrationTests": 93,
+    "unitWhatsAppTests": 35,
+    "navigationTests": 37,
+    "build": "PASS",
+    "lintDelta": "PASS; previous diagnostics retained",
+    "diffCheck": "PASS",
+    "visual": "Synthetic desktop/mobile and local normal/hard reload PASS"
+  },
+  "acceptance": "New owner manual acceptance pending; previous FAIL preserved. No real checkout submitted during release verification.",
+  "percentages": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "productionReady": false,
+  "apiSourceCommit": "a2bf20fea5ae1c2c21090afc110d3a14d43b3fea",
+  "followup": "One extra reproduced concurrency regression: legacy preview completes cart while confirm awaits same lookup. Frontend now ignores response when cart completed/replaced; no late error or resubmission. Backend not redeployed."
+}

@@ -1,5 +1,9 @@
 # Checkout — finalizar a compra e iniciar a próxima do zero
 
+## Publicação vigente — complemento de concorrência
+
+Frontend **`83dc6b47`**, push DEV e Hosting **`760a8a952968f481`**, release `2026-11-07T21:19:35.879Z`. API permanece **`api-00074-fix`** do artefato `a2bf20fe`; os 65 arquivos runtime backend são idênticos e nenhuma Function foi republicada nesse complemento. [Evidência final](evidence/checkout-cycle-guard-dev.json): 62/62 arquivos, 7 rotas e 4 GETs PASS, todas as 146 Functions e Rules inalteradas durante esse Hosting. Rodada atual **235 testes relevantes PASS**, build/lint do delta/diff-check PASS. Aceite manual pendente; nenhuma compra/pagamento real executada pelo agente.
+
 ## Publicação DEV — 07/11/2026
 
 Commit funcional **`a2bf20fea5ae1c2c21090afc110d3a14d43b3fea`**, push DEV concluído. API **`api-00074-fix`** ACTIVE e Hosting **`42bc085fb3971ba2`**, release `2026-11-07T21:10:20.228Z`. [Evidência remota](evidence/checkout-cycle-dev.json): **62/62 arquivos** iguais, 7 rotas e 4 GETs públicos/config PASS; 145 outras Functions e Rules inalteradas. Somente API/Hosting DEV, sem dados de negócio/ordem/pagamento reais. **Aceite do titular pendente**; os 234 testes e imagens sintéticas não o substituem.
