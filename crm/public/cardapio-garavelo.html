@@ -3337,7 +3337,9 @@
 				const identity=checkoutIdentity.get();
 				const selection=paymentSelection(paymentMethod,identity.mode===CHECKOUT_MODES.GUEST && !!identity.token);
 				if(selection.mode==='ONLINE_NOW' && guestPaymentMethodSelect.selectedOptions[0]?.disabled) throw new Error('Pagamento online indisponível nesta loja. Tente novamente ou escolha Combinar Pagamento.');
+				const cartAtInspection=cart;
 				const prior=await inspectCurrentGuestPayment();
+				if(cart!==cartAtInspection || !cart.length)return;
 				showGuestPendingPayment(prior);
 				if(prior.blocked) {showToast(prior.message,true);return;}
 				if(prior.registered && recoverRegisteredCheckout(prior))return;

@@ -180,3 +180,16 @@ test('finalização compartilhada preserva checkout autenticado e por telefone',
   assert.equal(f.env.currentClient,mode==='strong_auth'?client:null);
  }
 });
+test('consulta de compatibilidade simultânea à confirmação finaliza uma vez sem erro tardio ou reenvio',async t=>{
+ const f=fixture();t.after(f.close);const id='c'.repeat(64),storage=f.dom.window.sessionStorage,resolvers=[];
+ storage.setItem('doceria-payment-pending',JSON.stringify({idempotencyKey:'legacy-parallel-fixture',paymentId:id}));
+ storage.setItem('doceria-payment-return:'+id,JSON.stringify({token:'d'.repeat(64)}));f.select.value='AGREED_LATER';
+ f.env.fetch=async()=>new Promise(resolve=>resolvers.push(resolve));
+ const preview=f.env.previewGuestPayment(),submit=f.env.handleGuestOrder();
+ while(resolvers.length<2)await new Promise(resolve=>setImmediate(resolve));
+ const response=()=>({ok:true,json:async()=>({id,storeId:f.env.STORE_ID,payment_status:'PENDING'})});
+ resolvers[0](response());await preview;resolvers[1](response());await submit;
+ assert.equal(f.env.cart.length,0);assert.equal(storage.getItem('doceria-payment-pending'),null);
+ assert.equal(f.posted.length,0);assert.equal(f.messages.filter(m=>m.includes('Não foi possível')).length,0);
+ assert.equal(f.document.getElementById('guest-pending-payment').classList.contains('hidden'),true);
+});

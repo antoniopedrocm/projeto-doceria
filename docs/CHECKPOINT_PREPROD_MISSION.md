@@ -1,5 +1,13 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: ciclo normal do checkout e frete publicados; aceite pendente
+
+Último ponto concluído: commit funcional **`a2bf20fe`**, push na branch DEV, API **`api-00074-fix`** ACTIVE + Hosting **`42bc085fb3971ba2`**, release `2026-11-07T21:10:20.228Z`, exclusivamente `crmdoceria-9959e` e worktree DEV conferido. [Contrato/entrega](CHECKOUT_COMPLETION_LIFECYCLE.md), [evidência remota](evidence/checkout-cycle-dev.json). **62/62 hashes**, 7 rotas, 4 GETs PASS; 145 outras Functions e Rules inalteradas. Sem deploy de Rules/índices/dados; sem pedido/pagamento/refund/SMS/claim/WhatsApp real, Customer privado ou PROD na verificação.
+
+Orientação do Dono implementada: confirmação válida encerra checkout/carrinho/rascunho/frete/chave antes de redirecionar online; Combinar mantém confirmação normal. Nova compra começa com carrinho/formulário/chave novos; retry sem resposta mantém chave. Sessão antiga com pedido já reconhecido é finalizada uma vez, sem reenviar/converter/cancelar o pedido anterior; prova/consulta do pagamento preservada. **Não existe novo botão/endpoint de encerramento nem cancelamento da InfinitePay.** Cotação antiga não é restaurada no reload e respostas atrasadas não se sobrepõem à cotação atual.
+
+**234 testes relevantes distintos PASS** (69 públicos, 93 emulados, 35 unitários/WhatsApp, 37 navegação/hydration), build/lint do delta/diff-check PASS; visual desktop/mobile e reload normal/hard em Chrome isolado PASS com fixtures. Não somar rodadas anteriores e não tratar como aceite manual. **Próximo ponto exato:** titular recarregar DEV, conferir eventual recuperação única do carrinho antigo, nova compra sem o aviso bloqueante e frete a calcular/recalculado; sem criar outro pedido/pagamento real para testar. FAIL anterior preservado até novo aceite. Não repetir deploy/testes/SMS/vínculos já concluídos. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.**
+
 ## Estado vigente — 07/11/2026: Dono definiu finalização normal; cancelamento descartado
 
 Dono orientou: Confirmar Pedido deve concluir normalmente e nova compra começar do zero, como autenticado/telefone. **Substitui a proposta de Encerrar tentativa online**; não há autorização/necessidade de implementar cancelamento ou encerramento antecipado de reserva. [Contrato/delta atual](CHECKOUT_COMPLETION_LIFECYCLE.md).

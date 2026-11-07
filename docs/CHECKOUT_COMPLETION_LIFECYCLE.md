@@ -1,5 +1,9 @@
 # Checkout — finalizar a compra e iniciar a próxima do zero
 
+## Publicação DEV — 07/11/2026
+
+Commit funcional **`a2bf20fea5ae1c2c21090afc110d3a14d43b3fea`**, push DEV concluído. API **`api-00074-fix`** ACTIVE e Hosting **`42bc085fb3971ba2`**, release `2026-11-07T21:10:20.228Z`. [Evidência remota](evidence/checkout-cycle-dev.json): **62/62 arquivos** iguais, 7 rotas e 4 GETs públicos/config PASS; 145 outras Functions e Rules inalteradas. Somente API/Hosting DEV, sem dados de negócio/ordem/pagamento reais. **Aceite do titular pendente**; os 234 testes e imagens sintéticas não o substituem.
+
 ## Decisão do Dono — 07/11/2026
 
 Ao clicar Confirmar Pedido, concluir o checkout normalmente, como no fluxo autenticado/telefone; a próxima compra começa do início. A proposta de adicionar **Encerrar tentativa online e continuar** foi substituída por essa orientação. **Não criar encerramento/cancelamento financeiro ou novo endpoint de cancelamento.**
@@ -43,7 +47,7 @@ Incorporado o patch descrito em [cotação após refresh](CHECKOUT_FREIGHT_REFRE
 
 ## Validação e entrega
 
-Rodada final: **234 testes relevantes distintos PASS** — 69 públicos, 93 emulados (9 arquivos), 35 unitários/WhatsApp e 37 de hydration/entrada/retorno. Retestes e totais anteriores não foram somados. Build DEV PASS (bundle React inalterado, 456,38 kB gzip); lint sem diagnósticos novos (débitos históricos preservados), diff-check PASS. Aliases e sete arquivos públicos correspondem ao build. Desktop/mobile e quatro verificações de reload normal/hard passaram no Chrome isolado com fixtures; não equivalem a aceite real.
+Rodada final: **235 testes relevantes distintos PASS** — 70 públicos, 93 emulados (9 arquivos), 35 unitários/WhatsApp e 37 de hydration/entrada/retorno. Inclui complemento de concorrência: recuperação e clique de confirmação simultâneos finalizam uma vez, sem aviso tardio ou reenvio. Esse novo teste reproduziu a falha antes da guarda de carrinho concluído/substituído e passou depois; complemento somente frontend. Retestes e totais anteriores não foram somados. Build DEV PASS (bundle React inalterado, 456,38 kB gzip); lint sem diagnósticos novos (débitos históricos preservados), diff-check PASS. Aliases e sete arquivos públicos correspondem ao build. Desktop/mobile e quatro verificações de reload normal/hard passaram no Chrome isolado com fixtures; não equivalem a aceite real.
 
 Testes sintéticos cobrem pedido online → limpeza → nova compra Combinar, novo nonce, retry/duplo clique, respostas perdidas/inválidas/atrasadas, outra loja, armazenamento indisponível, referência de pagamento anterior, Auth/Phone, estoque reservado uma vez por compra legítima e sem cancelamento da anterior. Testes financeiros/rules existentes também executados em emuladores locais. Nenhuma cobrança, pedido real, estorno, SMS, vínculo ou WhatsApp.
 

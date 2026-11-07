@@ -1,5 +1,7 @@
 # Checkout visitante — recuperação de tentativa e conflito 409
 
+> **Complemento posterior publicado:** [ciclo de finalização `a2bf20fe`](CHECKOUT_COMPLETION_LIFECYCLE.md) corrige o retorno antecipado do online que preservava carrinho/chave após criação. A política de manter checkout encerrado preso a pagamento PENDING foi substituída pela finalização normal definida pelo Dono; não houve cancelamento, conversão de pagamento ou retirada de idempotência. Este relatório/evidências descrevem a etapa histórica `4a19dba2`.
+
 ## Publicação DEV verificada — 07/11/2026
 
 Commit funcional **`4a19dba2d6b575619a1191c14d576b75b3beaf3d`**, push DEV concluído. API **`api-00073-zuv`** ACTIVE e Hosting **`5e6363d665c9bd74`** publicados exclusivamente em `crmdoceria-9959e`. [Evidência remota](evidence/guest-attempt-recovery-dev.json): **62/62 arquivos** iguais, 7 rotas e 4 GETs públicos/config PASS; cache preservado, 145 outras Functions e Rules inalteradas. A primeira preparação falhou lendo metadados do banco antes do upload; repetição do mesmo artefato concluiu, sem criar/alterar banco. **Aceite manual do complemento: PENDENTE.**

@@ -1,5 +1,7 @@
 # Checkout visitante + InfinitePay G1/G2/G3 — publicação DEV
 
+> **Publicação atual — 07/11/2026:** ciclo de finalização e frete corrigidos em `a2bf20fe`, API `api-00074-fix` / Hosting `42bc085fb3971ba2`, 62/62 arquivos remotos conferidos e 234 testes relevantes PASS. [Entrega](CHECKOUT_COMPLETION_LIFECYCLE.md), [evidência](evidence/checkout-cycle-dev.json). Pedido registrado finaliza carrinho/chave; próxima compra começa nova. Proposta de cancelamento local descartada. Novo aceite manual pendente; demais publicações/FAIL abaixo são históricos.
+
 > **Complemento publicado — 07/11/2026:** correção `4a19dba2`, API `api-00073-zuv` e Hosting `5e6363d665c9bd74`, 62/62 hashes remotos PASS. [Recuperação segura da tentativa](GUEST_CHECKOUT_ATTEMPT_RECOVERY.md), [evidência](evidence/guest-attempt-recovery-dev.json). Titular confirmou ter aberto a InfinitePay e fechado sem pagar antes de trocar para Combinar. Novo aceite manual permanece pendente; os registros de FAIL e da publicação original abaixo são históricos.
 
 > **Aceite mais recente — 07/11/2026: FAIL.** Titular informou “Encontrei uma falha”, ainda sem etapa/sintoma/viewport. Descrição solicitada antes de diagnosticar ou alterar código. Verificações técnicas abaixo permanecem válidas no seu escopo, sem representar aprovação manual. Nenhuma nova publicação nesta investigação inicial.

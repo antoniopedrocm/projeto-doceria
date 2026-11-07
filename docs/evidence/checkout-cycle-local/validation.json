@@ -3,11 +3,11 @@
   "date": "2026-11-07",
   "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
   "project": "crmdoceria-9959e",
-  "baseCommit": "0112003aae828306bd5fd280c2a75fb26213d8e3",
+  "baseCommit": "a2bf20fea5ae1c2c21090afc110d3a14d43b3fea",
   "scope": "Checkout completion after server acknowledgement, fresh next purchase, legacy residual cart recovery and freight quote lifecycle. No cancellation endpoint.",
   "tests": {
     "public": {
-      "passed": 69,
+      "passed": 70,
       "failed": 0
     },
     "unitWhatsApp": {
@@ -87,7 +87,7 @@
         }
       ]
     },
-    "totalPassed": 234,
+    "totalPassed": 235,
     "distinct": true,
     "retriesOrPreviousTotalsAdded": false
   },
@@ -115,22 +115,22 @@
   "runtime": [
     {
       "path": "crm/public/cardapio.html",
-      "sha256": "52214e4168583140a9826260820a1457526a692554628721bf7b804c18120e50",
+      "sha256": "f06149d0c9ababa17b871477e326140fce56a4849aa55f28c26b9ba245bbcd9d",
       "buildMatch": true
     },
     {
       "path": "crm/public/cardapio-matriz.html",
-      "sha256": "52214e4168583140a9826260820a1457526a692554628721bf7b804c18120e50",
+      "sha256": "f06149d0c9ababa17b871477e326140fce56a4849aa55f28c26b9ba245bbcd9d",
       "buildMatch": true
     },
     {
       "path": "crm/public/cardapio-garavelo.html",
-      "sha256": "52214e4168583140a9826260820a1457526a692554628721bf7b804c18120e50",
+      "sha256": "f06149d0c9ababa17b871477e326140fce56a4849aa55f28c26b9ba245bbcd9d",
       "buildMatch": true
     },
     {
       "path": "crm/public/cardapio-festa.html",
-      "sha256": "52214e4168583140a9826260820a1457526a692554628721bf7b804c18120e50",
+      "sha256": "f06149d0c9ababa17b871477e326140fce56a4849aa55f28c26b9ba245bbcd9d",
       "buildMatch": true
     },
     {
