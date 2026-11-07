@@ -1,5 +1,17 @@
 # Checkout visitante + InfinitePay G1/G2/G3 — publicação DEV
 
+## Publicado e verificado — 07/11/2026
+
+Commit funcional **`d87174b6a5fa0c08c085948f67d5d3a0bd118e1a`**, push `origin/feature/infinitepay-customer-auth` concluído. Somente **API(us-central1)** atualizada para **`api-00072-dez`**, ACTIVE/Node22; depois Hosting **`270329a6cd225290`**, release `2026-11-07T18:43:34.280Z`. [Evidência sanitizada](evidence/guest-checkout-dev-release.json). Publicados Guest e G1/G2/G3 no mesmo artefato, sem recriar links de pagamentos anteriores.
+
+**61/61 arquivos públicos** iguais ao build isolado; **7 rotas** SPA/cardápios/URLs antigas HTTP 200 e conteúdo correto; **4 consultas GET** de configuração pública/online para Matriz/Garavelo passaram. Configuração gerenciada do Hosting confirmou `crmdoceria-9959e`. Assets estáveis/HTML com revalidação, assets hash immutable. A checagem de index utiliza a rota canônica `/`: o caminho cru `/index.html` com query de verificação retornava Location somente com query, causando loop no verificador; não houve mudança de cleanUrls/rewrites para contornar isso na aplicação.
+
+Inventário pós-deploy: **146 Functions v2 all-locations, 0 v1**, com **145 não-API inalteradas**; Rules release inalterada. Pacote com **65 arquivos runtime versionados**, functions.yaml/untracked antigos excluídos e 61 arquivos Hosting. Sem deploy de Rules/índices/outras Functions nem mudança de dados/lojas/Customer/pedidos. Nenhuma requisição a checkout identity/confirmar/provider, SMS, claim, WhatsApp ou PROD na verificação. A garantia funcional dos dois modos permanece nos mocks/emuladores; esta verificação não criou compra real.
+
+Qualidade preservada: **182 testes locais PASS**, build PASS com avisos existentes, lint sem novos diagnósticos (6 anteriores em index.js), diff-check PASS. Evidências locais desktop/mobile continuam disponíveis. **Aceite manual DEV do titular: PENDENTE.** Usar o roteiro abaixo sem Confirmar Pedido; conciliação G1/G2/G3 segue sem operação financeira real nesta publicação. Fase 9 100% formal histórico; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.
+
+Seções de preparação abaixo são históricas e foram concluídas somente quanto à publicação/verificação técnica.
+
 ## Autorização e preparação — 07/11/2026
 
 Proprietário solicitou **“publique em dev as alterações para eu validar”**, autorizando a etapa de commit/push/publicação após revisão da entrega local. Substitui a pausa anterior somente para estas alterações; PROD continua não autorizada.

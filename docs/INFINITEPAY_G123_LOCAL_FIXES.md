@@ -1,5 +1,7 @@
 # InfinitePay G1/G2/G3 — implementação local para revisão
 
+> Atualização posterior: publicação DEV autorizada e concluída no artefato `d87174b6`, juntamente com checkout visitante. [Registro](GUEST_CHECKOUT_DEV_RELEASE.md). Os 142 testes abaixo são a rodada local inicial; a rodada integrada posterior teve 182 testes distintos PASS, sem somá-los. Publicação não equivale a aceite manual ou operação financeira real.
+
 ## Estado e limites — 07/11/2026
 
 Base conferida: `34510679c35d81bbbb1ae6d46dbdcd1306f629ae`, branch `feature/infinitepay-customer-auth`, worktree `C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree`. Autorização específica do Dono: código/testes/documentação locais; **parar antes de commit, push e deploy**. Diretório pai e untracked anteriores preservados.

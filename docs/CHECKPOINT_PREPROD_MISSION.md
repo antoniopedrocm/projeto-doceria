@@ -1,5 +1,15 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: visitante + G1/G2/G3 publicados no DEV; aceite do titular pendente
+
+Autorização de publicação do Dono executada. Commit funcional **`d87174b6`**, push DEV concluído; API **`api-00072-dez`** ACTIVE e Hosting **`270329a6cd225290`** publicados em `crmdoceria-9959e`, somente a partir do worktree DEV conferido. [Publicação/verificação](GUEST_CHECKOUT_DEV_RELEASE.md), [evidência](evidence/guest-checkout-dev-release.json). Untracked anteriores/functions.yaml ficaram fora do pacote.
+
+Verificação remota somente leitura: **61/61 arquivos** iguais, **7 rotas** e **4 GETs** públicos/config online PASS; Firebase gerenciado aponta DEV. Cache HTML/assets preservado. **145 Functions não-API** e Rules inalteradas (inventário 146 v2 all-locations/0 v1); sem deploy de índices, Rules, outras Functions ou dados. Sem requisição de criação de contexto/pedido/pagamento, Customer privado, refund/SMS/claim/WhatsApp ou PROD. Verificador usa `/` para index.html conforme cleanUrls; observação do redirect com query documentada sem alteração da aplicação.
+
+Qualidade local preservada: **182 testes PASS**, build/lint do delta/diff-check PASS, seis débitos anteriores de index.js mantidos. Desktop/mobile local PASS com fixtures; isso não substitui o aceite DEV do titular. **Próximo ponto exato:** titular conferir Matriz → carrinho → Continuar como visitante → duas escolhas/helpers/ausência de convite de login, desktop/mobile, sem Confirmar Pedido. Não criar cobrança/refund/pedido real nem repetir C15/SMS/vínculos. C15/C16 permanecem no ponto histórico já registrado.
+
+**Fase 9 = 100% formal histórico; Fase 10 = 87,50%; global formal = 97,00%; Fase 13 = 0%; PROD READY NÃO.** Publicação técnica não aumenta percentuais nem representa homologação manual dos complementos.
+
 ## Estado vigente — 07/11/2026: publicação DEV autorizada e preparada
 
 Dono solicitou **“publique em dev as alterações para eu validar”**. [Registro da publicação](GUEST_CHECKOUT_DEV_RELEASE.md). Esta autorização sucede a pausa para revisão local; escopo somente G1/G2/G3 + visitante em `crmdoceria-9959e`, branch/worktree DEV conferidos. Fontes e build correspondem aos **182 testes PASS** já executados; sem refazer operações reais. Origin sincronizado na base `34510679` antes do commit. Pré-checagem somente metadados: API ACTIVE `api-00071-qeh`, 146 Functions v2 all-locations/0 v1, Rules e Hosting anteriores registrados.

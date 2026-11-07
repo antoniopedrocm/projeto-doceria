@@ -1,5 +1,9 @@
 # Eventos e conciliação InfinitePay V1 — DEV
 
+## Publicação DEV de 07/11/2026
+
+G1/G2/G3 publicados em **`d87174b6`**, API `api-00072-dez` e Hosting `270329a6cd225290`, junto do checkout visitante. [Registro e evidências](GUEST_CHECKOUT_DEV_RELEASE.md). Backend/UI já disponíveis no DEV; 182 testes integrados PASS, sem operação financeira real. Aceite manual dos complementos continua pendente. Percentuais formais inalterados e PROD bloqueada. Estados locais abaixo são históricos.
+
 ## Complementos locais de 07/11/2026 — aguardando revisão/publicação
 
 [G1/G2/G3 implementados e testados localmente](INFINITEPAY_G123_LOCAL_FIXES.md). Novos links selecionam os oito eventos em `webhook: {url, events}`, incluindo paid; links existentes mantêm inscrição original. expired/overdue são informativos não verificados, sem transição operacional/financeira. Formulário de refund agora exige escopo Integral e atesto explícito; registro e match exigem `refundScope: FULL`. Parcial/desconhecido/ausente permanece em conciliação administrativa. Histórico matched preservado; pending histórico sem escopo não é promovido. Nenhuma API de refund ou autenticação fictícia do webhook. 142 testes locais PASS; sem commit/push/deploy ou aceite dos complementos. Percentuais formais inalterados. O estado de auditoria abaixo é histórico.

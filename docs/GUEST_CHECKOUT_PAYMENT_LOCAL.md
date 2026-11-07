@@ -1,5 +1,7 @@
 # Checkout visitante — implementação local DEV
 
+> Atualização posterior: publicado no DEV em `d87174b6`, API `api-00072-dez`/Hosting `270329a6cd225290`. [Registro e limites da verificação](GUEST_CHECKOUT_DEV_RELEASE.md). Aceite manual pendente; a entrega local abaixo preserva a evidência anterior ao deploy.
+
 ## Autorização e estado
 
 **07/11/2026.** Dono aprovou **“Autorizar backend seguro + UI local”**, após [diagnóstico da dependência](GUEST_CHECKOUT_PAYMENT_REVIEW.md). Base real `34510679c35d81bbbb1ae6d46dbdcd1306f629ae`, branch `feature/infinitepay-customer-auth`, worktree `C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree`. Patch G1/G2/G3 anterior preservado. Sem commit, push, deploy, dado remoto, cobrança, estorno, SMS, vínculo ou PROD.
