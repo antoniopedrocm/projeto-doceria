@@ -1,5 +1,11 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
+## Estado vigente — 07/11/2026: C15-E técnico comprovado; Google e C16 pendentes
+
+Compatibilidade `a36d558c` preservada; frontend `125dad90` publicado, testes/aceite de retorno registrados em `d1327182`. [Claim e-mail/senha real](evidence/phase10-c15-0811-after-claim-dev.json): 15 pós-condições técnicas PASS, Customer original, 18 Customers antes/depois, 1 endereço/2 pedidos preservados. [Retorno humano PASS](evidence/customer-menu-first-registration-review-dev.json); demais checks individuais de endereço/pedidos, refresh e logout/relogin ainda não atestados. Único SMS final 0811 consumido, sem repetição autorizada. Falta outro cadastro sem owner/conta Google legítima para C15-G, depois aceite consolidado C16. Não declarar ausência de todo claim real com base nas seções históricas.
+
+[Matriz C16 preparada](PHASE10_C16_CONSOLIDATION.md), [conferência de retomada](evidence/phase10-resume-2026-11-07.json). **C01–C14 PASS preservados; C15/C16 pendentes. Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Sem nova mudança funcional, envio, vínculo, build/deploy ou escrita remota. Rubrica e evidências originais abaixo são históricas e não foram reiniciadas.
+
 ## Estado vigente — patch publicado, C15 real pendente
 
 Correções pontuais **`a36d558c`** publicadas e verificadas somente no DEV após autorização do Dono: dois índices READY, 15 Functions ACTIVE/58 arquivos por fonte, env/bindings preservados e 131 outras Functions/Hosting/Rules inalterados. 417 testes locais e 15 negativas remotas PASS; nenhum SMS/claim/Customer/pedido real alterado. [Evidência de release](evidence/phase10-compatibility-release-dev.json), [relatório](PHASE10_DEV_RELEASE.md).

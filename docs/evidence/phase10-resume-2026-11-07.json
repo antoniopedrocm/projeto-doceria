@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-07T14:12:35.551Z",
+  "readOnly": true,
+  "head": "d132718257c5931c6d174bbbd1db34cb27f828b3",
+  "branch": "feature/infinitepay-customer-auth",
+  "originAhead": 0,
+  "originBehind": 0,
+  "runtimeDeltaSince125dad90": [],
+  "artifacts": [
+    {
+      "file": "docs/evidence/phase10-current-inventory-dev.json",
+      "sha256": "4074af1b29158561210ff3286e3312c3109d262a2f19d05c65ddb874a29d4b18",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/phase10-remnants-owner-decision.json",
+      "sha256": "e32169b58152038410c47022b29ae8337bcfb3ae58b52635df612c0617e33889",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/phase10-local-compatibility-2026-11-05.json",
+      "sha256": "7b05b7c9006d882ce49ef67236c07eb9c43ef0b487fbd418abaf4cd638c9f19a",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/phase10-compatibility-release-dev.json",
+      "sha256": "00f4342023f1cd64be859491baaeb5c838205ad8a5fae8d4b8313ef46e1619e1",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/phase10-c15-0811-authorization-dev.json",
+      "sha256": "4d7271cbc760e4a59762e8fbb67dc162584a021356b874d181069802257787a3",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/phase10-c15-0811-after-claim-dev.json",
+      "sha256": "23a489b3b9a8ecba270c7de3518c0d8096e952ac11b59dfabb3df416e2011537",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/customer-menu-return-v2-local.json",
+      "sha256": "bbdeae5a64f31710bd048c6bcf0608c5449a01f5c3fb3e42df3451ac0720c710",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/customer-menu-return-v2-after-dev.json",
+      "sha256": "a4138ceb19710f76ef52f095c03de4b1617d921a241b06d51b7ce36eea8e012f",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/customer-menu-first-registration-review-dev.json",
+      "sha256": "f09e6cfd90fd43889e4b967190f24a68c1ae88bf6cd14b816d7b28009cb46dce",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/preprod-mission-2026-11-04/phase9-staff-acceptance-dev.json",
+      "sha256": "3ad5203c7d0ee93c3e32cf099ceae9bf3f64f2441b9c9b06006d266e07593252",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/preprod-mission-2026-11-04/sms-temporary-gate-final-dev.json",
+      "sha256": "491680579f76347f1f342dc2c94165f542bbdef665205518c85688d3dd385c0d",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/admin-preview-mission-confirmation-dev.json",
+      "sha256": "3a019856953c0c3c30577986827e7441dd05a38e97f1aedf2d40e2a5af4c761f",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/fiscal-mission-dev.json",
+      "sha256": "c82183dc4a949a264ef7ad2b6409cb863f2647639cf28c38ce466b6303cccd53",
+      "jsonValid": true
+    },
+    {
+      "file": "docs/evidence/crm-refresh-mission-dev.json",
+      "sha256": "18b85ffaf8c8b88c8c378a5379a3e03a3addb2712cdbbf42978f55a1d93a40d7",
+      "jsonValid": true
+    }
+  ],
+  "priorEvidenceChecks": {
+    "approvedRemnants": 14,
+    "inventorySnapshotMatchesDecision": true,
+    "all15ClaimPostconditionsRemainRecordedPass": true,
+    "linkedReturnHumanPass": true,
+    "smsRemainingBudget": 0
+  },
+  "remote": {
+    "readOnly": true,
+    "hostingVersion": "sites/crmdoceria-9959e/versions/75f46bb8c26f95e6",
+    "releaseTime": "2026-11-06T15:04:52.206Z",
+    "expectedVersion": "sites/crmdoceria-9959e/versions/75f46bb8c26f95e6",
+    "versionMatches": true,
+    "indexStatus": 200,
+    "indexMatchesLocalBuild": true,
+    "cacheControl": "no-cache, max-age=0, must-revalidate"
+  },
+  "c16PreparationOnly": true,
+  "c15GoogleCandidateSelected": false,
+  "c15EmailIndividualUiChecksConfirmed": false,
+  "c15Accepted": false,
+  "c16Accepted": false,
+  "formalStatus": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0,
+    "productionReady": false
+  },
+  "remoteWrites": 0,
+  "smsSends": 0,
+  "claims": 0,
+  "production": false
+}

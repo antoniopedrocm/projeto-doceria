@@ -1,5 +1,11 @@
 # Production Readiness Review — DEV
 
+## Estado vigente — 07/11/2026: consolidação preparada, C15/C16 não encerrados
+
+**PROD READY: NÃO. Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%.** [Matriz atual C16](PHASE10_C16_CONSOLIDATION.md) preserva C01–C14 e demais gates PASS. C15-E tem claim real técnico/retorno humano PASS, faltando confirmação individual de endereço/pedidos, refresh e logout/relogin; C15-G requer outro caso legítimo independente e aprovações específicas. C16 continua pendente após essa preparação. Não reabrir SMS temporário, fiscal ou Fase 9 já aceitos, nem repetir vínculo/SMS final 0811 consumido.
+
+Backend `a36d558c` e frontend `125dad90` permanecem referências funcionais. [Conferência de retomada](evidence/phase10-resume-2026-11-07.json): HEAD `d1327182` sincronizado, Hosting `75f46bb8c26f95e6`/HTML correspondente e evidências locais preservadas. Somente documentação nova; testes/build/lint já registrados não foram refeitos. Configurações efetivas e backup/rollback PROD não consultados e autorização PROD não concedida. Esta seção prevalece sobre o histórico abaixo.
+
 ## Estado vigente — publicação complementar da Fase 10 concluída
 
 Runtime **`a36d558c`** e push/deploy seletivo DEV verificados: dois índices READY, 15 Functions ACTIVE, 58 arquivos por fonte, variáveis/bindings preservados, 131 outras Functions e Hosting/Rules inalterados. 417 testes locais preservados e 15 negativas remotas PASS. [Evidência](evidence/phase10-compatibility-release-dev.json), [release](PHASE10_DEV_RELEASE.md). Nenhum SMS, claim, pedido ou operação financeira/fiscal real nesta etapa. A autorização geral do Dono cobre deploy DEV quando necessário; não cobre PROD ou titularidade/mensageria.

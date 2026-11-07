@@ -1,5 +1,13 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Retomada vigente — 07/11/2026: estado preservado; C16 preparado, não encerrado
+
+Worktree DEV `C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree`, branch `feature/infinitepay-customer-auth`, HEAD **`d1327182`**, origin **0 ahead / 0 behind**, sem delta tracked na retomada; untracked anteriores preservados. Último ponto concluído: aceite humano do retorno e 8 novos cenários sintéticos de primeiro cadastro, sem outro patch funcional. [Conferência](evidence/phase10-resume-2026-11-07.json): 14 artefatos JSON válidos, decisão C14 correspondente ao snapshot original; Hosting **`75f46bb8c26f95e6`** e index remoto iguais ao build local, cache HTML de revalidação. Nenhuma consulta nova de Customer/pedido ou escrita remota.
+
+Preparada [matriz C16](PHASE10_C16_CONSOLIDATION.md), sem homologar C16 antecipadamente. Revisões de gates/auditoria atualizadas para refletir claim e-mail/senha real e retorno já PASS; estados anteriores ficam como histórico. **Próximo ponto exato:** aguardar confirmação dos checks individuais C15-E (endereço/2 pedidos, refresh e logout/relogin sem novo vínculo/SMS) e indicação de outro cadastro sem owner/conta Google legítima para C15-G. Conferência e autorização específica desse novo caso precedem SMS/claim. **Final 0811: limite 1/1 consumido, vínculo confirmado; não reenviar, repetir ou desfazer.**
+
+Somente documentação/evidência local nesta etapa; 14 artefatos anteriores íntegros, 11 links da matriz resolvidos e diff-check PASS. Testes/build/lint anteriores preservados, sem reteste ou deploy desnecessário. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** C01–C14 e aceites prévios preservados. Nenhuma alteração de pesos, dados remotos, SMS, vínculo, pagamento, NF, WhatsApp ou PROD.
+
 ## Estado vigente — 06/11/2026: retorno pós-vínculo PASS; primeiro acesso auditado sem nova mutação
 
 Titular respondeu **PASS** ao retorno na conta vinculada e delimitou o erro à **primeira criação de conta a partir do cardápio**; retornos seguintes já funcionam. [Aceite delimitado e auditoria](evidence/customer-menu-first-registration-review-dev.json). Não continuar pedindo repetição do mesmo retorno já PASS. Claim e-mail/senha técnico, Customer original e dados preservados permanecem PASS; único SMS final 0811 consumido, não reenviar nem desfazer ownership.

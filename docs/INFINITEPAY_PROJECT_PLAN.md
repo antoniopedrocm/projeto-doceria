@@ -1,5 +1,11 @@
 # Autenticação de clientes e pagamento online
 
+## Estado vigente — 07/11/2026: retomada conferida e C16 preparado
+
+Repositório `d1327182` sincronizado, trabalho anterior preservado e Hosting DEV `75f46bb8c26f95e6` confirmado somente leitura. [Checkpoint](CHECKPOINT_PREPROD_MISSION.md), [matriz C16](PHASE10_C16_CONSOLIDATION.md). Último ponto concluído: retorno humano PASS e cobertura sintética adicional da primeira criação, sem lacuna funcional nova. C15-E técnico/retorno PASS, demais checks individuais pendentes; C15-G aguarda outro cadastro/conta Google legítimos e autorização específica antes de eventual envio/vínculo. C16 preparado documentalmente, ainda não homologado. Nenhum novo SMS/claim, escrita remota, build ou deploy; não repetir limite final 0811 consumido.
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Pesos históricos e C01–C14 preservados; Fase 10 continua gate obrigatório fora da ponderação global. Registros anteriores abaixo são históricos.
+
 ## Estado vigente — 06/11/2026: retorno pós-vínculo aprovado; C15-G ainda pendente
 
 Titular respondeu PASS ao retorno atual e delimitou o erro à primeira criação pelo cardápio. Auditoria adicional do runtime publicado `125dad90` passou em 8 novos cenários sintéticos de cadastro/onboarding/claim/remontagem e preservação da origem; nenhuma nova alteração funcional/deploy necessária. [Registro](evidence/customer-menu-first-registration-review-dev.json), [checkpoint](CHECKPOINT_PREPROD_MISSION.md). Claim e-mail/senha técnico e retorno humano PASS; confirmar apenas checks individuais restantes e selecionar outro Customer/conta Google legítimos para C15-G, com autorização própria. Não repetir SMS/claim final 0811. C15/C16 ainda pendentes. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.**
