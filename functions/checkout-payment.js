@@ -201,7 +201,7 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     await expire(id);
     p=(await payments.doc(id).get()).data();
     const requiresReview=!!p.requiresReview || p.linkState==='RECONCILIATION_REQUIRED';
-    return {id:p.orderId,payment_status:p.payment_status,
+    return {id:p.orderId,storeId:orderIdentity(p).storeId,payment_status:p.payment_status,
       checkoutUrl:uid && p.ownerUid===uid && p.payment_status==='PENDING' && !requiresReview ? p.checkoutUrl || null : null,requiresReview};
   }
   async function expire(id) {

@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "date": "2026-11-07",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "project": "crmdoceria-9959e",
+  "baseCommit": "0112003aae828306bd5fd280c2a75fb26213d8e3",
+  "scope": "Checkout completion after server acknowledgement, fresh next purchase, legacy residual cart recovery and freight quote lifecycle. No cancellation endpoint.",
+  "tests": {
+    "public": {
+      "passed": 69,
+      "failed": 0
+    },
+    "unitWhatsApp": {
+      "passed": 35,
+      "failed": 0
+    },
+    "navigation": {
+      "passed": 37,
+      "failed": 0
+    },
+    "integration": {
+      "passed": 93,
+      "failed": 0,
+      "suites": [
+        {
+          "file": "checkout-http.test.js",
+          "exitCode": 0,
+          "tests": 33,
+          "passed": 33,
+          "failed": 0
+        },
+        {
+          "file": "guest-checkout-emulator.test.js",
+          "exitCode": 0,
+          "tests": 2,
+          "passed": 2,
+          "failed": 0
+        },
+        {
+          "file": "payment-financial-events-emulator.test.js",
+          "exitCode": 0,
+          "tests": 15,
+          "passed": 15,
+          "failed": 0
+        },
+        {
+          "file": "payment-contract-emulator.test.js",
+          "exitCode": 0,
+          "tests": 20,
+          "passed": 20,
+          "failed": 0
+        },
+        {
+          "file": "checkout-emulator.test.js",
+          "exitCode": 0,
+          "tests": 9,
+          "passed": 9,
+          "failed": 0
+        },
+        {
+          "file": "checkout-reservation-emulator.test.js",
+          "exitCode": 0,
+          "tests": 9,
+          "passed": 9,
+          "failed": 0
+        },
+        {
+          "file": "payment-settings-emulator.test.js",
+          "exitCode": 0,
+          "tests": 3,
+          "passed": 3,
+          "failed": 0
+        },
+        {
+          "file": "agreed-payment-rules.test.js",
+          "exitCode": 0,
+          "tests": 1,
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "file": "checkout-identity-rules.test.js",
+          "exitCode": 0,
+          "tests": 1,
+          "passed": 1,
+          "failed": 0
+        }
+      ]
+    },
+    "totalPassed": 234,
+    "distinct": true,
+    "retriesOrPreviousTotalsAdded": false
+  },
+  "quality": {
+    "build": "PASS",
+    "bundle": "main.e4b94788.js",
+    "gzipKb": 456.38,
+    "inlineLint": {
+      "files": 5,
+      "inlineScripts": 6,
+      "errors": 0,
+      "warnings": 0,
+      "newInlineDiagnostics": []
+    },
+    "runtimeLint": {
+      "files": 18,
+      "errors": 0,
+      "warnings": 0,
+      "indexBaselineErrors": 6,
+      "indexCurrentErrors": 6,
+      "indexNewDiagnostics": 0
+    },
+    "diffCheck": "PASS"
+  },
+  "runtime": [
+    {
+      "path": "crm/public/cardapio.html",
+      "sha256": "52214e4168583140a9826260820a1457526a692554628721bf7b804c18120e50",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-matriz.html",
+      "sha256": "52214e4168583140a9826260820a1457526a692554628721bf7b804c18120e50",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-garavelo.html",
+      "sha256": "52214e4168583140a9826260820a1457526a692554628721bf7b804c18120e50",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-festa.html",
+      "sha256": "52214e4168583140a9826260820a1457526a692554628721bf7b804c18120e50",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/guest-payment-attempt.mjs",
+      "sha256": "37374b699410ff501132b0eb8a85ac9706c50d4b3f6da5fc550e275a8bb50310",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/checkout-payment-client.js",
+      "sha256": "0d1483321dddbb089c020c812696eb86f39fef2bf6582da169898008e7eabbc6",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/payment-return.js",
+      "sha256": "36ea556eb17cf48ab998905c892f7a20ff4c388be8eae2f76f46f81e4f20a4ca",
+      "buildMatch": true
+    }
+  ],
+  "backend": [
+    {
+      "path": "functions/checkout-payment.js",
+      "sha256": "44fc961f7e30c988778a6b556771622e2eb8770a20e0be1ddf1e0eaf5a595734",
+      "change": "Canonical public storeId only in authorized status response; no financial state changes"
+    }
+  ],
+  "visual": {
+    "synthetic": true,
+    "desktop": "1920x889 PASS",
+    "mobile": "390x800 PASS",
+    "review": "visual-review.json",
+    "freightReload": "../checkout-freight-refresh-local/browser-review.json"
+  },
+  "safety": {
+    "realOrders": 0,
+    "realPayments": 0,
+    "cancellations": 0,
+    "realRefunds": 0,
+    "smsClaimsWhatsApp": 0,
+    "businessDataWrites": 0,
+    "productionAccess": false
+  },
+  "acceptance": "Previous FAIL retained; owner manual DEV acceptance pending",
+  "percentages": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "productionReady": false
+}

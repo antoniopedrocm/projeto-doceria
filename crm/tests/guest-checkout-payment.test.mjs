@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import {paymentSelection,syncPaymentChoices,resetPaymentChoice,PAYMENT_CHOICES} from '../public/checkout-payment-choice.mjs';
-import {inspectGuestPaymentAttempt} from '../public/guest-payment-attempt.mjs';
+import {inspectGuestPaymentAttempt,completeCheckoutAttempt} from '../public/guest-payment-attempt.mjs';
 const {JSDOM}=createRequire(import.meta.url)('../node_modules/jsdom');
 const html=fs.readFileSync(new URL('../public/cardapio.html',import.meta.url),'utf8');
 const method=(from,to)=>html.slice(html.indexOf(from),html.indexOf(to,html.indexOf(from)));
@@ -19,22 +19,26 @@ function fixture() {
  window.guestCurrentLatLng={lat:-16,lng:-49};window.guestManualAddressLocationConfirmed=true;
  window.open=url=>whatsapp.push(url);
  const identity={mode:'guest',token:'a'.repeat(64),revision:1};
+ let attemptCount=0;
  const env={window,document,AbortSignal,guestPaymentPreviewGeneration:0,console:{error(){}},sessionStorage:window.sessionStorage,
   guestNameInput:document.getElementById('guest-name'),guestPhoneInput:document.getElementById('guest-phone'),guestPaymentMethodSelect:select,
   sendWhatsappButton:document.getElementById('send-whatsapp-button'),paymentMethodSelect:document.getElementById('payment-method-select'),
   checkoutIdentity:{get:()=>({...identity}),isStrong:()=>false,ready:async()=>{}},CHECKOUT_MODES:{GUEST:'guest',PHONE:'legacy_phone'},
-  paymentSelection,resetPaymentChoice,inspectGuestPaymentAttempt,isLinkedCustomer:()=>false,currentClient:null,pendingOrderDetails:{},storeIsOpenNow:true,storeAvailability:'OPEN',
+  paymentSelection,resetPaymentChoice,inspectGuestPaymentAttempt,completeCheckoutAttempt,isLinkedCustomer:()=>false,currentClient:null,pendingOrderDetails:{},storeIsOpenNow:true,storeAvailability:'OPEN',
+  guestCheckoutModal:document.getElementById('guest-checkout-modal'),paymentModal:document.getElementById('payment-modal'),createInitialGuestAddressFlowState:()=>({currentStep:1,locationConfirmed:false,formData:{}}),
   cart:[{id:'fixture-product',nome:'Produto sintético',quantity:1,preco:10}],appliedCupom:null,STORE_ID:'ana-guimaraes-doceria-matriz',API_BASE_URL:'https://api.invalid',WHATSAPP_NUMBER:'fixture-only',
   ensureCheckoutNotBlocked(){},revalidateCheckoutBeforeFinalSubmit:async()=>{},getStoreAvailabilityMessage:()=>'',savedAddressFields:()=>({}),chargedFreight:()=>4,
-  paymentAttempt:()=> 'guest-pending-attempt-fixture',checkoutHeaders:async()=>({'Content-Type':'application/json'}),paymentStatusHeaders:async()=>({'Content-Type':'application/json'}),
+  paymentAttempt:()=>{const key='doceria-payment-pending',prior=JSON.parse(window.sessionStorage.getItem(key)||'null');if(prior?.idempotencyKey)return prior.idempotencyKey;
+   const idempotencyKey=attemptCount++?'new-purchase-'+attemptCount:'guest-pending-attempt-fixture';window.sessionStorage.setItem(key,JSON.stringify({idempotencyKey}));return idempotencyKey;},checkoutHeaders:async()=>({'Content-Type':'application/json'}),paymentStatusHeaders:async()=>({'Content-Type':'application/json'}),
   fetch:async(url,options)=>{posted.push({url,headers:options.headers,body:JSON.parse(options.body)});return env.respond();},
-  respond:async()=>({ok:true,json:async()=>({ok:true,id:'b'.repeat(64),paymentId:'b'.repeat(64),checkoutUrl:'https://buy.infinitepay.io/fixture',subtotal:10,desconto:0,total:14,valorFrete:4})}),
-  redirectToPayment:data=>redirects.push(data),resetWhatsAppConsent(){},clearCheckoutBlockingIssue(){},retainAuthenticatedCustomer:()=>null,removeCupom(){},clearCheckoutState(){},renderCart(){},
+  respond:async()=>({ok:true,json:async()=>({ok:true,id:'b'.repeat(64),paymentId:'b'.repeat(64),paymentReturnToken:'e'.repeat(64),checkoutUrl:'https://buy.infinitepay.io/fixture',subtotal:10,desconto:0,total:14,valorFrete:4})}),
+  redirectToPayment:(data,ready)=>{ready?.();redirects.push(data);},resetWhatsAppConsent(){},clearCheckoutBlockingIssue(){},retainAuthenticatedCustomer:()=>null,removeCupom(){},clearCheckoutState(){window.sessionStorage.removeItem('checkoutState_v1');},renderCart(){},
   confirmationModal:document.getElementById('confirmation-modal'),platformConfirmationModal:document.getElementById('platform-confirmation-modal'),
   mapCriticalCheckoutError:e=>e.message,setCheckoutBlockingIssue(){},showToast:m=>messages.push(m)};
  vm.createContext(env);
   vm.runInContext(method('function showGuestPendingPayment(','async function handlePlatformOrder()')+method('async function finalizeOrder(','function applyReorderCart('),env);
- return {dom,document,select,identity,env,posted,redirects,whatsapp,messages,close:()=>dom.window.close()};
+ const fill=()=>{for(const [id,value] of Object.entries(values))document.getElementById(id).value=value;window.guestCurrentLatLng={lat:-16,lng:-49};window.guestManualAddressLocationConfirmed=true;document.getElementById('guest-address-step3').classList.remove('hidden');document.getElementById('guest-checkout-modal').classList.remove('hidden');};
+ return {dom,document,select,identity,env,posted,redirects,whatsapp,messages,fill,close:()=>dom.window.close()};
 }
 test('guest tem exatamente duas opções e helper independente do checkout autenticado; sem convite de login',t=>{
  const f=fixture();t.after(f.close);
@@ -86,19 +90,19 @@ test('online desabilitado ou endereço não confirmado não envia pedido; combin
 test('mudança do contexto visitante para outra identidade não herda Customer/endereços nem envia',async t=>{
  const f=fixture();t.after(f.close);f.identity.mode='legacy_phone';await f.env.handleGuestOrder();assert.equal(f.posted.length,0);assert.ok(f.messages.includes('Selecione novamente como continuar.'));
 });
-test('tentativa online anterior + Combinar não envia pedido divergente nem apaga a tentativa',async t=>{
+test('pedido online anterior reconhecido finaliza carrinho legado sem reenviar ou cancelar o pedido',async t=>{
  const f=fixture();t.after(f.close);const id='c'.repeat(64),storage=f.dom.window.sessionStorage;
  storage.setItem('doceria-payment-pending',JSON.stringify({idempotencyKey:'prior-attempt-fixture',paymentId:id}));
  storage.setItem('doceria-payment-return:'+id,JSON.stringify({token:'d'.repeat(64)}));
  f.select.value='AGREED_LATER';const requests=[];
  f.env.fetch=async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return url.endsWith('/checkout/payment-status')
-  ? {ok:true,json:async()=>({id,payment_status:'PENDING'})}
+  ? {ok:true,json:async()=>({id,storeId:f.env.STORE_ID,payment_status:'PENDING'})}
   : {ok:false,status:409,json:async()=>({message:'O pedido já foi enviado com outros dados. Consulte o pedido existente.'})};};
  await f.env.handleGuestOrder();assert.equal(requests.filter(r=>r.url.includes('/checkout/confirmar')).length,0);
  assert.equal(requests.filter(r=>r.url.endsWith('/checkout/payment-status')).length,1);
- assert.equal(JSON.parse(storage.getItem('doceria-payment-pending')).idempotencyKey,'prior-attempt-fixture');
- assert.ok(f.messages.some(m=>m.includes('pagamento online em andamento')));assert.equal(f.env.sendWhatsappButton.disabled,false);
- assert.equal(f.document.getElementById('guest-pending-payment-link').getAttribute('href'),'/payment-return.html?order_nsu='+id);
+ assert.equal(storage.getItem('doceria-payment-pending'),null);assert.equal(f.env.cart.length,0);
+ assert.ok(f.messages.some(m=>m.includes('já foi registrado')));assert.equal(f.env.sendWhatsappButton.disabled,false);
+ assert.equal(f.document.querySelector('[data-existing-payment]').getAttribute('href'),'/payment-return.html?order_nsu='+id);
 });
 test('conflito 409 tipado informa pedido existente sem transformar a tentativa em bloqueio permanente',async t=>{
  const f=fixture();t.after(f.close);let blocked=0;f.env.setCheckoutBlockingIssue=()=>{blocked++;};
@@ -111,14 +115,14 @@ test('conflito 409 tipado informa pedido existente sem transformar a tentativa e
  assert.equal(f.env.sendWhatsappButton.disabled,false);
  assert.equal(f.dom.window.sessionStorage.getItem('doceria-payment-pending'),prior);
 });
-test('retomar Pagar Agora com tentativa pendente conserva a chave, confirma no backend e reutiliza o link',async t=>{
+test('pedido anterior em Pagar Agora também é recuperado sem segunda confirmação do checkout',async t=>{
  const f=fixture();t.after(f.close);const id='c'.repeat(64),storage=f.dom.window.sessionStorage;
  const prior=JSON.stringify({idempotencyKey:'same-online-attempt-fixture',paymentId:id});storage.setItem('doceria-payment-pending',prior);
  storage.setItem('doceria-payment-return:'+id,JSON.stringify({token:'d'.repeat(64)}));f.env.paymentAttempt=()=> 'same-online-attempt-fixture';
- const requests=[];f.env.fetch=async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>url.endsWith('/checkout/payment-status')?{id,payment_status:'PENDING'}:{ok:true,id,paymentId:id,checkoutUrl:'https://buy.infinitepay.io/existing-fixture'}};};
+ const requests=[];f.env.fetch=async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>url.endsWith('/checkout/payment-status')?{id,storeId:f.env.STORE_ID,payment_status:'PENDING'}:{ok:true,id,paymentId:id,checkoutUrl:'https://buy.infinitepay.io/existing-fixture'}};};
  await f.env.handleGuestOrder();const confirmation=requests.filter(r=>r.url.includes('/checkout/confirmar'));
- assert.equal(confirmation.length,1);assert.equal(confirmation[0].body.idempotencyKey,'same-online-attempt-fixture');assert.equal(confirmation[0].body.pagamento.mode,'ONLINE_NOW');
- assert.equal(f.redirects.length,1);assert.equal(f.redirects[0].paymentId,id);assert.equal(storage.getItem('doceria-payment-pending'),prior);assert.equal(f.whatsapp.length,0);
+ assert.equal(confirmation.length,0);assert.equal(f.env.cart.length,0);
+ assert.equal(f.redirects.length,0);assert.equal(storage.getItem('doceria-payment-pending'),null);assert.equal(f.whatsapp.length,0);
 });
 test('preview de Combinar mostra pendência sem Confirmar Pedido ou enviar novo pedido',async t=>{
  const f=fixture();t.after(f.close);const id='c'.repeat(64),storage=f.dom.window.sessionStorage;
@@ -133,7 +137,46 @@ test('preview antigo não reaplica aviso depois de mudar para Pagar Agora',async
  storage.setItem('doceria-payment-pending',JSON.stringify({idempotencyKey:'preview-attempt-fixture',paymentId:id}));storage.setItem('doceria-payment-return:'+id,JSON.stringify({token:'d'.repeat(64)}));
  let finish;f.env.fetch=async()=>new Promise(resolve=>{finish=resolve;});f.select.value='AGREED_LATER';const stale=f.env.previewGuestPayment();
  while(!finish)await new Promise(resolve=>setImmediate(resolve));f.select.value='ONLINE_NOW';
- f.env.fetch=async()=>({ok:true,json:async()=>({payment_status:'PENDING'})});await f.env.previewGuestPayment();
- finish({ok:true,json:async()=>({payment_status:'PENDING'})});await stale;
+ f.env.fetch=async()=>({ok:true,json:async()=>({id,storeId:f.env.STORE_ID,payment_status:'PENDING'})});await f.env.previewGuestPayment();
+ finish({ok:true,json:async()=>({id,storeId:f.env.STORE_ID,payment_status:'PENDING'})});await stale;
  assert.equal(f.document.getElementById('guest-pending-payment').classList.contains('hidden'),true);assert.equal(f.posted.length,0);
+});
+test('confirmação online encerra formulário/carrinho antes de navegar e mantém consulta do pagamento',async t=>{
+ const f=fixture();t.after(f.close);f.dom.window.sessionStorage.setItem('checkoutState_v1','draft fixture');
+ await f.env.handleGuestOrder();
+ assert.equal(f.posted.length,1);assert.equal(f.redirects.length,1);assert.equal(f.env.cart.length,0);
+ assert.equal(f.env.guestCheckoutModal.classList.contains('hidden'),true);assert.equal(f.env.guestNameInput.value,'');
+ assert.equal(f.dom.window.sessionStorage.getItem('doceria-payment-pending'),null);assert.equal(f.dom.window.sessionStorage.getItem('checkoutState_v1'),null);
+ assert.equal(JSON.parse(f.dom.window.sessionStorage.getItem('doceria-payment-return:'+'b'.repeat(64))).token,'e'.repeat(64));
+ await f.env.handleGuestOrder();assert.equal(f.posted.length,1);
+});
+test('nova compra após online começa limpa com chave nova e pode concluir Combinar normalmente',async t=>{
+ const f=fixture();t.after(f.close);await f.env.handleGuestOrder();const firstKey=f.posted[0].body.idempotencyKey;
+ f.env.cart=[{id:'new-product',nome:'Outra compra',preco:3,quantity:1}];f.fill();f.select.value='AGREED_LATER';
+ f.env.respond=async()=>({ok:true,json:async()=>({ok:true,id:'f'.repeat(64),total:7,valorFrete:4,desconto:0})});
+ await f.env.handleGuestOrder();assert.equal(f.posted.length,2);assert.notEqual(f.posted[1].body.idempotencyKey,firstKey);
+ assert.equal(f.posted[1].body.pagamento.mode,'AGREED_LATER');assert.equal(f.redirects.length,1);assert.equal(f.env.cart.length,0);
+ assert.equal(f.dom.window.sessionStorage.getItem('doceria-payment-pending'),null);assert.equal(f.env.confirmationModal.classList.contains('hidden'),false);
+ await f.env.handleGuestOrder();assert.equal(f.posted.length,2);
+});
+test('resposta sem confirmação válida não limpa carrinho ou chave de retry',async t=>{
+ const f=fixture();t.after(f.close);f.env.respond=async()=>({ok:true,json:async()=>({ok:false})});
+ await f.env.handleGuestOrder();assert.equal(f.env.cart.length,1);assert.equal(f.redirects.length,0);
+ assert.equal(JSON.parse(f.dom.window.sessionStorage.getItem('doceria-payment-pending')).idempotencyKey,f.posted[0].body.idempotencyKey);
+});
+test('finalização compartilhada preserva checkout autenticado e por telefone',async t=>{
+ for(const mode of ['strong_auth','legacy_phone']){
+  const f=fixture();t.after(f.close);f.identity.mode=mode;
+  f.env.checkoutIdentity.isStrong=()=>mode==='strong_auth';f.env.isLinkedCustomer=()=>true;
+  const client={id:'canonical-fixture',nome:'Cliente sintético'};f.env.currentClient=client;
+  f.env.retainAuthenticatedCustomer=c=>mode==='strong_auth'?c:null;
+  f.env.pendingOrderDetails={clienteId:client.id,clienteNome:client.nome,clienteEndereco:'Retirar na Loja',telefone:'62981005566'};
+  Object.assign(f.env,{confirmOrderButton:f.document.getElementById('confirm-order-button'),paymentError:f.document.getElementById('payment-error')});
+  syncPaymentChoices(f.env.paymentMethodSelect,true,true);f.env.paymentMethodSelect.value='ONLINE_NOW';
+  vm.runInContext(method('async function handlePlatformOrder()','async function finalizeOrder('),f.env);
+  await f.env.handlePlatformOrder();
+  assert.equal(f.posted.length,1);assert.equal(f.posted[0].body.cliente.id,client.id);assert.equal(f.redirects.length,1);
+  assert.equal(f.env.cart.length,0);assert.equal(f.dom.window.sessionStorage.getItem('doceria-payment-pending'),null);
+  assert.equal(f.env.currentClient,mode==='strong_auth'?client:null);
+ }
 });

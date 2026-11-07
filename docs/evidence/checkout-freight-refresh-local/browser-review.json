@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "scope": "Local synthetic fixture; no Customer/provider/network service",
+  "normalAndHardReload": "PASS",
+  "report": [
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "hardReload": false,
+      "freight": 0,
+      "label": "A calcular",
+      "total": "R$ 1.00 + frete",
+      "cartItems": 1,
+      "idempotencyPreserved": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "hardReload": true,
+      "freight": 0,
+      "label": "A calcular",
+      "total": "R$ 1.00 + frete",
+      "cartItems": 1,
+      "idempotencyPreserved": true
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "hardReload": false,
+      "freight": 0,
+      "label": "A calcular",
+      "total": "R$ 1.00 + frete",
+      "cartItems": 1,
+      "idempotencyPreserved": true
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "hardReload": true,
+      "freight": 0,
+      "label": "A calcular",
+      "total": "R$ 1.00 + frete",
+      "cartItems": 1,
+      "idempotencyPreserved": true
+    }
+  ]
+}

@@ -28,7 +28,7 @@ async function page({storage=storageFor(saved()),storeId=matriz,uid='a'}={}){
     renderCart:()=>{},updateAllSummaries:()=>{},reconcileCartWithLatestProducts:()=>{},applyReorderCart:()=>{},showToast:()=>{},
     cartModal:{classList:{remove:()=>{}}},console:{warn:()=>{}},selectedAddressText:{textContent:''}});
   const declarations=source.slice(source.indexOf('        let allProducts ='),source.indexOf('        // --- SELEÇÃO DE ELEMENTOS DOM ---'));
-  const persistence=source.slice(source.indexOf('        function persistCheckoutState()'),source.indexOf('        // --- FUNÇÕES PRINCIPAIS ---'));
+  const persistence=source.slice(source.indexOf('        const invalidateCheckoutFreight ='),source.indexOf('        // --- FUNÇÕES PRINCIPAIS ---'));
   const boot=source.slice(source.indexOf('        const reorderCart='),source.indexOf("        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startCheckout"));
   assert.ok(declarations && persistence && boot);
   vm.runInContext(declarations+persistence+boot+'\nglobalThis.start=startCheckout;',context);

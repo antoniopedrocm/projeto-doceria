@@ -579,7 +579,7 @@ test('GUEST retorno autoriza somente seu pagamento; PAID exige payment_check e n
   assert.equal((await status({})).status,404);
   assert.equal((await status({paymentReturnToken:other.data.paymentReturnToken})).status,404);
   const valid=await status({paymentReturnToken:created.data.paymentReturnToken});assert.equal(valid.status,200);
-  assert.deepEqual(Object.keys(valid.data).sort(),['checkoutUrl','id','payment_status','requiresReview']);assert.equal(valid.data.checkoutUrl,null);
+  assert.deepEqual(Object.keys(valid.data).sort(),['checkoutUrl','id','payment_status','requiresReview','storeId']);assert.equal(valid.data.checkoutUrl,null);assert.equal(valid.data.storeId,store);
   const refs={order_nsu:created.data.paymentId,transaction_nsu:'guest-confirmed-transaction',invoice_slug:'guest-confirmed-slug',event_type:'paid',paid:true};
   const event=()=>originalFetch(base+'/checkout/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(refs)});
   try {
@@ -609,15 +609,16 @@ test('GUEST não ignora preço, frete, estoque, loja inativa ou disponibilidade 
 });
 
 test('Guest troca para combinar somente depois de encerramento confirmado; chave nova não duplica reserva anterior',async()=>{
- const {inspectGuestPaymentAttempt}=await import('../crm/public/guest-payment-attempt.mjs');
+ const {inspectGuestPaymentAttempt,completeCheckoutAttempt}=await import('../crm/public/guest-payment-attempt.mjs');
  const f=await guestFixture(),priorLinks=links,created=await send(f.input,null);assert.equal(created.status,200,JSON.stringify(created));
  const key='doceria-payment-pending',values=new Map([[key,JSON.stringify({idempotencyKey:f.input.idempotencyKey,paymentId:created.data.paymentId})],['doceria-payment-return:'+created.data.paymentId,JSON.stringify({token:created.data.paymentReturnToken})]]);
  const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
  const request=async body=>{const r=await originalFetch(base+'/checkout/payment-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {ok:r.ok,data:await r.json()};};
- const kept=values.get(key);assert.equal((await inspectGuestPaymentAttempt({storage,request})).blocked,true);assert.equal(values.get(key),kept);
+ const kept=values.get(key);assert.equal((await inspectGuestPaymentAttempt({storage,request})).registered,true);assert.equal(values.get(key),kept);
  assert.equal((await f.product.get()).get('estoque'),7);assert.equal(links,priorLinks+1);
  await db.doc('checkoutPayments/'+created.data.paymentId).update({expiresAt:admin.firestore.Timestamp.fromMillis(1)});
- assert.equal((await inspectGuestPaymentAttempt({storage,request})).blocked,false);assert.equal(values.has(key),false);
+ const finished=await inspectGuestPaymentAttempt({storage,request});assert.equal(finished.registered,true);
+ assert.equal(completeCheckoutAttempt({storage,attemptKey:f.input.idempotencyKey,orderId:finished.orderId,paymentId:finished.paymentId,storeId:store,mode:'ONLINE_NOW'}),true);assert.equal(values.has(key),false);
  assert.equal((await f.product.get()).get('estoque'),8);
  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),source=fs.readFileSync(path.join(__dirname,'../crm/public/checkout-payment-client.js'),'utf8');
  const attempt=vm.runInNewContext(source.slice(source.indexOf('export function paymentAttempt'),source.indexOf('export function redirectToPayment')).replace('export ','')+';paymentAttempt;',{key,sessionStorage:storage,crypto:{randomUUID:require('node:crypto').randomUUID}});
@@ -627,6 +628,21 @@ test('Guest troca para combinar somente depois de encerramento confirmado; chave
  assert.equal((await send(input,null)).data.id,offline.data.id);assert.equal((await f.product.get()).get('estoque'),7);assert.equal(links,priorLinks+1);
  assert.equal((await db.doc(`lojas/${store}/pedidos/${created.data.id}`).get()).get('payment_status'),'EXPIRED');
  assert.equal((await db.doc(`lojas/${store}/pedidos/${offline.data.id}`).get()).get('paymentStatus'),'PENDING');
+});
+
+test('Guest conclui checkout online e inicia outra compra Combinar, sem cancelar ou reutilizar a primeira',async()=>{
+ const {completeCheckoutAttempt}=await import('../crm/public/guest-payment-attempt.mjs');
+ const f=await guestFixture(),priorLinks=links,created=await send(f.input,null);assert.equal(created.status,200,JSON.stringify(created));
+ const key='doceria-payment-pending',values=new Map([[key,JSON.stringify({idempotencyKey:f.input.idempotencyKey})],['checkoutState_v1',JSON.stringify({storeId:store,cart:[{id:'product',quantity:1}]})]]);
+ const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+ assert.equal(completeCheckoutAttempt({storage,attemptKey:f.input.idempotencyKey,orderId:created.data.id,paymentId:created.data.paymentId,paymentReturnToken:created.data.paymentReturnToken,storeId:store,mode:'ONLINE_NOW'}),true);
+ assert.equal(values.has(key),false);assert.equal(values.has('checkoutState_v1'),false);assert.ok(values.has('doceria-payment-return:'+created.data.paymentId));
+ const next={...f.input,idempotencyKey:require('node:crypto').randomUUID(),pagamento:{mode:'AGREED_LATER',forma:'A combinar'}};
+ const offline=await send(next,null);assert.equal(offline.status,200,JSON.stringify(offline));assert.notEqual(offline.data.id,created.data.id);
+ assert.equal((await send(next,null)).data.id,offline.data.id);assert.equal((await f.product.get()).get('estoque'),6);
+ assert.equal(links,priorLinks+1);
+ const old=(await db.doc('checkoutPayments/'+created.data.paymentId).get()).data();assert.equal(old.payment_status,'PENDING');assert.equal(old.reservation.state,'HELD');
+ const order=(await db.doc(`lojas/${store}/pedidos/${offline.data.id}`).get()).data();assert.equal(order.paymentMode,'AGREED_LATER');assert.equal(order.paymentMethod,null);assert.equal(order.paymentStatus,'PENDING');
 });
 
 test('HTTP distingue loja fechada de configuração operacional indisponível',async()=>{

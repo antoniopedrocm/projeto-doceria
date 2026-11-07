@@ -4,7 +4,7 @@ const {pathToFileURL}=require('node:url');
 const {JSDOM}=require('../node_modules/jsdom');
 // Optional isolated review tooling; never part of the application bundle.
 const {chromium}=require(path.join(process.env.TEMP,'doceria-guest-visual-tools/node_modules/playwright-core'));
-const root=path.resolve(__dirname,'../..'),pendingMode=process.argv.includes('--pending'),out=path.join(root,pendingMode?'docs/evidence/guest-attempt-recovery-local':'docs/evidence/guest-checkout-local');
+const root=path.resolve(__dirname,'../..'),pendingMode=process.argv.includes('--pending'),out=path.join(root,process.argv.includes('--cycle')?'docs/evidence/checkout-cycle-local':pendingMode?'docs/evidence/guest-attempt-recovery-local':'docs/evidence/guest-checkout-local');
 (async()=>{
  fs.mkdirSync(out,{recursive:true});
  const {syncPaymentChoices,PAYMENT_CHOICES}=await import(pathToFileURL(path.join(root,'crm/public/checkout-payment-choice.mjs')));

@@ -59,6 +59,7 @@ function harness(page=source) {
     clearCheckoutBlockingIssue:()=>{},updateAllSummaries:()=>{},showToast:()=>{},persistCheckoutState:()=>snapshots.push(JSON.stringify(c.pendingOrderDetails)),
     fetch:async(url,options)=>{requests.push(JSON.parse(options.body));return {ok:true,json:async()=>({valorFrete:4,distanciaKm:2})};}};
   vm.createContext(c);
+  vm.runInContext(page.slice(page.indexOf('const invalidateCheckoutFreight ='),page.indexOf('function persistCheckoutState(')),c);
   vm.runInContext(page.slice(page.indexOf('function openAddressManagementModal(client)'),page.indexOf('async function deleteAddress')),c);
   c.deleteAddress=()=>{};
   vm.runInContext(page.slice(page.indexOf('function usePickupAddress()'),page.indexOf('function getTodayIsoDate()')),c);

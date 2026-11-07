@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "date": "2026-11-07",
+  "project": "crmdoceria-9959e",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "baseCommit": "0112003aae828306bd5fd280c2a75fb26213d8e3",
+  "scope": "Local freight quote lifecycle fix; previous remote release remains unaccepted. Payment exit proposal not implemented.",
+  "quality": {
+    "testsPassed": 71,
+    "publicTests": 58,
+    "backendTests": 13,
+    "newFreightTests": 17,
+    "build": "PASS",
+    "lint": {
+      "files": 3,
+      "inlineScripts": 6,
+      "errors": 0,
+      "warnings": 0,
+      "newInlineDiagnostics": []
+    },
+    "diffCheck": "PASS",
+    "inlineScriptsParsed": 6,
+    "bundle": "main.e4b94788.js",
+    "bundleGzipKb": 456.38,
+    "existingBuildWarnings": "native-audio sourcemaps and stale browser compatibility data"
+  },
+  "runtime": [
+    {
+      "path": "crm/public/cardapio.html",
+      "sha256": "58bdf5a5ad48687a2de552541b506cc32e2d0460fe9047c9dbcdba66e47627bf",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-matriz.html",
+      "sha256": "58bdf5a5ad48687a2de552541b506cc32e2d0460fe9047c9dbcdba66e47627bf",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-garavelo.html",
+      "sha256": "58bdf5a5ad48687a2de552541b506cc32e2d0460fe9047c9dbcdba66e47627bf",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-festa.html",
+      "sha256": "58bdf5a5ad48687a2de552541b506cc32e2d0460fe9047c9dbcdba66e47627bf",
+      "buildMatch": true
+    }
+  ],
+  "testFiles": [
+    {
+      "path": "crm/tests/checkout-freight-refresh.test.mjs",
+      "sha256": "c4e1b54bd8a113c80a8ad55494bb896129713d7863aaca4d6b812587ead2378e"
+    },
+    {
+      "path": "crm/tests/checkout-addresses.test.mjs",
+      "sha256": "c1382593a3254ff44da93b6d04dff53b459a37acb3697c098e9b3c84dfb5f526"
+    },
+    {
+      "path": "crm/tests/checkout-freight-visual-review.cjs",
+      "sha256": "8e0d64518418e1129eb1613b3338d9cf60eb570c8080b3d9782e8bb8fa1beeaf"
+    }
+  ],
+  "browserFixture": {
+    "normalAndHardReload": "PASS",
+    "viewports": [
+      "1920x889",
+      "390x800"
+    ],
+    "checks": 4,
+    "screenshots": 4,
+    "externalServices": 0,
+    "report": "browser-review.json",
+    "synthetic": true
+  },
+  "safety": {
+    "remoteReads": 0,
+    "remoteBusinessWrites": 0,
+    "newOrders": 0,
+    "realPayments": 0,
+    "smsClaimsWhatsApp": 0,
+    "productionAccess": false
+  },
+  "pending": {
+    "paymentExitAuthorization": true,
+    "paymentExitImplemented": false,
+    "manualAcceptance": "FAIL of last remote release preserved; new local fix not manually accepted",
+    "commitPushDeploy": "Not executed"
+  },
+  "percentages": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "productionReady": false
+}

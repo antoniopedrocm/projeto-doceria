@@ -156,6 +156,7 @@ for (const menu of ['matriz', 'garavelo', 'festa']) {
       }
       const resetCode = html.slice(html.indexOf('        function resetWhatsAppConsent()'), html.indexOf("        window.addEventListener('pageshow', resetWhatsAppConsent);") + "        window.addEventListener('pageshow', resetWhatsAppConsent);".length);
       const finalizeCode = html.slice(html.indexOf('        async function finalizeOrder('), html.indexOf('        function applyReorderCart(', html.indexOf('        async function finalizeOrder(')));
+      const finishCode = html.slice(html.indexOf('        const finishConfirmedCheckout ='),html.indexOf('        const recoverRegisteredCheckout ='));
       for (const isPlatform of [true, false]) {
         for (const accepted of [true, false]) {
           let sent;
@@ -172,16 +173,20 @@ for (const menu of ['matriz', 'garavelo', 'festa']) {
             confirmationModal: document.getElementById('confirmation-modal'),
             platformConfirmationModal: {classList: {remove: () => {}}},
             removeCupom: () => {}, clearCheckoutState: () => {}, renderCart: () => {},
+            guestCheckoutModal:document.getElementById('guest-checkout-modal'),paymentModal:document.getElementById('payment-modal'),
+            createInitialGuestAddressFlowState:()=>({currentStep:1,formData:{}}),showGuestPendingPayment:()=>{},resetPaymentChoice:()=>{},
+            paymentMethodSelect:document.getElementById('payment-method-select'),guestPaymentMethodSelect:document.getElementById('guest-payment-method'),
             showToast: (message) => {toast = message;}, console,
             fetch: async (_, options) => {
               sent = JSON.parse(options.body);
               return {ok: true, json: async () => ({ok: true, id: 'order-test', total: 10, desconto: 0, valorFrete: 0, whatsappPhoneStatus: 'invalid'})};
             },
           });
-          vm.runInContext(resetCode, context);
+          vm.runInContext(resetCode+finishCode, context);
           document.getElementById(`${isPlatform ? 'platform' : 'guest'}-whatsapp-consent`).checked = accepted;
           await vm.runInContext(`${finalizeCode}\nfinalizeOrder({telefone:'invalid', clienteNome:'Teste', clienteEndereco:'Retirar na Loja'}, null, ${isPlatform});`, context);
           assert.deepEqual(sent.whatsappConsent, {accepted, version: CONSENT_VERSION});
+          assert.equal(context.cart.length,0);
           assert.equal(document.getElementById(`${isPlatform ? 'platform' : 'guest'}-whatsapp-consent`).checked, false);
           assert.equal(Boolean(toast), accepted);
         }
