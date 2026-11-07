@@ -1,5 +1,9 @@
 # PRE-PROD GATE REVIEW
 
+## Estado vigente — 07/11/2026: Google existente e preservação PASS
+
+[Google no perfil separado da Ana](PHASE10_C15_GOOGLE_8602.md) passou em acesso a 2 endereços/1 pedido, refresh/detalhe/retorno, logout/refresh/relogin sem SMS/claim e atalho dual-role; 8 verificações posteriores confirmam Customer/pedido preservados. C15-E completo preservado. Primeiro claim Google de legado sem owner não foi demonstrado pelo cadastro já vinculado; C15 geral/C16 continuam pendentes. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY: NÃO.** Não reabrir testes de acesso concluídos, remover owner ou alterar rubrica silenciosamente. Sem runtime/build/deploy ou escrita administrativa nova; estados anteriores abaixo são históricos.
+
 ## Atualização vigente — 07/11/2026: C15-E integralmente PASS
 
 [Aceite e-mail/senha completo](evidence/phase10-c15-email-acceptance-dev.json), sem repetir SMS/claim. [Caso Google final 8602](PHASE10_C15_GOOGLE_8602.md) indicado pelo Dono já é proprietário e possui mapping Google correto; validar acesso existente, mantendo explícita a lacuna da primeira vinculação de legado sem owner. Nenhuma autorização de desfazer vínculo ou produzir duplicata foi inferida. C15 geral/C16 pendentes, **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY: NÃO**. Demais gates PASS preservados; sem runtime/deploy, SMS, vínculo ou escrita remota novos. As pendências anteriores de aceite individual C15-E abaixo são históricas.

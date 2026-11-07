@@ -1,5 +1,9 @@
 # Autenticação de clientes e pagamento online
 
+## Estado vigente — 07/11/2026: acesso Google da Ana e preservação PASS
+
+[Homologação do caso 8602](PHASE10_C15_GOOGLE_8602.md) no perfil Chrome separado da Ana: 2 endereços/1 pedido, refresh, detalhe, retorno Matriz, logout com refresh desautenticado, Google relogin sem SMS/claim e dual-role PASS. [8 verificações posteriores](evidence/phase10-google-8602-data-preservation-dev.json) confirmam Customer/owner/índices/pedido preservados. C15-E integralmente aceito. O caso Google já tinha proprietário: acesso existente não é primeiro claim, que segue não demonstrado. Delimitar próximo plano respeitando uso do mesmo caso sem remover owner, duplicar cadastro ou alterar aceite silenciosamente. C15 geral/C16 pendentes; **Fase 9 100%; Fase 10 87,50% (14/16); global formal 97,00%; Fase 13 0%; PROD READY: NÃO**. Sem código/build/deploy, SMS/claim ou edição de dados novos. Estados anteriores abaixo são históricos.
+
 ## Estado vigente — 07/11/2026: C15-E aceito integralmente; Google em validação
 
 Resposta “PASS demais checks” encerra o subcenário real e-mail/senha, preservando Customer/endereço/2 pedidos/refresh/relogin/retorno e único SMS consumido. [Aceite](evidence/phase10-c15-email-acceptance-dev.json). Dono indicou final 8602/conta Google e autorizou concentrar testes nesse par; [pré-checagem](PHASE10_C15_GOOGLE_8602.md) comprovou conta já proprietária, mapping Google correto, 2 endereços/1 pedido e nenhuma prova de claim por SMS registrada. Próximo: login humano em sessão separada, validar acesso e preservar dados; não desfazer ownership para produzir primeira vinculação nem declarar critério atendido sem a evidência correspondente. C15 geral/C16 pendentes. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Nenhum novo SMS/claim, escrita remota, código ou deploy nesta etapa; estados anteriores são históricos.

@@ -1,6 +1,18 @@
 # C15-G — caso Google indicado, final 8602
 
-## Estado em 07/11/2026
+## Estado vigente — 07/11/2026: acesso Google existente homologado
+
+Titular conectou a conta pelo perfil Chrome separado **Ana Beatriz**. Executor localizou essa instância específica e não operou as sessões do Antonio. [Evidência do navegador](evidence/phase10-google-8602-browser-dev.json): perfil com **2 endereços**, histórico com **1 pedido**, refresh de `/minha-conta` e `/meus-pedidos`, detalhe com item/totais, retorno para `/cardapio-matriz` e atalho dual-role **PASS**. Saída a partir dos pedidos concluiu; refresh permaneceu desautenticado, sem sidebar privada ou loading preso. Reentrada pelo Google, selecionando a própria conta já disponível no seletor autorizado, restaurou 2 endereços/1 pedido/detalhe e atalho CRM, **sem SMS ou novo claim**. Não foram digitadas/extraídas credenciais. Sessão deixada autenticada no cardápio Matriz, carrinho 0 preservado. Nenhuma configuração de viewport foi aplicada.
+
+[Conferência posterior de dados](evidence/phase10-google-8602-data-preservation-dev.json): **8/8 verificações PASS**; Customer original e sua versão integral inalterados, mesmo único owner, índices UID/telefone corretos, versão/referência do pedido idêntica à pré-checagem. As queries projetadas da CLI falharam HTTP 500 nas duas tentativas somente leitura; fallback pelo conector Firebase fez **4 leituras mascaradas pontuais**, sem ler payload completo de endereço/pedido, e concluiu a comparação. O caminho do pedido foi obtido do botão já autorizado na UI, sem supor loja. Não tratar falha de transporte da auditoria como falha de login da aplicação.
+
+Uma abertura de detalhe durante a hidratação inicial voltou à lista antes da espera pelo conteúdo; nova abertura com sessão estabilizada e outra após reentrada, com lista `aria-busy=false`, carregaram corretamente. Causa não estabelecida, sem patch funcional presumido; observação preservada na evidência para C16 caso reapareça. Não chamar a tentativa inicial de PASS nem inventar correção.
+
+Capturas públicas, sem perfil/endereço/pedido: [saída](evidence/phase10-google-8602-signed-out-dev.jpg), [retorno](evidence/phase10-google-8602-return-dev.jpg). Dados privados só foram observados por contagens/estado; contatos completos, tokens, UID e conteúdo de pedidos não foram incluídos em evidência versionada.
+
+**Acesso Google de owner existente: PASS. Primeiro claim Google de legado sem owner: NÃO DEMONSTRADO.** A reentrada não criou uma nova prova de telefone nem evento de claim. Não confundir os dois resultados ou encerrar C15 automaticamente. C15-E permanece integralmente PASS. Para avançar usando o mesmo caso, primeiro delimitar formalmente como demonstrar o claim Google sem remover ownership existente ou alterar a regra de segurança; eventual reverificação do próprio owner deve ser identificada como tal e não como primeira aquisição. Nenhum novo SMS foi executado ou reservado por esta etapa. C15 geral/C16 continuam pendentes; Fase 10 87,50%, global formal 97,00%, Fase 9 100%, Fase 13 0%, PROD não autorizada.
+
+## Pré-checagem anterior em 07/11/2026 — histórico preservado
 
 O Dono indicou telefone final **8602** e conta `a***@gmail.com`, pedindo todos os testes necessários com o mesmo par para evitar outro telefone. A indicação foi aceita para investigação e validação DEV; não autoriza desfazer owners, trocar identificadores, fabricar um novo legado, ignorar conflito, criar pedidos/pagamentos ou publicar PROD. Nenhum SMS/claim foi necessário ou executado nesta preparação.
 

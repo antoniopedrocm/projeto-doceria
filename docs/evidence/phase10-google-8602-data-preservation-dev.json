@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-07T15:04:00.820Z",
+  "caseId": "577ace8fc6bcfb4d",
+  "readOnly": true,
+  "method": "Firebase connector masked document reads; CLI projected query transport failed HTTP500 twice",
+  "checks": {
+    "customerVersionUnchanged": true,
+    "sameCanonicalCustomer": true,
+    "soleApprovedOwner": true,
+    "phoneIndexReadySameCustomer": true,
+    "uidMappingSameCustomer": true,
+    "historicalOrderVersionAndReferenceUnchanged": true,
+    "orderReferencesStillSameCustomer": true,
+    "orderOwnerAbsentOrSame": true
+  },
+  "customerUpdateTime": "2026-10-31T18:11:37.677203Z",
+  "customerPayloadAddressesNotRead": true,
+  "customerAddressPreservationEvidence": "Customer updateTime identical to preflight; complete Customer document unchanged",
+  "orderUiCountAfterRelogin": 1,
+  "orderVersionComparisonNotCompleted": false,
+  "remoteWrites": 0,
+  "smsSends": 0,
+  "permanentClaims": 0,
+  "production": false,
+  "orderVersionFingerprint": "b60da636212d0c6ae57307064a0f347e9e1b3e636115d601c31c9741e516a5db",
+  "readOnlyDocuments": 4,
+  "result": "EXISTING_GOOGLE_ACCESS_DATA_PRESERVED",
+  "firstGoogleOwnershipClaimDemonstrated": false,
+  "c15Accepted": false,
+  "c16Accepted": false
+}

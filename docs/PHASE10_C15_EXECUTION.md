@@ -1,5 +1,11 @@
 # Fase 10 — execução de C15 e fechamento de C16
 
+## Estado vigente — 07/11/2026: Google existente PASS, claim inicial ainda não demonstrado
+
+[Caso final 8602 no perfil Chrome da Ana](PHASE10_C15_GOOGLE_8602.md) homologado: 2 endereços/1 pedido, refresh, detalhe, retorno Matriz, logout/refresh sem shell privado/loading, Google relogin sem SMS/claim e atalho dual-role PASS. [8 verificações posteriores](evidence/phase10-google-8602-data-preservation-dev.json) confirmam Customer/owner/índices/versão do pedido preservados. Sessão final deixada autenticada no cardápio, sem alterar dados. C15-E já está integralmente aceito; não repetir nenhum desses testes.
+
+Esse Customer já tinha owner/mapping Google; não houve prova nova de telefone nem primeiro claim de legado sem proprietário. Próximo: delimitar evidência/execução possível usando o mesmo caso sem desfazer vínculo ou modificar silenciosamente o aceite C15. Revalidação de owner existente, se proposta, deve ser nomeada como tal. C15 geral/C16 pendentes, **Fase 10 87,50%, global formal 97,00%, Fase 9 100%, Fase 13 0%**. Sem novo SMS/claim, código ou deploy; pendências anteriores de login UI abaixo são históricas e foram superadas apenas para o acesso existente.
+
 ## Estado vigente — 07/11/2026: e-mail/senha aceito, caso Google selecionado
 
 **C15-E PASS integral**, resposta explícita “PASS demais checks”: endereço/2 pedidos, refresh e logout/relogin sem novo claim/SMS; [aceite](evidence/phase10-c15-email-acceptance-dev.json). Retorno anterior PASS preservado, nenhuma repetição necessária. Dono indicou final 8602/conta Google e pediu testes concentrados no mesmo caso. [Pré-checagem](PHASE10_C15_GOOGLE_8602.md) encontrou **owner já vinculado à própria conta**, provider Google/mapping corretos, 2 endereços/1 pedido e destinatário já liberado; sem claim auditado. Testar acesso existente após login humano em sessão separada, sem desvincular/recriar cadastro ou enviar SMS sem necessidade. Não tratar reentrada como primeira vinculação de legado sem owner. C15 geral e C16 pendentes; Fase 10 87,50%, global formal 97,00%. Seções anteriores são históricas e não reabrem os checks C15-E já aprovados.

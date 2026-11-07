@@ -2,6 +2,8 @@
 
 ## Situação em 07/11/2026
 
+Atualização após login humano no perfil Chrome da Ana: **acesso Google existente PASS**, com logout/refresh/relogin e dados preservados em [8 verificações posteriores](evidence/phase10-google-8602-data-preservation-dev.json). [UI e limites](evidence/phase10-google-8602-browser-dev.json). Primeiro claim Google de legado sem owner não foi demonstrado, sem novo SMS/claim. Abertura antecipada de detalhe voltou à lista uma vez; sessão estabilizada e pós-relogin passaram, causa não estabelecida/observação preservada. C15/C16 não encerrados, percentuais mantidos. Não repetir o login ou pedir de novo os aceites UI já concluídos.
+
 Atualização após resposta do titular: **C15-E PASS integral** ([aceite](evidence/phase10-c15-email-acceptance-dev.json)); checks de endereço/pedidos, refresh e logout/relogin não são mais pendentes. [Caso Google final 8602](PHASE10_C15_GOOGLE_8602.md) selecionado, mas **já vinculado à própria conta**: login/histórico podem ser homologados, primeira aquisição de ownership sem owner não é demonstrada por reentrada. Não desfazer vínculo nem mudar rubrica para fabricar PASS. C15 geral/C16 continuam pendentes, percentuais preservados. A fotografia da retomada abaixo foi registrada antes dessa resposta.
 
 **PREPARADO, NÃO HOMOLOGADO. C15 e C16 permanecem pendentes.** Este documento organiza as evidências existentes, sem substituir aceites reais nem redefinir a rubrica original. Fase 9 = **100%**; Fase 10 = **87,50% (14/16)**; global formal = **97,00%**; Fase 13 = **0%**. PROD READY: **NÃO**.
@@ -28,7 +30,7 @@ A definição completa e o histórico estão em [PHASE10_LEGACY_RECOVERY_AUDIT.m
 | C12 — migração e rollback controlados | PASS preservado | Ferramentas/dry-run/CAS/backup/rollback e testes existentes; nenhuma migração nova autorizada |
 | C13 — processo de conflitos manuais | PASS preservado | [LEGACY_MANUAL_REVIEW.md](LEGACY_MANUAL_REVIEW.md), revisão e 23 testes emulados registrados na auditoria |
 | C14 — disposição dos remanescentes | PASS preservado por decisão formal | [Decisão dos 14 caseIds](evidence/phase10-remnants-owner-decision.json): preservar sem atribuição até prova futura; não equivale a recuperar/apagar registros |
-| C15 — claim real Google e e-mail/senha | **PENDENTE** | E-mail/senha integralmente PASS; caso Google indicado já vinculado, acesso real/limite da primeira vinculação ainda em validação |
+| C15 — claim real Google e e-mail/senha | **PENDENTE** | E-mail/senha integralmente PASS; acesso Google existente e preservação PASS; primeiro claim Google não demonstrado |
 | C16 — aceite consolidado do estado publicado | **PENDENTE** | Matriz preparada; depende de C15 integral e aceite consolidado, sem crédito por preparação |
 
 ## Evidências complementares e limites
@@ -42,7 +44,7 @@ A definição completa e o histórico estão em [PHASE10_LEGACY_RECOVERY_AUDIT.m
 ## Sequência mínima restante
 
 1. **CONCLUÍDO:** confirmação do titular C15-E, “PASS demais checks”, incluindo 1 endereço/2 pedidos, refresh e logout/relogin sem novo claim/SMS. Retorno já PASS; não repetir.
-2. **INDICADO/CONFERIDO:** caso Google final 8602, conta legítima já proprietária. Validar acesso Google existente e dados preservados após login humano; registrar que não reproduz primeira aquisição de ownership. Dono pediu concentrar testes nesse caso; não remover owner ou fabricar outro Customer para satisfazer o critério. Lacuna da primeira recuperação permanece explicitada até aceite formal compatível com a rubrica.
+2. **ACESSO EXISTENTE CONCLUÍDO:** caso Google final 8602, conta legítima já proprietária. Login humano, histórico/endereço, refresh/logout/relogin/retorno e preservação do Customer/pedido PASS. Não reproduz primeira aquisição de ownership. Dono pediu concentrar testes nesse caso; não remover owner ou fabricar outro Customer para satisfazer o critério. Delimitar eventual proposta de reverificação do próprio owner, distinguindo-a da primeira recuperação; lacuna permanece explícita até aceite formal compatível com a rubrica.
 3. Preparar escopo exato e obter autorização específica para eventual destinatário/limite de SMS e vínculo Google. Autorização de deploy DEV não cobre essas ações. Credenciais e código somente na aplicação.
 4. Homologar C15-G com baseline/pós-condições de Customer original, UID, histórico/endereço, ausência de duplicidade, auditoria e acesso persistente; registrar resultado humano e técnico sem dados pessoais desnecessários. Falha não autoriza reenvio automático.
 5. Fechar C15 somente após os dois cenários aceitos. Consolidar C16: conferir critérios e evidências no estado final; executar regressão pertinente se houver novo delta/falha, registrar os limites e obter aceite consolidado. Não repetir suítes/build/deploy sem necessidade.

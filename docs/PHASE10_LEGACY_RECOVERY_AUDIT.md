@@ -1,5 +1,9 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
+## Estado vigente — 07/11/2026: acesso Google existente homologado
+
+C15-E integral PASS preservado. [Google final 8602 no perfil separado da Ana](PHASE10_C15_GOOGLE_8602.md): 2 endereços/1 pedido, refresh/detalhe/retorno, saída sem shell privado/loading e reentrada Google sem SMS/claim PASS. [8 verificações de preservação](evidence/phase10-google-8602-data-preservation-dev.json): Customer original, owner, índices e versão/referência do pedido inalterados. O caso já tinha owner; primeiro claim Google continua não demonstrado, sem desfazer vínculo para fabricar evidência. C15 geral/C16 pendentes; **Fase 10 87,50%; global formal 97,00%; Fase 9 100%; Fase 13 0%; PROD READY: NÃO**. Sem código/deploy ou mudança administrativa de dados. Pendências anteriores de login Google abaixo são históricas, superadas apenas para o acesso existente.
+
 ## Atualização vigente — 07/11/2026: aceite C15-E completo
 
 [Resposta explícita “PASS demais checks”](evidence/phase10-c15-email-acceptance-dev.json) encerra C15-E: endereço/2 pedidos, refresh e logout/relogin sem novo claim/SMS, além do retorno já aceito. Google final 8602 indicado e conferido: **já tem a própria conta como owner e mapping Google**, com 2 endereços/1 pedido. [Diagnóstico do caso](PHASE10_C15_GOOGLE_8602.md). Testar login/acesso existente sem remover ownership; ainda não prova primeira vinculação Google de legado sem owner. C15 geral/C16 continuam pendentes, **Fase 10 87,50%, global formal 97,00%, Fase 9 100%, Fase 13 0%**. Sem SMS/claim/escrita remota, código ou deploy novo. Pendências de checks C15-E nas seções anteriores abaixo foram superadas por este aceite.

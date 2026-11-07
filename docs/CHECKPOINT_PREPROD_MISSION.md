@@ -1,5 +1,15 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: Google da Ana validado; Customer/pedido preservados
+
+Titular informou login no perfil Chrome separado da Ana. Executor selecionou **Ana Beatriz**, tab DEV existente, preservando os outros perfis. [Homologação e limites](PHASE10_C15_GOOGLE_8602.md), [UI](evidence/phase10-google-8602-browser-dev.json): 2 endereços/1 pedido, refresh das duas rotas, detalhe, retorno Matriz, saída com refresh desautenticado sem shell privado/loading e reentrada pela mesma conta Google sem SMS/claim **PASS**. Atalho dual-role restaurado; sessão final autenticada no cardápio Matriz e carrinho 0. Nenhuma senha/código coletado, edição/salvamento de perfil/endereço/pedido, compra/pagamento/NF/WhatsApp ou alteração de viewport.
+
+[Preservação posterior](evidence/phase10-google-8602-data-preservation-dev.json): **8/8 verificações PASS**, Customer original/versão/único owner, índices e versão/referência do pedido inalterados. Duas queries de auditoria CLI retornaram HTTP 500; fallback com 4 documentos mascarados no conector DEV concluiu sem escrita. A primeira abertura antecipada de detalhe voltou à lista; novas leituras estabilizada/pós-relogin PASS. Observação e causa não estabelecida preservadas, sem fingir patch/resolução funcional.
+
+**Último ponto concluído:** C15-E integral e **acesso Google existente** com preservação comprovada. **Próximo ponto exato:** resolver o plano/evidência do claim Google real exigido por C15, respeitando o pedido de concentrar testes no final 8602, que já tem owner. Não desfazer vínculo, fabricar Customer, enviar SMS ou promover reentrada a primeira vinculação. Caso se proponha reverificação do próprio owner, distinguir explicitamente essa cobertura da primeira aquisição e da rubrica atual antes de executar. C16 continua preparado e pendente. Não repetir os testes de acesso já PASS nem final 0811 (1/1 SMS consumido).
+
+Base `83b8aad5`, branch `feature/infinitepay-customer-auth`, worktree `C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree`, somente Firebase `crmdoceria-9959e`. Nenhum código/build/deploy novo necessário; somente documentação e evidências. Validação local dos 2 JSON novos, 23 links e assinaturas/hashes das 2 capturas públicas PASS; 14 artefatos anteriores íntegros, diff-check PASS. Testes/build/lint de runtime anteriores preservados, sem repetição desnecessária. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Autorização PROD não inferida do objetivo futuro de concluir gates. Seções abaixo são históricas.
+
 ## Estado vigente — 07/11/2026: C15-E completo; Google indicado já possui vínculo
 
 Titular respondeu **“PASS demais checks”**: endereço histórico/2 pedidos, refresh e logout/relogin sem novo vínculo/SMS. [C15-E integralmente aceito](evidence/phase10-c15-email-acceptance-dev.json), incluindo retorno anteriormente PASS; não refazer testes/SMS/claim final 0811.

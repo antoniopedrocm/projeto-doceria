@@ -1,5 +1,9 @@
 # Production Readiness Review — DEV
 
+## Estado vigente — 07/11/2026: acesso Google existente concluído
+
+[Caso 8602 no perfil Chrome separado da Ana](PHASE10_C15_GOOGLE_8602.md) homologado em leitura/sessão: 2 endereços/1 pedido, refresh/detalhe/retorno, logout/refresh/relogin Google sem SMS/claim, dual-role e dados preservados (8 verificações posteriores). C15-E completo preservado. Não demonstra primeiro claim Google de legado sem owner, pois o caso já estava vinculado; C15 geral/C16 continuam pendentes. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY: NÃO.** Observação transitória da primeira abertura de detalhe registrada sem patch presumido. Sem novo código/deploy, SMS/claim, operação financeira/fiscal ou acesso PROD. Pendência anterior de login Google abaixo foi superada somente para acesso existente.
+
 ## Atualização vigente — 07/11/2026: C15-E encerrado; caso Google já vinculado
 
 Titular aprovou todos os checks e-mail/senha: [aceite completo](evidence/phase10-c15-email-acceptance-dev.json). O caso Google indicado final 8602 **já pertence à própria conta** com mapping correto; [pré-checagem](PHASE10_C15_GOOGLE_8602.md) encontrou 2 endereços/1 pedido e nenhum claim por SMS registrado. Login Google/continuidade serão validados sem remover owner ou inventar primeiro vínculo. C15 geral/C16 continuam pendentes, **Fase 9 = 100%; Fase 10 = 87,50%; global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO**. Sem código/build/deploy, SMS, claim ou escrita remota novos. Gate fiscal/refresh/SMS temporário/Admin Preview e aceites anteriores preservados. Pendências C15-E abaixo são históricas, superadas por esta resposta.
