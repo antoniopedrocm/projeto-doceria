@@ -1,5 +1,7 @@
 # Auditoria de impacto — contrato InfinitePay de 06/11/2026
 
+> Atualização posterior: o Dono autorizou o patch local G1/G2/G3. [Implementação e testes de 07/11](INFINITEPAY_G123_LOCAL_FIXES.md), ainda sem commit/push/deploy/homologação. Esta auditoria e sua evidência mantêm a descrição histórica do diagnóstico no commit-base.
+
 ## Resultado e escopo
 
 **A arquitetura de confirmação de pagamentos permanece compatível; não há motivo para reescrever a integração.** Há duas lacunas comprovadas na entrega/registro dos eventos e uma proteção operacional incompleta para estorno parcial. As correções propostas abaixo não foram implementadas nem homologadas.

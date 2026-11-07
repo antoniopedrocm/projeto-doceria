@@ -1,0 +1,129 @@
+{
+  "scope": "Local synthetic presentation, not live DEV homologation. Existing modal scroll retained for long address forms.",
+  "report": [
+    {
+      "choice": "ONLINE_NOW",
+      "viewport": 1920,
+      "pageWidth": 1920,
+      "card": {
+        "x": 624,
+        "y": 44.453125,
+        "width": 672,
+        "height": 800.09375,
+        "right": 1296,
+        "bottom": 844.546875
+      },
+      "button": {
+        "x": 648,
+        "y": 772.453125,
+        "width": 624,
+        "height": 48,
+        "right": 1272,
+        "bottom": 820.453125
+      },
+      "scrollWidth": 672,
+      "scrollClientWidth": 672,
+      "options": [
+        "Pagar Agora — Pix ou Cartão",
+        "Combinar Pagamento"
+      ],
+      "privateInvitation": false,
+      "errors": [],
+      "screenshot": "online_now-1920.png",
+      "externalRequests": 0
+    },
+    {
+      "choice": "AGREED_LATER",
+      "viewport": 1920,
+      "pageWidth": 1920,
+      "card": {
+        "x": 624,
+        "y": 44.453125,
+        "width": 672,
+        "height": 800.09375,
+        "right": 1296,
+        "bottom": 844.546875
+      },
+      "button": {
+        "x": 648,
+        "y": 772.453125,
+        "width": 624,
+        "height": 48,
+        "right": 1272,
+        "bottom": 820.453125
+      },
+      "scrollWidth": 672,
+      "scrollClientWidth": 672,
+      "options": [
+        "Pagar Agora — Pix ou Cartão",
+        "Combinar Pagamento"
+      ],
+      "privateInvitation": false,
+      "errors": [],
+      "screenshot": "agreed_later-1920.png",
+      "externalRequests": 0
+    },
+    {
+      "choice": "ONLINE_NOW",
+      "viewport": 390,
+      "pageWidth": 390,
+      "card": {
+        "x": 16,
+        "y": 40,
+        "width": 358,
+        "height": 720,
+        "right": 374,
+        "bottom": 760
+      },
+      "button": {
+        "x": 40,
+        "y": 688,
+        "width": 310,
+        "height": 48,
+        "right": 350,
+        "bottom": 736
+      },
+      "scrollWidth": 358,
+      "scrollClientWidth": 358,
+      "options": [
+        "Pagar Agora — Pix ou Cartão",
+        "Combinar Pagamento"
+      ],
+      "privateInvitation": false,
+      "errors": [],
+      "screenshot": "online_now-390.png",
+      "externalRequests": 0
+    },
+    {
+      "choice": "AGREED_LATER",
+      "viewport": 390,
+      "pageWidth": 390,
+      "card": {
+        "x": 16,
+        "y": 40,
+        "width": 358,
+        "height": 720,
+        "right": 374,
+        "bottom": 760
+      },
+      "button": {
+        "x": 40,
+        "y": 688,
+        "width": 310,
+        "height": 48,
+        "right": 350,
+        "bottom": 736
+      },
+      "scrollWidth": 358,
+      "scrollClientWidth": 358,
+      "options": [
+        "Pagar Agora — Pix ou Cartão",
+        "Combinar Pagamento"
+      ],
+      "privateInvitation": false,
+      "errors": [],
+      "screenshot": "agreed_later-390.png",
+      "externalRequests": 0
+    }
+  ]
+}

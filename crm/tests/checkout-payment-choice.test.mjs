@@ -18,7 +18,7 @@ test('Strong: duas opções, padrão online, helper contextual; sincronização 
   syncPaymentChoices(select,false,true);assert.equal(select.innerHTML,original);assert.equal(helper.hidden,true);
   syncPaymentChoices(select,true,false);assert.equal(select.value,'ONLINE_NOW');assert.equal(select.selectedOptions[0].disabled,true);
 });
-test('escolha separa momento/método; contexto identificado Strong ou Phone usa contrato e Guest permanece sem direito',()=>{
+test('escolha separa momento/método; contexto elegível usa contrato, seleção sem contexto falha',()=>{
   assert.deepEqual(paymentSelection('ONLINE_NOW',true),{forma:'Online',mode:'ONLINE_NOW'});
   assert.deepEqual(paymentSelection('AGREED_LATER',true),{forma:'A combinar',mode:'AGREED_LATER'});
   assert.throws(()=>paymentSelection('AGREED_LATER',false));
@@ -34,6 +34,9 @@ test('PHONE não envia Auth ambiente; retorno com capability funciona sem sessã
  const phone={get:()=>({mode:'legacy_phone',token:'a'.repeat(64)}),isStrong:()=>false};
  const headers=await api.checkoutHeaders(true,phone);assert.equal(headers.Authorization,undefined);assert.equal(tokenCalls,0);
  await assert.rejects(()=>api.checkoutHeaders(true,{get:()=>({mode:'guest'}),isStrong:()=>false}));
+ const guest={get:()=>({mode:'guest',token:'b'.repeat(64)}),isStrong:()=>false};
+ const beforeGuest=authCalls;assert.equal((await api.checkoutHeaders(true,guest)).Authorization,undefined);
+ assert.equal(authCalls,beforeGuest);assert.equal(tokenCalls,0);
  const before=authCalls;assert.equal((await api.paymentStatusHeaders(true)).Authorization,undefined);assert.equal(authCalls,before);
  assert.equal((await api.paymentStatusHeaders()).Authorization,'Bearer fixture-only');
  auth.currentUser=null;assert.equal((await api.paymentStatusHeaders(true)).Authorization,undefined);

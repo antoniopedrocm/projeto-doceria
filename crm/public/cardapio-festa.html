@@ -721,21 +721,19 @@
                         <div id="guest-shipping-row" class="flex justify-between text-sm"><span>Frete:</span><span id="guest-shipping" class="font-medium text-gray-800">Aguardando endereço...</span></div>
                         <div class="flex justify-between text-lg font-bold border-t pt-2 mt-2"><span>Total a pagar:</span><span id="guest-total" class="text-pink-600">R$ 0,00</span></div>
                     </div>
-                    <select id="guest-payment-method" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white">
-                        <option value="" disabled selected>Forma de Pagamento *</option>
-                        <option value="Cartão de Crédito">Cartão de Crédito</option>
-                        <option value="Cartão de Débito">Cartão de Débito</option>
-                        <option value="Dinheiro">Dinheiro</option>
-                        <option value="Pix">Pix</option>
-                        <option value="Link de Pagamento">Link de Pagamento</option>
+                    <label for="guest-payment-method" class="block text-sm font-semibold text-gray-800 mb-2">Forma de Pagamento</label>
+                    <select id="guest-payment-method" aria-describedby="guest-payment-choice-help" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white">
+                        <option value="ONLINE_NOW" selected>Pagar Agora — Pix ou Cartão</option>
+                        <option value="AGREED_LATER">Combinar Pagamento</option>
                     </select>
+                    <p id="guest-payment-choice-help" class="text-sm text-gray-600 mt-2" aria-live="polite"></p>
                     <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
                     <input id="guest-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="guest-whatsapp-consent-help">
                     <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
                 </label>
-                <p id="guest-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD. O botão abaixo continua abrindo sua mensagem para a loja.</p>
+                <p id="guest-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD. No pagamento online, a confirmação respeita a aprovação do pagamento.</p>
                     <button id="send-whatsapp-button" class="w-full bg-green-500 text-white py-3 px-4 rounded-lg font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mt-4">
-                        <i class="fa-brands fa-whatsapp"></i> Finalizar e Enviar via WhatsApp
+                        Confirmar Pedido
                     </button>
                 </div>
             </div>
@@ -2118,6 +2116,8 @@
             continueGuestButton.addEventListener('click', async () => {
                 if (!publicStore.delivery.available) {showToast('Entrega indisponível nesta loja.',true);return;}
                 if(!await selectWeakCheckout(CHECKOUT_MODES.GUEST)) return;
+                resetPaymentChoice(guestPaymentMethodSelect);
+                if(appliedCupom) removeCupom();
                 identificationModal.classList.add('hidden');
                 guestCheckoutModal.classList.remove('hidden');
                 window.initGuestAddressFlow?.();
@@ -3165,6 +3165,7 @@
         }
 
         async function handleGuestOrder() {
+            if (sendWhatsappButton.disabled) return;
             const name = guestNameInput.value.trim();
             const phone = guestPhoneInput.value.trim();
             const paymentMethod = guestPaymentMethodSelect.value;
@@ -3216,18 +3217,24 @@
 
 			try {
 				ensureCheckoutNotBlocked();
+				await checkoutIdentity.ready();
+				const identity=checkoutIdentity.get();
+				const selection=paymentSelection(paymentMethod,identity.mode===CHECKOUT_MODES.GUEST && !!identity.token);
+				if(selection.mode==='ONLINE_NOW' && guestPaymentMethodSelect.selectedOptions[0]?.disabled) throw new Error('Pagamento online indisponível nesta loja. Tente novamente ou escolha Combinar Pagamento.');
 				await finalizeOrder({
 					clienteNome: name,
 					clienteEndereco: fullAddress,
 					telefone: phone,
-					formaPagamento: paymentMethod
+					formaPagamento: selection.forma,
+					paymentMode: selection.mode
 				}, null, false);
 
 			} catch (error) {
 				console.error('Erro ao processar pedido do visitante:', error);
 				showToast(error?.message || 'Erro ao processar o pedido.', true);
+			} finally {
 				sendWhatsappButton.disabled = false;
-				sendWhatsappButton.innerHTML = '<i class="fa-brands fa-whatsapp"></i> Finalizar e Enviar via WhatsApp';
+				sendWhatsappButton.textContent = 'Confirmar Pedido';
 			}
 		}
 
@@ -3264,7 +3271,9 @@
             };
             await revalidateCheckoutBeforeFinalSubmit(clientInfo);
             const online = clientInfo.formaPagamento === 'Online';
-            if (online && !(checkoutIdentity.isStrong() && isLinkedCustomer(currentClient)) && !(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE && currentClient)) throw new Error('Identifique seu celular antes de pagar.');
+            const guest=!isPlatform && checkoutIdentity.get().mode===CHECKOUT_MODES.GUEST && !!checkoutIdentity.get().token;
+            if (!isPlatform && !guest) throw new Error('Selecione novamente como continuar.');
+            if (online && !guest && !(checkoutIdentity.isStrong() && isLinkedCustomer(currentClient)) && !(checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE && currentClient)) throw new Error('Identifique seu celular antes de pagar.');
             if (!storeIsOpenNow) {
                 showToast(getStoreAvailabilityMessage(storeAvailability), true);
                 throw new Error(storeAvailability);
@@ -3357,7 +3366,7 @@
                 pendingOrderDetails = {};
                 removeCupom();
                 clearCheckoutState();
-                if (clientInfo.paymentMode === 'AGREED_LATER') {sessionStorage.removeItem('doceria-payment-pending');resetPaymentChoice(paymentMethodSelect);}
+                if (clientInfo.paymentMode === 'AGREED_LATER') {sessionStorage.removeItem('doceria-payment-pending');resetPaymentChoice(isPlatform ? paymentMethodSelect : guestPaymentMethodSelect);}
                 renderCart();
                 resetWhatsAppConsent();
                 if (whatsappConsent.accepted && responseData.whatsappPhoneStatus === 'invalid') {
@@ -3432,7 +3441,7 @@
             }
             initApp();
             enableOnlinePayment(STORE_ID,()=>currentClient,()=>checkoutIdentity.isStrong(),()=>checkoutIdentity.get().mode===CHECKOUT_MODES.PHONE);
-            for(const container of [document.getElementById('payment-method-select'),document.getElementById('guest-payment-method')]) {
+            for(const container of [document.getElementById('payment-method-select')]) {
                 if(!container) continue;
                 const notice=document.createElement('section');notice.dataset.checkoutStrongInvitation='';
                 const text=document.createElement('p');text.textContent='Para pagar online, entre com Google ou e-mail.';notice.append(text);

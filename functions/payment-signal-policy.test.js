@@ -59,3 +59,16 @@ test('audit is sanitized, awaited, and failures do not permit financial work', a
   const unavailable = createPaymentService({db, auditSignal: async () => {throw new Error('private detail');}});
   await assert.rejects(() => unavailable.reconcile(input), error => error.httpStatus === 503 && !error.message.includes('private'));
 });
+
+test('expired and overdue accept order-only references as distinct informational signals, never approval',()=>{
+  const fingerprints=new Set();
+  for(const event_type of ['expired','overdue']){
+    const signal=inspectPaymentSignal({event_type,order_nsu:refs.order_nsu,paid:true,amount:1});
+    assert.equal(signal.action,'FINANCIAL_EVENT');assert.equal(signal.eventHint,event_type);
+    assert.deepEqual(signal.references,{orderNsu:refs.order_nsu,transactionNsu:null,slug:null});
+    assert.equal(Object.hasOwn(signal,'paid'),false);assert.equal(Object.hasOwn(signal,'amount'),false);fingerprints.add(signal.fingerprint);
+    assert.equal(inspectPaymentSignal({event_type}).action,'REJECT');
+    assert.equal(inspectPaymentSignal({...refs,event_type,status:'paid'}).action,'HOLD');
+  }
+  assert.equal(fingerprints.size,2);
+});

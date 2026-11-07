@@ -3,7 +3,7 @@ const {FieldValue} = require('firebase-admin/firestore');
 const {readReservation, settleReservation, operationalState} = require('./checkout-reservation');
 const logger = require('firebase-functions/logger');
 const {readErrorBody, diagnostic} = require('./infinitepay-diagnostics');
-const {inspectPaymentSignal} = require('./payment-signal-policy');
+const {inspectPaymentSignal,PROVIDER_EVENT_NAMES} = require('./payment-signal-policy');
 const {canReadPayment}=require('./payment-return-auth');
 const {createFinancialEvents}=require('./payment-financial-events');
 const {createPaymentVerification}=require('./payment-verification');
@@ -81,28 +81,34 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
       // the server-established assurance; a Firebase token alone cannot upgrade it.
       if(p.checkoutIdentity) {
         const identity=p.checkoutIdentity;
-        if(!['strong_auth','legacy_phone'].includes(identity.mode) || !/^checkoutPayments\/_identity\/contexts\/[a-f0-9]{64}$/.test(identity.contextPath || '')) throw paymentError('Identifique novamente este checkout.',403);
+        if(!['strong_auth','legacy_phone','guest'].includes(identity.mode) || !/^checkoutPayments\/_identity\/contexts\/[a-f0-9]{64}$/.test(identity.contextPath || '')) throw paymentError('Identifique novamente este checkout.',403);
         const context=(await tx.get(db.doc(identity.contextPath))).data();
         const strong=identity.mode==='strong_auth';
         const proofPath=typeof checkoutProof?.token==='string' && /^[a-f0-9]{64}$/.test(checkoutProof.token)
           ? 'checkoutPayments/_identity/contexts/'+crypto.createHash('sha256').update(checkoutProof.token).digest('hex') : null;
         if(!context || context.mode!==identity.mode || (strong ? !ownerUid || context.ownerUid!==ownerUid || context.customerId!==identity.customerId
-          : p.ownerUid!=null || context.legacyCustomerId!==identity.customerId || proofPath!==identity.contextPath || checkoutProof.revision!==identity.revision) ||
-          context.storeId!==p.storeId || context.revision!==identity.revision || context.expiresAt<=now()) throw paymentError('Para pagar online, entre com Google ou e-mail.',403);
+          : p.ownerUid!=null || (identity.mode==='guest'
+            ? identity.customerId!=null || context.legacyCustomerId!=null || context.customerId!=null || context.ownerUid!=null
+            : context.legacyCustomerId!==identity.customerId) || proofPath!==identity.contextPath || checkoutProof.revision!==identity.revision) ||
+          context.storeId!==p.storeId || context.revision!==identity.revision || context.expiresAt<=now()) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
       } else if(!ownerUid) {
         throw paymentError('Pedido não encontrado.',404);
       }
       if(p.requiresReview || (p.payment_status !== 'PENDING' && p.payment_status !== 'PAID')) throw paymentError('Pedido aguardando conciliação. Consulte a loja antes de pagar.');
       if(p.checkoutUrl || p.payment_status === 'PAID') return p;
       if(p.linkState) throw paymentError('Pedido aguardando conciliação. Não refaça a compra; consulte a loja.');
-      tx.update(ref,{linkState:'CREATING',updatedAt:timestamp()});return p;
+      // Snapshot the subscription only when creating a new link. Existing URLs
+      // retain their original provider configuration and are never recreated.
+      const webhookEvents=[...PROVIDER_EVENT_NAMES];
+      tx.update(ref,{linkState:'CREATING',webhookMode:'EVENTS',webhookEvents,updatedAt:timestamp()});
+      return {...p,webhookEvents};
     });
     if(payment.checkoutUrl || payment.payment_status === 'PAID') return {id:payment.orderId, payment_status:payment.payment_status,checkoutUrl:payment.checkoutUrl || null,paymentId};
     try {
       const data=await provider.create({handle:payment.handle,order_nsu:paymentId,
         items:[{quantity:1,price:payment.amount,description:`Pedido ${payment.orderId} - ${payment.storeId}`}],
         ...(payment.customer ? {customer:payment.customer} : {}), ...(payment.address ? {address:payment.address} : {}),
-        redirect_url:payment.redirectUrl,webhook_url:payment.webhookUrl});
+        redirect_url:payment.redirectUrl,webhook:{url:payment.webhookUrl,events:payment.webhookEvents}});
       const url=new URL(data.url);
       if(url.protocol!=='https:' || url.username || url.password || (url.port && url.port!=='443') ||
         !(url.hostname==='infinitepay.io' || url.hostname.endsWith('.infinitepay.io') || url.hostname==='checkout.infinitepay.com.br')) throw paymentError('Link de pagamento inválido.',502);

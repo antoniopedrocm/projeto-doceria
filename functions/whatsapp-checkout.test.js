@@ -51,7 +51,7 @@ const runCheckout = async (phone, consent, {freightConfig = {}, checkout = {}} =
     CHECKOUT_MODES: {GUEST:'guest',PHONE:'legacy_phone',STRONG:'strong_auth'},
     // Trusted distance double, independent of the production browser/provider.
     resolveFreightDistance: async () => checkout.distanciaFreteKm ?? 2,
-    requireStoreId: () => 'loja-teste', getStoreConfigDoc: () => ref('config'), assertStoreOpen: () => {},
+    requireStoreId: () => 'loja-teste', getStoreConfigDoc: () => ref('config'), assertStoreOpen: () => {}, assertFulfillment: async () => {},
     FieldValue: {serverTimestamp: () => 'SERVER'},
     admin: {firestore: {FieldValue: {serverTimestamp: () => 'SERVER'}}},
     createHttpError: (httpStatus, message) => Object.assign(new Error(message), {httpStatus}),
@@ -163,7 +163,8 @@ for (const menu of ['matriz', 'garavelo', 'festa']) {
           const context = vm.createContext({
             document, window: {addEventListener: () => {}, open: () => {}, valorFrete: 0},
             chargedFreight: () => 0, checkoutHeaders: async () => ({}), retainAuthenticatedCustomer: () => null,
-            checkoutIdentity: {get:()=>({token:null})}, savedAddressFields:()=>({}),
+            CHECKOUT_MODES: {GUEST:'guest',PHONE:'legacy_phone',STRONG:'strong_auth'},
+            checkoutIdentity: {get:()=>({mode:'guest',token:'a'.repeat(64)})}, savedAddressFields:()=>({}),
             cart: [{id: 'bolo', preco: 10, quantity: 1, nome: 'Bolo'}], appliedCupom: null,
             STORE_ID: 'loja-teste', API_BASE_URL: 'https://example.invalid', WHATSAPP_NUMBER: '5562000000000',
             storeIsOpenNow: true, currentClient: null, pendingOrderDetails: {},

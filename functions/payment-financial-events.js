@@ -48,7 +48,9 @@ function createFinancialEvents({db,admin,provider,verifyApproval,orderIdentity,n
         if(expected?.status==='EXECUTION_RECORDED' && expected.storeId===storeId && expected.provider==='infinitepay' && expected.handle===p.handle && expected.amount===p.amount && expected.executionConfirmed===true) {
           order=await tx.get(db.doc(p.orderPath));
           const linked=order.exists && order.data().paymentId===id && (!order.data().lojaId || order.data().lojaId===storeId);
-          const refundable=event==='refunded' && p.payment_status==='PAID' && p.transactionNsu===refs.transactionNsu && p.slug===refs.slug;
+          // An old generic execution record is not evidence of a full refund.
+          // Leave ambiguous/partial scopes pending; never rewrite their history.
+          const refundable=event==='refunded' && expected.refundScope==='FULL' && p.payment_status==='PAID' && p.transactionNsu===refs.transactionNsu && p.slug===refs.slug;
           const cancelable=event==='canceled' && p.payment_status==='PENDING';
           if(!linked || p.requiresReview || (!refundable && !cancelable))expected=null;
           else if(cancelable)held=await readReservation(tx,db,p);
@@ -71,15 +73,16 @@ function createFinancialEvents({db,admin,provider,verifyApproval,orderIdentity,n
       tx.update(opRef,{status:'MATCHED',matchedAt:stamp(),matchedEventId:signal.fingerprint});
       tx.create(matches.doc(signal.fingerprint),{operationId:opRef.id,eventId:signal.fingerprint,storeId,paymentId:id,matchedAt:stamp()});
       tx.create(root.collection('ledger').doc(opRef.id),{storeId,orderId,paymentId:id,provider:'infinitepay',type:opType,
-        amount:p.amount,previousFinancialState:p.payment_status,financialState:next,actorUid:expected.staffUid,source:'STAFF_RECORDED_EXTERNAL_EXECUTION',createdAt:stamp()});
-      tx.create(root.collection('audit').doc(),{action:'EXPECTED_FINANCIAL_OPERATION_MATCHED',storeId,orderId,paymentId:id,actorUid:expected.staffUid,operationId:opRef.id,eventId:signal.fingerprint,before:p.payment_status,after:next,createdAt:stamp()});
+        amount:p.amount,...(event==='refunded'?{refundScope:'FULL'}:{}),previousFinancialState:p.payment_status,financialState:next,actorUid:expected.staffUid,source:'STAFF_RECORDED_EXTERNAL_EXECUTION',createdAt:stamp()});
+      tx.create(root.collection('audit').doc(),{action:'EXPECTED_FINANCIAL_OPERATION_MATCHED',storeId,orderId,paymentId:id,actorUid:expected.staffUid,operationId:opRef.id,eventId:signal.fingerprint,...(event==='refunded'?{refundScope:'FULL'}:{}),before:p.payment_status,after:next,createdAt:stamp()});
       return {ok:true,eventDisposition:'MATCHED_EXPECTED_OPERATION',payment_status:next};
     });
     return outcome;
   }
-  async function register({storeId,paymentId,type,transactionNsu,slug,executionConfirmed,executionReference,requestId},actor) {
+  async function register({storeId,paymentId,type,transactionNsu,slug,executionConfirmed,executionReference,requestId,refundScope},actor) {
     if(!actor?.uid || !validId(paymentId) || !['REFUND_EXPECTED','CANCEL_EXPECTED'].includes(type) || !validReference(transactionNsu) || !validReference(slug) || executionConfirmed!==true ||
       typeof executionReference!=='string' || executionReference.trim().length<4 || executionReference.length>160 || /[\p{Cc}<>]/u.test(executionReference) || !/^[\w-]{16,100}$/.test(requestId || '')) throw error('Confirme a execução real na InfinitePay e informe a referência da operação.',400);
+    if(type==='REFUND_EXPECTED' && refundScope!=='FULL')throw error('Confirme explicitamente o estorno integral. Estorno parcial ou de escopo não confirmado deve permanecer em conciliação administrativa.',400);
     const ref=operations.doc(operationKey(paymentId,type,transactionNsu,slug)),paymentRef=db.doc('checkoutPayments/'+paymentId);
     // For cancellation, paid:false is required in addition to the Staff's
     // explicit execution record. It is not proof of a refund or a cancellation.
@@ -92,14 +95,16 @@ function createFinancialEvents({db,admin,provider,verifyApproval,orderIdentity,n
       const [saved,current]=await Promise.all([tx.get(ref),tx.get(paymentRef)]),d=current.data();
       if(!d || orderIdentity(d).storeId!==storeId || d.handle!==p.handle || d.amount!==p.amount || d.requiresReview)throw error('Pagamento requer análise manual.');
       if(saved.exists) {
-        const old=saved.data();if(old.requestId!==requestId || old.staffUid!==actor.uid)throw error('Já existe uma operação registrada para esta transação.');
+        const old=saved.data();
+        if(type==='REFUND_EXPECTED' && old.status==='EXECUTION_RECORDED' && old.refundScope!=='FULL')throw error('Esta operação histórica não comprova estorno integral. Preserve o registro e mantenha a conciliação administrativa.');
+        if(old.requestId!==requestId || old.staffUid!==actor.uid)throw error('Já existe uma operação registrada para esta transação.');
         return {ok:true,operationId:ref.id,status:old.status,duplicate:true};
       }
       if(type==='REFUND_EXPECTED' ? d.payment_status!=='PAID' || d.transactionNsu!==transactionNsu || d.slug!==slug : d.payment_status!=='PENDING')throw error('Operação incompatível com o pagamento confirmado.');
       const op={type,storeId,orderId:d.orderId,orderNsu:paymentId,paymentId,transactionNsu,slug,provider:'infinitepay',handle:d.handle,amount:d.amount,
-        staffUid:actor.uid,actorRole:actor.role,executionConfirmed:true,executionReference:executionReference.trim(),requestId,
+        ...(type==='REFUND_EXPECTED'?{refundScope:'FULL'}:{}),staffUid:actor.uid,actorRole:actor.role,executionConfirmed:true,executionReference:executionReference.trim(),requestId,
         status:'EXECUTION_RECORDED',source:'STAFF_RECORDED_EXTERNAL_EXECUTION',createdAt:stamp(),matchedAt:null};
-      tx.create(ref,op);tx.create(root.collection('audit').doc(),{action:'EXPECTED_FINANCIAL_OPERATION_RECORDED',storeId,orderId:d.orderId,paymentId,actorUid:actor.uid,actorRole:actor.role,operationId:ref.id,type,createdAt:stamp()});
+      tx.create(ref,op);tx.create(root.collection('audit').doc(),{action:'EXPECTED_FINANCIAL_OPERATION_RECORDED',storeId,orderId:d.orderId,paymentId,actorUid:actor.uid,actorRole:actor.role,operationId:ref.id,type,...(type==='REFUND_EXPECTED'?{refundScope:'FULL'}:{}),createdAt:stamp()});
       return {ok:true,operationId:ref.id,status:op.status};
     });
   }

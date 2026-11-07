@@ -88,11 +88,11 @@ test('credencial do projeto SMS separado não autentica API privada nem inicia p
   assert.notEqual((await selectIdentity('strong_auth',null,foreign)).status,200);
 });
 const selectIdentity=async(mode,context=null,bearer=token,storeId=store)=>{
-  const r=await originalFetch(base+'/checkout/identity',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer,'X-Forwarded-For':'fixture-'+(++identityCalls)},
+  const r=await originalFetch(base+'/checkout/identity',{method:'POST',headers:{'Content-Type':'application/json',...(bearer?{Authorization:'Bearer '+bearer}:{}),'X-Forwarded-For':'fixture-'+(++identityCalls)},
     body:JSON.stringify({storeId,mode,checkoutIdentityToken:context})});
   return {status:r.status,data:await r.json()};
 };
-const send=async (b,bearer=token)=>{const value={...b};if(b.pagamento.forma!=='Online' && !b.pagamento.mode) delete value.checkoutIdentityToken;const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+bearer},body:JSON.stringify(value)});return {status:r.status,data:await r.json()};};
+const send=async (b,bearer=token)=>{const value={...b};if(b.pagamento.forma!=='Online' && !b.pagamento.mode) delete value.checkoutIdentityToken;const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',...(bearer?{Authorization:'Bearer '+bearer}:{})},body:JSON.stringify(value)});return {status:r.status,data:await r.json()};};
 
 test('SMS grant continua separado de Auth; pagamento PHONE usa contexto próprio sem herdar ownership',async()=>{
   const {createCheckoutIdentity}=require('./checkout-identity'),{createAddressVerification}=require('./address-verification');
@@ -472,6 +472,141 @@ test('ONLINE_NOW mantém checkout online; método só vem da confirmação do pr
   assert.equal(order.paymentMode,'ONLINE_NOW');assert.equal(order.paymentMethod,null);assert.equal(order.payment_status,'PENDING');
   assert.equal((await send(b)).data.id,result.data.id);assert.equal(links,previous+1);
 });
+test('HTTP refund registration enforces FULL after Staff/store authorization; unsigned events stay pending otherwise',async()=>{
+ const id=require('node:crypto').createHash('sha256').update('http-refund-scope-fixture').digest('hex'),uid=customerId.slice('http-customer-'.length);
+ const profile=db.doc('users/'+uid),payment=db.doc('checkoutPayments/'+id),order=db.doc('lojas/'+store+'/pedidos/'+id);
+ const refs={order_nsu:id,transaction_nsu:'http-refund-transaction',invoice_slug:'http-refund-slug'};
+ await order.set({lojaId:store,paymentId:id,total:10,payment_status:'PAID',order_status:'CONFIRMED'});
+ await payment.set({storeId:store,orderId:id,orderPath:order.path,ownerUid:uid,handle:'merchant-test',amount:1000,payment_status:'PAID',transactionNsu:refs.transaction_nsu,slug:refs.invoice_slug});
+ const input={storeId:store,paymentId:id,type:'REFUND_EXPECTED',transactionNsu:refs.transaction_nsu,slug:refs.invoice_slug,executionConfirmed:true,executionReference:'emulated-external-refund',requestId:'http-refund-scope-request'};
+ const register=async(value,bearer=token)=>{const r=await originalFetch(base+'/staff/payment-reconciliation/register',{method:'POST',headers:{'Content-Type':'application/json',...(bearer?{Authorization:'Bearer '+bearer}:{})},body:JSON.stringify(value)});return {status:r.status,data:await r.json()};};
+ const event=async event_type=>{const r=await originalFetch(base+'/checkout/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...refs,event_type})});return {status:r.status,data:await r.json()};};
+ try {
+  assert.equal((await register({...input,refundScope:'FULL'},null)).status,401);assert.equal((await register({...input,refundScope:'FULL'})).status,403);
+  await profile.set({role:'gerente',ativo:true,lojaIds:[store],permissions:{financeiro:true}});
+  assert.equal((await register({...input,storeId:'foreign-store',refundScope:'FULL'})).status,403);
+  for(const refundScope of [undefined,'PARTIAL','UNKNOWN'])assert.equal((await register({...input,refundScope})).status,400);
+  assert.equal((await register({...input,refundScope:'FULL',executionConfirmed:false})).status,400);
+  const held=await event('refunded');assert.equal(held.status,200);assert.equal(held.data.eventDisposition,'PENDING_RECONCILIATION');assert.equal((await payment.get()).data().payment_status,'PAID');
+  const registered=await register({...input,refundScope:'FULL'});assert.equal(registered.status,200,JSON.stringify(registered.data));
+  assert.equal((await register({...input,refundScope:'FULL'})).data.duplicate,true);
+  const matched=await event('refunded');assert.equal(matched.status,200);assert.equal(matched.data.payment_status,'REFUNDED');
+  assert.equal((await event('expired')).data.eventDisposition,'INFORMATIONAL_UNVERIFIED');assert.equal((await payment.get()).data().payment_status,'REFUNDED');
+  const ledger=await db.collection('integrations/paymentReconciliation/ledger').where('paymentId','==',id).get();assert.equal(ledger.size,1);assert.equal(ledger.docs[0].data().refundScope,'FULL');
+ } finally {await profile.delete();}
+});
+
+async function guestFixture(mode='ONLINE_NOW') {
+  const selected=await selectIdentity('guest',null,null);assert.equal(selected.status,200);
+  const product=db.doc(`lojas/${store}/produtos/guest-${require('node:crypto').randomUUID()}`);
+  await product.set({nome:'Produto visitante sintético',preco:10,estoque:8,ativo:true,status:'Ativo'});
+  const input={...body(),checkoutIdentityToken:selected.data.token,idempotencyKey:require('node:crypto').randomUUID(),
+    cliente:{id:customerId,nome:'Nome informado pelo visitante',telefone:'(62) 99999-1234',endereco:'Rua de teste'},
+    itens:[{produtoId:product.id,quantity:1,preco:10}],valorFrete:4,delivery:{pickup:false,lat:-16,lng:-49,address:{cep:'74000000',street:'Rua sintética',number:'10',neighborhood:'Centro'}},
+    pagamento:{mode,forma:mode==='ONLINE_NOW'?'Online':'A combinar'},whatsappConsent:{accepted:true,version:'order-confirmation-v1'}};
+  return {input,product,context:selected.data};
+}
+test('GUEST online usa só contato informado: telefone consistente, sem Customer/owner/alias ou dados privados',async()=>{
+  const f=await guestFixture(),customer=db.doc('clientes/'+customerId),before=(await customer.get()).data();
+  const count=(await db.collection('clientes').get()).size,identities=(await db.collection('customerAuthIdentities').get()).size;
+  for(const [i,phone] of ['62999991234','+5562999991234','(62) 99999-1234'].entries()) {
+    const response=await send({...f.input,cliente:{...f.input.cliente,telefone:phone},idempotencyKey:f.input.idempotencyKey+'-'+i},i===0?token:i===1?anonymousToken:null);
+    assert.equal(response.status,200,JSON.stringify(response));
+    const payment=(await db.doc('checkoutPayments/'+response.data.paymentId).get()).data();
+    const order=(await db.doc(`lojas/${store}/pedidos/${response.data.id}`).get()).data();
+    assert.equal(order.clienteId,null);assert.equal(order.ownerUid,null);assert.equal(order.telefone,'62999991234');
+    assert.equal(order.paymentMode,'ONLINE_NOW');assert.equal(order.paymentMethod,null);assert.equal(order.payment_status,'PENDING');
+    assert.equal(payment.checkoutIdentity.mode,'guest');assert.equal(payment.checkoutIdentity.customerId,null);assert.equal(payment.ownerUid,null);
+    assert.equal(payment.customer.phone_number,'+5562999991234');assert.equal(payment.customer.name,f.input.cliente.nome);assert.equal(payment.customer.email,undefined);
+    assert.equal(payment.amount,1400);assert.equal(payment.reservation.state,'HELD');assert.ok(response.data.paymentReturnToken);
+    assert.equal(linkBodies.at(-1).customer.phone_number,'+5562999991234');assert.equal(linkBodies.at(-1).webhook.events.includes('paid'),true);
+  }
+  assert.deepEqual((await customer.get()).data(),before);assert.equal((await db.collection('clientes').get()).size,count);
+  assert.equal((await db.collection('customerAuthIdentities').get()).size,identities);
+  const context=await require('./checkout-identity').createCheckoutIdentity({db}).read(f.context.token,store);
+  assert.equal(context.mode,'guest');assert.equal(context.legacyCustomerId,null);assert.equal(context.ownerUid,null);
+});
+test('GUEST combinar: pedido sem método/pagamento confirmado, gateway ou duplicidade de estoque',async()=>{
+  const f=await guestFixture('AGREED_LATER'),prior=links;
+  const input={...f.input,pagamento:{...f.input.pagamento,paymentMethod:'PIX',paymentStatus:'PAID'},status:'Finalizado',payment_status:'PAID'};
+  const results=await Promise.all([send(input,null),send(input,null)]);
+  for(const r of results)assert.equal(r.status,200,JSON.stringify(r));assert.equal(results[0].data.id,results[1].data.id);
+  const id=results[0].data.id,order=(await db.doc(`lojas/${store}/pedidos/${id}`).get()).data();
+  assert.equal(order.paymentMode,'AGREED_LATER');assert.equal(order.paymentMethod,null);assert.equal(order.paymentStatus,'PENDING');
+  assert.equal(order.formaPagamento,'A combinar');assert.equal(order.status,'Pendente');assert.equal(order.clienteId,null);
+  assert.equal((await f.product.get()).get('estoque'),7);assert.equal(links,prior);assert.equal((await db.doc('checkoutPayments/'+id).get()).exists,false);
+  assert.equal((await send(input,null)).data.id,id);assert.equal((await f.product.get()).get('estoque'),7);
+  assert.equal((await send({...input,pagamento:{mode:'ONLINE_NOW',forma:'Online'}},null)).status,409);
+});
+test('GUEST online concorrente/replay mantém uma reserva/link e recusa mudança de telefone no mesmo pedido',async()=>{
+  const f=await guestFixture(),prior=links;
+  const attempts=await Promise.all([send(f.input,null),send(f.input,null)]),good=attempts.find(r=>r.status===200);
+  assert.ok(good,JSON.stringify(attempts));assert.ok(attempts.every(r=>[200,409].includes(r.status)));
+  assert.equal(links,prior+1);assert.equal((await f.product.get()).get('estoque'),7);
+  const replay=await send(f.input,null);assert.equal(replay.status,200);assert.equal(replay.data.id,good.data.id);assert.equal(links,prior+1);
+  assert.equal((await send({...f.input,cliente:{...f.input.cliente,telefone:'62988887777'}},null)).status,409);
+  assert.equal((await send({...f.input,pagamento:{mode:'AGREED_LATER',forma:'A combinar'}},null)).status,409);
+});
+test('GUEST com telefone novo compra sem criar/vincular cadastro e não reutiliza telefone inválido',async()=>{
+  const f=await guestFixture(),count=(await db.collection('clientes').get()).size,prior=links;
+  for(const telefone of ['abc','123','+15555555555','(00) 99999-0000']) {
+    const denied=await send({...f.input,cliente:{...f.input.cliente,telefone}},null);assert.equal(denied.status,400,JSON.stringify(denied));
+  }
+  assert.equal(links,prior);assert.equal((await f.product.get()).get('estoque'),8);
+  const good=await send({...f.input,cliente:{...f.input.cliente,telefone:'62981005566'}},null);assert.equal(good.status,200,JSON.stringify(good));
+  assert.equal((await db.collection('clientes').get()).size,count);
+  assert.equal((await db.doc(`lojas/${store}/pedidos/${good.data.id}`).get()).get('clienteId'),null);
+});
+test('GUEST exige contexto/revisão/loja válidos e não pode usar endereço salvo nem cupom por Customer',async()=>{
+  const f=await guestFixture(),prior=links;
+  for(const extra of [{checkoutIdentityToken:null},{checkoutIdentityToken:'f'.repeat(64)},
+    {lojaId:'store-other'},{checkoutAddressId:'private-address',checkoutAddressRevision:1},{cupom:{codigo:'CHOICE'}},
+    {pagamento:{mode:'ONLINE_NOW',forma:'Dinheiro'}}]) {
+    const denied=await send({...f.input,...extra},null);assert.ok(denied.status>=400,JSON.stringify(denied));
+  }
+  const current=await selectIdentity('legacy_phone',f.context.token,null);assert.equal(current.status,200);
+  assert.equal((await send(f.input,null)).status,403);assert.equal(links,prior);assert.equal((await f.product.get()).get('estoque'),8);
+  await assert.rejects(()=>functions.customerAccount.run({auth:null,data:{checkoutIdentityToken:f.context.token}}));
+  await assert.rejects(()=>functions.customerOrders.run({auth:null,data:{checkoutIdentityToken:f.context.token,customerId}}));
+  const privateRead=await originalFetch(base+`/clientes/buscar?lojaId=${store}&telefone=62999991234`);
+  assert.ok(privateRead.status>=400);
+});
+test('GUEST retorno autoriza somente seu pagamento; PAID exige payment_check e não herda Auth ambiente',async()=>{
+  const f=await guestFixture(),g=await guestFixture();
+  const created=await send(f.input,null),other=await send(g.input,null);assert.equal(created.status,200);assert.equal(other.status,200);
+  const status=async extra=>{const r=await originalFetch(base+'/checkout/payment-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paymentId:created.data.paymentId,...extra})});return {status:r.status,data:await r.json()};};
+  assert.equal((await status({})).status,404);
+  assert.equal((await status({paymentReturnToken:other.data.paymentReturnToken})).status,404);
+  const valid=await status({paymentReturnToken:created.data.paymentReturnToken});assert.equal(valid.status,200);
+  assert.deepEqual(Object.keys(valid.data).sort(),['checkoutUrl','id','payment_status','requiresReview']);assert.equal(valid.data.checkoutUrl,null);
+  const refs={order_nsu:created.data.paymentId,transaction_nsu:'guest-confirmed-transaction',invoice_slug:'guest-confirmed-slug',event_type:'paid',paid:true};
+  const event=()=>originalFetch(base+'/checkout/webhook',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(refs)});
+  try {
+    nextCheckResult={success:true,paid:false};assert.notEqual((await event()).status,200);
+    assert.equal((await db.doc('checkoutPayments/'+created.data.paymentId).get()).get('payment_status'),'PENDING');
+    nextCheckResult={success:true,paid:true,amount:1400,paid_amount:1400,capture_method:'pix'};
+    assert.equal((await event()).status,200);assert.equal((await event()).status,200);
+    const order=(await db.doc(`lojas/${store}/pedidos/${created.data.id}`).get()).data();
+    assert.equal(order.payment_status,'PAID');assert.equal(order.paymentMethod,'PIX');assert.equal(order.ownerUid,null);assert.equal(order.clienteId,null);
+    assert.equal((await f.product.get()).get('estoque'),7);
+    assert.equal((await db.collection('checkoutReceipts').where('paymentId','==',created.data.paymentId).get()).size,1);
+  } finally {nextCheckResult=null;}
+});
+test('GUEST não ignora preço, frete, estoque, loja inativa ou disponibilidade de fulfillment',async()=>{
+  const f=await guestFixture(),prior=links;
+  for(const extra of [{subtotal:1},{valorFrete:0},{itens:[{produtoId:f.product.id,quantity:20,preco:10}],subtotal:200}]) {
+    const denied=await send({...f.input,...extra},null);assert.ok(denied.status>=400,JSON.stringify(denied));
+  }
+  const storeRef=db.doc('lojas/'+store),original=(await storeRef.get()).data(),definition=db.doc(`lojas/${store}/configuracoes/storefront`);
+  try {
+    await storeRef.set({...original,status:'INACTIVE'});assert.notEqual((await send(f.input,null)).status,200);
+    await storeRef.set({...original,ativo:true,status:'ACTIVE',storeConfigVersion:1});
+    await definition.set({schemaVersion:1,catalog:{enabled:true,category:'Delivery'},delivery:{enabled:false},pickup:{enabled:true},onlinePayment:{enabled:true}});
+    const disabled=await send(f.input,null);assert.notEqual(disabled.status,200);
+  } finally {await definition.delete();await storeRef.set(original);}
+  assert.equal(links,prior);assert.equal((await f.product.get()).get('estoque'),8);
+});
+
 test('HTTP distingue loja fechada de configuração operacional indisponível',async()=>{
   const configRef=db.doc(`lojas/${store}/configuracoes/config`);
   const originalConfig=(await configRef.get()).data();

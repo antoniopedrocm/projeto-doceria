@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-11-07",
+  "baseCommit": "34510679c35d81bbbb1ae6d46dbdcd1306f629ae",
+  "branch": "feature/infinitepay-customer-auth",
+  "scope": "local DEV only, synthetic fixtures and provider mocks",
+  "firebaseClientGuard": "crmdoceria-9959e",
+  "emulatorProject": "demo-doceria-checkout",
+  "emulatorHosts": {"firestore": "127.0.0.1:8080", "auth": "127.0.0.1:9099"},
+  "firestoreEdition": "STANDARD",
+  "tests": {
+    "unit": {"passed": 23, "failed": 0},
+    "emulator": {
+      "payment-financial-events-emulator.test.js": 15,
+      "payment-contract-emulator.test.js": 20,
+      "checkout-http.test.js": 24,
+      "checkout-emulator.test.js": 9,
+      "checkout-reservation-emulator.test.js": 9,
+      "payment-settings-emulator.test.js": 3,
+      "agreed-payment-rules.test.js": 1
+    },
+    "react": {"passed": 18, "failed": 0},
+    "publicCheckout": {"passed": 20, "failed": 0},
+    "uniqueTotalPassed": 142,
+    "failedFinal": 0,
+    "retriesAndHistoricalRunsAdded": false,
+    "baselineComparison": "Two obsolete checkout-emulator expectations reproduced with base payment service; fixture scope and coalesced IO assertion corrected. Final 9/9 PASS."
+  },
+  "build": {"result": "PASS", "bundle": "main.e4b94788.js", "gzipSizeReported": "456.38 kB", "gzipDeltaReported": "+313 B", "warnings": "Existing native-audio sourcemaps and stale browsers datasets"},
+  "lint": {"result": "PASS", "files": 10, "errors": 0, "warnings": 0, "backendPolicy": "eslint:recommended, Node ES2022; allow intentional constant loops already in baseline", "frontendPolicy": "existing react-app/react-app-jest"},
+  "diffCheck": "PASS",
+  "approvalState": "Stop before commit, push and deploy for review",
+  "commitCreated": false,
+  "pushed": false,
+  "deployed": false,
+  "realChargesRefundsSmsClaims": 0,
+  "remoteWrites": 0,
+  "productionAccess": false,
+  "manualHomologation": "PENDING after authorized DEV publication",
+  "guestCheckout": "Mandatory GUEST backend restriction documented; proposal awaiting authorization, no visitor source changes",
+  "percentages": {"phase9": 100, "phase10": 87.5, "globalFormal": 97, "phase13": 0},
+  "productionReady": false
+}

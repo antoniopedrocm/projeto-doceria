@@ -1894,6 +1894,7 @@ app.post("/checkout/confirmar", async (req, res) => {
       cliente.id=checkoutIdentity.mode===CHECKOUT_MODES.PHONE?checkoutIdentity.legacyCustomerId:null;
       if(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.phoneHash && hashForPrivacy(normalizePhoneNumber(cliente.telefone))!==checkoutIdentity.phoneHash) throw paymentError('Identifique novamente o celular deste checkout.',403);
     }
+    const guest=checkoutIdentity.mode===CHECKOUT_MODES.GUEST;
     if(online || explicitPaymentMode) {
       if(checkoutIdentity.mode===CHECKOUT_MODES.STRONG) {
       const token=await checkoutToken(req);ownerUid=token.uid;buyerEmail=token.email;
@@ -1906,6 +1907,17 @@ app.post("/checkout/confirmar", async (req, res) => {
       }
       checkoutCustomerId=account.customer?.id;
       if(!checkoutCustomerId || cliente.id!==checkoutCustomerId) throw paymentError('Entre em sua conta de cliente para pagar online.',403);
+      } else if(guest) {
+        // A server-issued guest context authorizes only its own purchase. A
+        // typed phone is contact data, never proof of Customer ownership.
+        if(!identityToken || !explicitPaymentMode) throw paymentError('Selecione novamente como continuar.',403);
+        const phone=normalizePhoneNumber(cliente.telefone);
+        if(!phone) throw paymentError('Informe um telefone brasileiro válido com DDD.',400);
+        cliente.telefone=phone;
+        cliente.nome=typeof cliente.nome==='string'?cliente.nome.trim():'';
+        if(!cliente.nome || cliente.nome.length>160) throw paymentError('Informe seu nome para o pedido.',400);
+        if(cupom?.codigo) throw paymentError('Remova o cupom para continuar como visitante. Cupons exigem identificação do cliente.',403);
+        checkoutCustomerId=null;
       } else {
         if(checkoutIdentity.mode!==CHECKOUT_MODES.PHONE || !checkoutIdentity.legacyCustomerId || !checkoutIdentity.phoneHash) throw paymentError('Identifique seu celular antes de continuar.',403);
         checkoutCustomerId=await customerRegistry.resolveId(checkoutIdentity.legacyCustomerId);
@@ -1913,7 +1925,7 @@ app.post("/checkout/confirmar", async (req, res) => {
       }
       if(!/^[a-zA-Z0-9_-]{16,100}$/.test(req.body?.idempotencyKey || '')) throw paymentError('Identificador do pedido inválido.',400);
       if(online) paymentConfig=await checkoutPayments.config(lojaId);
-      paymentId=crypto.createHash('sha256').update((ownerUid || 'phone:'+checkoutIdentities.ref(identityToken).id)+':'+lojaId+':'+req.body.idempotencyKey).digest('hex');
+      paymentId=crypto.createHash('sha256').update((ownerUid || (guest?'guest:':'phone:')+checkoutIdentities.ref(identityToken).id)+':'+lojaId+':'+req.body.idempotencyKey).digest('hex');
       fingerprint=crypto.createHash('sha256').update(JSON.stringify({cliente,itens,cupom,subtotal,delivery:req.body.delivery,descontoInformado,...(explicitPaymentMode ? {paymentMode} : {})})).digest('hex');
       orderRef=db.collection('lojas').doc(lojaId).collection('pedidos').doc(paymentId);
     }
@@ -1922,7 +1934,9 @@ app.post("/checkout/confirmar", async (req, res) => {
         checkoutIdentity=await checkoutIdentities.read(identityToken,lojaId,transaction);
         if(checkoutIdentity.revision!==checkoutIdentityRevision) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
         if(checkoutIdentity.mode===CHECKOUT_MODES.STRONG) checkoutIdentities.requireStrong(checkoutIdentity,ownerUid,cliente.id);
-        else if((online || explicitPaymentMode) && (checkoutIdentity.mode!==CHECKOUT_MODES.PHONE || ownerUid || checkoutIdentity.legacyCustomerId!==checkoutCustomerId)) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
+        else if((online || explicitPaymentMode) && (ownerUid || (guest
+          ? checkoutIdentity.mode!==CHECKOUT_MODES.GUEST || checkoutIdentity.legacyCustomerId!=null || checkoutIdentity.customerId!=null || checkoutIdentity.ownerUid!=null
+          : checkoutIdentity.mode!==CHECKOUT_MODES.PHONE || checkoutIdentity.legacyCustomerId!==checkoutCustomerId))) throw paymentError('A identificação do checkout mudou. Selecione novamente como continuar.',403);
         if(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.legacyCustomerId) cliente.id=await customerRegistry.resolveId(checkoutIdentity.legacyCustomerId,transaction);
       }
       if(explicitPaymentMode) {
@@ -2101,7 +2115,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         clienteSnap = await transaction.get(clienteRef);
       }
 
-      if ((online || explicitPaymentMode) && (!clienteSnap?.exists || clienteRef.id!==checkoutCustomerId || (checkoutIdentity.mode===CHECKOUT_MODES.STRONG ? !ownsCustomer(clienteSnap.data(),ownerUid) : hashForPrivacy(normalizePhoneNumber(clienteSnap.data().telefone))!==checkoutIdentity.phoneRecordHash))) throw paymentError('Cadastro de cliente não autorizado para este checkout.',403);
+      if ((online || explicitPaymentMode) && !guest && (!clienteSnap?.exists || clienteRef.id!==checkoutCustomerId || (checkoutIdentity.mode===CHECKOUT_MODES.STRONG ? !ownsCustomer(clienteSnap.data(),ownerUid) : hashForPrivacy(normalizePhoneNumber(clienteSnap.data().telefone))!==checkoutIdentity.phoneRecordHash))) throw paymentError('Cadastro de cliente não autorizado para este checkout.',403);
       if (checkoutIdentity.mode===CHECKOUT_MODES.STRONG && clienteSnap?.data()?.authOwnerUid && !ownsCustomer(clienteSnap.data(),ownerUid)) throw paymentError('Entre na conta vinculada ao cadastro.',403);
       const customerCoupons=couponCode && clienteSnap?.exists?await customerRegistry.couponState(clienteRef.id,transaction):null;
       if (online && customerCoupons?.used.includes(couponCode)) throw paymentError('Você já utilizou este cupom.');
@@ -2117,7 +2131,7 @@ app.post("/checkout/confirmar", async (req, res) => {
           reservation:{state:'HELD',stock:stockUpdates.map(s=>({path:s.ref.path,quantity:s.quantity})),
             couponPath:cupomDocRef?.path || null,couponCode,
             customerPath:cupomDocRef && clienteSnap?.exists ? clienteRef.path : null},
-          ...paymentPrefill(paymentConfig,checkoutIdentity.mode===CHECKOUT_MODES.STRONG ? clienteSnap.data() : {nome:cliente.nome,telefone:clienteSnap.data().telefone,normalizedPhone:clienteSnap.data().normalizedPhone},req.body.delivery,buyerEmail),
+          ...paymentPrefill(paymentConfig,guest ? {nome:cliente.nome,telefone:cliente.telefone} : checkoutIdentity.mode===CHECKOUT_MODES.STRONG ? clienteSnap.data() : {nome:cliente.nome,telefone:clienteSnap.data().telefone,normalizedPhone:clienteSnap.data().normalizedPhone},req.body.delivery,buyerEmail),
           createdAt:FieldValue.serverTimestamp()
         });
       }

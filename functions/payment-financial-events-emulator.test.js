@@ -16,10 +16,11 @@ async function fixture(name){
  const service=createPaymentService({db,admin,provider:{check:async input=>{checks++;assert.equal(input.handle,'merchant-fixture');assert.equal(input.order_nsu,id);return result;}},auditSignal:async()=>{}});
  const refs={order_nsu:id,transaction_nsu:'transaction-'+name,slug:'invoice-'+name};
  const event=event_type=>({...refs,event_type,invoice_type:'checkout'});
- const register=(type='REFUND_EXPECTED',extra={})=>service.financialEvents.register({storeId,paymentId:id,type,transactionNsu:refs.transaction_nsu,slug:refs.slug,executionConfirmed:true,executionReference:'external-execution-fixture',requestId:'fixture-request-'+name,...extra},{uid:'staff-a',role:'dono'});
+ const register=(type='REFUND_EXPECTED',extra={})=>service.financialEvents.register({storeId,paymentId:id,type,transactionNsu:refs.transaction_nsu,slug:refs.slug,executionConfirmed:true,executionReference:'external-execution-fixture',requestId:'fixture-request-'+name,...(type==='REFUND_EXPECTED'?{refundScope:'FULL'}:{}),...extra},{uid:'staff-a',role:'dono'});
  const root=db.doc('integrations/paymentReconciliation');
  return {id,storeId,order,product,coupon,customer,payment,service,refs,event,register,setResult:r=>{result=r;},checks:()=>checks,
   eventRef:type=>root.collection('stores').doc(storeId).collection('events').doc(inspectPaymentSignal(event(type)).fingerprint),
+  operationRef:type=>root.collection('operations').doc(crypto.createHash('sha256').update(JSON.stringify([id,type,refs.transaction_nsu,refs.slug])).digest('hex')),
   receipts:()=>db.collection('checkoutReceipts').where('paymentId','==',id).get(),ledger:()=>root.collection('ledger').where('paymentId','==',id).get()};
 }
 test('formal event_type paid: duplicates/concurrency confirm once, consume coupon once and preserve one receipt',async()=>{
@@ -64,6 +65,7 @@ test('refund matches only a Staff-recorded completed external operation; append-
  assert.deepEqual(await read(f.eventRef('refunded')),before);assert.equal((await read(f.payment)).payment_status,'REFUNDED');
  assert.equal((await read(f.order)).order_status,'CONFIRMED');assert.equal((await read(f.product)).estoque,8);assert.equal((await read(f.coupon)).usos,1);
  assert.equal((await f.ledger()).size,1);assert.equal((await f.receipts()).size,1);
+ assert.equal((await read(f.operationRef('REFUND_EXPECTED'))).refundScope,'FULL');assert.equal((await f.ledger()).docs[0].data().refundScope,'FULL');
  await f.service.reconcile(f.event('paid'));assert.equal((await read(f.payment)).payment_status,'REFUNDED');
  assert.equal((await f.service.financialEvents.list(f.storeId)).events.find(e=>e.eventType==='refunded').disposition,'MATCHED_EXPECTED_OPERATION');
  await assert.rejects(()=>f.service.financialEvents.reconcileEvent('foreign-store',f.eventRef('refunded').id),{httpStatus:404});
@@ -82,7 +84,7 @@ test('mere intent, wrong transaction/store/type and an unsigned POST never becom
 });
 test('forged POST sequence with paid:false cannot pay, cancel, refund, consume stock/coupon or create ledger',async()=>{
  const f=await fixture('forged');f.setResult({success:true,paid:false});const payment=await read(f.payment),order=await read(f.order);
- for(const type of ['created','payment_failed','settled','canceled','refunded'])await f.service.reconcile({...f.event(type),paid:true,amount:1,handle:'forged'});
+ for(const type of ['created','payment_failed','settled','expired','overdue','canceled','refunded'])await f.service.reconcile({...f.event(type),paid:true,amount:1,handle:'forged'});
  await assert.rejects(()=>f.service.reconcile({...f.event('paid'),paid:true}));
  assert.deepEqual(await read(f.payment),payment);assert.deepEqual(await read(f.order),order);assert.equal((await read(f.product)).estoque,8);assert.deepEqual(await read(f.coupon),{reservados:1,usos:0});assert.equal((await f.receipts()).size,0);assert.equal((await f.ledger()).size,0);
 });
@@ -105,4 +107,46 @@ test('notification quota rejects distinct unsigned noise but permits a compatibl
  await f.register();await f.service.reconcile(f.event('refunded'));await f.service.reconcile(f.event('refunded'));
  assert.equal((await read(f.payment)).payment_status,'REFUNDED');assert.equal((await f.ledger()).size,1);
  assert.equal((await read(f.coupon)).usos,1);assert.equal((await f.receipts()).size,1);
+});
+
+test('expired/overdue are scoped immutable events under duplicates and never settle reservations before or after paid',async()=>{
+ const f=await fixture('expiry-info'),beforePayment=await read(f.payment),beforeOrder=await read(f.order);
+ for(const type of ['expired','overdue']){
+  await Promise.all(Array.from({length:4},()=>f.service.reconcile({...f.event(type),paid:true,amount:1})));
+  const event=await read(f.eventRef(type));assert.equal(event.storeId,f.storeId);assert.equal(event.disposition,'INFORMATIONAL_UNVERIFIED');
+  await f.service.reconcile(f.event(type));assert.deepEqual(await read(f.eventRef(type)),event);
+  await assert.rejects(()=>f.service.financialEvents.reconcileEvent('foreign-store',f.eventRef(type).id),{httpStatus:404});
+ }
+ assert.deepEqual(await read(f.payment),beforePayment);assert.deepEqual(await read(f.order),beforeOrder);assert.equal(f.checks(),0);
+ assert.equal((await read(f.product)).estoque,8);assert.equal((await read(f.coupon)).reservados,1);assert.equal((await f.receipts()).size,0);assert.equal((await f.ledger()).size,0);
+ await f.service.reconcile(f.event('paid'));const paid=await read(f.payment),order=await read(f.order);
+ for(const type of ['overdue','expired'])await f.service.reconcile(f.event(type));
+ assert.deepEqual(await read(f.payment),paid);assert.deepEqual(await read(f.order),order);assert.equal((await f.receipts()).size,1);assert.equal((await read(f.coupon)).usos,1);
+});
+
+test('partial, unknown, missing or malformed refund scope cannot create an authoritative operation or integral ledger',async()=>{
+ const f=await fixture('refund-scope');await f.service.reconcile(f.event('paid'));await f.service.reconcile(f.event('refunded'));
+ const payment=await read(f.payment),order=await read(f.order),event=await read(f.eventRef('refunded'));
+ for(const refundScope of [undefined,null,'','PARTIAL','UNKNOWN','full',true]){
+  await assert.rejects(()=>f.register('REFUND_EXPECTED',{refundScope}),{httpStatus:400});
+  assert.equal((await f.operationRef('REFUND_EXPECTED').get()).exists,false);
+  assert.equal((await f.service.financialEvents.reconcileEvent(f.storeId,f.eventRef('refunded').id)).eventDisposition,'PENDING_RECONCILIATION');
+ }
+ assert.deepEqual(await read(f.payment),payment);assert.deepEqual(await read(f.order),order);assert.deepEqual(await read(f.eventRef('refunded')),event);
+ assert.equal((await f.ledger()).size,0);assert.equal((await f.receipts()).size,1);assert.equal((await read(f.product)).estoque,8);assert.equal((await read(f.coupon)).usos,1);
+});
+
+test('legacy pending refund without scope stays pending and is not rewritten or silently upgraded',async()=>{
+ const f=await fixture('legacy-refund-scope');await f.service.reconcile(f.event('paid'));await f.register();
+ const ref=f.operationRef('REFUND_EXPECTED');await ref.update({refundScope:admin.firestore.FieldValue.delete()});const legacy=await read(ref),payment=await read(f.payment);
+ const result=await f.service.reconcile(f.event('refunded'));assert.equal(result.eventDisposition,'PENDING_RECONCILIATION');
+ await assert.rejects(()=>f.register(),{httpStatus:409});assert.deepEqual(await read(ref),legacy);assert.deepEqual(await read(f.payment),payment);assert.equal((await f.ledger()).size,0);
+});
+
+test('historical matched refund without scope remains terminal and its records stay unchanged',async()=>{
+ const f=await fixture('matched-legacy-refund');await f.service.reconcile(f.event('paid'));await f.register();await f.service.reconcile(f.event('refunded'));
+ const ref=f.operationRef('REFUND_EXPECTED');await ref.update({refundScope:admin.firestore.FieldValue.delete()});const legacy=await read(ref),payment=await read(f.payment),ledger=(await f.ledger()).docs[0].data();
+ assert.equal((await f.service.reconcile(f.event('refunded'))).duplicate,true);await f.service.reconcile(f.event('paid'));
+ assert.deepEqual(await read(ref),legacy);assert.deepEqual(await read(f.payment),payment);assert.deepEqual((await f.ledger()).docs[0].data(),ledger);
+ assert.equal((await f.receipts()).size,1);assert.equal((await f.ledger()).size,1);
 });

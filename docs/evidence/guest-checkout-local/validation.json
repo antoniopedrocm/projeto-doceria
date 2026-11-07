@@ -1,0 +1,173 @@
+{
+  "schema": 1,
+  "date": "2026-11-07",
+  "baseCommit": "34510679c35d81bbbb1ae6d46dbdcd1306f629ae",
+  "branch": "feature/infinitepay-customer-auth",
+  "scope": "Local DEV sources, synthetic fixtures, provider/Maps/WhatsApp mocks. No live checkout.",
+  "authorization": "Owner approved secure guest backend + local UI. No commit/push/deploy.",
+  "tests": {
+    "unitPassed": 23,
+    "emulatorPassed": 91,
+    "emulatorSuites": [
+      {
+        "file": "checkout-http.test.js",
+        "exitCode": 0,
+        "tests": 31,
+        "passed": 31,
+        "failed": 0
+      },
+      {
+        "file": "guest-checkout-emulator.test.js",
+        "exitCode": 0,
+        "tests": 2,
+        "passed": 2,
+        "failed": 0
+      },
+      {
+        "file": "payment-financial-events-emulator.test.js",
+        "exitCode": 0,
+        "tests": 15,
+        "passed": 15,
+        "failed": 0
+      },
+      {
+        "file": "payment-contract-emulator.test.js",
+        "exitCode": 0,
+        "tests": 20,
+        "passed": 20,
+        "failed": 0
+      },
+      {
+        "file": "checkout-emulator.test.js",
+        "exitCode": 0,
+        "tests": 9,
+        "passed": 9,
+        "failed": 0
+      },
+      {
+        "file": "checkout-reservation-emulator.test.js",
+        "exitCode": 0,
+        "tests": 9,
+        "passed": 9,
+        "failed": 0
+      },
+      {
+        "file": "payment-settings-emulator.test.js",
+        "exitCode": 0,
+        "tests": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "file": "agreed-payment-rules.test.js",
+        "exitCode": 0,
+        "tests": 1,
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "file": "checkout-identity-rules.test.js",
+        "exitCode": 0,
+        "tests": 1,
+        "passed": 1,
+        "failed": 0
+      }
+    ],
+    "publicPassed": 26,
+    "whatsappPassed": 24,
+    "reactPassed": 18,
+    "uniqueTotalPassed": 182,
+    "failedFinal": 0,
+    "retriesOrHistoricalRunsAdded": false
+  },
+  "build": {
+    "result": "PASS",
+    "firebaseClientGuard": "crmdoceria-9959e",
+    "mainBundle": "main.e4b94788.js",
+    "gzipReported": "456.38 kB",
+    "bundleChangeFromG123": "none",
+    "publicSourceBuildMatches": 6,
+    "inlineScriptsParsed": 6,
+    "aliasesIdentical": true,
+    "publicSourceSha256": {
+      "cardapio.html": "9e516bb6d749cba0368f2b68a984b74f75a3a219a20e0333ce88befe0d0f4799",
+      "cardapio-matriz.html": "9e516bb6d749cba0368f2b68a984b74f75a3a219a20e0333ce88befe0d0f4799",
+      "cardapio-garavelo.html": "9e516bb6d749cba0368f2b68a984b74f75a3a219a20e0333ce88befe0d0f4799",
+      "cardapio-festa.html": "9e516bb6d749cba0368f2b68a984b74f75a3a219a20e0333ce88befe0d0f4799",
+      "checkout-payment-client.js": "d21870d5e1e794a84c630851f6f00417caa10720b2bb8bc5ffcad2090173d1c8",
+      "checkout-payment-choice.mjs": "cc5101fb52b51b1a07a1d912163cc374d9cdaa0f7f44dc700484a8e62a6b8569"
+    },
+    "warnings": "Existing native-audio sourcemaps and stale Browserslist/baseline datasets"
+  },
+  "lint": {
+    "files": 16,
+    "errors": 0,
+    "warnings": 0,
+    "indexBaselineErrors": 6,
+    "indexCurrentErrors": 6,
+    "indexNewDiagnostics": 0,
+    "reactFiles": 2,
+    "reactErrors": 0,
+    "reactWarnings": 0,
+    "policy": "Recommended Node/browser ES2022, intentional constant loops permitted; legacy index compared with HEAD, existing react-app policy"
+  },
+  "diffCheck": "PASS",
+  "visual": {
+    "result": "PASS",
+    "viewports": [
+      {
+        "width": 1920,
+        "height": 889
+      },
+      {
+        "width": 390,
+        "height": 800
+      }
+    ],
+    "scenarios": 4,
+    "screenshots": 6,
+    "externalRequests": 0,
+    "liveDevAcceptance": false,
+    "details": "visual-review.json"
+  },
+  "security": {
+    "guestCanonicalCustomerId": null,
+    "guestOwnerUid": null,
+    "identityUpgrade": false,
+    "phoneProvesOwnership": false,
+    "customerDocumentsCreatedOrUpdated": false,
+    "customerPrivateReadsGranted": false,
+    "contextStoreRevisionTtlRequired": true,
+    "returnCapability": "Existing payment-only credential",
+    "customerCoupons": "Not inherited by Guest; explicit-mode Guest coupon rejected server-side",
+    "paidAuthority": "Existing server-side payment_check"
+  },
+  "sourceSha256": {
+    "functions/index.js": "fc550306689ebfa277bd2cc72ffa8ce8fb970c232b4c08bb55cb5272d4100ac8",
+    "functions/checkout-payment.js": "8040aad883a263b8782b7dbb87b8635fed0aa6837c97d1ec587f7ff20330bc2e",
+    "functions/checkout-http.test.js": "8ab3f632139e60173e1686716940e185c9b30002779ea86e47693ba99aa6c9e2",
+    "functions/guest-checkout-emulator.test.js": "ad285e07162dee809f51cdd40513cbfb9e8f36c57feb0fe53a7bc92c79348419",
+    "functions/whatsapp-checkout.test.js": "b7d5038e80c389748d7db2d2c3460fbd9ef047645ef43d433055d18b8f3f282e",
+    "crm/public/cardapio.html": "9e516bb6d749cba0368f2b68a984b74f75a3a219a20e0333ce88befe0d0f4799",
+    "crm/public/checkout-payment-client.js": "d21870d5e1e794a84c630851f6f00417caa10720b2bb8bc5ffcad2090173d1c8",
+    "crm/public/checkout-payment-choice.mjs": "cc5101fb52b51b1a07a1d912163cc374d9cdaa0f7f44dc700484a8e62a6b8569",
+    "crm/tests/guest-checkout-payment.test.mjs": "979068a326759a5500c2fce59ec30948f3f96aad45d3d073b63cde1fcc565f6a",
+    "crm/tests/checkout-payment-choice.test.mjs": "667b5ae746c0f34a66a16285af72a14bf30a6d73f8cfee6a7096cafbbc778d3c",
+    "crm/tests/guest-checkout-visual-review.cjs": "6fe6d2abc2f2d8dc80dc77a95d68bd303bdd3ac3babfe486fea20e8be05d709f"
+  },
+  "remoteWrites": 0,
+  "realChargesRefundsSmsClaims": 0,
+  "realWhatsApp": 0,
+  "committed": false,
+  "pushed": false,
+  "deployed": false,
+  "productionAccess": false,
+  "homologation": "Pending authorized DEV publication and manual acceptance",
+  "formalPercentages": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "productionReady": false
+}

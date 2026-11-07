@@ -1,5 +1,9 @@
 # Eventos e conciliação InfinitePay V1 — DEV
 
+## Complementos locais de 07/11/2026 — aguardando revisão/publicação
+
+[G1/G2/G3 implementados e testados localmente](INFINITEPAY_G123_LOCAL_FIXES.md). Novos links selecionam os oito eventos em `webhook: {url, events}`, incluindo paid; links existentes mantêm inscrição original. expired/overdue são informativos não verificados, sem transição operacional/financeira. Formulário de refund agora exige escopo Integral e atesto explícito; registro e match exigem `refundScope: FULL`. Parcial/desconhecido/ausente permanece em conciliação administrativa. Histórico matched preservado; pending histórico sem escopo não é promovido. Nenhuma API de refund ou autenticação fictícia do webhook. 142 testes locais PASS; sem commit/push/deploy ou aceite dos complementos. Percentuais formais inalterados. O estado de auditoria abaixo é histórico.
+
 ## Estado vigente — confirmação de 06/11/2026 auditada em 07/11
 
 Contrato mais recente: [Ricardo/CloudWalk — 06/11](INFINITEPAY_SUPPORT_CONTRACT_2026-11-06.md). [Auditoria de impacto](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md): a tabela abaixo descreve o **processador atual**, não comprova que todos os eventos foram selecionados na criação dos links. O payload atual usa somente `webhook_url` (aprovação); `expired/overdue` ficam em HOLD/log, sem registro na fila da loja. Complementos G1/G2 propostos, não implementados. Estorno atual tem escopo integral implícito; não registrar operação parcial por este formulário. G3 propõe atesto e validação explícita de montante integral, sem inventar API de refund ou alterar estado financeiro por webhook isolado.

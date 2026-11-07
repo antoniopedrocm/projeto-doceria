@@ -19,7 +19,7 @@ after(()=>app.delete());
 test('cliente Google não lê CRM nem assume papel de funcionário',async()=>{
   const env=await initializeTestEnvironment({projectId:'demo-doceria-checkout',firestore:{host:'127.0.0.1',port:8080,rules:fs.readFileSync(path.join(__dirname,'../firestore.rules'),'utf8')}});
   try {
-    await db.doc('users/test-staff').set({role:'gerente',ativo:true});
+    await db.doc('users/test-staff').set({role:'gerente',ativo:true,lojaIds:['test-store']});
     await db.doc('lojas/test-store/pedidos/private').set({total:10});
     await db.doc('clientes/private').set({nome:'Privado'});
     const client=env.authenticatedContext('google-customer',{firebase:{sign_in_provider:'google.com'}}).firestore();
@@ -102,7 +102,12 @@ test('webhooks concorrentes são idempotentes e não cruzam contas/pedidos',asyn
   await Promise.all([service.reconcile(payload),service.reconcile(payload)]);
   assert.equal((await db.doc(`lojas/payment-test/pedidos/${id}`).get()).data().payment_status,'PAID');
   assert.equal((await db.collection('checkoutReceipts').get()).size,1);
-  assert.equal(count,2);
+  // Verification coalesces concurrent requests; a receipt may also short-circuit
+  // the second caller. Require verification, without demanding duplicate IO.
+  assert.ok(count>=1 && count<=2);
+  const checked=count;
+  await service.reconcile(payload);
+  assert.equal(count,checked);
   await assert.rejects(()=>service.reconcile({...payload,order_nsu:id2}));
   await assert.rejects(()=>service.status(id,'stranger'));
 });

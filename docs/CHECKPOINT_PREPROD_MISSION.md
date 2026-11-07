@@ -1,5 +1,39 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: publicação DEV autorizada e preparada
+
+Dono solicitou **“publique em dev as alterações para eu validar”**. [Registro da publicação](GUEST_CHECKOUT_DEV_RELEASE.md). Esta autorização sucede a pausa para revisão local; escopo somente G1/G2/G3 + visitante em `crmdoceria-9959e`, branch/worktree DEV conferidos. Fontes e build correspondem aos **182 testes PASS** já executados; sem refazer operações reais. Origin sincronizado na base `34510679` antes do commit. Pré-checagem somente metadados: API ACTIVE `api-00071-qeh`, 146 Functions v2 all-locations/0 v1, Rules e Hosting anteriores registrados.
+
+**Próximo ponto exato:** commit/push dos arquivos delimitados, publicar somente `functions:api`, verificar ACTIVE e só então Hosting; comparar artefatos/cache/rotas e preservar demais Functions/Rules. Untracked preexistentes e functions.yaml excluídos do pacote. Não criar pedido/contexto de checkout real nem enviar pagamento, estorno, SMS, claim ou WhatsApp. Aceite manual do titular após publicação, sem confirmação de pedido.
+
+Percentuais inalterados: **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO**. Estados locais abaixo são históricos, não bloqueiam esta autorização específica.
+
+## Estado vigente — 07/11/2026: visitante implementado localmente após autorização; revisão pendente
+
+Dono respondeu **“Autorizar backend seguro + UI local”** à proposta delimitada. Base `34510679`, branch/worktree DEV conferidos; patch G1/G2/G3 anterior preservado. [Entrega visitante](GUEST_CHECKOUT_PAYMENT_LOCAL.md), [validação](evidence/guest-checkout-local/validation.json). Nenhum commit, push, deploy, dado remoto, cobrança, estorno, SMS, claim, WhatsApp real ou PROD.
+
+Modal visitante somente com **Pagar Agora — Pix ou Cartão** e **Combinar Pagamento**, helpers reutilizados, sem exigência Google/e-mail nessa etapa. Backend permite os modos apenas com contexto Guest servidor/loja/revisão/TTL/idempotência válidos. Nome/telefone normalizado/endereço são snapshot do pedido; Customer/owner nulos, sem lookup/vínculo privado por telefone. Guardas de preço/frete/estoque/fulfillment/provider preservadas. Cupom por cliente não é herdado ao trocar para visitante; backend recusa aplicação nesse contrato sem identificação. Online preserva confirmação server-side; combinar é pendente/sem método e não cria link. WhatsApp permanece condicionado ao contrato atual.
+
+**182 testes distintos PASS**, sem somar 142 anteriores: 23 unitários, 91 emuladores locais, 26 públicos, 24 WhatsApp com mocks e 18 React. Build guardado DEV `crmdoceria-9959e` PASS, bundle `main.e4b94788.js` 456,38 kB gzip inalterado; **6/6 públicos fonte/build** e aliases idênticos; 6 scripts inline parseados. Lint de 16 arquivos do complemento sem diagnósticos novos; 6 débitos anteriores de index.js preservados/confirmados no HEAD. Lint React G3 anterior PASS. Diff-check PASS. Desktop **1920×889** e mobile **390×800**, duas escolhas: revisão local PASS, 6 capturas fictícias sem serviços; não é homologação remota.
+
+**Próximo ponto exato:** apresentar revisão local e aguardar autorização antes de commit/push/deploy. API/Functions pertinentes e Hosting precisarão ser publicados juntos no DEV, depois aceite do modal sem cobrança real. Não repetir C15-E, Google existente, SMS/claims nem reabrir etapas concluídas. C15/C16 continuam no ponto histórico registrado.
+
+**Fase 9 = 100% formal histórico; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Sem incremento por implementação/testes/capturas locais. Seções abaixo preservam a sequência anterior.
+
+## Estado vigente — 07/11/2026: G1/G2/G3 locais testados; visitante depende de autorização de backend
+
+Retomada confirmou base **`34510679c35d81bbbb1ae6d46dbdcd1306f629ae`**, branch DEV e worktree `C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree`. Autorização específica posterior à auditoria permite G1/G2/G3 locais e testes, **parando antes de commit, push e deploy**. Código/documentos anteriores e untracked preservados; sem acesso remoto/PROD.
+
+[Entrega local G1/G2/G3](INFINITEPAY_G123_LOCAL_FIXES.md), [evidência](evidence/infinitepay-g123-local-validation.json): novos links usam `webhook: {url, events}` com os oito eventos/paid; links existentes não são recriados. expired/overdue geram eventos informativos imutáveis por loja, sem efeitos financeiros/estoque. Refund exige `FULL` e atesto explícito na UI/backend/match. Parcial/desconhecido/sem escopo fica pendente. Históricos já conciliados preservados; operação histórica pendente sem escopo não é promovida silenciosamente.
+
+**142 testes distintos PASS**: 23 unitários, 81 integração Auth/Firestore locais demo, 18 React e 20 públicos. Duas expectativas antigas reproduzidas no código-base corrigidas apenas nas fixtures/testes (loja do gerente e coalescência); reteste 9/9 PASS. Build DEV guardado `crmdoceria-9959e` PASS, `main.e4b94788.js` 456,38 kB gzip (+313 B), avisos existentes documentados. Lint do delta 0 erros/0 avisos e diff-check PASS. Nenhuma operação financeira, SMS, claim, dado remoto, commit/push/deploy.
+
+Pedido adicional **“Continuar como visitante”**: [diagnóstico e proposta](GUEST_CHECKOUT_PAYMENT_REVIEW.md). Há bloqueio obrigatório frontend/endpoint/serviço de link para contexto GUEST, inclusive para os novos paymentModes explícitos. Não é só visual. Nenhuma fonte do visitante foi alterada; proposta de contexto de compra restrito ao próprio pedido, sem Auth/ownership/acesso privado por telefone, submetida à autorização específica exigida pelo Dono. Não remover guardas para simular conclusão.
+
+**Próximo ponto exato:** revisão do patch G1/G2/G3 antes de commit/push/deploy; aguardar decisão sobre a proposta segura de checkout visitante antes de implementá-la. Publicação/homologação DEV dos complementos ainda pendentes. Depois retomar C15/C16 sem repetir vínculos/SMS/aceites já concluídos. Não repetir final 0811 ou desfazer owner Google existente.
+
+**Fase 9 = 100% formal histórico; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Sem incremento por implementação/testes locais. Seções abaixo preservam o histórico e a auditoria anterior à autorização.
+
 ## Estado vigente — 07/11/2026: contrato CloudWalk 06/11 auditado, sem alteração funcional
 
 Proprietário forneceu a resposta completa de **Ricardo Cici/CloudWalk, 06/11 às 09:08**. Atualizado [contrato vigente](INFINITEPAY_SUPPORT_CONTRACT_2026-11-06.md), preservando o histórico de 25/10. [Diagnóstico delimitado](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md), [evidência local](evidence/infinitepay-contract-2026-11-06-audit-dev.json). Base real `e55b09ef`, branch `feature/infinitepay-customer-auth`, worktree DEV autorizado, tracked limpo e origin 0/0 na retomada. Branch de backup do diretório pai e untracked preexistentes preservados. Nenhum Firebase/PROD consultado; somente documentação pública oficial e código/testes locais.

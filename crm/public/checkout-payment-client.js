@@ -4,9 +4,11 @@ import {isLinkedCustomer} from './customer-session.mjs';
 import {syncPaymentChoices} from './checkout-payment-choice.mjs';
 const key='doceria-payment-pending';
 export async function checkoutHeaders(online=false,identity=null) {
+  // Explicit guest purchase has no Auth dependency or Customer identity.
+  if(identity?.get().mode==='guest' && identity?.get().token) return {'Content-Type':'application/json'};
   await auth.authStateReady();
-  const phone=identity?.get().mode==='legacy_phone' && !!identity?.get().token;
-  if(online && !phone && (!identity?.isStrong() || !auth.currentUser || auth.currentUser.isAnonymous ||
+  const publicCheckout=['legacy_phone','guest'].includes(identity?.get().mode) && !!identity?.get().token;
+  if(online && !publicCheckout && (!identity?.isStrong() || !auth.currentUser || auth.currentUser.isAnonymous ||
     !auth.currentUser.providerData.some(p=>['google.com','password'].includes(p.providerId)))) {
     throw new Error('Identifique seu celular ou entre em Minha Conta para continuar.');
   }
@@ -44,7 +46,7 @@ let onlineEnabled=false;
 export function syncOnlinePaymentOption(customer,strong=false,phone=false) {
   const select=document.getElementById('payment-method-select');
   const guest=document.getElementById('guest-payment-method');
-  guest?.querySelector('option[value="Online"]')?.remove();
+  syncPaymentChoices(guest,true,onlineEnabled,'guest-v1');
   if(!select) return;
   syncPaymentChoices(select, (strong && isLinkedCustomer(customer)) || (phone && !!customer), onlineEnabled);
 }

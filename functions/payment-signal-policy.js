@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const PROVIDER_EVENT_NAMES = Object.freeze(['created', 'paid', 'settled', 'canceled', 'refunded', 'payment_failed']);
+const PROVIDER_EVENT_NAMES = Object.freeze(['created', 'paid', 'settled', 'canceled', 'refunded', 'payment_failed', 'expired', 'overdue']);
 
 // This is our defensive input policy, not an undocumented provider envelope.
 // A hint can deny automatic processing; it can never establish financial truth.
