@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "recordedOn": "2026-11-07",
+  "source": "explicit holder/Owner reply in this conversation",
+  "caseId": "72f99a605f6f471b",
+  "phoneSuffix": "0811",
+  "scenario": "email_password",
+  "humanReply": "PASS demais checks",
+  "technicalEvidence": "phase10-c15-0811-after-claim-dev.json",
+  "priorReturnAcceptance": "customer-menu-first-registration-review-dev.json",
+  "humanChecks": {
+    "historicalAddressVisible": "PASS",
+    "twoHistoricalOrdersVisible": "PASS",
+    "refreshPreservesAccess": "PASS",
+    "logoutAndSameAccountReloginWithoutNewClaimOrSms": "PASS",
+    "returnToOriginalMenu": "PASS previously recorded, not repeated"
+  },
+  "emailScenarioAccepted": true,
+  "wholeC15Accepted": false,
+  "C16Accepted": false,
+  "remoteWrites": 0,
+  "smsSends": 0,
+  "claims": 0,
+  "production": false,
+  "indicators": {"phase9": 100, "phase10": 87.5, "globalFormal": 97, "phase13": 0}
+}

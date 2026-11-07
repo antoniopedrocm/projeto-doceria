@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-07T14:42:47.841Z",
+  "readOnly": true,
+  "caseId": "577ace8fc6bcfb4d",
+  "phoneSuffix": "8602",
+  "phoneType": "mobile",
+  "phoneFormat": "BR E.164 via canonical normalizer",
+  "canonicalPhoneConsistent": true,
+  "registryReady": true,
+  "phoneIndexReady": true,
+  "canonicalStatus": "CANONICAL",
+  "ownerCount": 1,
+  "uidMappings": 1,
+  "strongIdentityMappings": 1,
+  "contactEmailPresent": false,
+  "addresses": {
+    "visibleCount": 2,
+    "format": "enderecos",
+    "sourceFingerprint": "130c7895dd603d924b0b4e2c936f7ee0ab2689d7d9333a6e28743397ed8e3003"
+  },
+  "orders": {
+    "referenced": 1,
+    "storeOrders": 1,
+    "rootOrders": 0,
+    "rootReferencesReviewed": 0,
+    "conflictingReferenceOrders": 0,
+    "ordersWithExistingOwnerUid": 0,
+    "referenceVersionFingerprint": "b60da636212d0c6ae57307064a0f347e9e1b3e636115d601c31c9741e516a5db"
+  },
+  "sms": {
+    "policyStoreId": "ana-guimaraes-doceria-matriz",
+    "configured": true,
+    "recipientAllowlisted": true,
+    "providerAvailabilityLiveChecked": false
+  },
+  "blockers": [
+    "EXISTING_OWNER_DO_NOT_REASSIGN",
+    "EXISTING_IDENTITY_MAPPING_REQUIRES_REVIEW"
+  ],
+  "participantNominated": true,
+  "controlOfPhoneConfirmed": false,
+  "destinationIdentityProvided": true,
+  "providerScenarioSelected": true,
+  "permanentClaimApproved": false,
+  "smsSendApproved": false,
+  "sourceVersionFingerprint": "e49b48ddcd7cef1d05a4440d37d511375921904dd6150057ae6b6433643b4221",
+  "reads": [
+    {
+      "kind": "masked-document",
+      "group": "integrations"
+    },
+    {
+      "kind": "masked-document",
+      "group": "integrations"
+    },
+    {
+      "kind": "masked-document",
+      "group": "integrations"
+    },
+    {
+      "kind": "masked-document",
+      "group": "clientes"
+    },
+    {
+      "kind": "projected-query",
+      "collection": "integrations/customerRegistry/uids",
+      "documents": 1
+    },
+    {
+      "kind": "projected-query",
+      "collection": "customerAuthIdentities",
+      "documents": 1
+    },
+    {
+      "kind": "projected-query",
+      "collection": "pedidos",
+      "documents": 1
+    }
+  ],
+  "remoteWrites": 0,
+  "smsSends": 0,
+  "permanentClaims": 0,
+  "production": false
+}

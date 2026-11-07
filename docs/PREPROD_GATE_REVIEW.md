@@ -1,5 +1,9 @@
 # PRE-PROD GATE REVIEW
 
+## Atualização vigente — 07/11/2026: C15-E integralmente PASS
+
+[Aceite e-mail/senha completo](evidence/phase10-c15-email-acceptance-dev.json), sem repetir SMS/claim. [Caso Google final 8602](PHASE10_C15_GOOGLE_8602.md) indicado pelo Dono já é proprietário e possui mapping Google correto; validar acesso existente, mantendo explícita a lacuna da primeira vinculação de legado sem owner. Nenhuma autorização de desfazer vínculo ou produzir duplicata foi inferida. C15 geral/C16 pendentes, **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY: NÃO**. Demais gates PASS preservados; sem runtime/deploy, SMS, vínculo ou escrita remota novos. As pendências anteriores de aceite individual C15-E abaixo são históricas.
+
 ## Estado vigente — 07/11/2026
 
 **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Gates previamente PASS e decisão dos 14 remanescentes preservados. C15-E já tem claim real técnico e retorno humano PASS; faltam os checks individuais de histórico/endereço, refresh e logout/relogin. C15-G ainda requer outro cadastro sem owner e conta Google legítima, com conferência e autorização próprias. C16 foi preparado em [matriz de consolidação](PHASE10_C16_CONSOLIDATION.md), sem aceite antecipado.

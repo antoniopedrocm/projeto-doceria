@@ -1,5 +1,9 @@
 # Fase 10 — execução de C15 e fechamento de C16
 
+## Estado vigente — 07/11/2026: e-mail/senha aceito, caso Google selecionado
+
+**C15-E PASS integral**, resposta explícita “PASS demais checks”: endereço/2 pedidos, refresh e logout/relogin sem novo claim/SMS; [aceite](evidence/phase10-c15-email-acceptance-dev.json). Retorno anterior PASS preservado, nenhuma repetição necessária. Dono indicou final 8602/conta Google e pediu testes concentrados no mesmo caso. [Pré-checagem](PHASE10_C15_GOOGLE_8602.md) encontrou **owner já vinculado à própria conta**, provider Google/mapping corretos, 2 endereços/1 pedido e destinatário já liberado; sem claim auditado. Testar acesso existente após login humano em sessão separada, sem desvincular/recriar cadastro ou enviar SMS sem necessidade. Não tratar reentrada como primeira vinculação de legado sem owner. C15 geral e C16 pendentes; Fase 10 87,50%, global formal 97,00%. Seções anteriores são históricas e não reabrem os checks C15-E já aprovados.
+
 ## Retomada — 07/11/2026
 
 Estado real em `d1327182` conferido, sem runtime novo desde `125dad90`; Hosting esperado preservado. [Evidência da retomada](evidence/phase10-resume-2026-11-07.json), [preparação de C16](PHASE10_C16_CONSOLIDATION.md). E-mail/senha: claim técnico e retorno humano PASS; ainda faltam as confirmações individuais de endereço/2 pedidos, refresh e logout/relogin. Google: outro caso/titular ainda não indicado. **Não repetir o retorno já aceito nem SMS/claim final 0811**, cujo orçamento está zerado. Aguardar somente essas informações; autorização específica de eventual novo caso antes de envio/vínculo. C15/C16 pendentes; Fase 10 87,50%, global formal 97,00%. Os registros anteriores abaixo são históricos, prevalecendo este resumo e o checkpoint.

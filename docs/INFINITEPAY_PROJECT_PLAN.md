@@ -1,5 +1,9 @@
 # Autenticação de clientes e pagamento online
 
+## Estado vigente — 07/11/2026: C15-E aceito integralmente; Google em validação
+
+Resposta “PASS demais checks” encerra o subcenário real e-mail/senha, preservando Customer/endereço/2 pedidos/refresh/relogin/retorno e único SMS consumido. [Aceite](evidence/phase10-c15-email-acceptance-dev.json). Dono indicou final 8602/conta Google e autorizou concentrar testes nesse par; [pré-checagem](PHASE10_C15_GOOGLE_8602.md) comprovou conta já proprietária, mapping Google correto, 2 endereços/1 pedido e nenhuma prova de claim por SMS registrada. Próximo: login humano em sessão separada, validar acesso e preservar dados; não desfazer ownership para produzir primeira vinculação nem declarar critério atendido sem a evidência correspondente. C15 geral/C16 pendentes. **Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Nenhum novo SMS/claim, escrita remota, código ou deploy nesta etapa; estados anteriores são históricos.
+
 ## Estado vigente — 07/11/2026: retomada conferida e C16 preparado
 
 Repositório `d1327182` sincronizado, trabalho anterior preservado e Hosting DEV `75f46bb8c26f95e6` confirmado somente leitura. [Checkpoint](CHECKPOINT_PREPROD_MISSION.md), [matriz C16](PHASE10_C16_CONSOLIDATION.md). Último ponto concluído: retorno humano PASS e cobertura sintética adicional da primeira criação, sem lacuna funcional nova. C15-E técnico/retorno PASS, demais checks individuais pendentes; C15-G aguarda outro cadastro/conta Google legítimos e autorização específica antes de eventual envio/vínculo. C16 preparado documentalmente, ainda não homologado. Nenhum novo SMS/claim, escrita remota, build ou deploy; não repetir limite final 0811 consumido.

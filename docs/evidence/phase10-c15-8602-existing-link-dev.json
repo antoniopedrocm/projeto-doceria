@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-07T14:40:30.417Z",
+  "readOnly": true,
+  "caseId": "577ace8fc6bcfb4d",
+  "phoneSuffix": "8602",
+  "uidFingerprint": "a11da4c4c1aba623",
+  "ownership": {
+    "count": 1,
+    "nominatedUidIsOwner": true,
+    "canonicalStatus": "CANONICAL",
+    "phoneOwnership": null,
+    "phoneVerifiedAt": null,
+    "identityRegistryVersion": 1,
+    "legacyCustomerIdsCount": 0,
+    "reviewedOrderPathsCount": 0,
+    "customerCreatedAt": "2026-10-11T16:38:54.048586Z",
+    "customerUpdatedAt": "2026-10-31T18:11:37.677203Z"
+  },
+  "mappings": {
+    "uidMapSameCustomer": true,
+    "identities": [
+      {
+        "provider": "google",
+        "sameUid": true,
+        "sameCustomer": true,
+        "subjectMatchesVerifiedProvider": true
+      }
+    ],
+    "googleMappingPresent": true,
+    "googleMappingSameCustomer": true,
+    "passwordMappingPresent": false
+  },
+  "challenges": [],
+  "audit": [],
+  "newSmsSent": 0,
+  "remoteWrites": 0,
+  "permanentClaims": 0,
+  "production": false,
+  "c15GoogleAccepted": false,
+  "providerMappingCheckedAt": "2026-11-07T14:44:19.289Z",
+  "provenanceNote": "Google subject is the Google provider rawId, not Firebase UID. Provider mapping verified by UID query and exact provider subject; initial guessed Firebase-UID key is not used as absence evidence.",
+  "newClaimRequiredForExistingAccess": false,
+  "firstOwnershipClaimGoogleDemonstrated": false,
+  "existingOwnershipPredatesCurrentMission": true
+}

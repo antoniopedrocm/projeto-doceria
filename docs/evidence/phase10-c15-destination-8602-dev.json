@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "project": "crmdoceria-9959e",
+  "checkedAt": "2026-11-07T14:39:26.975Z",
+  "readOnly": true,
+  "caseId": "577ace8fc6bcfb4d",
+  "phoneSuffix": "8602",
+  "scenario": "google",
+  "destination": {
+    "emailHint": "a***@gmail.com",
+    "emailFingerprint": "9658fee9abd3addd9daf411347dcdfcbda85211152cc65b3ac5504684d309a84",
+    "authAccountExists": true,
+    "disabled": false,
+    "providers": [
+      "google.com",
+      "password"
+    ],
+    "uidFingerprint": "a11da4c4c1aba623",
+    "identityMappings": 1,
+    "uidMappingPresent": true,
+    "ownedCustomerRecords": 1,
+    "linkedToDifferentCustomer": false
+  },
+  "candidate": {
+    "ownerCount": 1,
+    "canonicalStatus": "CANONICAL",
+    "indexReady": true,
+    "versionFingerprint": "cb0977e4246e5a633722be27a1bbdf393cb1656c096a61bfa9dc5f8a2ae8ef20"
+  },
+  "recipientAllowlisted": true,
+  "blockers": [
+    "SELECTED_CUSTOMER_HAS_OWNER_RECHECK_REQUIRED"
+  ],
+  "controlOfPhoneConfirmed": false,
+  "actualDestinationSignInConfirmed": false,
+  "permanentClaimApproved": false,
+  "smsSendApproved": false,
+  "remoteWrites": 0,
+  "smsSends": 0,
+  "permanentClaims": 0,
+  "production": false
+}

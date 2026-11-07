@@ -1,5 +1,9 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
+## Atualização vigente — 07/11/2026: aceite C15-E completo
+
+[Resposta explícita “PASS demais checks”](evidence/phase10-c15-email-acceptance-dev.json) encerra C15-E: endereço/2 pedidos, refresh e logout/relogin sem novo claim/SMS, além do retorno já aceito. Google final 8602 indicado e conferido: **já tem a própria conta como owner e mapping Google**, com 2 endereços/1 pedido. [Diagnóstico do caso](PHASE10_C15_GOOGLE_8602.md). Testar login/acesso existente sem remover ownership; ainda não prova primeira vinculação Google de legado sem owner. C15 geral/C16 continuam pendentes, **Fase 10 87,50%, global formal 97,00%, Fase 9 100%, Fase 13 0%**. Sem SMS/claim/escrita remota, código ou deploy novo. Pendências de checks C15-E nas seções anteriores abaixo foram superadas por este aceite.
+
 ## Estado vigente — 07/11/2026: C15-E técnico comprovado; Google e C16 pendentes
 
 Compatibilidade `a36d558c` preservada; frontend `125dad90` publicado, testes/aceite de retorno registrados em `d1327182`. [Claim e-mail/senha real](evidence/phase10-c15-0811-after-claim-dev.json): 15 pós-condições técnicas PASS, Customer original, 18 Customers antes/depois, 1 endereço/2 pedidos preservados. [Retorno humano PASS](evidence/customer-menu-first-registration-review-dev.json); demais checks individuais de endereço/pedidos, refresh e logout/relogin ainda não atestados. Único SMS final 0811 consumido, sem repetição autorizada. Falta outro cadastro sem owner/conta Google legítima para C15-G, depois aceite consolidado C16. Não declarar ausência de todo claim real com base nas seções históricas.

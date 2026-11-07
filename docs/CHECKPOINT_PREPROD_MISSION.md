@@ -1,5 +1,15 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: C15-E completo; Google indicado já possui vínculo
+
+Titular respondeu **“PASS demais checks”**: endereço histórico/2 pedidos, refresh e logout/relogin sem novo vínculo/SMS. [C15-E integralmente aceito](evidence/phase10-c15-email-acceptance-dev.json), incluindo retorno anteriormente PASS; não refazer testes/SMS/claim final 0811.
+
+Dono indicou final **8602**/conta Google legítima, pedindo concentrar testes nesse par. [Pré-checagem e plano delimitado](PHASE10_C15_GOOGLE_8602.md): Customer caseId `577ace8fc6bcfb4d` **já tem a conta indicada como único owner**, 1 mapping UID/Google, 2 endereços/1 pedido, registry/índice READY; Auth habilitado com Google/password no mesmo UID. Subject Google correto conferido, nenhum challenge/audit de claim para esse UID; não desfazer ownership nem criar duplicata para fabricar cenário. Destinatário já liberado na política DEV Matriz; **0 SMS/claims/escritas remotas nesta etapa**. Sessões de outras contas preservadas, tab temporária fechada.
+
+**Próximo ponto exato:** titular faz login Google em sessão separada e confirma dados visíveis; depois conferir preservação do mesmo Customer/histórico e refresh/logout/retorno sem salvar dados. Acesso de owner existente não comprova primeira vinculação Google de legado sem owner: registrar a limitação, sem alterar rubrica/percentual silenciosamente. C16 permanece preparado, pendente do aceite integral C15. Nenhum novo código/build/deploy necessário. Base desta etapa `565e3d53`, branch `feature/infinitepay-customer-auth`, somente DEV `crmdoceria-9959e`.
+
+**Fase 9 = 100%; Fase 10 = 87,50% (14/16); global formal = 97,00%; Fase 13 = 0%; PROD READY: NÃO.** Autorização de testes DEV não é autorização de publicação PROD. Registros anteriores abaixo são históricos; os checks individuais C15-E não devem mais constar como pendência vigente.
+
 ## Retomada vigente — 07/11/2026: estado preservado; C16 preparado, não encerrado
 
 Worktree DEV `C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree`, branch `feature/infinitepay-customer-auth`, HEAD **`d1327182`**, origin **0 ahead / 0 behind**, sem delta tracked na retomada; untracked anteriores preservados. Último ponto concluído: aceite humano do retorno e 8 novos cenários sintéticos de primeiro cadastro, sem outro patch funcional. [Conferência](evidence/phase10-resume-2026-11-07.json): 14 artefatos JSON válidos, decisão C14 correspondente ao snapshot original; Hosting **`75f46bb8c26f95e6`** e index remoto iguais ao build local, cache HTML de revalidação. Nenhuma consulta nova de Customer/pedido ou escrita remota.
