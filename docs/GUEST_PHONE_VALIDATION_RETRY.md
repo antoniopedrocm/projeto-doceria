@@ -1,5 +1,9 @@
 # Visitante — corrigir telefone e confirmar novamente
 
+## Publicação DEV verificada
+
+Commit funcional **`63d2ac7122ecbc9c2879095a7f05fc04bf792b1b`**, push DEV concluído. API **`api-00075-xek`** ACTIVE e Hosting **`b73c052dbeba910b`**, publicado em 07/11/2026 às 23:49 (-03). [Evidência remota](evidence/guest-phone-dev.json): **62/62 arquivos** iguais, 7 rotas e 4 GETs públicos/config PASS; 145 outras Functions e Rules inalteradas. Somente API/Hosting DEV; normalizador, regras de Auth e dados reais preservados. **Aceite manual do titular pendente.**
+
 ## Relato confirmado — 07/11/2026
 
 Dono informou: digitou um telefone errado, clicou Confirmar Pedido, recebeu **Informe um telefone brasileiro válido com DDD.** Depois corrigiu o campo e o erro continuou bloqueando a confirmação. Não foi solicitado nem coletado o número real.

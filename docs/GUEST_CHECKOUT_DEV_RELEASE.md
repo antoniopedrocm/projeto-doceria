@@ -1,5 +1,7 @@
 # Checkout visitante + InfinitePay G1/G2/G3 — publicação DEV
 
+> **Publicação vigente:** `63d2ac71`, API `api-00075-xek` / Hosting `b73c052dbeba910b`. Telefone inválido é validação corrigível do campo, com retry pela mesma chave e sem perda do carrinho. 248 testes relevantes PASS, 62/62 arquivos remotos conferidos. [Entrega](GUEST_PHONE_VALIDATION_RETRY.md), [evidência](evidence/guest-phone-dev.json). Normalização/Auth e demais Functions/Rules preservados; novo aceite manual pendente. Registros abaixo são históricos.
+
 > **Hosting vigente:** `83dc6b47` / versão `760a8a952968f481`, com guarda para recuperação e confirmação simultâneas. API `api-00074-fix` preservada; todas as Functions/Rules inalteradas nessa publicação somente Hosting. 235 testes relevantes PASS, 62/62 arquivos conferidos. [Evidência final](evidence/checkout-cycle-guard-dev.json). Aceite manual ainda pendente.
 
 > **Publicação atual — 07/11/2026:** ciclo de finalização e frete corrigidos em `a2bf20fe`, API `api-00074-fix` / Hosting `42bc085fb3971ba2`, 62/62 arquivos remotos conferidos e 234 testes relevantes PASS. [Entrega](CHECKOUT_COMPLETION_LIFECYCLE.md), [evidência](evidence/checkout-cycle-dev.json). Pedido registrado finaliza carrinho/chave; próxima compra começa nova. Proposta de cancelamento local descartada. Novo aceite manual pendente; demais publicações/FAIL abaixo são históricos.

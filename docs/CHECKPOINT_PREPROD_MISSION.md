@@ -1,5 +1,13 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: correção de telefone corrigível publicada; aceite pendente
+
+Último ponto concluído: **`63d2ac71`**, push DEV, API **`api-00075-xek`** ACTIVE + Hosting **`b73c052dbeba910b`** (07/11 às 23:49 -03), exclusivamente worktree DEV/projeto `crmdoceria-9959e`. [Entrega](GUEST_PHONE_VALIDATION_RETRY.md), [evidência remota](evidence/guest-phone-dev.json): **62/62 hashes**, 7 rotas e 4 GETs PASS; 145 outras Functions e Rules inalteradas. Sem Rules/índices, dados remotos, pedido/pagamento real, SMS, vínculo, WhatsApp ou PROD na verificação.
+
+Erro canônico `CUSTOMER_PHONE_INVALID` agora mantém HTTP400 e é tratado como mensagem/foco do campo Guest, sem `checkoutBlockingIssue=pedido`; edição limpa o aviso. Nome/endereço/carrinho/chave permanecem no erro. Retry corrigido conclui com mesma chave, sem duplicar pedido/estoque/link; finalização normal e frete anteriores preservados. Normalizador canônico e regras de autenticação não alterados. **248 testes relevantes PASS**, build serial/lint do delta/diff-check PASS e visual local desktop/mobile PASS; rodada interrompida por OOM excluída.
+
+**Próximo ponto exato:** aceite do titular com runtime novo após Ctrl+R, confirmando que erro de telefone deixa de bloquear permanentemente ao corrigir. Não coletar o telefone real nem repetir operação real apenas para testar. Aceite anterior FAIL preservado; testes/fixtures não substituem homologação manual. Não repetir build/deploy/SMS/claims já concluídos. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.**
+
 ## Estado vigente — 07/11/2026: falha de retry após telefone inválido reproduzida e corrigida localmente
 
 Dono detalhou erro: primeiro telefone incorreto, depois corrigido, mas Confirmar continuava bloqueado. **Aceite do checkout ainda FAIL**, sem solicitar número real ou nova compra. Retomada conferiu `c20e0217` / runtime `83dc6b47` e tracked limpo. [Relatório pontual](GUEST_PHONE_VALIDATION_RETRY.md).
