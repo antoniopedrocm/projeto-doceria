@@ -538,6 +538,21 @@ test('GUEST combinar: pedido sem método/pagamento confirmado, gateway ou duplic
   assert.equal((await send(input,null)).data.id,id);assert.equal((await f.product.get()).get('estoque'),7);
   assert.equal((await send({...input,pagamento:{mode:'ONLINE_NOW',forma:'Online'}},null)).status,409);
 });
+test('GUEST telefone inválido não grava pedido; correção com mesma chave conclui uma vez nos dois modos',async()=>{
+ for(const mode of ['ONLINE_NOW','AGREED_LATER']){
+  const f=await guestFixture(mode),priorLinks=links;
+  const ordersBefore=(await db.collection(`lojas/${store}/pedidos`).get()).size;
+  const invalid=await send({...f.input,cliente:{...f.input.cliente,telefone:'629'}},null);
+  assert.equal(invalid.status,400);assert.equal(invalid.data.code,'CUSTOMER_PHONE_INVALID');
+  assert.equal((await db.collection(`lojas/${store}/pedidos`).get()).size,ordersBefore);assert.equal((await f.product.get()).get('estoque'),8);assert.equal(links,priorLinks);
+  const corrected={...f.input,cliente:{...f.input.cliente,telefone:'+55 (62) 98555-0001'}};
+  const accepted=await send(corrected,null);assert.equal(accepted.status,200,JSON.stringify(accepted));
+  assert.equal((await send(corrected,null)).data.id,accepted.data.id);
+  assert.equal((await f.product.get()).get('estoque'),7);assert.equal(links,priorLinks+(mode==='ONLINE_NOW'?1:0));
+  const order=(await db.doc(`lojas/${store}/pedidos/${accepted.data.id}`).get()).data();assert.equal(order.telefone,'62985550001');assert.equal(order.paymentMode,mode);
+ }
+});
+
 test('GUEST online concorrente/replay mantém uma reserva/link e recusa mudança de telefone no mesmo pedido',async()=>{
   const f=await guestFixture(),prior=links;
   const attempts=await Promise.all([send(f.input,null),send(f.input,null)]),good=attempts.find(r=>r.status===200);

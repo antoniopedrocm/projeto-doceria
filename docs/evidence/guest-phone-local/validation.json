@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "date": "2026-11-07",
+  "project": "crmdoceria-9959e",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "baseCommit": "c20e02173d5dd05978a2252eaf1ad35d25861747",
+  "scope": "Correctable Guest phone validation error, same-key retry; no normalization/Auth rules changed",
+  "diagnosis": {
+    "ownerConfirmed": "Invalid phone first, corrected phone next, but repeated confirmation remained blocked",
+    "reproducedBefore": "Real frontend guards: 1 confirmation POST instead of 2",
+    "after": "Invalid phone 400 -> field correction -> accepted with same key in both modes; replay no duplicate"
+  },
+  "tests": {
+    "publicAndNavigation": {
+      "passed": 108,
+      "failed": 0
+    },
+    "unitCanonicalPhoneAndWhatsApp": {
+      "passed": 46,
+      "failed": 0
+    },
+    "integration": [
+      {
+        "file": "checkout-http.test.js",
+        "exitCode": 0,
+        "tests": 34,
+        "passed": 34,
+        "failed": 0
+      },
+      {
+        "file": "guest-checkout-emulator.test.js",
+        "exitCode": 0,
+        "tests": 2,
+        "passed": 2,
+        "failed": 0
+      },
+      {
+        "file": "payment-financial-events-emulator.test.js",
+        "exitCode": 0,
+        "tests": 15,
+        "passed": 15,
+        "failed": 0
+      },
+      {
+        "file": "payment-contract-emulator.test.js",
+        "exitCode": 0,
+        "tests": 20,
+        "passed": 20,
+        "failed": 0
+      },
+      {
+        "file": "checkout-emulator.test.js",
+        "exitCode": 0,
+        "tests": 9,
+        "passed": 9,
+        "failed": 0
+      },
+      {
+        "file": "checkout-reservation-emulator.test.js",
+        "exitCode": 0,
+        "tests": 9,
+        "passed": 9,
+        "failed": 0
+      },
+      {
+        "file": "payment-settings-emulator.test.js",
+        "exitCode": 0,
+        "tests": 3,
+        "passed": 3,
+        "failed": 0
+      },
+      {
+        "file": "agreed-payment-rules.test.js",
+        "exitCode": 0,
+        "tests": 1,
+        "passed": 1,
+        "failed": 0
+      },
+      {
+        "file": "checkout-identity-rules.test.js",
+        "exitCode": 0,
+        "tests": 1,
+        "passed": 1,
+        "failed": 0
+      }
+    ],
+    "totalPassed": 248,
+    "distinct": true,
+    "retriesAndPreviousTotalsAdded": false
+  },
+  "quality": {
+    "build": "PASS",
+    "buildWorkers": 2,
+    "buildNodeHeapMB": 2048,
+    "checksDisabled": false,
+    "bundle": "main.e4b94788.js",
+    "reportedGzipKb": 456.38,
+    "lint": {
+      "files": 18,
+      "errors": 0,
+      "warnings": 0,
+      "indexBaselineErrors": 6,
+      "indexCurrentErrors": 6,
+      "indexNewDiagnostics": 0
+    },
+    "inlineLint": {
+      "files": 5,
+      "inlineScripts": 6,
+      "errors": 0,
+      "warnings": 0,
+      "newInlineDiagnostics": []
+    },
+    "diffCheck": "PASS",
+    "visual": "Synthetic desktop 1920x889/mobile 390x800 PASS"
+  },
+  "infrastructure": {
+    "initialParallelBuild": "OOM interrupted; not counted as PASS",
+    "initialIntegrationRun": "Emulator exited after OOM; not counted as PASS",
+    "recovery": "Stopped only old own test watchers; build then visual then integrations run serially; emulator heap capped at 512MB, Node tests at 768MB"
+  },
+  "runtime": [
+    {
+      "path": "crm/public/cardapio.html",
+      "sha256": "6d060adfa4610aa97a57404ba818f2a727f30b7f1a080724f385a8b5f7410d4f",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-matriz.html",
+      "sha256": "6d060adfa4610aa97a57404ba818f2a727f30b7f1a080724f385a8b5f7410d4f",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-garavelo.html",
+      "sha256": "6d060adfa4610aa97a57404ba818f2a727f30b7f1a080724f385a8b5f7410d4f",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-festa.html",
+      "sha256": "6d060adfa4610aa97a57404ba818f2a727f30b7f1a080724f385a8b5f7410d4f",
+      "buildMatch": true
+    }
+  ],
+  "backend": {
+    "path": "functions/index.js",
+    "sha256": "9f8b6937926f526a21c20fc3adf869044df6fbd60df34fb277cc8752fdbd94ce",
+    "canonicalPhoneNormalizerUnchanged": true
+  },
+  "safety": {
+    "phoneCollectedFromOwner": false,
+    "realOrders": 0,
+    "realPaymentsRefunds": 0,
+    "smsClaimsWhatsApp": 0,
+    "productionAccess": false
+  },
+  "acceptance": "Manual owner DEV acceptance pending; previous failure retained",
+  "percentages": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "productionReady": false
+}

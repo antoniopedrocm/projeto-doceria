@@ -193,3 +193,25 @@ test('consulta de compatibilidade simultânea à confirmação finaliza uma vez 
  assert.equal(f.posted.length,0);assert.equal(f.messages.filter(m=>m.includes('Não foi possível')).length,0);
  assert.equal(f.document.getElementById('guest-pending-payment').classList.contains('hidden'),true);
 });
+test('telefone inválido → corrigir → confirmar usa guardas reais, mesma chave e finaliza em ambos os modos',async t=>{
+ for(const mode of ['ONLINE_NOW','AGREED_LATER']){
+  const f=fixture();t.after(f.close);
+  Object.assign(f.env,{checkoutBlockingIssue:null,paymentError:f.document.getElementById('payment-error')});
+  vm.runInContext(method('function setCheckoutBlockingIssue(','async function revalidateCheckoutBeforeFinalSubmit('),f.env);
+  const binder=html.indexOf("guestPhoneInput.addEventListener('input'");
+  if(binder>=0)vm.runInContext(html.slice(binder,html.indexOf(';',binder)+1),f.env);
+  f.select.value=mode;f.env.guestPhoneInput.value='629';let count=0;
+  f.env.respond=async()=>++count===1?{ok:false,status:400,json:async()=>({message:'Informe um telefone brasileiro válido com DDD.',code:'CUSTOMER_PHONE_INVALID'})}
+   :{ok:true,json:async()=>({ok:true,id:'b'.repeat(64),...(mode==='ONLINE_NOW'?{paymentId:'b'.repeat(64),paymentReturnToken:'e'.repeat(64),checkoutUrl:'https://buy.infinitepay.io/fixture'}:{}),total:14,valorFrete:4})};
+  await f.env.handleGuestOrder();const firstKey=f.posted[0].body.idempotencyKey;
+  const marked=f.env.guestPhoneInput.getAttribute('aria-invalid');
+  assert.equal(f.env.cart.length,1);assert.equal(f.env.guestNameInput.value,'Visitante sintético');
+  assert.equal(f.document.getElementById('guest-address-street').value,'Rua sintética');
+  f.env.guestPhoneInput.value='(62) 98555-0001';f.env.guestPhoneInput.dispatchEvent(new f.dom.window.Event('input'));
+  await f.env.handleGuestOrder();
+  assert.equal(f.posted.length,2,'correção do telefone deve chegar ao servidor, sem bloqueio permanente');
+  assert.equal(f.posted[1].body.idempotencyKey,firstKey);assert.equal(f.posted[1].body.cliente.telefone,'(62) 98555-0001');
+  assert.equal(f.env.cart.length,0);assert.equal(marked,'true');assert.equal(f.env.guestPhoneInput.hasAttribute('aria-invalid'),false);
+  await f.env.handleGuestOrder();assert.equal(f.posted.length,2);
+ }
+});

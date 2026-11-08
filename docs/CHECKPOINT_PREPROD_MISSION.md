@@ -1,5 +1,15 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 07/11/2026: falha de retry após telefone inválido reproduzida e corrigida localmente
+
+Dono detalhou erro: primeiro telefone incorreto, depois corrigido, mas Confirmar continuava bloqueado. **Aceite do checkout ainda FAIL**, sem solicitar número real ou nova compra. Retomada conferiu `c20e0217` / runtime `83dc6b47` e tracked limpo. [Relatório pontual](GUEST_PHONE_VALIDATION_RETRY.md).
+
+Comprovado: backend retorna validação antes de gravar pedido; frontend a convertia em `checkoutBlockingIssue=pedido`, impedindo segundo POST. Novo teste com guardas reais falhou **1 POST em vez de 2** e passou após o patch em ambos os modos, conservando chave/dados no erro. Backend Guest agora preserva código canônico `CUSTOMER_PHONE_INVALID`; frontend mostra erro corrigível no campo e libera retry, sem enfraquecer normalização/identidade ou limpar bloqueios críticos de outra origem. Nenhum cancelamento, SMS ou operação real.
+
+Recuperação de infraestrutura concluída: **248 testes relevantes distintos PASS** (108 públicos/navegação, 46 unitários/canônico/WhatsApp, 94 emulados), build serial/lint do delta/diff-check PASS, desktop/mobile sintéticos PASS. A rodada interrompida por OOM não foi contada. Só watchers antigos do próprio trabalho encerrados; build com 2 workers/heap 2048MB e emulador com heap 512MB, sem desabilitar checks ou alterar aplicação. [Evidência](evidence/guest-phone-local/validation.json).
+
+**Próximo ponto exato:** commit/push delimitados e publicar API + Hosting DEV conforme autorização vigente, verificar artefatos e solicitar aceite sem transação real. Não repetir C15/C16, SMS ou vínculos. Percentuais preservados: **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.**
+
 ## Estado vigente — 07/11/2026: entrega final do ciclo do checkout, frete e concorrência publicada
 
 Último ponto concluído: **`83dc6b47`**, push DEV, Hosting **`760a8a952968f481`** (`2026-11-07T21:19:35.879Z`). API **`api-00074-fix`** preservada da entrega `a2bf20fe`. [Relatório](CHECKOUT_COMPLETION_LIFECYCLE.md), [evidência final](evidence/checkout-cycle-guard-dev.json): **62/62 hashes**, 7 rotas e 4 GETs PASS; 65 arquivos backend iguais ao artefato anterior, todas as 146 Functions e Rules inalteradas no complemento somente Hosting. Worktree/projeto DEV explícitos, sem dados reais, pagamento, cancelamento, SMS, vínculo, WhatsApp ou PROD.

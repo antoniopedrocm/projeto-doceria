@@ -1911,8 +1911,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         // A server-issued guest context authorizes only its own purchase. A
         // typed phone is contact data, never proof of Customer ownership.
         if(!identityToken || !explicitPaymentMode) throw paymentError('Selecione novamente como continuar.',403);
-        const phone=normalizePhoneNumber(cliente.telefone);
-        if(!phone) throw paymentError('Informe um telefone brasileiro válido com DDD.',400);
+        const phone=normalizeCustomerPhone(cliente.telefone).national;
         cliente.telefone=phone;
         cliente.nome=typeof cliente.nome==='string'?cliente.nome.trim():'';
         if(!cliente.nome || cliente.nome.length>160) throw paymentError('Informe seu nome para o pedido.',400);
@@ -2182,7 +2181,7 @@ app.post("/checkout/confirmar", async (req, res) => {
     }
     return res.status(200).json({ok: true, ...orderId});
   } catch (error) {
-    logger.error('Erro ao confirmar checkout:', error);
+    if(error?.code!=='CUSTOMER_PHONE_INVALID')logger.error('Erro ao confirmar checkout:', error);
     const statusCode = Number(error?.httpStatus) || 500;
     const payload = {
       ok: false,

@@ -4,7 +4,7 @@ const {pathToFileURL}=require('node:url');
 const {JSDOM}=require('../node_modules/jsdom');
 // Optional isolated review tooling; never part of the application bundle.
 const {chromium}=require(path.join(process.env.TEMP,'doceria-guest-visual-tools/node_modules/playwright-core'));
-const root=path.resolve(__dirname,'../..'),pendingMode=process.argv.includes('--pending'),out=path.join(root,process.argv.includes('--cycle')?'docs/evidence/checkout-cycle-local':pendingMode?'docs/evidence/guest-attempt-recovery-local':'docs/evidence/guest-checkout-local');
+const root=path.resolve(__dirname,'../..'),pendingMode=process.argv.includes('--pending'),phoneMode=process.argv.includes('--phone'),out=path.join(root,phoneMode?'docs/evidence/guest-phone-local':process.argv.includes('--cycle')?'docs/evidence/checkout-cycle-local':pendingMode?'docs/evidence/guest-attempt-recovery-local':'docs/evidence/guest-checkout-local');
 (async()=>{
  fs.mkdirSync(out,{recursive:true});
  const {syncPaymentChoices,PAYMENT_CHOICES}=await import(pathToFileURL(path.join(root,'crm/public/checkout-payment-choice.mjs')));
@@ -19,6 +19,11 @@ const root=path.resolve(__dirname,'../..'),pendingMode=process.argv.includes('--
  for(const input of modal.querySelectorAll('input'))input.setAttribute('value',input.value);
  for(const [id,value] of Object.entries({'guest-subtotal':'R$ 10,00','guest-shipping':'R$ 4,00','guest-total':'R$ 14,00'}))document.getElementById(id).textContent=value;
  const select=document.getElementById('guest-payment-method');syncPaymentChoices(select,true,true,'guest-v1');
+ if(phoneMode){
+  const input=document.getElementById('guest-phone');input.value='629';input.setAttribute('value','629');
+  const fn=source.slice(source.indexOf('const setGuestPhoneError ='),source.indexOf('const inspectCurrentGuestPayment ='));
+  vm.runInNewContext(fn+";setGuestPhoneError('Informe um telefone brasileiro válido com DDD.');",{document,guestPhoneInput:input});
+ }
  if(pendingMode){
   const {inspectGuestPaymentAttempt}=await import(pathToFileURL(path.join(root,'crm/public/guest-payment-attempt.mjs'))),id='e'.repeat(64);
   const values=new Map([['doceria-payment-pending',JSON.stringify({paymentId:id,idempotencyKey:'synthetic-attempt'})],['doceria-payment-return:'+id,JSON.stringify({token:'f'.repeat(64)})]]);
@@ -48,7 +53,9 @@ const root=path.resolve(__dirname,'../..'),pendingMode=process.argv.includes('--
    const filename=choice.toLowerCase()+'-'+viewport.width+'.png';await page.screenshot({path:path.join(out,filename),fullPage:true});
    report.push({choice,viewport,...layout,errors,screenshot:filename,externalRequests:requests});
   }
-  if(!pendingMode){await page.locator('#guest-name').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,'contact-'+viewport.width+'.png'),fullPage:true});}await page.close();
+  if(!pendingMode){await page.locator('#guest-name').scrollIntoViewIfNeeded();
+   if(phoneMode){assert.equal(await page.locator('#guest-phone-error').isVisible(),true);assert.equal(await page.locator('#guest-phone').getAttribute('aria-invalid'),'true');}
+   await page.screenshot({path:path.join(out,'contact-'+viewport.width+'.png'),fullPage:true});}await page.close();
  }} finally {dom.window.close();await browser.close();}
  fs.writeFileSync(path.join(out,'visual-review.json'),JSON.stringify({scope:'Local synthetic presentation, not live DEV homologation. Existing modal scroll retained for long address forms.',pendingMode,report},null,2)+'\n');
  console.log(JSON.stringify({cases:report.length,screenshots:pendingMode?2:6,desktop:'PASS',mobile:'PASS',externalServices:false}));

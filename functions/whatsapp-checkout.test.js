@@ -175,6 +175,7 @@ for (const menu of ['matriz', 'garavelo', 'festa']) {
             removeCupom: () => {}, clearCheckoutState: () => {}, renderCart: () => {},
             guestCheckoutModal:document.getElementById('guest-checkout-modal'),paymentModal:document.getElementById('payment-modal'),
             createInitialGuestAddressFlowState:()=>({currentStep:1,formData:{}}),showGuestPendingPayment:()=>{},resetPaymentChoice:()=>{},
+            setGuestPhoneError:()=>{},
             paymentMethodSelect:document.getElementById('payment-method-select'),guestPaymentMethodSelect:document.getElementById('guest-payment-method'),
             showToast: (message) => {toast = message;}, console,
             fetch: async (_, options) => {
