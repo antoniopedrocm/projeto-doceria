@@ -1,5 +1,10 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 08/11/2026: modal responsivo publicado DEV; PROD somente local
+
+[Checkpoint e evidências](CHECKPOINT_CHECKOUT_RESPONSIVE.md): commit funcional `9d208090`, push/Hosting DEV, 61/61 hashes e 4/4 layouts públicos PASS; 73 regressões, 39 cenários Chrome e 39 Edge PASS. Patch e build/testes integrados ao PROD local, sem push/deploy PROD. Falta aceite físico iPhone/Android/zoom nativo; fixtures não substituem esse aceite. Regras financeiras/Auth preservadas. Fase9 100%; Fase10 87,50%; global 97,00%; Fase13 0%. Planejamento Pix-only anterior preservado abaixo; aguardar confirmação oficial.
+
+
 ## Estado vigente — 08/11/2026: pagamento por acesso publicado no DEV; aceite pendente
 
 Último ponto concluído: **`c2a387e4`**, commit/push DEV, API **`api-00076-vas`** ACTIVE e Hosting **`ce2b15beb1ebc780`**, release **08/11 às 10:54 (-03)**. Worktree físico DEV e Project ID `crmdoceria-9959e` confirmados, publicação limitada a API+Hosting em artefato isolado. [Relatório](CHECKOUT_PAYMENT_BY_ACCESS.md), [evidência remota](evidence/auth-payment-access-dev.json): **62/62 hashes**, 7 rotas e 4 GETs PASS; 145 outras Functions e Rules inalteradas. Nenhuma Rule/índice, credencial ou dado de negócio alterado. O conector não mudou a revisão apesar de reportar sucesso; CLI concluiu e verificações remotas comprovaram publicação real.

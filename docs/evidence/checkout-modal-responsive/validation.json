@@ -1,0 +1,56 @@
+{
+  "date": "2026-11-08",
+  "dev": {
+    "initialHead": "65974d50",
+    "runtimeCommit": "9d208090",
+    "regressions": {
+      "passed": 73,
+      "failed": 0
+    },
+    "layoutChrome": {
+      "passed": 39,
+      "failed": 0
+    },
+    "layoutEdge": {
+      "passed": 39,
+      "failed": 0
+    },
+    "build": "PASS",
+    "lint": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "diffCheck": "PASS",
+    "hosting": {
+      "project": "crmdoceria-9959e",
+      "filesVerified": 61,
+      "liveLayouts": 4
+    }
+  },
+  "productionLocal": {
+    "initialHead": "398a89cc",
+    "regressions": {
+      "passed": 73,
+      "failed": 0
+    },
+    "layoutChrome": {
+      "passed": 39,
+      "failed": 0
+    },
+    "build": "PASS",
+    "sameUIAssets": true,
+    "configurationAndBusinessScriptsUnchanged": true,
+    "deploy": false,
+    "push": false
+  },
+  "limitations": [
+    "physical Safari/iOS/Android keyboard pending",
+    "native zoom and Firefox/Safari certification pending"
+  ],
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

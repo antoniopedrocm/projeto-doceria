@@ -16,12 +16,14 @@
 - Zoom 100/125/150/200% coberto por viewport CSS equivalente (1366×768 dividido pelo fator), **não por certificação de zoom nativo**. Teclado coberto por eventos de resize/scroll de VisualViewport com altura reduzida e offset, **não por teclado físico iOS/Android**.
 - Evidência/screenhots: `docs/evidence/checkout-modal-responsive/`. Capturas são fixtures locais, não sessões reais.
 - Lint dos dois arquivos JavaScript novos: **0 erros, 0 avisos**. Sintaxe e diff-check PASS. Build DEV PASS, projeto explicitamente `crmdoceria-9959e`.
-- PROD local: patch HTML aplicado por diff, sem substituir arquivos/configurações do ambiente. CSS/JS iguais ao DEV; **73/73** regressões PASS. Build e revisão de layout locais em conclusão.
+- PROD local: patch HTML aplicado por diff, sem substituir arquivos/configurações do ambiente. CSS/JS iguais ao DEV; **73/73** regressões PASS. **39/39 cenários de layout e build local PASS**. Guardas de ambiente/deploy e scripts de negócio preservados, verificados por diff com HEAD.
 
 ## Publicação e próximo ponto
 
-Publicação autorizada exclusivamente em Hosting DEV; registrar release e hashes depois da verificação remota. Nenhum deploy PROD autorizado. Guard `block-production-deploy.cjs` preservado. Configurações, secrets, dados e usuários PROD não consultados nem alterados.
+**Commit funcional DEV `9d208090` enviado a origin/feature/infinitepay-customer-auth e publicado somente em Hosting `crmdoceria-9959e`**. CLI confirmou release; **61/61 arquivos servidos idênticos ao build** (`deploy-dev.json`). Verificação pública Chrome no DEV: **4/4 cenários** (Matriz/Garavelo × 390×800/1920×889), botão visível, sem overflow horizontal, sem clicar Confirmar e bloqueando todos os requests não GET/HEAD (`live-dev.json`). Nenhum deploy PROD autorizado. Guard `block-production-deploy.cjs` preservado. Configurações, secrets, dados e usuários PROD não consultados nem alterados.
 
 Homologação física pendente: iPhone Safari/Chrome com teclado aberto e orientação; Android com teclado; zoom nativo 125/150/200% nos navegadores do usuário. Firefox/Safari não disponíveis neste Windows. Conferir rolagem e botão sem confirmar pedido. Não declarar aprovação universal dos dispositivos com base nas fixtures Chromium.
 
 Percentuais formais preservados: **Fase 9 100%; Fase 10 87,50%; global 97,00%; Fase 13 0%**. Preparação PROD local anterior continua 90% (9/10 gates), com pendências fiscal/nativa anteriores; esta correção não encerra esses gates.
+
+Último ponto concluído: código/testes/build/lint/diff-check, commit/push e Hosting DEV, com leitura remota verificada; patch aplicado e testado no PROD local. Próximo: aceite manual dos dispositivos físicos e zoom nativo, sem criar pedido. Alterações documentais anteriores do planejamento Pix permanecem locais, preservadas e fora do commit funcional.

@@ -1,0 +1,57 @@
+{
+  "scope": "Live DEV public markup only; confirmation not clicked; all non-GET/HEAD requests blocked",
+  "report": [
+    {
+      "slug": "matriz",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "buttonTop": 732,
+      "buttonBottom": 780,
+      "footer": true,
+      "horizontal": false,
+      "viewportHeight": 800,
+      "blockedNonReadRequests": 0
+    },
+    {
+      "slug": "matriz",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "buttonTop": 821,
+      "buttonBottom": 869,
+      "footer": true,
+      "horizontal": false,
+      "viewportHeight": 889,
+      "blockedNonReadRequests": 0
+    },
+    {
+      "slug": "garavelo",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "buttonTop": 732,
+      "buttonBottom": 780,
+      "footer": true,
+      "horizontal": false,
+      "viewportHeight": 800,
+      "blockedNonReadRequests": 0
+    },
+    {
+      "slug": "garavelo",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "buttonTop": 821,
+      "buttonBottom": 869,
+      "footer": true,
+      "horizontal": false,
+      "viewportHeight": 889,
+      "blockedNonReadRequests": 0
+    }
+  ]
+}
