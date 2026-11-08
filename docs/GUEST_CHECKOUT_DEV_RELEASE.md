@@ -1,5 +1,7 @@
 # Checkout visitante + InfinitePay G1/G2/G3 — publicação DEV
 
+> **Publicação vigente — 08/11/2026:** `c2a387e4`, API `api-00076-vas` / Hosting `ce2b15beb1ebc780`. Pagamento por modalidade: Guest com Pix online indisponível por contrato e Combinar funcional; Google/e-mail/celular preservados. 261 testes PASS, 62/62 hashes remotos, 7 rotas e 4 GETs verificados; 145 outras Functions e Rules inalteradas. [Entrega](CHECKOUT_PAYMENT_BY_ACCESS.md), [evidência](evidence/auth-payment-access-dev.json). Aceite manual pendente; publicações anteriores abaixo são históricas. Sem transação real ou PROD.
+
 > **Publicação vigente:** `63d2ac71`, API `api-00075-xek` / Hosting `b73c052dbeba910b`. Telefone inválido é validação corrigível do campo, com retry pela mesma chave e sem perda do carrinho. 248 testes relevantes PASS, 62/62 arquivos remotos conferidos. [Entrega](GUEST_PHONE_VALIDATION_RETRY.md), [evidência](evidence/guest-phone-dev.json). Normalização/Auth e demais Functions/Rules preservados; novo aceite manual pendente. Registros abaixo são históricos.
 
 > **Hosting vigente:** `83dc6b47` / versão `760a8a952968f481`, com guarda para recuperação e confirmação simultâneas. API `api-00074-fix` preservada; todas as Functions/Rules inalteradas nessa publicação somente Hosting. 235 testes relevantes PASS, 62/62 arquivos conferidos. [Evidência final](evidence/checkout-cycle-guard-dev.json). Aceite manual ainda pendente.

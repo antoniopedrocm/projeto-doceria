@@ -1,5 +1,11 @@
 # Checkout por modalidade de acesso — implementação local DEV
 
+## Publicação DEV verificada — 08/11/2026
+
+**`c2a387e4`**, commit/push concluídos na branch DEV; API **`api-00076-vas`** ACTIVE + Hosting **`ce2b15beb1ebc780`**, publicado às **10:54 (-03)**, somente `crmdoceria-9959e`. [Evidência remota](evidence/auth-payment-access-dev.json): **62/62 hashes**, 7 rotas e 4 GETs PASS; 145 outras Functions e Rules inalteradas. Artefato isolado contém 66 arquivos runtime rastreados, inclusive o módulo novo, sem testes/fixtures/functions.yaml untracked. O conector informou sucesso sem nova revisão; a CLI explícita concluiu e a revisão foi conferida remotamente. Ambiente do conector restaurado para o worktree DEV.
+
+Não houve alteração de runtime após os **261 testes PASS**: hashes fonte/build revalidados, sem repetir build/testes desnecessariamente. Nenhum POST de checkout, contexto novo, pagamento, SMS, vínculo ou dado privado usado na verificação remota. **Aceite manual pendente**; o código publicado mantém Pix Guest indisponível por contrato e Combinar funcional. Percentuais preservados; PROD não acessada. Os registros locais abaixo são históricos desta entrega.
+
 > Autorização posterior de 08/11/2026: o Dono solicitou publicar no DEV para testar. Preparação de commit/push e deploy limitado a API+Hosting `crmdoceria-9959e`, reutilizando os testes/build e hashes validados abaixo. O estado local anterior é histórico; nenhuma cobrança real foi autorizada.
 
 08/11/2026. Base `dec8cff6`, branch `feature/infinitepay-customer-auth`, worktree `C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree`. O checkpoint e o tracked limpo foram conferidos antes de modificar. Artefatos untracked antigos preservados. Esta missão autoriza código/testes/documentação locais; **não autoriza commit, push, deploy, credenciais ou dados remotos**.

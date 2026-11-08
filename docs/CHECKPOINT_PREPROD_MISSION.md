@@ -1,5 +1,13 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Estado vigente — 08/11/2026: pagamento por acesso publicado no DEV; aceite pendente
+
+Último ponto concluído: **`c2a387e4`**, commit/push DEV, API **`api-00076-vas`** ACTIVE e Hosting **`ce2b15beb1ebc780`**, release **08/11 às 10:54 (-03)**. Worktree físico DEV e Project ID `crmdoceria-9959e` confirmados, publicação limitada a API+Hosting em artefato isolado. [Relatório](CHECKOUT_PAYMENT_BY_ACCESS.md), [evidência remota](evidence/auth-payment-access-dev.json): **62/62 hashes**, 7 rotas e 4 GETs PASS; 145 outras Functions e Rules inalteradas. Nenhuma Rule/índice, credencial ou dado de negócio alterado. O conector não mudou a revisão apesar de reportar sucesso; CLI concluiu e verificações remotas comprovaram publicação real.
+
+Reutilizados **261 testes PASS**, build/lint do delta/diff-check e visual local desktop/mobile, com hashes fonte/build idênticos antes de publicar. Estado novo: Guest mostra **Pagar Agora — Pix** desabilitado/aviso e **Combinar Pagamento** selecionado; backend bloqueia nova cobrança online Guest antes de pedido/reserva/link. Google/e-mail e celular preservam Pix/cartão + Combinar. **Pix-only segue BLOQUEADO pelo contrato InfinitePay**, não declarado disponível; links antigos preservados podem oferecer cartão.
+
+**Próximo ponto exato:** aceite manual da interface DEV após Ctrl+R: visitante com Pix indisponível e Combinar, sem botões/exigência de login nessa etapa; Strong/Phone mantidos. Não exigir criação de pedido/pagamento para esse aceite. Não repetir deploy/testes, C15/C16, SMS ou vínculos já executados. Nenhuma cobrança/estorno/pedido/SMS/claim/WhatsApp real ou acesso PROD na publicação. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.** Estados abaixo são históricos.
+
 ## Retomada — 08/11/2026: publicação DEV autorizada pelo Dono
 
 Solicitação explícita: publicar a alteração de pagamento por modalidade para validação. Worktree/branch e evidência local conferidos; preparar commit/push delimitados e publicar somente `functions:api` + Hosting em `crmdoceria-9959e`, com comparação dos demais recursos e verificação remota. Reutilizar **261 testes PASS** e build quando os hashes continuarem idênticos; não repetir operações reais. O fallback mantém Pix-only visitante indisponível e Combinar funcional; Strong/Phone e pagamentos históricos preservados. **Percentuais inalterados: Fase 9 100%; Fase 10 87,50%; global 97,00%; Fase 13 0%. PROD NÃO.** Registro final de release será acrescentado após publicação verificada. Estado local anterior abaixo é histórico.
