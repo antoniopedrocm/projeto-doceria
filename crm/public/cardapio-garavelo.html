@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Cardápio - Ana Guimarães Doceria</title>
 
     <!-- Tailwind CSS -->
@@ -321,6 +321,8 @@
             .menu-header-row #customer-account-button { padding: 8px 10px; font-size: 13px; }
         }
 	</style>
+    <link rel="stylesheet" href="/checkout-modal.css">
+    <script defer src="/checkout-modal-layout.js"></script>
 
         <!-- Google Maps API -->
         <script>
@@ -570,14 +572,14 @@
 	</div>
 
     <!-- Modal de Pagamento -->
-    <div id="payment-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
-            <div class="p-6 border-b flex justify-between items-center">
-                <button id="back-to-address" class="text-gray-500 hover:text-gray-800"><i class="fa-solid fa-arrow-left"></i></button>
-                <h2 class="text-xl font-bold text-pink-600 text-center flex-grow">Forma de Pagamento</h2>
-                <button id="close-payment-modal" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+    <div id="payment-modal" data-checkout-dialog role="dialog" aria-modal="true" aria-labelledby="payment-modal-title" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
+        <div class="checkout-dialog-panel bg-white rounded-lg shadow-xl w-full max-w-sm mx-4">
+            <div class="checkout-dialog-header p-6 border-b flex justify-between items-center">
+                <button id="back-to-address" type="button" aria-label="Voltar para endereços" class="text-gray-500 hover:text-gray-800"><i class="fa-solid fa-arrow-left"></i></button>
+                <h2 id="payment-modal-title" class="text-xl font-bold text-pink-600 text-center flex-grow">Forma de Pagamento</h2>
+                <button id="close-payment-modal" type="button" aria-label="Fechar checkout" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
             </div>
-            <div class="p-6">
+            <div class="checkout-dialog-content p-6" tabindex="0" aria-label="Informações do pedido">
                 <div class="mb-4 p-3 bg-gray-50 rounded-lg text-sm">
                     <p class="text-gray-500">Entregar em:</p>
                     <p id="selected-address-text" class="font-semibold text-gray-800"></p>
@@ -606,27 +608,28 @@
                     <option value="Link de Pagamento">Link de Pagamento</option>
                 </select>
                 <p id="payment-choice-help" hidden class="text-sm text-gray-600 mt-3" aria-live="polite"></p>
-                <p id="payment-error" class="text-red-500 text-sm mt-2 hidden"></p>
+                <p id="payment-error" role="alert" class="text-red-500 text-sm mt-2 hidden"></p>
                 <label class="flex items-start gap-2 mt-4 text-sm text-gray-700">
                     <input id="platform-whatsapp-consent" type="checkbox" autocomplete="off" class="mt-1" aria-describedby="platform-whatsapp-consent-help">
                     <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
                 </label>
                 <p id="platform-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD.</p>
             </div>
-            <div class="p-6 border-t">
+            <div class="checkout-dialog-footer p-6 border-t">
+                <p class="checkout-dialog-feedback" role="status" aria-live="polite" hidden></p>
                 <button id="confirm-order-button" class="w-full bg-pink-600 text-white py-3 rounded-lg font-bold hover:bg-pink-700 transition-colors">Confirmar Pedido</button>
             </div>
         </div>
     </div>
 
     <!-- Modal de Checkout do Visitante -->
-    <div id="guest-checkout-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
-            <div class="p-6 border-b flex justify-between items-center">
-                <h2 class="text-2xl font-bold text-pink-600">Informações para Entrega</h2>
-                <button id="close-guest-checkout-modal" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+    <div id="guest-checkout-modal" data-checkout-dialog role="dialog" aria-modal="true" aria-labelledby="guest-checkout-title" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-40">
+        <div class="checkout-dialog-panel bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+            <div class="checkout-dialog-header p-6 border-b flex justify-between items-center">
+                <h2 id="guest-checkout-title" class="text-2xl font-bold text-pink-600">Informações para Entrega</h2>
+                <button id="close-guest-checkout-modal" type="button" aria-label="Fechar checkout" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
             </div>
-            <div class="p-6 overflow-y-auto flex-grow space-y-6">
+            <div class="checkout-dialog-content p-6 overflow-y-auto flex-grow space-y-6" tabindex="0" aria-label="Informações do pedido">
                 <!-- Dados Pessoais -->
                 <div>
                     <h3 class="text-lg font-semibold text-gray-800 mb-3">Seus Dados</h3>
@@ -741,10 +744,14 @@
                     <span>Quero receber a confirmação e o resumo deste pedido pelo WhatsApp da Ana Guimarães Doceria.</span>
                 </label>
                 <p id="guest-whatsapp-consent-help" class="text-xs text-gray-600 mt-2">Opcional, somente para este pedido, sem promoções. Você pode concluir a compra sem marcar esta opção. Use um telefone brasileiro com DDD. No pagamento online, a confirmação respeita a aprovação do pagamento.</p>
-                    <button id="send-whatsapp-button" class="w-full bg-green-500 text-white py-3 px-4 rounded-lg font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mt-4">
+
+                </div>
+            </div>
+            <div class="checkout-dialog-footer p-6 border-t">
+                <p class="checkout-dialog-feedback" role="status" aria-live="polite" hidden></p>
+                    <button id="send-whatsapp-button" class="w-full bg-green-500 text-white py-3 px-4 rounded-lg font-bold hover:bg-green-600 transition-colors flex items-center justify-center gap-2">
                         Confirmar Pedido
                     </button>
-                </div>
             </div>
         </div>
     </div>

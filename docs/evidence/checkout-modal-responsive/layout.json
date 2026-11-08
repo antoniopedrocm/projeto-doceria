@@ -1,0 +1,1410 @@
+{
+  "scope": "Offline synthetic Chromium layout. Zoom cases use equivalent CSS viewports; keyboard uses a VisualViewport resize/offset fixture. Not physical iOS/Safari or real native browser zoom certification.",
+  "cases": 39,
+  "report": [
+    {
+      "name": "iphone-small",
+      "mode": "guest",
+      "viewport": {
+        "width": 320,
+        "height": 568
+      },
+      "visualViewport": {
+        "height": 568,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 560,
+        "left": 8,
+        "right": 312,
+        "height": 552
+      },
+      "button": {
+        "top": 500,
+        "bottom": 548,
+        "left": 20,
+        "right": 300,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 487,
+        "left": 8,
+        "right": 312,
+        "height": 413.21875
+      },
+      "horizontal": false,
+      "pageWidth": 320,
+      "result": "PASS"
+    },
+    {
+      "name": "iphone-small",
+      "mode": "strong",
+      "viewport": {
+        "width": 320,
+        "height": 568
+      },
+      "visualViewport": {
+        "height": 568,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 560,
+        "left": 8,
+        "right": 312,
+        "height": 552
+      },
+      "button": {
+        "top": 500,
+        "bottom": 548,
+        "left": 20,
+        "right": 300,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 487,
+        "left": 8,
+        "right": 312,
+        "height": 413.21875
+      },
+      "horizontal": false,
+      "pageWidth": 320,
+      "result": "PASS"
+    },
+    {
+      "name": "iphone-small",
+      "mode": "phone",
+      "viewport": {
+        "width": 320,
+        "height": 568
+      },
+      "visualViewport": {
+        "height": 568,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 560,
+        "left": 8,
+        "right": 312,
+        "height": 552
+      },
+      "button": {
+        "top": 500,
+        "bottom": 548,
+        "left": 20,
+        "right": 300,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 487,
+        "left": 8,
+        "right": 312,
+        "height": 413.21875
+      },
+      "horizontal": false,
+      "pageWidth": 320,
+      "result": "PASS"
+    },
+    {
+      "name": "iphone",
+      "mode": "guest",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "visualViewport": {
+        "height": 800,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 792,
+        "left": 8,
+        "right": 382,
+        "height": 784
+      },
+      "button": {
+        "top": 732,
+        "bottom": 780,
+        "left": 20,
+        "right": 370,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 719,
+        "left": 8,
+        "right": 382,
+        "height": 645.21875
+      },
+      "horizontal": false,
+      "pageWidth": 390,
+      "result": "PASS"
+    },
+    {
+      "name": "iphone",
+      "mode": "strong",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "visualViewport": {
+        "height": 800,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 792,
+        "left": 8,
+        "right": 382,
+        "height": 784
+      },
+      "button": {
+        "top": 732,
+        "bottom": 780,
+        "left": 20,
+        "right": 370,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 719,
+        "left": 8,
+        "right": 382,
+        "height": 645.21875
+      },
+      "horizontal": false,
+      "pageWidth": 390,
+      "result": "PASS"
+    },
+    {
+      "name": "iphone",
+      "mode": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "visualViewport": {
+        "height": 800,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 792,
+        "left": 8,
+        "right": 382,
+        "height": 784
+      },
+      "button": {
+        "top": 732,
+        "bottom": 780,
+        "left": 20,
+        "right": 370,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 719,
+        "left": 8,
+        "right": 382,
+        "height": 645.21875
+      },
+      "horizontal": false,
+      "pageWidth": 390,
+      "result": "PASS"
+    },
+    {
+      "name": "android",
+      "mode": "guest",
+      "viewport": {
+        "width": 360,
+        "height": 740
+      },
+      "visualViewport": {
+        "height": 740,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 732,
+        "left": 8,
+        "right": 352,
+        "height": 724
+      },
+      "button": {
+        "top": 672,
+        "bottom": 720,
+        "left": 20,
+        "right": 340,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 659,
+        "left": 8,
+        "right": 352,
+        "height": 585.21875
+      },
+      "horizontal": false,
+      "pageWidth": 360,
+      "result": "PASS"
+    },
+    {
+      "name": "android",
+      "mode": "strong",
+      "viewport": {
+        "width": 360,
+        "height": 740
+      },
+      "visualViewport": {
+        "height": 740,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 732,
+        "left": 8,
+        "right": 352,
+        "height": 724
+      },
+      "button": {
+        "top": 672,
+        "bottom": 720,
+        "left": 20,
+        "right": 340,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 659,
+        "left": 8,
+        "right": 352,
+        "height": 585.21875
+      },
+      "horizontal": false,
+      "pageWidth": 360,
+      "result": "PASS"
+    },
+    {
+      "name": "android",
+      "mode": "phone",
+      "viewport": {
+        "width": 360,
+        "height": 740
+      },
+      "visualViewport": {
+        "height": 740,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 732,
+        "left": 8,
+        "right": 352,
+        "height": 724
+      },
+      "button": {
+        "top": 672,
+        "bottom": 720,
+        "left": 20,
+        "right": 340,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 659,
+        "left": 8,
+        "right": 352,
+        "height": 585.21875
+      },
+      "horizontal": false,
+      "pageWidth": 360,
+      "result": "PASS"
+    },
+    {
+      "name": "landscape",
+      "mode": "guest",
+      "viewport": {
+        "width": 800,
+        "height": 360
+      },
+      "visualViewport": {
+        "height": 360,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 352,
+        "left": 64,
+        "right": 736,
+        "height": 344
+      },
+      "button": {
+        "top": 298,
+        "bottom": 346,
+        "left": 88,
+        "right": 712,
+        "height": 48
+      },
+      "content": {
+        "top": 61,
+        "bottom": 291,
+        "left": 64,
+        "right": 736,
+        "height": 230
+      },
+      "horizontal": false,
+      "pageWidth": 800,
+      "result": "PASS"
+    },
+    {
+      "name": "landscape",
+      "mode": "strong",
+      "viewport": {
+        "width": 800,
+        "height": 360
+      },
+      "visualViewport": {
+        "height": 360,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 352,
+        "left": 208,
+        "right": 592,
+        "height": 344
+      },
+      "button": {
+        "top": 298,
+        "bottom": 346,
+        "left": 232,
+        "right": 568,
+        "height": 48
+      },
+      "content": {
+        "top": 61,
+        "bottom": 291,
+        "left": 208,
+        "right": 592,
+        "height": 230
+      },
+      "horizontal": false,
+      "pageWidth": 800,
+      "result": "PASS"
+    },
+    {
+      "name": "landscape",
+      "mode": "phone",
+      "viewport": {
+        "width": 800,
+        "height": 360
+      },
+      "visualViewport": {
+        "height": 360,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 352,
+        "left": 208,
+        "right": 592,
+        "height": 344
+      },
+      "button": {
+        "top": 298,
+        "bottom": 346,
+        "left": 232,
+        "right": 568,
+        "height": 48
+      },
+      "content": {
+        "top": 61,
+        "bottom": 291,
+        "left": 208,
+        "right": 592,
+        "height": 230
+      },
+      "horizontal": false,
+      "pageWidth": 800,
+      "result": "PASS"
+    },
+    {
+      "name": "tablet",
+      "mode": "guest",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "visualViewport": {
+        "height": 1024,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 1016,
+        "left": 48,
+        "right": 720,
+        "height": 1008
+      },
+      "button": {
+        "top": 956,
+        "bottom": 1004,
+        "left": 71.03125,
+        "right": 696.96875,
+        "height": 48
+      },
+      "content": {
+        "top": 91.375,
+        "bottom": 943,
+        "left": 48,
+        "right": 720,
+        "height": 851.625
+      },
+      "horizontal": false,
+      "pageWidth": 768,
+      "result": "PASS"
+    },
+    {
+      "name": "tablet",
+      "mode": "strong",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "visualViewport": {
+        "height": 1024,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 88.78125,
+        "bottom": 935.21875,
+        "left": 192,
+        "right": 576,
+        "height": 846.4375
+      },
+      "button": {
+        "top": 875.21875,
+        "bottom": 923.21875,
+        "left": 215.03125,
+        "right": 552.96875,
+        "height": 48
+      },
+      "content": {
+        "top": 172.15625,
+        "bottom": 862.21875,
+        "left": 192,
+        "right": 576,
+        "height": 690.0625
+      },
+      "horizontal": false,
+      "pageWidth": 768,
+      "result": "PASS"
+    },
+    {
+      "name": "tablet",
+      "mode": "phone",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "visualViewport": {
+        "height": 1024,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 88.78125,
+        "bottom": 935.21875,
+        "left": 192,
+        "right": 576,
+        "height": 846.4375
+      },
+      "button": {
+        "top": 875.21875,
+        "bottom": 923.21875,
+        "left": 215.03125,
+        "right": 552.96875,
+        "height": 48
+      },
+      "content": {
+        "top": 172.15625,
+        "bottom": 862.21875,
+        "left": 192,
+        "right": 576,
+        "height": 690.0625
+      },
+      "horizontal": false,
+      "pageWidth": 768,
+      "result": "PASS"
+    },
+    {
+      "name": "pc",
+      "mode": "guest",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "visualViewport": {
+        "height": 889,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 881,
+        "left": 624,
+        "right": 1296,
+        "height": 873
+      },
+      "button": {
+        "top": 821,
+        "bottom": 869,
+        "left": 648,
+        "right": 1272,
+        "height": 48
+      },
+      "content": {
+        "top": 101,
+        "bottom": 808,
+        "left": 624,
+        "right": 1296,
+        "height": 707
+      },
+      "horizontal": false,
+      "pageWidth": 1920,
+      "result": "PASS"
+    },
+    {
+      "name": "pc",
+      "mode": "strong",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "visualViewport": {
+        "height": 889,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 15.5,
+        "bottom": 873.5,
+        "left": 768,
+        "right": 1152,
+        "height": 858
+      },
+      "button": {
+        "top": 813.5,
+        "bottom": 861.5,
+        "left": 792,
+        "right": 1128,
+        "height": 48
+      },
+      "content": {
+        "top": 108.5,
+        "bottom": 800.5,
+        "left": 768,
+        "right": 1152,
+        "height": 692
+      },
+      "horizontal": false,
+      "pageWidth": 1920,
+      "result": "PASS"
+    },
+    {
+      "name": "pc",
+      "mode": "phone",
+      "viewport": {
+        "width": 1920,
+        "height": 889
+      },
+      "visualViewport": {
+        "height": 889,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 15.5,
+        "bottom": 873.5,
+        "left": 768,
+        "right": 1152,
+        "height": 858
+      },
+      "button": {
+        "top": 813.5,
+        "bottom": 861.5,
+        "left": 792,
+        "right": 1128,
+        "height": 48
+      },
+      "content": {
+        "top": 108.5,
+        "bottom": 800.5,
+        "left": 768,
+        "right": 1152,
+        "height": 692
+      },
+      "horizontal": false,
+      "pageWidth": 1920,
+      "result": "PASS"
+    },
+    {
+      "name": "window",
+      "mode": "guest",
+      "viewport": {
+        "width": 640,
+        "height": 480
+      },
+      "visualViewport": {
+        "height": 480,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 472,
+        "left": 8,
+        "right": 632,
+        "height": 464
+      },
+      "button": {
+        "top": 412,
+        "bottom": 460,
+        "left": 27.1875,
+        "right": 612.8125,
+        "height": 48
+      },
+      "content": {
+        "top": 85,
+        "bottom": 399,
+        "left": 8,
+        "right": 632,
+        "height": 314
+      },
+      "horizontal": false,
+      "pageWidth": 640,
+      "result": "PASS"
+    },
+    {
+      "name": "window",
+      "mode": "strong",
+      "viewport": {
+        "width": 640,
+        "height": 480
+      },
+      "visualViewport": {
+        "height": 480,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 472,
+        "left": 128,
+        "right": 512,
+        "height": 464
+      },
+      "button": {
+        "top": 412,
+        "bottom": 460,
+        "left": 147.1875,
+        "right": 492.8125,
+        "height": 48
+      },
+      "content": {
+        "top": 85,
+        "bottom": 399,
+        "left": 128,
+        "right": 512,
+        "height": 314
+      },
+      "horizontal": false,
+      "pageWidth": 640,
+      "result": "PASS"
+    },
+    {
+      "name": "window",
+      "mode": "phone",
+      "viewport": {
+        "width": 640,
+        "height": 480
+      },
+      "visualViewport": {
+        "height": 480,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 472,
+        "left": 128,
+        "right": 512,
+        "height": 464
+      },
+      "button": {
+        "top": 412,
+        "bottom": 460,
+        "left": 147.1875,
+        "right": 492.8125,
+        "height": 48
+      },
+      "content": {
+        "top": 85,
+        "bottom": 399,
+        "left": 128,
+        "right": 512,
+        "height": 314
+      },
+      "horizontal": false,
+      "pageWidth": 640,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-100",
+      "mode": "guest",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "visualViewport": {
+        "height": 768,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 760,
+        "left": 347,
+        "right": 1019,
+        "height": 752
+      },
+      "button": {
+        "top": 700,
+        "bottom": 748,
+        "left": 371,
+        "right": 995,
+        "height": 48
+      },
+      "content": {
+        "top": 101,
+        "bottom": 687,
+        "left": 347,
+        "right": 1019,
+        "height": 586
+      },
+      "horizontal": false,
+      "pageWidth": 1366,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-100",
+      "mode": "strong",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "visualViewport": {
+        "height": 768,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 760,
+        "left": 491,
+        "right": 875,
+        "height": 752
+      },
+      "button": {
+        "top": 700,
+        "bottom": 748,
+        "left": 515,
+        "right": 851,
+        "height": 48
+      },
+      "content": {
+        "top": 101,
+        "bottom": 687,
+        "left": 491,
+        "right": 875,
+        "height": 586
+      },
+      "horizontal": false,
+      "pageWidth": 1366,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-100",
+      "mode": "phone",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "visualViewport": {
+        "height": 768,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 760,
+        "left": 491,
+        "right": 875,
+        "height": 752
+      },
+      "button": {
+        "top": 700,
+        "bottom": 748,
+        "left": 515,
+        "right": 851,
+        "height": 48
+      },
+      "content": {
+        "top": 101,
+        "bottom": 687,
+        "left": 491,
+        "right": 875,
+        "height": 586
+      },
+      "horizontal": false,
+      "pageWidth": 1366,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-125",
+      "mode": "guest",
+      "viewport": {
+        "width": 1092,
+        "height": 614
+      },
+      "visualViewport": {
+        "height": 614,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 606,
+        "left": 210,
+        "right": 882,
+        "height": 598
+      },
+      "button": {
+        "top": 546,
+        "bottom": 594,
+        "left": 234,
+        "right": 858,
+        "height": 48
+      },
+      "content": {
+        "top": 101,
+        "bottom": 533,
+        "left": 210,
+        "right": 882,
+        "height": 432
+      },
+      "horizontal": false,
+      "pageWidth": 1092,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-125",
+      "mode": "strong",
+      "viewport": {
+        "width": 1092,
+        "height": 614
+      },
+      "visualViewport": {
+        "height": 614,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 606,
+        "left": 354,
+        "right": 738,
+        "height": 598
+      },
+      "button": {
+        "top": 546,
+        "bottom": 594,
+        "left": 378,
+        "right": 714,
+        "height": 48
+      },
+      "content": {
+        "top": 101,
+        "bottom": 533,
+        "left": 354,
+        "right": 738,
+        "height": 432
+      },
+      "horizontal": false,
+      "pageWidth": 1092,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-125",
+      "mode": "phone",
+      "viewport": {
+        "width": 1092,
+        "height": 614
+      },
+      "visualViewport": {
+        "height": 614,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 606,
+        "left": 354,
+        "right": 738,
+        "height": 598
+      },
+      "button": {
+        "top": 546,
+        "bottom": 594,
+        "left": 378,
+        "right": 714,
+        "height": 48
+      },
+      "content": {
+        "top": 101,
+        "bottom": 533,
+        "left": 354,
+        "right": 738,
+        "height": 432
+      },
+      "horizontal": false,
+      "pageWidth": 1092,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-150",
+      "mode": "guest",
+      "viewport": {
+        "width": 910,
+        "height": 512
+      },
+      "visualViewport": {
+        "height": 512,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 504,
+        "left": 119,
+        "right": 791,
+        "height": 496
+      },
+      "button": {
+        "top": 444,
+        "bottom": 492,
+        "left": 143,
+        "right": 767,
+        "height": 48
+      },
+      "content": {
+        "top": 98.5,
+        "bottom": 431,
+        "left": 119,
+        "right": 791,
+        "height": 332.5
+      },
+      "horizontal": false,
+      "pageWidth": 910,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-150",
+      "mode": "strong",
+      "viewport": {
+        "width": 910,
+        "height": 512
+      },
+      "visualViewport": {
+        "height": 512,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 504,
+        "left": 263,
+        "right": 647,
+        "height": 496
+      },
+      "button": {
+        "top": 444,
+        "bottom": 492,
+        "left": 287,
+        "right": 623,
+        "height": 48
+      },
+      "content": {
+        "top": 98.5,
+        "bottom": 431,
+        "left": 263,
+        "right": 647,
+        "height": 332.5
+      },
+      "horizontal": false,
+      "pageWidth": 910,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-150",
+      "mode": "phone",
+      "viewport": {
+        "width": 910,
+        "height": 512
+      },
+      "visualViewport": {
+        "height": 512,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 504,
+        "left": 263,
+        "right": 647,
+        "height": 496
+      },
+      "button": {
+        "top": 444,
+        "bottom": 492,
+        "left": 287,
+        "right": 623,
+        "height": 48
+      },
+      "content": {
+        "top": 98.5,
+        "bottom": 431,
+        "left": 263,
+        "right": 647,
+        "height": 332.5
+      },
+      "horizontal": false,
+      "pageWidth": 910,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-200",
+      "mode": "guest",
+      "viewport": {
+        "width": 683,
+        "height": 384
+      },
+      "visualViewport": {
+        "height": 384,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 376,
+        "left": 8,
+        "right": 675,
+        "height": 368
+      },
+      "button": {
+        "top": 322,
+        "bottom": 370,
+        "left": 28.484375,
+        "right": 654.515625,
+        "height": 48
+      },
+      "content": {
+        "top": 61,
+        "bottom": 315,
+        "left": 8,
+        "right": 675,
+        "height": 254
+      },
+      "horizontal": false,
+      "pageWidth": 683,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-200",
+      "mode": "strong",
+      "viewport": {
+        "width": 683,
+        "height": 384
+      },
+      "visualViewport": {
+        "height": 384,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 376,
+        "left": 149.5,
+        "right": 533.5,
+        "height": 368
+      },
+      "button": {
+        "top": 322,
+        "bottom": 370,
+        "left": 169.984375,
+        "right": 513.015625,
+        "height": 48
+      },
+      "content": {
+        "top": 61,
+        "bottom": 315,
+        "left": 149.5,
+        "right": 533.5,
+        "height": 254
+      },
+      "horizontal": false,
+      "pageWidth": 683,
+      "result": "PASS"
+    },
+    {
+      "name": "zoom-200",
+      "mode": "phone",
+      "viewport": {
+        "width": 683,
+        "height": 384
+      },
+      "visualViewport": {
+        "height": 384,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 376,
+        "left": 149.5,
+        "right": 533.5,
+        "height": 368
+      },
+      "button": {
+        "top": 322,
+        "bottom": 370,
+        "left": 169.984375,
+        "right": 513.015625,
+        "height": 48
+      },
+      "content": {
+        "top": 61,
+        "bottom": 315,
+        "left": 149.5,
+        "right": 533.5,
+        "height": 254
+      },
+      "horizontal": false,
+      "pageWidth": 683,
+      "result": "PASS"
+    },
+    {
+      "name": "iphone-keyboard",
+      "mode": "guest",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "visualViewport": {
+        "height": 330,
+        "offsetTop": 65
+      },
+      "panel": {
+        "top": 73,
+        "bottom": 387,
+        "left": 8,
+        "right": 382,
+        "height": 314
+      },
+      "button": {
+        "top": 327,
+        "bottom": 375,
+        "left": 20,
+        "right": 370,
+        "height": 48
+      },
+      "content": {
+        "top": 138.78125,
+        "bottom": 314,
+        "left": 8,
+        "right": 382,
+        "height": 175.21875
+      },
+      "horizontal": false,
+      "pageWidth": 390,
+      "result": "PASS"
+    },
+    {
+      "name": "iphone-keyboard",
+      "mode": "strong",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "visualViewport": {
+        "height": 330,
+        "offsetTop": 65
+      },
+      "panel": {
+        "top": 73,
+        "bottom": 387,
+        "left": 8,
+        "right": 382,
+        "height": 314
+      },
+      "button": {
+        "top": 327,
+        "bottom": 375,
+        "left": 20,
+        "right": 370,
+        "height": 48
+      },
+      "content": {
+        "top": 138.78125,
+        "bottom": 314,
+        "left": 8,
+        "right": 382,
+        "height": 175.21875
+      },
+      "horizontal": false,
+      "pageWidth": 390,
+      "result": "PASS"
+    },
+    {
+      "name": "iphone-keyboard",
+      "mode": "phone",
+      "viewport": {
+        "width": 390,
+        "height": 800
+      },
+      "visualViewport": {
+        "height": 330,
+        "offsetTop": 65
+      },
+      "panel": {
+        "top": 73,
+        "bottom": 387,
+        "left": 8,
+        "right": 382,
+        "height": 314
+      },
+      "button": {
+        "top": 327,
+        "bottom": 375,
+        "left": 20,
+        "right": 370,
+        "height": 48
+      },
+      "content": {
+        "top": 138.78125,
+        "bottom": 314,
+        "left": 8,
+        "right": 382,
+        "height": 175.21875
+      },
+      "horizontal": false,
+      "pageWidth": 390,
+      "result": "PASS"
+    },
+    {
+      "name": "android-keyboard",
+      "mode": "guest",
+      "viewport": {
+        "width": 360,
+        "height": 740
+      },
+      "visualViewport": {
+        "height": 300,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 292,
+        "left": 8,
+        "right": 352,
+        "height": 284
+      },
+      "button": {
+        "top": 232,
+        "bottom": 280,
+        "left": 20,
+        "right": 340,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 219,
+        "left": 8,
+        "right": 352,
+        "height": 145.21875
+      },
+      "horizontal": false,
+      "pageWidth": 360,
+      "result": "PASS"
+    },
+    {
+      "name": "android-keyboard",
+      "mode": "strong",
+      "viewport": {
+        "width": 360,
+        "height": 740
+      },
+      "visualViewport": {
+        "height": 300,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 292,
+        "left": 8,
+        "right": 352,
+        "height": 284
+      },
+      "button": {
+        "top": 232,
+        "bottom": 280,
+        "left": 20,
+        "right": 340,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 219,
+        "left": 8,
+        "right": 352,
+        "height": 145.21875
+      },
+      "horizontal": false,
+      "pageWidth": 360,
+      "result": "PASS"
+    },
+    {
+      "name": "android-keyboard",
+      "mode": "phone",
+      "viewport": {
+        "width": 360,
+        "height": 740
+      },
+      "visualViewport": {
+        "height": 300,
+        "offsetTop": 0
+      },
+      "panel": {
+        "top": 8,
+        "bottom": 292,
+        "left": 8,
+        "right": 352,
+        "height": 284
+      },
+      "button": {
+        "top": 232,
+        "bottom": 280,
+        "left": 20,
+        "right": 340,
+        "height": 48
+      },
+      "content": {
+        "top": 73.78125,
+        "bottom": 219,
+        "left": 8,
+        "right": 352,
+        "height": 145.21875
+      },
+      "horizontal": false,
+      "pageWidth": 360,
+      "result": "PASS"
+    }
+  ]
+}

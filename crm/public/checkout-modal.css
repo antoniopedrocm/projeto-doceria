@@ -1,0 +1,53 @@
+/* Shared checkout layout only. Order/payment handlers remain in cardapio.html. */
+[data-checkout-dialog] {
+    box-sizing: border-box;
+    top: var(--checkout-viewport-top, 0px);
+    bottom: auto;
+    height: 100vh;
+    height: var(--checkout-viewport-height, 100dvh);
+    padding: max(.5rem, env(safe-area-inset-top)) max(.5rem, env(safe-area-inset-right)) .5rem max(.5rem, env(safe-area-inset-left));
+    overflow: hidden;
+    overscroll-behavior: contain;
+}
+[data-checkout-dialog] .checkout-dialog-panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    max-height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+[data-checkout-dialog] .checkout-dialog-header,
+[data-checkout-dialog] .checkout-dialog-footer { flex: 0 0 auto; }
+[data-checkout-dialog] .checkout-dialog-header { gap: .5rem; padding: clamp(.65rem, 2.5vw, 1.5rem); }
+[data-checkout-dialog] .checkout-dialog-header h2 { min-width: 0; font-size: clamp(1rem, 4vw, 1.5rem); overflow-wrap: anywhere; }
+#payment-modal .checkout-dialog-header h2 { font-size: clamp(1rem, 4vw, 1.25rem); }
+[data-checkout-dialog] .checkout-dialog-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: clamp(.75rem, 3vw, 1.5rem);
+    scroll-padding-block: 1rem;
+    overflow-wrap: anywhere;
+}
+[data-checkout-dialog] .checkout-dialog-footer {
+    padding: .75rem clamp(.75rem, 3vw, 1.5rem) max(.75rem, env(safe-area-inset-bottom));
+    background: white;
+}
+[data-checkout-dialog] input:not([type=checkbox]),
+[data-checkout-dialog] select,
+[data-checkout-dialog] textarea { min-width: 0; max-width: 100%; font-size: 1rem; }
+[data-checkout-dialog] button { min-height: 44px; }
+[data-checkout-dialog] .checkout-dialog-header button { min-width: 44px; flex-shrink: 0; }
+[data-checkout-dialog] :focus-visible { outline: 2px solid #be185d; outline-offset: 2px; }
+[data-checkout-dialog] button:disabled { cursor: wait; opacity: .65; }
+.checkout-dialog-feedback { margin: 0 0 .5rem; color: #991b1b; font-size: .875rem; overflow-wrap: anywhere; max-height: 3.5em; overflow-y: auto; }
+@media (max-height: 420px) {
+    [data-checkout-dialog] .checkout-dialog-header { padding-block: .25rem; }
+    [data-checkout-dialog] .checkout-dialog-footer { padding-top: .375rem; padding-bottom: max(.375rem, env(safe-area-inset-bottom)); }
+}
