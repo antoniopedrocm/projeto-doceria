@@ -1,5 +1,19 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## Retomada — 08/11/2026: publicação DEV autorizada pelo Dono
+
+Solicitação explícita: publicar a alteração de pagamento por modalidade para validação. Worktree/branch e evidência local conferidos; preparar commit/push delimitados e publicar somente `functions:api` + Hosting em `crmdoceria-9959e`, com comparação dos demais recursos e verificação remota. Reutilizar **261 testes PASS** e build quando os hashes continuarem idênticos; não repetir operações reais. O fallback mantém Pix-only visitante indisponível e Combinar funcional; Strong/Phone e pagamentos históricos preservados. **Percentuais inalterados: Fase 9 100%; Fase 10 87,50%; global 97,00%; Fase 13 0%. PROD NÃO.** Registro final de release será acrescentado após publicação verificada. Estado local anterior abaixo é histórico.
+
+## Estado vigente — 08/11/2026: pagamento por acesso, fallback seguro local; revisão antes de publicar
+
+Retomada conferiu HEAD **`dec8cff6`**, branch `feature/infinitepay-customer-auth`, worktree físico DEV `C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree`, tracked limpo e untracked antigos preservados. [Relatório](CHECKOUT_PAYMENT_BY_ACCESS.md), [261 testes/evidência local](evidence/auth-payment-access-local/validation.json). **Sem commit/push/deploy nesta missão**, conforme limite mais recente. Runtime remoto anterior `63d2ac71` permanece; aceite de retry do telefone anterior não foi inventado nem repetido.
+
+**Bloqueio oficial comprovado em 08/11:** documentação InfinitePay diz que cartão não pode ser desabilitado no Checkout Integrado; `payment_methods_enabled` só controla inclusão de Pix. Não inferir Pix-only de `['pix']`/API Key. Implementado fallback autorizado: Guest mostra “Pagar Agora — Pix” desabilitado/aviso e Combinar selecionado; backend valida contexto server-side e nega cobrança online Guest antes de pedido/reserva/link com `GUEST_PIX_ONLY_UNAVAILABLE`. Serviço de criação também protege o link; flag/opções/Strong ambiente não fazem upgrade. Não provisionar chave para fingir suporte. Google/e-mail e `legacy_phone` preservam Pix/cartão online + Combinar. Links e pagamentos históricos continuam consultáveis/reconciliáveis, sem alteração retroativa; podem ainda oferecer cartão no provider.
+
+**261 testes distintos PASS**: 110 públicos/navegação, 54 unitários, 97 Auth/Firestore emulados; build DEV/lint do delta/diff-check PASS; apresentação sintética desktop 1920×889/mobile 390×800 PASS. Guardas de frete, telefone, idempotência, estoque, provider/merchant, webhook e `/payment_check` preservadas. Sem credencial, dado remoto, pedido/pagamento/estorno/SMS/claim/WhatsApp real ou acesso PROD. Artefatos/hashes na evidência, emuladores encerrados.
+
+**Próximo ponto exato:** revisão do Dono antes de commit, push ou publicação API+Hosting DEV do fallback seguro. Objetivo de cobrança Pix-only visitante **pendente da capacidade oficial do provider/decisão posterior**, não resolvido por mocks ou chave. Não reexecutar C15/C16, SMS/vínculos ou testes já concluídos. **Fase 9 100%; Fase 10 87,50%; global formal 97,00%; Fase 13 0%; PROD READY NÃO.** Percentuais mantidos; estados abaixo são históricos.
+
 ## Estado vigente — 07/11/2026: correção de telefone corrigível publicada; aceite pendente
 
 Último ponto concluído: **`63d2ac71`**, push DEV, API **`api-00075-xek`** ACTIVE + Hosting **`b73c052dbeba910b`** (07/11 às 23:49 -03), exclusivamente worktree DEV/projeto `crmdoceria-9959e`. [Entrega](GUEST_PHONE_VALIDATION_RETRY.md), [evidência remota](evidence/guest-phone-dev.json): **62/62 hashes**, 7 rotas e 4 GETs PASS; 145 outras Functions e Rules inalteradas. Sem Rules/índices, dados remotos, pedido/pagamento real, SMS, vínculo, WhatsApp ou PROD na verificação.

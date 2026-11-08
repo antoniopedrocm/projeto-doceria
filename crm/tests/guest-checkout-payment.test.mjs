@@ -31,7 +31,7 @@ function fixture() {
   paymentAttempt:()=>{const key='doceria-payment-pending',prior=JSON.parse(window.sessionStorage.getItem(key)||'null');if(prior?.idempotencyKey)return prior.idempotencyKey;
    const idempotencyKey=attemptCount++?'new-purchase-'+attemptCount:'guest-pending-attempt-fixture';window.sessionStorage.setItem(key,JSON.stringify({idempotencyKey}));return idempotencyKey;},checkoutHeaders:async()=>({'Content-Type':'application/json'}),paymentStatusHeaders:async()=>({'Content-Type':'application/json'}),
   fetch:async(url,options)=>{posted.push({url,headers:options.headers,body:JSON.parse(options.body)});return env.respond();},
-  respond:async()=>({ok:true,json:async()=>({ok:true,id:'b'.repeat(64),paymentId:'b'.repeat(64),paymentReturnToken:'e'.repeat(64),checkoutUrl:'https://buy.infinitepay.io/fixture',subtotal:10,desconto:0,total:14,valorFrete:4})}),
+  respond:async()=>({ok:true,json:async()=>({ok:true,id:'b'.repeat(64),subtotal:10,desconto:0,total:14,valorFrete:4})}),
   redirectToPayment:(data,ready)=>{ready?.();redirects.push(data);},resetWhatsAppConsent(){},clearCheckoutBlockingIssue(){},retainAuthenticatedCustomer:()=>null,removeCupom(){},clearCheckoutState(){window.sessionStorage.removeItem('checkoutState_v1');},renderCart(){},
   confirmationModal:document.getElementById('confirmation-modal'),platformConfirmationModal:document.getElementById('platform-confirmation-modal'),
   mapCriticalCheckoutError:e=>e.message,setCheckoutBlockingIssue(){},showToast:m=>messages.push(m)};
@@ -43,27 +43,36 @@ function fixture() {
 test('guest tem exatamente duas opções e helper independente do checkout autenticado; sem convite de login',t=>{
  const f=fixture();t.after(f.close);
  const modal=f.document.getElementById('guest-checkout-modal');assert.ok(modal);
- assert.deepEqual([...f.select.options].map(o=>o.textContent),['Pagar Agora — Pix ou Cartão','Combinar Pagamento']);
- assert.equal(f.select.value,'ONLINE_NOW');assert.equal(f.select.dataset.paymentChoices,'guest-v1');
+ assert.deepEqual([...f.select.options].map(o=>o.textContent),['Pagar Agora — Pix','Combinar Pagamento']);
+ assert.equal(f.select.value,'AGREED_LATER');assert.equal(f.select.options[0].disabled,true);assert.equal(f.select.dataset.paymentChoices,'guest-v1');
  assert.equal(modal.querySelector('[data-checkout-strong-invitation]'),null);
  const startup=method('for(const container of [document.getElementById(\'payment-method-select\')]','syncCheckoutPayment();');
  assert.ok(startup);assert.equal(startup.includes("document.getElementById('guest-payment-method')"),false);
- const helper=f.document.getElementById('guest-payment-choice-help');assert.equal(helper.textContent,PAYMENT_CHOICES.ONLINE_NOW.helper);
+ const helper=f.document.getElementById('guest-payment-choice-help');assert.equal(helper.textContent,PAYMENT_CHOICES.AGREED_LATER.helper);
  const authenticatedHelper=f.document.getElementById('payment-choice-help').textContent;
  f.select.value='AGREED_LATER';f.select.dispatchEvent(new f.dom.window.Event('change'));
  assert.equal(helper.textContent,PAYMENT_CHOICES.AGREED_LATER.helper);assert.equal(f.document.getElementById('payment-choice-help').textContent,authenticatedHelper);
- syncPaymentChoices(f.select,true,true,'guest-v1');assert.equal(f.select.value,'AGREED_LATER');resetPaymentChoice(f.select);assert.equal(f.select.value,'ONLINE_NOW');
+ syncPaymentChoices(f.select,true,true,'guest-v1');assert.equal(f.select.value,'AGREED_LATER');resetPaymentChoice(f.select);assert.equal(f.select.value,'AGREED_LATER');
 });
-test('handler real GUEST online envia os dados informados e redireciona sem WhatsApp antecipado',async t=>{
- const f=fixture();t.after(f.close);await f.env.handleGuestOrder();
- assert.equal(f.messages.length,0);assert.equal(f.posted.length,1);assert.equal(f.redirects.length,1);assert.equal(f.whatsapp.length,0);
- const request=f.posted[0];assert.equal(request.body.pagamento.mode,'ONLINE_NOW');assert.equal(request.body.pagamento.forma,'Online');
- assert.equal(request.body.cliente.id,null);assert.equal(request.body.cliente.nome,'Visitante sintético');assert.equal(request.body.cliente.telefone,'62981005566');
- assert.equal(request.body.checkoutIdentityToken,f.identity.token);assert.equal(request.body.lojaId,'ana-guimaraes-doceria-matriz');
- assert.equal(request.body.delivery.pickup,false);assert.equal(request.body.delivery.address.street,'Rua sintética');assert.equal(request.body.delivery.lat,-16);
- assert.equal(request.headers.Authorization,undefined);assert.equal(request.body.idempotencyKey,'guest-pending-attempt-fixture');
- assert.equal(f.env.sendWhatsappButton.disabled,false);
+test('handler real GUEST não envia online mesmo selecionado programaticamente',async t=>{
+ const f=fixture();t.after(f.close);f.select.value='ONLINE_NOW';await f.env.handleGuestOrder();
+ assert.equal(f.posted.length,0);assert.equal(f.redirects.length,0);assert.equal(f.whatsapp.length,0);
+ assert.ok(f.messages.some(m=>m.includes('online indisponível')));assert.equal(f.env.sendWhatsappButton.disabled,false);
 });
+
+test('resposta backend Pix-only bloqueado não prende a compra; mudar para Combinar usa a mesma chave',async t=>{
+ const f=fixture();t.after(f.close);
+ Object.assign(f.env,{checkoutBlockingIssue:null,paymentError:f.document.getElementById('payment-error')});
+ vm.runInContext(method('function setCheckoutBlockingIssue(','async function revalidateCheckoutBeforeFinalSubmit('),f.env);
+ // A compromised DOM can remove disabled; the server rejection still exits cleanly.
+ f.select.options[0].disabled=false;f.select.value='ONLINE_NOW';
+ f.env.respond=async()=>({ok:false,status:403,json:async()=>({message:'Pagamento Pix online indisponível para visitantes. Escolha Combinar Pagamento.',code:'GUEST_PIX_ONLY_UNAVAILABLE'})});
+ await f.env.handleGuestOrder();assert.equal(f.posted.length,1);const key=f.posted[0].body.idempotencyKey;
+ assert.equal(f.env.cart.length,1);assert.equal(f.env.checkoutBlockingIssue,null);assert.equal(f.redirects.length,0);
+ f.select.value='AGREED_LATER';f.env.respond=async()=>({ok:true,json:async()=>({ok:true,id:'b'.repeat(64),total:14,valorFrete:4})});
+ await f.env.handleGuestOrder();assert.equal(f.posted.length,2);assert.equal(f.posted[1].body.idempotencyKey,key);assert.equal(f.env.cart.length,0);
+});
+
 test('handler real GUEST combinar envia modo sem método falso e conserva mensagem WhatsApp após salvar',async t=>{
  const f=fixture();t.after(f.close);f.select.value='AGREED_LATER';f.document.getElementById('guest-whatsapp-consent').checked=true;
  await f.env.handleGuestOrder();assert.deepEqual(f.messages,[]);assert.equal(f.posted.length,1);
@@ -78,11 +87,11 @@ test('duplo clique em voo envia uma vez; erro permite retry com a mesma tentativ
  await f.env.handleGuestOrder();assert.equal(f.posted.length,1);assert.equal(f.env.sendWhatsappButton.disabled,true);
  finish({ok:false,json:async()=>({message:'Falha sintética de rede'})});await first;
  assert.equal(f.env.sendWhatsappButton.disabled,false);assert.ok(f.messages.includes('Falha sintética de rede'));
- f.env.respond=async()=>({ok:true,json:async()=>({ok:true,id:'b'.repeat(64),paymentId:'b'.repeat(64),checkoutUrl:'https://buy.infinitepay.io/fixture'})});
- await f.env.handleGuestOrder();assert.equal(f.posted.length,2);assert.equal(f.posted[0].body.idempotencyKey,f.posted[1].body.idempotencyKey);assert.equal(f.redirects.length,1);
+ f.env.respond=async()=>({ok:true,json:async()=>({ok:true,id:'b'.repeat(64),paymentId:'b'.repeat(64),checkoutUrl:'https://buy.infinitepay.io/fixture',total:14,valorFrete:4})});
+ await f.env.handleGuestOrder();assert.equal(f.posted.length,2);assert.equal(f.posted[0].body.idempotencyKey,f.posted[1].body.idempotencyKey);assert.equal(f.redirects.length,0);
 });
 test('online desabilitado ou endereço não confirmado não envia pedido; combinar continua selecionável',async t=>{
- const f=fixture();t.after(f.close);syncPaymentChoices(f.select,true,false,'guest-v1');
+ const f=fixture();t.after(f.close);syncPaymentChoices(f.select,true,false,'guest-v1');f.select.value='ONLINE_NOW';
  await f.env.handleGuestOrder();assert.equal(f.posted.length,0);assert.ok(f.messages.some(m=>m.includes('online indisponível')));
  f.select.value='AGREED_LATER';f.env.window.guestManualAddressLocationConfirmed=false;await f.env.handleGuestOrder();assert.equal(f.posted.length,0);
  f.env.window.guestManualAddressLocationConfirmed=true;await f.env.handleGuestOrder();assert.equal(f.posted.length,1);
@@ -115,7 +124,7 @@ test('conflito 409 tipado informa pedido existente sem transformar a tentativa e
  assert.equal(f.env.sendWhatsappButton.disabled,false);
  assert.equal(f.dom.window.sessionStorage.getItem('doceria-payment-pending'),prior);
 });
-test('pedido anterior em Pagar Agora também é recuperado sem segunda confirmação do checkout',async t=>{
+test('pedido online anterior também é recuperado ao continuar com Combinar sem segunda confirmação do checkout',async t=>{
  const f=fixture();t.after(f.close);const id='c'.repeat(64),storage=f.dom.window.sessionStorage;
  const prior=JSON.stringify({idempotencyKey:'same-online-attempt-fixture',paymentId:id});storage.setItem('doceria-payment-pending',prior);
  storage.setItem('doceria-payment-return:'+id,JSON.stringify({token:'d'.repeat(64)}));f.env.paymentAttempt=()=> 'same-online-attempt-fixture';
@@ -141,21 +150,21 @@ test('preview antigo não reaplica aviso depois de mudar para Pagar Agora',async
  finish({ok:true,json:async()=>({id,storeId:f.env.STORE_ID,payment_status:'PENDING'})});await stale;
  assert.equal(f.document.getElementById('guest-pending-payment').classList.contains('hidden'),true);assert.equal(f.posted.length,0);
 });
-test('confirmação online encerra formulário/carrinho antes de navegar e mantém consulta do pagamento',async t=>{
+test('confirmação Combinar encerra formulário/carrinho sem iniciar pagamento',async t=>{
  const f=fixture();t.after(f.close);f.dom.window.sessionStorage.setItem('checkoutState_v1','draft fixture');
  await f.env.handleGuestOrder();
- assert.equal(f.posted.length,1);assert.equal(f.redirects.length,1);assert.equal(f.env.cart.length,0);
+ assert.equal(f.posted.length,1);assert.equal(f.redirects.length,0);assert.equal(f.env.cart.length,0);
  assert.equal(f.env.guestCheckoutModal.classList.contains('hidden'),true);assert.equal(f.env.guestNameInput.value,'');
  assert.equal(f.dom.window.sessionStorage.getItem('doceria-payment-pending'),null);assert.equal(f.dom.window.sessionStorage.getItem('checkoutState_v1'),null);
- assert.equal(JSON.parse(f.dom.window.sessionStorage.getItem('doceria-payment-return:'+'b'.repeat(64))).token,'e'.repeat(64));
+ assert.equal(f.dom.window.sessionStorage.getItem('doceria-payment-return:'+'b'.repeat(64)),null);
  await f.env.handleGuestOrder();assert.equal(f.posted.length,1);
 });
-test('nova compra após online começa limpa com chave nova e pode concluir Combinar normalmente',async t=>{
+test('nova compra após Combinar começa limpa com chave nova e pode concluir Combinar normalmente',async t=>{
  const f=fixture();t.after(f.close);await f.env.handleGuestOrder();const firstKey=f.posted[0].body.idempotencyKey;
  f.env.cart=[{id:'new-product',nome:'Outra compra',preco:3,quantity:1}];f.fill();f.select.value='AGREED_LATER';
  f.env.respond=async()=>({ok:true,json:async()=>({ok:true,id:'f'.repeat(64),total:7,valorFrete:4,desconto:0})});
  await f.env.handleGuestOrder();assert.equal(f.posted.length,2);assert.notEqual(f.posted[1].body.idempotencyKey,firstKey);
- assert.equal(f.posted[1].body.pagamento.mode,'AGREED_LATER');assert.equal(f.redirects.length,1);assert.equal(f.env.cart.length,0);
+ assert.equal(f.posted[1].body.pagamento.mode,'AGREED_LATER');assert.equal(f.redirects.length,0);assert.equal(f.env.cart.length,0);
  assert.equal(f.dom.window.sessionStorage.getItem('doceria-payment-pending'),null);assert.equal(f.env.confirmationModal.classList.contains('hidden'),false);
  await f.env.handleGuestOrder();assert.equal(f.posted.length,2);
 });
@@ -167,6 +176,7 @@ test('resposta sem confirmação válida não limpa carrinho ou chave de retry',
 test('finalização compartilhada preserva checkout autenticado e por telefone',async t=>{
  for(const mode of ['strong_auth','legacy_phone']){
   const f=fixture();t.after(f.close);f.identity.mode=mode;
+  f.env.respond=async()=>({ok:true,json:async()=>({ok:true,id:'b'.repeat(64),paymentId:'b'.repeat(64),paymentReturnToken:'e'.repeat(64),checkoutUrl:'https://buy.infinitepay.io/fixture'})});
   f.env.checkoutIdentity.isStrong=()=>mode==='strong_auth';f.env.isLinkedCustomer=()=>true;
   const client={id:'canonical-fixture',nome:'Cliente sintético'};f.env.currentClient=client;
   f.env.retainAuthenticatedCustomer=c=>mode==='strong_auth'?c:null;
@@ -193,8 +203,8 @@ test('consulta de compatibilidade simultânea à confirmação finaliza uma vez 
  assert.equal(f.posted.length,0);assert.equal(f.messages.filter(m=>m.includes('Não foi possível')).length,0);
  assert.equal(f.document.getElementById('guest-pending-payment').classList.contains('hidden'),true);
 });
-test('telefone inválido → corrigir → confirmar usa guardas reais, mesma chave e finaliza em ambos os modos',async t=>{
- for(const mode of ['ONLINE_NOW','AGREED_LATER']){
+test('telefone inválido → corrigir → confirmar Combinar usa guardas reais e mesma chave',async t=>{
+ for(const mode of ['AGREED_LATER']){
   const f=fixture();t.after(f.close);
   Object.assign(f.env,{checkoutBlockingIssue:null,paymentError:f.document.getElementById('payment-error')});
   vm.runInContext(method('function setCheckoutBlockingIssue(','async function revalidateCheckoutBeforeFinalSubmit('),f.env);

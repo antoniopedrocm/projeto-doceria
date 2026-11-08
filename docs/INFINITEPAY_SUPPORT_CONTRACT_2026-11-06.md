@@ -32,4 +32,8 @@ A página pública ainda enumera seis eventos no formulário/exemplo. Para a lis
 
 ## Situação do projeto
 
+### Complemento público de 08/11/2026 — seleção de meios não equivale a Pix-only
+
+A revisão das mesmas páginas oficiais para a missão de pagamento por modalidade encontrou uma restrição explícita: `payment_methods_enabled` não permite desabilitar cartão no Checkout Integrado; a seleção controla a inclusão do Pix. Não inferir Pix-only de `['pix']` nem da disponibilidade de API Key/options na resposta de 06/11. Isso complementa a transcrição, sem atribuir ao suporte uma afirmação que não fez. [Diagnóstico, fallback seguro e limites](CHECKOUT_PAYMENT_BY_ACCESS.md). Sem alteração dos percentuais ou teste real de cobrança.
+
 [Auditoria de impacto no código existente](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md), [modelo de conciliação](INFINITEPAY_RECONCILIATION_V1.md), [checkpoint](CHECKPOINT_PREPROD_MISSION.md). Fase 9 **100% formal conforme aceite anterior**, Fase 10 **87,50%**, global formal **97,00%**, Fase 13 **0%**. Esta atualização não aumenta percentuais nem homologa complementos identificados. **PROD READY: NÃO.**

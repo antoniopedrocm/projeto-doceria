@@ -727,10 +727,11 @@
                     </div>
                     <label for="guest-payment-method" class="block text-sm font-semibold text-gray-800 mb-2">Forma de Pagamento</label>
                     <select id="guest-payment-method" aria-describedby="guest-payment-choice-help" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white">
-                        <option value="ONLINE_NOW" selected>Pagar Agora — Pix ou Cartão</option>
-                        <option value="AGREED_LATER">Combinar Pagamento</option>
+                        <option value="ONLINE_NOW" disabled>Pagar Agora — Pix</option>
+                        <option value="AGREED_LATER" selected>Combinar Pagamento</option>
                     </select>
                     <p id="guest-payment-choice-help" class="text-sm text-gray-600 mt-2" aria-live="polite"></p>
+                    <p class="text-sm text-amber-800 mt-2" role="status">Pagamento Pix online indisponível para visitantes no momento. Você pode continuar com Combinar Pagamento.</p>
                     <div id="guest-pending-payment" class="hidden mt-3 p-3 border border-amber-200 bg-amber-50 rounded-lg text-sm text-gray-800" role="status" aria-live="polite">
                         <p id="guest-pending-payment-message"></p>
                         <a id="guest-pending-payment-link" class="hidden inline-block mt-3 font-semibold text-pink-700 underline focus:outline-none focus:ring-2 focus:ring-pink-500 rounded" href="/payment-return.html">Consultar pagamento existente</a>
@@ -3364,7 +3365,7 @@
 				}, null, false);
 
 			} catch (error) {
-				if(error.code==='CUSTOMER_PHONE_INVALID')return;
+				if(['CUSTOMER_PHONE_INVALID','GUEST_PIX_ONLY_UNAVAILABLE'].includes(error.code))return;
 				console.error('Erro ao processar pedido do visitante:', error);
 				showToast(error?.message || 'Erro ao processar o pedido.', true);
 			} finally {
@@ -3507,6 +3508,10 @@
                 if(!isPlatform && error.code==='CUSTOMER_PHONE_INVALID') {
                     setGuestPhoneError(friendlyMessage);
                     if(!guestCheckoutModal.classList.contains('hidden'))guestPhoneInput.focus();
+                    throw error;
+                }
+                if(!isPlatform && error.code==='GUEST_PIX_ONLY_UNAVAILABLE') {
+                    showToast(friendlyMessage,true);
                     throw error;
                 }
                 console.error("Erro ao salvar pedido:", error);

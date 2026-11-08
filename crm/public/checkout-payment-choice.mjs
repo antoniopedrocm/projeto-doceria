@@ -12,7 +12,7 @@ export function paymentSelection(value, eligible) {
 
 export function resetPaymentChoice(select) {
   if (!['authenticated-v1','guest-v1'].includes(select?.dataset.paymentChoices)) return;
-  select.value = 'ONLINE_NOW';
+  select.value = select.dataset.paymentChoices==='guest-v1' ? 'AGREED_LATER' : 'ONLINE_NOW';
   select.dispatchEvent(new select.ownerDocument.defaultView.Event('change'));
 }
 
@@ -22,16 +22,16 @@ export function syncPaymentChoices(select, strong, onlineEnabled, variant='authe
   if (strong && select.dataset.paymentChoices !== variant) {
     select.replaceChildren(...Object.entries(PAYMENT_CHOICES).map(([value, choice]) => {
       const option = select.ownerDocument.createElement('option');
-      option.value = value; option.textContent = choice.label; return option;
+      option.value = value; option.textContent = variant==='guest-v1' && value==='ONLINE_NOW' ? 'Pagar Agora — Pix' : choice.label; return option;
     }));
-    select.value = 'ONLINE_NOW';
+    select.value = variant==='guest-v1' ? 'AGREED_LATER' : 'ONLINE_NOW';
     select.dataset.paymentChoices = variant;
   } else if (!strong && select.dataset.paymentChoices) {
     select.innerHTML = select.legacyPaymentOptions;
     delete select.dataset.paymentChoices;
   }
   const online = select.querySelector('option[value="ONLINE_NOW"]');
-  if (online) online.disabled = !onlineEnabled;
+  if (online) online.disabled = variant==='guest-v1' || !onlineEnabled;
   const helper = select.ownerDocument.getElementById(select.getAttribute('aria-describedby') || 'payment-choice-help');
   const update = () => {
     if (!helper) return;

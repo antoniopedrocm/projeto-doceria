@@ -7,6 +7,7 @@ const {inspectPaymentSignal,PROVIDER_EVENT_NAMES} = require('./payment-signal-po
 const {canReadPayment}=require('./payment-return-auth');
 const {createFinancialEvents}=require('./payment-financial-events');
 const {createPaymentVerification}=require('./payment-verification');
+const {assertOnlinePaymentAccess}=require('./checkout-payment-access');
 function paymentError(message, httpStatus = 409) {return Object.assign(new Error(message), {httpStatus});}
 const cents = value => {const n = Math.round(Number(value)*100);if (!Number.isSafeInteger(n) || n <= 0) throw paymentError('Valor de pagamento inválido.',400);return n;};
 function assertPaid(result, expectedAmount) {
@@ -96,6 +97,7 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
       }
       if(p.requiresReview || (p.payment_status !== 'PENDING' && p.payment_status !== 'PAID')) throw paymentError('Pedido aguardando conciliação. Consulte a loja antes de pagar.');
       if(p.checkoutUrl || p.payment_status === 'PAID') return p;
+      assertOnlinePaymentAccess(p.checkoutIdentity?.mode);
       if(p.linkState) throw paymentError('Pedido aguardando conciliação. Não refaça a compra; consulte a loja.');
       // Snapshot the subscription only when creating a new link. Existing URLs
       // retain their original provider configuration and are never recreated.

@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "date": "2026-11-08",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "authorizedEnvironment": "DEV crmdoceria-9959e; local demo emulators only",
+  "baseCommit": "dec8cff67ef75d542c5fec1721093d75c3dbe1ba",
+  "branch": "feature/infinitepay-customer-auth",
+  "contract": {
+    "sources": [
+      "https://www.infinitepay.io/checkout-documentacao",
+      "https://ajuda.infinitepay.io/pt-BR/articles/10766888-como-usar-o-checkout-integrado-da-infinitepay"
+    ],
+    "checkedDate": "2026-11-08",
+    "pixOnlySupported": false,
+    "apiKeyAloneSolvesRestriction": false,
+    "providerRequests": 0
+  },
+  "behavior": {
+    "guest": "ONLINE_NOW disabled, label Pix; AGREED_LATER selected; backend rejects new online charge before effects with GUEST_PIX_ONLY_UNAVAILABLE",
+    "strong": "Google and password preserve online Pix/card and agreed later",
+    "phone": "legacy_phone preserves online Pix/card and agreed later",
+    "historical": "Existing guest links/status/payment_check/reconciliation retained; existing links may still offer card"
+  },
+  "tests": {
+    "publicAndNavigation": {
+      "passed": 110,
+      "failed": 0,
+      "logSha256": "252ea0bb174a84c602f24d8e4ad6a723c72542b1aa35071287b8ae238cb9dcd7"
+    },
+    "unit": {
+      "passed": 54,
+      "failed": 0,
+      "logSha256": "8bc09b1c1e7e6ff171f2324b3eb6b11a6054d64fe59df681ca7fa9f3aea0701b"
+    },
+    "emulators": {
+      "project": "demo-doceria-checkout",
+      "localOnly": true,
+      "results": [
+        {
+          "file": "checkout-http.test.js",
+          "exitCode": 0,
+          "tests": 37,
+          "passed": 37,
+          "failed": 0
+        },
+        {
+          "file": "guest-checkout-emulator.test.js",
+          "exitCode": 0,
+          "tests": 2,
+          "passed": 2,
+          "failed": 0
+        },
+        {
+          "file": "payment-financial-events-emulator.test.js",
+          "exitCode": 0,
+          "tests": 15,
+          "passed": 15,
+          "failed": 0
+        },
+        {
+          "file": "payment-contract-emulator.test.js",
+          "exitCode": 0,
+          "tests": 20,
+          "passed": 20,
+          "failed": 0
+        },
+        {
+          "file": "checkout-emulator.test.js",
+          "exitCode": 0,
+          "tests": 9,
+          "passed": 9,
+          "failed": 0
+        },
+        {
+          "file": "checkout-reservation-emulator.test.js",
+          "exitCode": 0,
+          "tests": 9,
+          "passed": 9,
+          "failed": 0
+        },
+        {
+          "file": "payment-settings-emulator.test.js",
+          "exitCode": 0,
+          "tests": 3,
+          "passed": 3,
+          "failed": 0
+        },
+        {
+          "file": "agreed-payment-rules.test.js",
+          "exitCode": 0,
+          "tests": 1,
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "file": "checkout-identity-rules.test.js",
+          "exitCode": 0,
+          "tests": 1,
+          "passed": 1,
+          "failed": 0
+        }
+      ]
+    },
+    "totalPassed": 261,
+    "totalFailed": 0,
+    "distinct": true,
+    "previousTotalsAndRetriesAdded": false,
+    "pixOnlySuccess": "BLOCKED BY PROVIDER CONTRACT; not implemented or counted as passed",
+    "initialFixtureFailures": "Four failures in historical checkout/freight and second-store fixture setup corrected; final full integration run 97 PASS; no runtime guards weakened"
+  },
+  "quality": {
+    "build": "PASS serial, 2 workers, Node heap 2048 MB",
+    "bundle": "main.e4b94788.js",
+    "gzipKb": 456.38,
+    "noNewDependency": true,
+    "lint": {
+      "files": 10,
+      "inlineScripts": 6,
+      "errors": 0,
+      "warnings": 0,
+      "indexBaseline": 6,
+      "newDiagnostics": 0
+    },
+    "diffCheck": "PASS",
+    "visual": "Synthetic 1920x889 and 390x800 PASS; four screenshots; no external services",
+    "emulatorsStopped": true
+  },
+  "runtime": [
+    {
+      "path": "crm/public/cardapio.html",
+      "sha256": "8adc49ef3b0a17266034b1897d6a4ad99dbbc3d86e7f5e3e8faab40eb27dbecf",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-matriz.html",
+      "sha256": "8adc49ef3b0a17266034b1897d6a4ad99dbbc3d86e7f5e3e8faab40eb27dbecf",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-garavelo.html",
+      "sha256": "8adc49ef3b0a17266034b1897d6a4ad99dbbc3d86e7f5e3e8faab40eb27dbecf",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/cardapio-festa.html",
+      "sha256": "8adc49ef3b0a17266034b1897d6a4ad99dbbc3d86e7f5e3e8faab40eb27dbecf",
+      "buildMatch": true
+    },
+    {
+      "path": "crm/public/checkout-payment-choice.mjs",
+      "sha256": "c3be904f43f7f2b779708763cebf03ca435927103696ca89e2b327e7607373dc"
+    },
+    {
+      "path": "functions/index.js",
+      "sha256": "82607b5563239baca9335a7f4fc055a6d685f39f8af0ac1f30c8d50c991babb3"
+    },
+    {
+      "path": "functions/checkout-payment.js",
+      "sha256": "2c32401c9118ad8d09e3e44780fd76f1f2d8467d5c40cc9e7e2e99a1ca39a224"
+    },
+    {
+      "path": "functions/checkout-payment-access.js",
+      "sha256": "5032ff4e68e1c044ccd2bbadc91908c26cf565babb90d0e239d9093fd3416f25"
+    }
+  ],
+  "safety": {
+    "commit": false,
+    "push": false,
+    "deploy": false,
+    "realOrdersPaymentsRefundsSmsClaimsWhatsApp": 0,
+    "remoteDataChanges": 0,
+    "credentialsCreatedOrRead": false,
+    "productionAccess": false
+  },
+  "remaining": {
+    "ownerReview": true,
+    "devDeployment": "Requires approval, API and Hosting together",
+    "manualAcceptance": "Pending; local fixtures not DEV acceptance",
+    "pixOnly": "Requires a documented provider capability or a separate product/provider decision"
+  },
+  "percentages": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "productionReady": false
+}

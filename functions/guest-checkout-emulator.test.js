@@ -26,12 +26,16 @@ test('guest link creation requires exact server-issued context, revision and sto
  }
  await ref.set(seed);await identities.ref(context.token).update({expiresAt:now-1});await assert.rejects(()=>service.start(id,null,proof));
  await identities.ref(context.token).update({expiresAt:now+60000});assert.equal(calls,0);
- const result=await service.start(id,null,proof);assert.equal(result.checkoutUrl,'https://buy.infinitepay.io/guest-fixture');assert.equal(calls,1);
- assert.equal((await service.start(id,null,proof)).paymentId,id);assert.equal(calls,1);
+ await assert.rejects(()=>service.start(id,null,proof),e=>e.httpStatus===403 && e.code==='GUEST_PIX_ONLY_UNAVAILABLE');
+ assert.equal(calls,0);assert.deepEqual((await ref.get()).data(),seed);
+ // Pre-existing links remain readable/reusable; no new provider call is made.
+ await ref.update({checkoutUrl:'https://buy.infinitepay.io/guest-historical-fixture',linkState:'READY'});
+ const result=await service.start(id,null,proof);assert.equal(result.checkoutUrl,'https://buy.infinitepay.io/guest-historical-fixture');assert.equal(calls,0);
+ assert.equal((await service.start(id,null,proof)).paymentId,id);assert.equal(calls,0);
  await identities.select({storeId:'guest-guard-store',mode:'legacy_phone',token:context.token});
- await assert.rejects(()=>service.start(id,null,proof),e=>e.httpStatus===403);assert.equal(calls,1);
+ await assert.rejects(()=>service.start(id,null,proof),e=>e.httpStatus===403);assert.equal(calls,0);
 });
-test('guest ambiguous link failure keeps pending reservation and blocks new provider creation on retry',async()=>{
+test('guest unissued link is denied repeatedly without mutating its prior pending reservation',async()=>{
  const identities=createCheckoutIdentity({db}),context=await identities.select({storeId:'guest-error-store',mode:'guest'});
  const id=crypto.randomBytes(32).toString('hex'),ref=db.doc('checkoutPayments/'+id);let calls=0;
  await ref.set({storeId:'guest-error-store',orderId:id,orderPath:'lojas/guest-error-store/pedidos/'+id,ownerUid:null,payment_status:'PENDING',amount:1000,
@@ -40,5 +44,5 @@ test('guest ambiguous link failure keeps pending reservation and blocks new prov
  const service=createPaymentService({db,admin,provider:{create:async()=>{calls++;throw Error('synthetic provider timeout');}}}),proof={token:context.token,revision:context.revision};
  await assert.rejects(()=>service.start(id,null,proof));await assert.rejects(()=>service.start(id,null,proof));
  const payment=(await ref.get()).data();assert.equal(payment.payment_status,'PENDING');assert.equal(payment.reservation.state,'HELD');
- assert.equal(payment.linkState,'RECONCILIATION_REQUIRED');assert.equal(calls,1);
+ assert.equal(payment.linkState,undefined);assert.equal(calls,0);
 });

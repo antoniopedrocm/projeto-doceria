@@ -59,6 +59,7 @@ const customerRegistry=customerAccounts.registry;
 const {createAdminCustomerPreview,mountAdminCustomerPreview,previewDetails,assertNoPreviewMutation}=require('./admin-customer-preview');
 const {createCustomerPhoneClaim}=require('./customer-phone-claim');
 const {createCheckoutIdentity,MODES:CHECKOUT_MODES}=require('./checkout-identity');
+const {assertOnlinePaymentAccess}=require('./checkout-payment-access');
 const checkoutIdentities=createCheckoutIdentity({db});
 const {addressOptions,createCheckoutAddresses}=require('./checkout-addresses');
 const checkoutAddresses=createCheckoutAddresses({db,identities:checkoutIdentities});
@@ -1923,6 +1924,7 @@ app.post("/checkout/confirmar", async (req, res) => {
         cliente.id=checkoutCustomerId;
       }
       if(!/^[a-zA-Z0-9_-]{16,100}$/.test(req.body?.idempotencyKey || '')) throw paymentError('Identificador do pedido inválido.',400);
+      if(online) assertOnlinePaymentAccess(checkoutIdentity.mode);
       if(online) paymentConfig=await checkoutPayments.config(lojaId);
       paymentId=crypto.createHash('sha256').update((ownerUid || (guest?'guest:':'phone:')+checkoutIdentities.ref(identityToken).id)+':'+lojaId+':'+req.body.idempotencyKey).digest('hex');
       fingerprint=crypto.createHash('sha256').update(JSON.stringify({cliente,itens,cupom,subtotal,delivery:req.body.delivery,descontoInformado,...(explicitPaymentMode ? {paymentMode} : {})})).digest('hex');
@@ -2181,7 +2183,7 @@ app.post("/checkout/confirmar", async (req, res) => {
     }
     return res.status(200).json({ok: true, ...orderId});
   } catch (error) {
-    if(error?.code!=='CUSTOMER_PHONE_INVALID')logger.error('Erro ao confirmar checkout:', error);
+    if(!['CUSTOMER_PHONE_INVALID','GUEST_PIX_ONLY_UNAVAILABLE'].includes(error?.code))logger.error('Erro ao confirmar checkout:', error);
     const statusCode = Number(error?.httpStatus) || 500;
     const payload = {
       ok: false,

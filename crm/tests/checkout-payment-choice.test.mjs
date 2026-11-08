@@ -25,6 +25,17 @@ test('escolha separa momento/método; contexto elegível usa contrato, seleção
   assert.throws(()=>paymentSelection('ONLINE_NOW',false));
   assert.deepEqual(paymentSelection('Dinheiro',false),{forma:'Dinheiro'});
 });
+test('Guest exibe Pix sem cartão, falha fechado mesmo com loja online; reset não seleciona opção desabilitada',()=>{
+ const dom=new JSDOM('<select id="guest-payment-method"><option value="ONLINE_NOW">old</option></select><p id="payment-choice-help"></p>');
+ const select=dom.window.document.querySelector('select');
+ syncPaymentChoices(select,true,true,'guest-v1');
+ assert.deepEqual([...select.options].map(o=>o.textContent),['Pagar Agora — Pix','Combinar Pagamento']);
+ assert.equal(select.options[0].disabled,true);assert.equal(select.value,'AGREED_LATER');
+ select.value='ONLINE_NOW';resetPaymentChoice(select);assert.equal(select.value,'AGREED_LATER');
+ syncPaymentChoices(select,true,true,'guest-v1');assert.equal(select.options[0].disabled,true);
+ syncPaymentChoices(select,true,true);assert.equal(select.options[0].disabled,false);assert.equal(select.options[0].textContent,'Pagar Agora — Pix ou Cartão');
+ dom.window.close();
+});
 test('PHONE não envia Auth ambiente; retorno com capability funciona sem sessão e histórico mantém Auth explícito',async()=>{
  const source=fs.readFileSync(new URL('../public/checkout-payment-client.js',import.meta.url),'utf8');
  const code=source.slice(source.indexOf('export async function checkoutHeaders'),source.indexOf('export function paymentAttempt')).replaceAll('export ','');

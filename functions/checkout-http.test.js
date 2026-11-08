@@ -496,7 +496,7 @@ test('HTTP refund registration enforces FULL after Staff/store authorization; un
  } finally {await profile.delete();}
 });
 
-async function guestFixture(mode='ONLINE_NOW') {
+async function guestFixture(mode='AGREED_LATER') {
   const selected=await selectIdentity('guest',null,null);assert.equal(selected.status,200);
   const product=db.doc(`lojas/${store}/produtos/guest-${require('node:crypto').randomUUID()}`);
   await product.set({nome:'Produto visitante sintético',preco:10,estoque:8,ativo:true,status:'Ativo'});
@@ -506,26 +506,82 @@ async function guestFixture(mode='ONLINE_NOW') {
     pagamento:{mode,forma:mode==='ONLINE_NOW'?'Online':'A combinar'},whatsappConsent:{accepted:true,version:'order-confirmation-v1'}};
   return {input,product,context:selected.data};
 }
-test('GUEST online usa só contato informado: telefone consistente, sem Customer/owner/alias ou dados privados',async()=>{
+test('GUEST combinar usa só contato informado: telefone consistente, sem Customer/owner/alias ou dados privados',async()=>{
   const f=await guestFixture(),customer=db.doc('clientes/'+customerId),before=(await customer.get()).data();
-  const count=(await db.collection('clientes').get()).size,identities=(await db.collection('customerAuthIdentities').get()).size;
+  const count=(await db.collection('clientes').get()).size,identities=(await db.collection('customerAuthIdentities').get()).size,prior=links;
   for(const [i,phone] of ['62999991234','+5562999991234','(62) 99999-1234'].entries()) {
     const response=await send({...f.input,cliente:{...f.input.cliente,telefone:phone},idempotencyKey:f.input.idempotencyKey+'-'+i},i===0?token:i===1?anonymousToken:null);
     assert.equal(response.status,200,JSON.stringify(response));
-    const payment=(await db.doc('checkoutPayments/'+response.data.paymentId).get()).data();
-    const order=(await db.doc(`lojas/${store}/pedidos/${response.data.id}`).get()).data();
+    const order=(await db.doc('lojas/'+store+'/pedidos/'+response.data.id).get()).data();
     assert.equal(order.clienteId,null);assert.equal(order.ownerUid,null);assert.equal(order.telefone,'62999991234');
-    assert.equal(order.paymentMode,'ONLINE_NOW');assert.equal(order.paymentMethod,null);assert.equal(order.payment_status,'PENDING');
-    assert.equal(payment.checkoutIdentity.mode,'guest');assert.equal(payment.checkoutIdentity.customerId,null);assert.equal(payment.ownerUid,null);
-    assert.equal(payment.customer.phone_number,'+5562999991234');assert.equal(payment.customer.name,f.input.cliente.nome);assert.equal(payment.customer.email,undefined);
-    assert.equal(payment.amount,1400);assert.equal(payment.reservation.state,'HELD');assert.ok(response.data.paymentReturnToken);
-    assert.equal(linkBodies.at(-1).customer.phone_number,'+5562999991234');assert.equal(linkBodies.at(-1).webhook.events.includes('paid'),true);
+    assert.equal(order.paymentMode,'AGREED_LATER');assert.equal(order.paymentMethod,null);assert.equal(order.paymentStatus,'PENDING');
+    assert.equal((await db.doc('checkoutPayments/'+response.data.id).get()).exists,false);
   }
-  assert.deepEqual((await customer.get()).data(),before);assert.equal((await db.collection('clientes').get()).size,count);
+  assert.equal(links,prior);assert.deepEqual((await customer.get()).data(),before);assert.equal((await db.collection('clientes').get()).size,count);
   assert.equal((await db.collection('customerAuthIdentities').get()).size,identities);
   const context=await require('./checkout-identity').createCheckoutIdentity({db}).read(f.context.token,store);
   assert.equal(context.mode,'guest');assert.equal(context.legacyCustomerId,null);assert.equal(context.ownerUid,null);
 });
+
+test('GUEST online bloqueia antes de pedido/estoque/link; campos e Auth ambiente não liberam cartão nem Pix-only fictício',async()=>{
+ const f=await guestFixture('ONLINE_NOW'),prior=links,orders=(await db.collection('lojas/'+store+'/pedidos').get()).size;
+ const payments=(await db.collection('checkoutPayments').get()).size;
+ for(const bearer of [null,anonymousToken,token])for(const extra of [{},{mode:'strong_auth',checkoutIdentity:{mode:'strong_auth'},paymentMode:'AGREED_LATER'},
+   {options:{payment_methods_enabled:['pix']},payment_methods_enabled:['pix'],apiKey:'inchk_fixture_only',pixOnly:true}]) {
+   const r=await send({...f.input,...extra},bearer);
+   assert.equal(r.status,403,JSON.stringify(r));assert.equal(r.data.code,'GUEST_PIX_ONLY_UNAVAILABLE');
+ }
+ assert.equal((await db.collection('lojas/'+store+'/pedidos').get()).size,orders);assert.equal((await db.collection('checkoutPayments').get()).size,payments);
+ assert.equal(links,prior);assert.equal((await f.product.get()).get('estoque'),8);
+ // Same attempt can choose the allowed offline mode after a controlled rejection.
+ const offline=await send({...f.input,pagamento:{mode:'AGREED_LATER',forma:'A combinar'}},null);assert.equal(offline.status,200,JSON.stringify(offline));
+ assert.equal((await f.product.get()).get('estoque'),7);assert.equal(links,prior);
+});
+
+test('Google real do emulador mantém Pix/cartão no contexto strong; visitante não herda esse login',async()=>{
+ const sub='google-payment-fixture',email='google-payment@example.test';
+ const jwt=Buffer.from(JSON.stringify({alg:'none',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({sub,email,email_verified:true,name:'Google sintético',iss:'https://accounts.google.com',aud:'fixture',iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.';
+ const login=await originalFetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=demo-api-key',{
+  method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestUri:'http://localhost',postBody:'id_token='+encodeURIComponent(jwt)+'&providerId=google.com',returnSecureToken:true})});
+ const account=await login.json();assert.equal(login.status,200,JSON.stringify(account));
+ const id='google-canonical-'+account.localId;
+ await db.doc('clientes/'+id).set({authOwnerUid:account.localId,nome:'Google sintético',telefone:'62989990001'});
+ await db.doc('customerAuthIdentities/'+digest('google',sub)).set({customerId:id,provider:'google',subject:sub,uid:account.localId});
+ const identity=await selectIdentity('strong_auth',null,account.idToken);assert.equal(identity.status,200,JSON.stringify(identity));
+ const prior=links;
+ const created=await send({...body(),checkoutIdentityToken:identity.data.token,cliente:{id,nome:'Google sintético',telefone:'62989990001',endereco:'Retirar na Loja'},idempotencyKey:require('node:crypto').randomUUID(),pagamento:{mode:'ONLINE_NOW',forma:'Online'}},account.idToken);
+ assert.equal(created.status,200,JSON.stringify(created));assert.equal(links,prior+1);
+ assert.equal(linkBodies.at(-1).handle,'merchant-test');assert.equal(linkBodies.at(-1).options,undefined);
+ const guest=await guestFixture('ONLINE_NOW'),denied=await send(guest.input,account.idToken);
+ assert.equal(denied.status,403);assert.equal(denied.data.code,'GUEST_PIX_ONLY_UNAVAILABLE');assert.equal(links,prior+1);
+});
+
+test('a política guest não usa flags, chave falsa ou contexto financeiro de outra loja como bypass',async()=>{
+ const other='guest-pix-isolation',f=await guestFixture('ONLINE_NOW'),prior=links;
+ const ref=db.doc('lojas/'+other),config=db.doc('lojas/'+other+'/configuracoesInternas/infinitepay');
+ await ref.set({nome:'Outra loja sintética'});await config.set({enabled:true,handle:'other-merchant',pixOnly:true,apiKey:'inchk_synthetic_only',redirectUrl:'https://other.invalid/return',webhookUrl:'https://other.invalid/webhook'});
+ await db.doc('lojas/'+other+'/configuracoes/config').set({manualOverride:{mode:'force_open'},frete:{lat:-16,lng:-49,valorPorKm:2}});
+ const selection=await selectIdentity('guest',null,null,other);assert.equal(selection.status,200);
+ const originalConfig=(await db.doc('lojas/'+store+'/configuracoesInternas/infinitepay').get()).data();
+ const denied=await send({...f.input,lojaId:other,checkoutIdentityToken:selection.data.token},null);
+ assert.equal(denied.status,403);assert.equal(denied.data.code,'GUEST_PIX_ONLY_UNAVAILABLE');assert.equal(links,prior);
+ assert.deepEqual((await db.doc('lojas/'+store+'/configuracoesInternas/infinitepay').get()).data(),originalConfig);
+ assert.equal((await db.collection('lojas/'+other+'/pedidos').get()).empty,true);
+});
+
+// Model a historical guest payment using a synthetic previously authorized
+// strong checkout, then replace only its synthetic ownership snapshot. This is
+// test seeding, never an alternate production path for creating guest links.
+async function historicalGuestPayment(f) {
+ const selected=await selectIdentity('strong_auth');assert.equal(selected.status,200);
+ const input={...f.input,checkoutIdentityToken:selected.data.token,cliente:{...f.input.cliente,id:customerId},pagamento:{mode:'ONLINE_NOW',forma:'Online'}};
+ const r=await send(input);assert.equal(r.status,200,JSON.stringify(r));
+ const identity={mode:'guest',customerId:null,contextPath:require('./checkout-identity').createCheckoutIdentity({db}).ref(f.context.token).path,revision:f.context.revision};
+ const p=db.doc('checkoutPayments/'+r.data.paymentId),order=db.doc('lojas/'+store+'/pedidos/'+r.data.id);
+ await p.update({ownerUid:null,checkoutIdentity:identity});await order.update({ownerUid:null,clienteId:null});
+ return r;
+}
+
 test('GUEST combinar: pedido sem método/pagamento confirmado, gateway ou duplicidade de estoque',async()=>{
   const f=await guestFixture('AGREED_LATER'),prior=links;
   const input={...f.input,pagamento:{...f.input.pagamento,paymentMethod:'PIX',paymentStatus:'PAID'},status:'Finalizado',payment_status:'PAID'};
@@ -536,10 +592,10 @@ test('GUEST combinar: pedido sem método/pagamento confirmado, gateway ou duplic
   assert.equal(order.formaPagamento,'A combinar');assert.equal(order.status,'Pendente');assert.equal(order.clienteId,null);
   assert.equal((await f.product.get()).get('estoque'),7);assert.equal(links,prior);assert.equal((await db.doc('checkoutPayments/'+id).get()).exists,false);
   assert.equal((await send(input,null)).data.id,id);assert.equal((await f.product.get()).get('estoque'),7);
-  assert.equal((await send({...input,pagamento:{mode:'ONLINE_NOW',forma:'Online'}},null)).status,409);
+  assert.equal((await send({...input,pagamento:{mode:'ONLINE_NOW',forma:'Online'}},null)).status,403);
 });
-test('GUEST telefone inválido não grava pedido; correção com mesma chave conclui uma vez nos dois modos',async()=>{
- for(const mode of ['ONLINE_NOW','AGREED_LATER']){
+test('GUEST telefone inválido não grava pedido; correção com mesma chave conclui Combinar uma vez',async()=>{
+ for(const mode of ['AGREED_LATER']){
   const f=await guestFixture(mode),priorLinks=links;
   const ordersBefore=(await db.collection(`lojas/${store}/pedidos`).get()).size;
   const invalid=await send({...f.input,cliente:{...f.input.cliente,telefone:'629'}},null);
@@ -553,16 +609,16 @@ test('GUEST telefone inválido não grava pedido; correção com mesma chave con
  }
 });
 
-test('GUEST online concorrente/replay mantém uma reserva/link e recusa mudança de telefone no mesmo pedido',async()=>{
-  const f=await guestFixture(),prior=links;
-  const attempts=await Promise.all([send(f.input,null),send(f.input,null)]),good=attempts.find(r=>r.status===200);
-  assert.ok(good,JSON.stringify(attempts));assert.ok(attempts.every(r=>[200,409].includes(r.status)));
-  assert.equal(links,prior+1);assert.equal((await f.product.get()).get('estoque'),7);
-  const replay=await send(f.input,null);assert.equal(replay.status,200);assert.equal(replay.data.id,good.data.id);assert.equal(links,prior+1);
-  assert.equal((await send({...f.input,cliente:{...f.input.cliente,telefone:'62988887777'}},null)).status,409);
-  const conflict=await send({...f.input,pagamento:{mode:'AGREED_LATER',forma:'A combinar'}},null);
-  assert.equal(conflict.status,409);assert.equal(conflict.data.code,'CHECKOUT_ATTEMPT_CONFLICT');
+test('GUEST combinar concorrente/replay mantém um pedido e recusa mudança de telefone na mesma chave',async()=>{
+ const f=await guestFixture(),prior=links;
+ const attempts=await Promise.all([send(f.input,null),send(f.input,null)]);
+ assert.ok(attempts.every(r=>r.status===200),JSON.stringify(attempts));assert.equal(attempts[0].data.id,attempts[1].data.id);
+ assert.equal(links,prior);assert.equal((await f.product.get()).get('estoque'),7);
+ const replay=await send(f.input,null);assert.equal(replay.status,200);assert.equal(replay.data.id,attempts[0].data.id);
+ const conflict=await send({...f.input,cliente:{...f.input.cliente,telefone:'62988887777'}},null);
+ assert.equal(conflict.status,409);assert.equal(conflict.data.code,'CHECKOUT_ATTEMPT_CONFLICT');
 });
+
 test('GUEST com telefone novo compra sem criar/vincular cadastro e não reutiliza telefone inválido',async()=>{
   const f=await guestFixture(),count=(await db.collection('clientes').get()).size,prior=links;
   for(const telefone of ['abc','123','+15555555555','(00) 99999-0000']) {
@@ -587,9 +643,9 @@ test('GUEST exige contexto/revisão/loja válidos e não pode usar endereço sal
   const privateRead=await originalFetch(base+`/clientes/buscar?lojaId=${store}&telefone=62999991234`);
   assert.ok(privateRead.status>=400);
 });
-test('GUEST retorno autoriza somente seu pagamento; PAID exige payment_check e não herda Auth ambiente',async()=>{
+test('GUEST histórico: retorno autoriza somente seu pagamento; PAID exige payment_check e não herda Auth ambiente',async()=>{
   const f=await guestFixture(),g=await guestFixture();
-  const created=await send(f.input,null),other=await send(g.input,null);assert.equal(created.status,200);assert.equal(other.status,200);
+  const created=await historicalGuestPayment(f),other=await historicalGuestPayment(g);assert.equal(created.status,200);assert.equal(other.status,200);
   const status=async extra=>{const r=await originalFetch(base+'/checkout/payment-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paymentId:created.data.paymentId,...extra})});return {status:r.status,data:await r.json()};};
   assert.equal((await status({})).status,404);
   assert.equal((await status({paymentReturnToken:other.data.paymentReturnToken})).status,404);
@@ -625,7 +681,7 @@ test('GUEST não ignora preço, frete, estoque, loja inativa ou disponibilidade 
 
 test('Guest troca para combinar somente depois de encerramento confirmado; chave nova não duplica reserva anterior',async()=>{
  const {inspectGuestPaymentAttempt,completeCheckoutAttempt}=await import('../crm/public/guest-payment-attempt.mjs');
- const f=await guestFixture(),priorLinks=links,created=await send(f.input,null);assert.equal(created.status,200,JSON.stringify(created));
+ const f=await guestFixture(),priorLinks=links,created=await historicalGuestPayment(f);assert.equal(created.status,200,JSON.stringify(created));
  const key='doceria-payment-pending',values=new Map([[key,JSON.stringify({idempotencyKey:f.input.idempotencyKey,paymentId:created.data.paymentId})],['doceria-payment-return:'+created.data.paymentId,JSON.stringify({token:created.data.paymentReturnToken})]]);
  const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
  const request=async body=>{const r=await originalFetch(base+'/checkout/payment-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {ok:r.ok,data:await r.json()};};
@@ -645,9 +701,9 @@ test('Guest troca para combinar somente depois de encerramento confirmado; chave
  assert.equal((await db.doc(`lojas/${store}/pedidos/${offline.data.id}`).get()).get('paymentStatus'),'PENDING');
 });
 
-test('Guest conclui checkout online e inicia outra compra Combinar, sem cancelar ou reutilizar a primeira',async()=>{
+test('Guest com checkout online histórico inicia outra compra Combinar, sem cancelar ou reutilizar a primeira',async()=>{
  const {completeCheckoutAttempt}=await import('../crm/public/guest-payment-attempt.mjs');
- const f=await guestFixture(),priorLinks=links,created=await send(f.input,null);assert.equal(created.status,200,JSON.stringify(created));
+ const f=await guestFixture(),priorLinks=links,created=await historicalGuestPayment(f);assert.equal(created.status,200,JSON.stringify(created));
  const key='doceria-payment-pending',values=new Map([[key,JSON.stringify({idempotencyKey:f.input.idempotencyKey})],['checkoutState_v1',JSON.stringify({storeId:store,cart:[{id:'product',quantity:1}]})]]);
  const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
  assert.equal(completeCheckoutAttempt({storage,attemptKey:f.input.idempotencyKey,orderId:created.data.id,paymentId:created.data.paymentId,paymentReturnToken:created.data.paymentReturnToken,storeId:store,mode:'ONLINE_NOW'}),true);
