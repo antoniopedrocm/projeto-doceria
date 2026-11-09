@@ -1,0 +1,12 @@
+{
+  "runtimeCommit": "9d208090",
+  "environment": "DEV",
+  "source": "Resposta do titular ao roteiro de homologação do modal responsivo",
+  "response": "PASS",
+  "scope": "Roteiro solicitado: checkout, rolagem, botão acessível, ausência de cortes/overflow; dispositivos móveis com teclado e PC com zoom. Visitante/autenticado quando possível.",
+  "detail": "Aceite agregado do usuário; não foi fornecido inventário individual de aparelhos, navegadores ou modalidades executadas.",
+  "newAgentRuntimeTests": false,
+  "newDeploy": false,
+  "productionDeploy": false,
+  "formalGlobalPercent": 97
+}

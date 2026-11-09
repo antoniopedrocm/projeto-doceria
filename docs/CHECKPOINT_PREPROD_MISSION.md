@@ -2,7 +2,7 @@
 
 ## Estado vigente — 08/11/2026: modal responsivo publicado DEV; PROD somente local
 
-[Checkpoint e evidências](CHECKPOINT_CHECKOUT_RESPONSIVE.md): commit funcional `9d208090`, push/Hosting DEV, 61/61 hashes e 4/4 layouts públicos PASS; 73 regressões, 39 cenários Chrome e 39 Edge PASS. Patch e build/testes integrados ao PROD local, sem push/deploy PROD. Falta aceite físico iPhone/Android/zoom nativo; fixtures não substituem esse aceite. Regras financeiras/Auth preservadas. Fase9 100%; Fase10 87,50%; global 97,00%; Fase13 0%. Planejamento Pix-only anterior preservado abaixo; aguardar confirmação oficial.
+[Checkpoint e evidências](CHECKPOINT_CHECKOUT_RESPONSIVE.md): commit funcional `9d208090`, push/Hosting DEV, 61/61 hashes e 4/4 layouts públicos PASS; 73 regressões, 39 cenários Chrome e 39 Edge PASS. Patch e build/testes integrados ao PROD local, sem push/deploy PROD. Aceite manual do titular recebido: **PASS** para o roteiro solicitado; ajuste responsivo concluído. Evidência em `manual-acceptance.json`, sem inventário individual de dispositivos. Regras financeiras/Auth preservadas. Fase9 100%; Fase10 87,50%; global 97,00%; Fase13 0%. Planejamento Pix-only anterior preservado abaixo; aguardar confirmação oficial.
 
 
 ## Estado vigente — 08/11/2026: pagamento por acesso publicado no DEV; aceite pendente
