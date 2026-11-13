@@ -1,5 +1,17 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## 13/11/2026 — candidato DEV versionado e enviado; criptografia/validação humana pendentes
+
+**DEV commit/push confirmado `7d16f67683cd6a577baca73a69021e6d6490d773`**, branch `feature/infinitepay-customer-auth`, remoto igual à referência local na conferência.159arquivos públicos revisados, sem backups/dotenvreal/certificados/chaves; `.env` comflagdebuild retirado doGit e mantido local. Patternreview e inspeção de campos identificaram apenasfixtures sintéticas e nomes públicos de lojas. O commit é **candidato**, não aceiteC16 ou produção; novo commit apenas documental pode sucedê-lo sem mudar seu runtime. Nenhum deployDEV necessário: fontes executáveis já publicadas preservadas.
+
+Pacote limpoC16 pronto em `projeto-doceria-main/credenciais/C16-AUDITORIA-SEM-CREDENCIAIS-20261113.zip`,2.789.038bytes,SHA256 `83c5eda49e32828ce37149427d33c2125eefb18f82af5559fffdcd1e0b32d62a`,446arquivosde código e208documentos/evidências vinculados, semdotenv/históricoGit/credenciaisreais. Mantido fora doGit junto ao manifesto. Scripts necessários e roteiro paraPython/plugin na novamáquina preparados; nenhum Python instalado aqui.
+
+Inventário de backup sem erros de leitura: fontesaproximadasDEV1,81GB/16.832arquivos ePROD0,68GB/7.387arquivos, antes da atualização final dosmanifestos. **Esses são tamanhos de origem, não arquivos criptografados concluídos.** Jobs7zAES256/cabeçalhoscriptografados e verificação local preparados; titular deve definir senha diretamente no7-Zip e testar os arquivos, sem enviarsenha ouarmazená-la junto. Atualizar `archive-integrity.json` após criação/teste; restauração na novamáquina semprePENDENTE até prova. Não formatar, apagar, revogar ou alegar backupcompleto por haver somentejob/lista.
+
+MetadadosSecretManagerDEV confirmados:Garavelo versões2e1ENABLED, bindingpreviamenteaprovadoversão2preservado;Mapsversão1ENABLED;MatrizSecretNOT_FOUND/modobásicoopcional. Nenhum valor lido/exportado,nova chave/versionamento/rotação. Sessõesprotegidas,globalCodexDB,auth.json,cookies e credenciaisWindows não transferidos. `.git` completo/worktrees/alteraçõeslocais ehelpersDoceria externos entram nosbackups separados porambiente.
+
+PRODlocal integração/testes/buildPASS registrados acima; commit/pushPROD ainda **BLOQUEADOS** pela condiçãoGitHubApps403/publicadoresnão comprovados. Não houveFirebasePROD. Aguardar conferência doDono porinterfaceGitHub e senha privada no7-Zip; não repetir solicitações de APIKey ouSMS. Fase9=100%;Fase10=93,75%;C16pendente;global97,00%;Fase13=0%;PRODREADY:NÃO. Nova autorização de push é válida, mas não elimina os gates expressos desta missão.
+
 ## 13/11/2026 — migração de máquina autorizada; candidato Git e backups em preparação
 
 Novo prompt substitui a espera anterior: concluir migração/backup e preparar C16 para nova máquina, **sem instalar Python nesta máquina**. Commit/pushDEV ePROD autorizados sob gates de proteção; restrição anterior da janela conjunta para pushPROD substituída. FirebasePROD segue expressamente bloqueado, inclusive consultas/configurações/Secrets. Nenhum SMS/claim/pagamento/migração/WhatsApp real autorizado.
