@@ -1,0 +1,1278 @@
+{
+  "area": "dev",
+  "errors": 0,
+  "warnings": 66,
+  "files": [
+    {
+      "file": "crm\\src\\App.js",
+      "errors": 0,
+      "warnings": 66,
+      "messages": [
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'BookOpen' is defined but never used.",
+          "line": 46,
+          "column": 114,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 46,
+          "endColumn": 122
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'parsePointTimeToMinutes' is defined but never used.",
+          "line": 123,
+          "column": 3,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 123,
+          "endColumn": 26
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'DEFAULT_NCM_PRODUCT' is assigned a value but never used.",
+          "line": 400,
+          "column": 7,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 400,
+          "endColumn": 26
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useEffect has a missing dependency: 'setCurrentPage'. Either include it or remove the dependency array.",
+          "line": 5144,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 5144,
+          "endColumn": 10,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [setCurrentPage]",
+              "fix": {
+                "range": [
+                  240865,
+                  240867
+                ],
+                "text": "[setCurrentPage]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'allMenuItems' array makes the dependencies of useMemo Hook (at line 5225) change on every render. To fix this, wrap the initialization of 'allMenuItems' in its own useMemo() Hook.",
+          "line": 5180,
+          "column": 9,
+          "nodeType": "VariableDeclarator",
+          "endLine": 5196,
+          "endColumn": 4
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'allMenuItems' array makes the dependencies of useCallback Hook (at line 21251) change on every render. To fix this, wrap the initialization of 'allMenuItems' in its own useMemo() Hook.",
+          "line": 5180,
+          "column": 9,
+          "nodeType": "VariableDeclarator",
+          "endLine": 5196,
+          "endColumn": 4
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useEffect has a missing dependency: 'userId'. Either include it or remove the dependency array.",
+          "line": 5408,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 5408,
+          "endColumn": 52,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [currentStoreIdForDisplay, competenciaLabel, userId]",
+              "fix": {
+                "range": [
+                  253333,
+                  253377
+                ],
+                "text": "[currentStoreIdForDisplay, competenciaLabel, userId]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useEffect has a missing dependency: 'userId'. Either include it or remove the dependency array.",
+          "line": 5462,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 5462,
+          "endColumn": 53,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [currentStoreIdForDisplay, recordsQueryMonth, userId]",
+              "fix": {
+                "range": [
+                  255252,
+                  255297
+                ],
+                "text": "[currentStoreIdForDisplay, recordsQueryMonth, userId]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'isManualManagerRecord' is assigned a value but never used.",
+          "line": 5641,
+          "column": 11,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 5641,
+          "endColumn": 32
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'getWorkedTime' is assigned a value but never used.",
+          "line": 5890,
+          "column": 11,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 5890,
+          "endColumn": 24
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'calculatePointBalanceDistribution' is assigned a value but never used.",
+          "line": 6153,
+          "column": 11,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 6153,
+          "endColumn": 44
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'getPointAbsenceDebitMinutes' is assigned a value but never used.",
+          "line": 6303,
+          "column": 11,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 6303,
+          "endColumn": 38
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'getPointSheetJustification' is assigned a value but never used.",
+          "line": 6318,
+          "column": 11,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 6318,
+          "endColumn": 37
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has missing dependencies: 'POINT_DEFAULT_EXPECTED_MINUTES', 'getEmployeeById', 'getRecordDateTime', and 'getRecordDayKey'. Either include them or remove the dependency array.",
+          "line": 6860,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 6860,
+          "endColumn": 171,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [records, currentStoreIdForDisplay, activeDayFilter, isManager, userId, getRecordDateTime, getRecordDayKey, recordsQueryMonth, getEmployeeById, user?.auth?.displayName, user?.auth?.email, POINT_DEFAULT_EXPECTED_MINUTES, selectedEmployee]",
+              "fix": {
+                "range": [
+                  314935,
+                  315098
+                ],
+                "text": "[records, currentStoreIdForDisplay, activeDayFilter, isManager, userId, getRecordDateTime, getRecordDayKey, recordsQueryMonth, getEmployeeById, user?.auth?.displayName, user?.auth?.email, POINT_DEFAULT_EXPECTED_MINUTES, selectedEmployee]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'data.subcategorias'. Either exclude it or remove the dependency array. Outer scope values like 'data.subcategorias' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 9649,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 9649,
+          "endColumn": 50,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [defaultSubcategorias]",
+              "fix": {
+                "range": [
+                  463488,
+                  463530
+                ],
+                "text": "[defaultSubcategorias]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'data.produtos'. Either exclude it or remove the dependency array. Outer scope values like 'data.produtos' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 9817,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 9817,
+          "endColumn": 23,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: []",
+              "fix": {
+                "range": [
+                  469478,
+                  469493
+                ],
+                "text": "[]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useEffect has an unnecessary dependency: 'data.produtos'. Either exclude it or remove the dependency array. Outer scope values like 'data.produtos' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 9847,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 9847,
+          "endColumn": 23,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: []",
+              "fix": {
+                "range": [
+                  470532,
+                  470547
+                ],
+                "text": "[]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useCallback has an unnecessary dependency: 'data.produtos'. Either exclude it or remove the dependency array. Outer scope values like 'data.produtos' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 13068,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 13068,
+          "endColumn": 23,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: []",
+              "fix": {
+                "range": [
+                  650739,
+                  650754
+                ],
+                "text": "[]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'data.fornecedores'. Either exclude it or remove the dependency array. Outer scope values like 'data.fornecedores' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 13105,
+          "column": 9,
+          "nodeType": "ArrayExpression",
+          "endLine": 13105,
+          "endColumn": 28,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: []",
+              "fix": {
+                "range": [
+                  653018,
+                  653037
+                ],
+                "text": "[]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'data.produtos'. Either exclude it or remove the dependency array. Outer scope values like 'data.produtos' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 13196,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 13196,
+          "endColumn": 62,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [formData.categoria, productSearchTerm]",
+              "fix": {
+                "range": [
+                  656724,
+                  656778
+                ],
+                "text": "[formData.categoria, productSearchTerm]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useEffect has a missing dependency: 'buildOrderWithTotals'. Either include it or remove the dependency array.",
+          "line": 13231,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 13231,
+          "endColumn": 85,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [showModal, editingOrder, formData.itens, reconcileOpenOrderWithLiveProducts, buildOrderWithTotals]",
+              "fix": {
+                "range": [
+                  658353,
+                  658430
+                ],
+                "text": "[showModal, editingOrder, formData.itens, reconcileOpenOrderWithLiveProducts, buildOrderWithTotals]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'user'. Either exclude it or remove the dependency array. Outer scope values like 'user' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 13912,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 13912,
+          "endColumn": 14,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: []",
+              "fix": {
+                "range": [
+                  702868,
+                  702874
+                ],
+                "text": "[]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has unnecessary dependencies: 'availableStores' and 'user'. Either exclude them or remove the dependency array. Outer scope values like 'availableStores' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 13925,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 13925,
+          "endColumn": 45,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [userStoreIds]",
+              "fix": {
+                "range": [
+                  703434,
+                  703471
+                ],
+                "text": "[userStoreIds]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'user'. Either exclude it or remove the dependency array. Outer scope values like 'user' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14025,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14025,
+          "endColumn": 37,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [canAccessAllTransfers]",
+              "fix": {
+                "range": [
+                  707201,
+                  707230
+                ],
+                "text": "[canAccessAllTransfers]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useCallback has an unnecessary dependency: 'user.role'. Either exclude it or remove the dependency array. Outer scope values like 'user.role' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14031,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14031,
+          "endColumn": 46,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [allowedTransferStatusSet]",
+              "fix": {
+                "range": [
+                  707595,
+                  707633
+                ],
+                "text": "[allowedTransferStatusSet]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'currentStoreIdForDisplay'. Either exclude it or remove the dependency array. Outer scope values like 'currentStoreIdForDisplay' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14036,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14036,
+          "endColumn": 34,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: []",
+              "fix": {
+                "range": [
+                  707848,
+                  707874
+                ],
+                "text": "[]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useCallback has an unnecessary dependency: 'currentStoreIdForDisplay'. Either exclude it or remove the dependency array. Outer scope values like 'currentStoreIdForDisplay' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14044,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14044,
+          "endColumn": 57,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [allowedOriginStoreIds]",
+              "fix": {
+                "range": [
+                  708231,
+                  708280
+                ],
+                "text": "[allowedOriginStoreIds]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useCallback has missing dependencies: 'buildDefaultClosingName' and 'formatInputDate'. Either include them or remove the dependency array.",
+          "line": 14119,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14119,
+          "endColumn": 33,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [buildDefaultClosingName, formatInputDate, getDefaultOriginStoreId]",
+              "fix": {
+                "range": [
+                  711655,
+                  711680
+                ],
+                "text": "[buildDefaultClosingName, formatInputDate, getDefaultOriginStoreId]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useEffect has a missing dependency: 'entreLojasLog'. Either include it or remove the dependency array. Outer scope values like 'availableStores' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14272,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14272,
+          "endColumn": 247,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [allowedOriginStoreIds, allowedStoreIds, allowedTransferStatuses, canAccessAllTransfers, canReadTransferForCurrentViewer, entreLojasLog, selectedStoreIdForView, userStoreIds]",
+              "fix": {
+                "range": [
+                  717123,
+                  717362
+                ],
+                "text": "[allowedOriginStoreIds, allowedStoreIds, allowedTransferStatuses, canAccessAllTransfers, canReadTransferForCurrentViewer, entreLojasLog, selectedStoreIdForView, userStoreIds]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useEffect has a missing dependency: 'entreLojasLog'. Either include it or remove the dependency array. Outer scope values like 'storeInfoMap' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14364,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14364,
+          "endColumn": 68,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [allowedStoreIds, canAccessAllTransfers, entreLojasLog]",
+              "fix": {
+                "range": [
+                  720785,
+                  720845
+                ],
+                "text": "[allowedStoreIds, canAccessAllTransfers, entreLojasLog]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has unnecessary dependencies: 'availableStores' and 'storeInfoMap'. Either exclude them or remove the dependency array. Outer scope values like 'availableStores' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14368,
+          "column": 7,
+          "nodeType": "ArrayExpression",
+          "endLine": 14368,
+          "endColumn": 38,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: []",
+              "fix": {
+                "range": [
+                  721003,
+                  721034
+                ],
+                "text": "[]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'data.produtos'. Either exclude it or remove the dependency array. Outer scope values like 'data.produtos' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14475,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14475,
+          "endColumn": 46,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [formData.lojaOrigemId]",
+              "fix": {
+                "range": [
+                  725283,
+                  725321
+                ],
+                "text": "[formData.lojaOrigemId]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'user.role'. Either exclude it or remove the dependency array. Outer scope values like 'user.role' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14666,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14666,
+          "endColumn": 62,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [allowedTransferStatusSet, transferencias]",
+              "fix": {
+                "range": [
+                  732789,
+                  732843
+                ],
+                "text": "[allowedTransferStatusSet, transferencias]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useEffect has an unnecessary dependency: 'user.role'. Either exclude it or remove the dependency array. Outer scope values like 'user.role' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 14691,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 14691,
+          "endColumn": 60,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [allowedTransferStatusSet, statusFilter]",
+              "fix": {
+                "range": [
+                  733950,
+                  734002
+                ],
+                "text": "[allowedTransferStatusSet, statusFilter]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has a missing dependency: 'entreLojasLog'. Either include it or remove the dependency array.",
+          "line": 16068,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 16068,
+          "endColumn": 200,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [canViewClosing, closingDestinoFilter, closingEndDateFilter, closingMonthFilter, closingOrigemFilter, closingStartDateFilter, closingStatusFilter, entreLojasLog, fechamentos, matchesSelectedStoreClosingView]",
+              "fix": {
+                "range": [
+                  799299,
+                  799491
+                ],
+                "text": "[canViewClosing, closingDestinoFilter, closingEndDateFilter, closingMonthFilter, closingOrigemFilter, closingStartDateFilter, closingStatusFilter, entreLojasLog, fechamentos, matchesSelectedStoreClosingView]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has a missing dependency: 'entreLojasLog'. Either include it or remove the dependency array.",
+          "line": 16111,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 16111,
+          "endColumn": 217,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [activeTab, allowedStoreIds, canAccessAllTransfers, canViewTransfer, destinoFilter, endDateFilter, entreLojasLog, matchesSelectedStoreView, origemFilter, selectedStoreIdForView, startDateFilter, statusFilter, transferencias]",
+              "fix": {
+                "range": [
+                  801946,
+                  802155
+                ],
+                "text": "[activeTab, allowedStoreIds, canAccessAllTransfers, canViewTransfer, destinoFilter, endDateFilter, entreLojasLog, matchesSelectedStoreView, origemFilter, selectedStoreIdForView, startDateFilter, statusFilter, transferencias]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useEffect has a missing dependency: 'entreLojasLog'. Either include it or remove the dependency array.",
+          "line": 16123,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 16123,
+          "endColumn": 135,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [activeTab, destinoFilter, entreLojasLog, filteredTransfers.length, origemFilter, selectedStoreIdForView, statusFilter, transferencias.length]",
+              "fix": {
+                "range": [
+                  802464,
+                  802591
+                ],
+                "text": "[activeTab, destinoFilter, entreLojasLog, filteredTransfers.length, origemFilter, selectedStoreIdForView, statusFilter, transferencias.length]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has a missing dependency: 'canMoveTransferToClosing'. Either include it or remove the dependency array.",
+          "line": 16146,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 16146,
+          "endColumn": 37,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [canMoveTransferToClosing, fechamentos, transferToMove]",
+              "fix": {
+                "range": [
+                  803849,
+                  803878
+                ],
+                "text": "[canMoveTransferToClosing, fechamentos, transferToMove]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has a missing dependency: 'canMoveTransferToClosing'. Either include it or remove the dependency array.",
+          "line": 16162,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 16162,
+          "endColumn": 40,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [canMoveTransferToClosing, transferencias, viewingClosing]",
+              "fix": {
+                "range": [
+                  804788,
+                  804820
+                ],
+                "text": "[canMoveTransferToClosing, transferencias, viewingClosing]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has a missing dependency: 'getTransfersForClosing'. Either include it or remove the dependency array.",
+          "line": 16164,
+          "column": 91,
+          "nodeType": "ArrayExpression",
+          "endLine": 16164,
+          "endColumn": 123,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [getTransfersForClosing, viewingClosing]",
+              "fix": {
+                "range": [
+                  804914,
+                  804946
+                ],
+                "text": "[getTransfersForClosing, viewingClosing]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has an unnecessary dependency: 'data.fornecedores'. Either exclude it or remove the dependency array. Outer scope values like 'data.fornecedores' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 16860,
+          "column": 9,
+          "nodeType": "ArrayExpression",
+          "endLine": 16860,
+          "endColumn": 28,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: []",
+              "fix": {
+                "range": [
+                  851309,
+                  851328
+                ],
+                "text": "[]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'year' is assigned a value but never used.",
+          "line": 16911,
+          "column": 20,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 16911,
+          "endColumn": 24
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'day' is assigned a value but never used.",
+          "line": 16911,
+          "column": 33,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 16911,
+          "endColumn": 36
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has a missing dependency: 'clientes'. Either include it or remove the dependency array. Outer scope values like 'data.clientes' aren't valid dependencies because mutating them doesn't re-render the component.",
+          "line": 16915,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 16915,
+          "endColumn": 36,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [clientes, currentDate]",
+              "fix": {
+                "range": [
+                  853673,
+                  853701
+                ],
+                "text": "[clientes, currentDate]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'year' is assigned a value but never used.",
+          "line": 16949,
+          "column": 40,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 16949,
+          "endColumn": 44
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'month' is assigned a value but never used.",
+          "line": 16949,
+          "column": 46,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 16949,
+          "endColumn": 51
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'invoices' logical expression could make the dependencies of useMemo Hook (at line 17469) change on every render. To fix this, wrap the initialization of 'invoices' in its own useMemo() Hook.",
+          "line": 17291,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17291,
+          "endColumn": 41
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'invoices' logical expression could make the dependencies of useMemo Hook (at line 17879) change on every render. To fix this, wrap the initialization of 'invoices' in its own useMemo() Hook.",
+          "line": 17291,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17291,
+          "endColumn": 41
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'invoices' logical expression could make the dependencies of useMemo Hook (at line 17901) change on every render. To fix this, wrap the initialization of 'invoices' in its own useMemo() Hook.",
+          "line": 17291,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17291,
+          "endColumn": 41
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'fiscalProducts' logical expression could make the dependencies of useMemo Hook (at line 17312) change on every render. To fix this, wrap the initialization of 'fiscalProducts' in its own useMemo() Hook.",
+          "line": 17292,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17292,
+          "endColumn": 53
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'fiscalProducts' logical expression could make the dependencies of useMemo Hook (at line 17331) change on every render. To fix this, wrap the initialization of 'fiscalProducts' in its own useMemo() Hook.",
+          "line": 17292,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17292,
+          "endColumn": 53
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'fiscalProducts' logical expression could make the dependencies of useMemo Hook (at line 17421) change on every render. To fix this, wrap the initialization of 'fiscalProducts' in its own useMemo() Hook.",
+          "line": 17292,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17292,
+          "endColumn": 53
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'fiscalProducts' logical expression could make the dependencies of useMemo Hook (at line 17901) change on every render. To fix this, wrap the initialization of 'fiscalProducts' in its own useMemo() Hook.",
+          "line": 17292,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17292,
+          "endColumn": 53
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'storeProducts' logical expression could make the dependencies of useMemo Hook (at line 17348) change on every render. To fix this, wrap the initialization of 'storeProducts' in its own useMemo() Hook.",
+          "line": 17293,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17293,
+          "endColumn": 46
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'storeProducts' logical expression could make the dependencies of useMemo Hook (at line 17369) change on every render. To fix this, wrap the initialization of 'storeProducts' in its own useMemo() Hook.",
+          "line": 17293,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17293,
+          "endColumn": 46
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'storeProducts' logical expression could make the dependencies of useMemo Hook (at line 17421) change on every render. To fix this, wrap the initialization of 'storeProducts' in its own useMemo() Hook.",
+          "line": 17293,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17293,
+          "endColumn": 46
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'storeProducts' logical expression could make the dependencies of useCallback Hook (at line 18040) change on every render. To fix this, wrap the initialization of 'storeProducts' in its own useMemo() Hook.",
+          "line": 17293,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17293,
+          "endColumn": 46
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'orders' logical expression could make the dependencies of useMemo Hook (at line 17433) change on every render. To fix this, wrap the initialization of 'orders' in its own useMemo() Hook.",
+          "line": 17294,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17294,
+          "endColumn": 38
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'orders' logical expression could make the dependencies of useMemo Hook (at line 17905) change on every render. To fix this, wrap the initialization of 'orders' in its own useMemo() Hook.",
+          "line": 17294,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17294,
+          "endColumn": 38
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "The 'clients' logical expression could make the dependencies of useMemo Hook (at line 17457) change on every render. Move it inside the useMemo callback. Alternatively, wrap the initialization of 'clients' in its own useMemo() Hook.",
+          "line": 17295,
+          "column": 11,
+          "nodeType": "VariableDeclarator",
+          "endLine": 17295,
+          "endColumn": 40
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useMemo has a missing dependency: 'manualInvoiceForm'. Either include it or remove the dependency array.",
+          "line": 17425,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 17425,
+          "endColumn": 114,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [manualInvoiceForm]",
+              "fix": {
+                "range": [
+                  879547,
+                  879653
+                ],
+                "text": "[manualInvoiceForm]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "react-hooks/exhaustive-deps",
+          "severity": 1,
+          "message": "React Hook useCallback has missing dependencies: 'setModelOverride' and 'setOperationCfop'. Either include them or remove the dependency array.",
+          "line": 18060,
+          "column": 8,
+          "nodeType": "ArrayExpression",
+          "endLine": 18060,
+          "endColumn": 78,
+          "suggestions": [
+            {
+              "desc": "Update the dependencies array to be: [getPreInvoiceLockedReason, invoices, normalizeOrderForPreInvoiceEdit, setModelOverride, setOperationCfop]",
+              "fix": {
+                "range": [
+                  907308,
+                  907378
+                ],
+                "text": "[getPreInvoiceLockedReason, invoices, normalizeOrderForPreInvoiceEdit, setModelOverride, setOperationCfop]"
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'percentPlain' is assigned a value but never used.",
+          "line": 19003,
+          "column": 15,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 19003,
+          "endColumn": 27
+        },
+        {
+          "ruleId": "no-unused-vars",
+          "severity": 1,
+          "message": "'order' is assigned a value but never used.",
+          "line": 21031,
+          "column": 19,
+          "nodeType": "Identifier",
+          "messageId": "unusedVar",
+          "endLine": 21031,
+          "endColumn": 24
+        },
+        {
+          "ruleId": "no-duplicate-case",
+          "severity": 1,
+          "message": "Duplicate case label.",
+          "line": 21346,
+          "column": 7,
+          "nodeType": "SwitchCase",
+          "messageId": "unexpected",
+          "endLine": 21346,
+          "endColumn": 265
+        },
+        {
+          "ruleId": "no-duplicate-case",
+          "severity": 1,
+          "message": "Duplicate case label.",
+          "line": 21347,
+          "column": 7,
+          "nodeType": "SwitchCase",
+          "messageId": "unexpected",
+          "endLine": 21347,
+          "endColumn": 257
+        }
+      ]
+    },
+    {
+      "file": "crm\\src\\utils\\clientApi.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\utils\\customerDirectorySync.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\utils\\customerDirectorySync.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\customerDirectoryView.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\crmReconciliation.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\components\\orders\\ReceiveOrderPayment.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\components\\orders\\ReceiveOrderPayment.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\components\\orders\\OrderAdminHistory.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\orderFinancialRecognition.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\orderFinancialRecognition.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\receiptDialogLifetime.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\payments\\InfinitePaySettings.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\payments\\InfinitePaySettings.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\index.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\crm-client-edit.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\crm-client-edit.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\staff-customer-directory.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\staff-customer-directory.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\staff-customer-directory-emulator.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\firestore.rules.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\manual-order-payment.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\manual-order-payment-emulator.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\admin-order-edit.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-policy.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-policy.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-native.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-credentials.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-settings-emulator.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\checkout-payment.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\payment-settings.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    }
+  ]
+}

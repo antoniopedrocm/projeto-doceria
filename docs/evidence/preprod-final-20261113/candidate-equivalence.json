@@ -1,0 +1,119 @@
+{
+  "at": "2026-11-13T17:34:02.374Z",
+  "codeDigest": "3bdff367c2a31154184de342384341bb9bd93f9331cd2dfeb91720ea5cd3332a",
+  "sourceDrift": [],
+  "files": [
+    {
+      "file": "crm/public/customer-phone-claim.mjs",
+      "devStage": "IDENTICAL",
+      "prodLocal": "DIFFERENT"
+    },
+    {
+      "file": "crm/src/App.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "DIFFERENT"
+    },
+    {
+      "file": "crm/src/components/orders/OrderAdminHistory.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "DIFFERENT"
+    },
+    {
+      "file": "crm/src/components/orders/ReceiveOrderPayment.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "MISSING"
+    },
+    {
+      "file": "crm/src/orderFinancialRecognition.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "DIFFERENT"
+    },
+    {
+      "file": "crm/src/payments/InfinitePayCredentialForm.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "IDENTICAL"
+    },
+    {
+      "file": "crm/src/payments/InfinitePaySettings.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "IDENTICAL"
+    },
+    {
+      "file": "crm/src/utils/clientApi.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "DIFFERENT"
+    },
+    {
+      "file": "crm/src/utils/customerDirectorySync.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "MISSING"
+    },
+    {
+      "file": "firestore.rules",
+      "devStage": "IDENTICAL",
+      "prodLocal": "DIFFERENT"
+    },
+    {
+      "file": "functions/admin-order-edit.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "DIFFERENT"
+    },
+    {
+      "file": "functions/card-1x-fee-credentials.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "IDENTICAL"
+    },
+    {
+      "file": "functions/card-1x-fee-policy.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "IDENTICAL"
+    },
+    {
+      "file": "functions/checkout-payment.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "IDENTICAL"
+    },
+    {
+      "file": "functions/crm-client-edit.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "DIFFERENT"
+    },
+    {
+      "file": "functions/index.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "DIFFERENT"
+    },
+    {
+      "file": "functions/infinitepay-secret-store.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "IDENTICAL"
+    },
+    {
+      "file": "functions/manual-order-payment.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "MISSING"
+    },
+    {
+      "file": "functions/payment-credential-status.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "IDENTICAL"
+    },
+    {
+      "file": "functions/payment-credentials.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "IDENTICAL"
+    },
+    {
+      "file": "functions/payment-settings.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "IDENTICAL"
+    },
+    {
+      "file": "functions/staff-customer-directory.js",
+      "devStage": "IDENTICAL",
+      "prodLocal": "MISSING"
+    }
+  ],
+  "prodFirebaseAccessed": false,
+  "prodFilesChanged": false
+}

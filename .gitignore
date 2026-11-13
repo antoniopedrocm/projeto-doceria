@@ -73,3 +73,13 @@ playstore-builds/
 
 # Local archives consolidated under this workspace
 /_preservados/
+
+# Local machine migration: NEVER publish credentials, archives or recovery material
+credenciais/
+**/credenciais/
+*.7z
+*.agbackup
+*.backup.enc
+.env*
+!.env.example
+!.env.*.example

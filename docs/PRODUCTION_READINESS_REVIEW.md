@@ -1,5 +1,17 @@
 # Production Readiness Review — DEV
 
+## 13/11/2026 — C15 encerrado: primeiro vínculo Google e continuidade aprovados
+
+**C15 PASS; Fase10=93,75% (15/16). C16 permanece PENDENTE. Fase9=100%; global ponderado=97,00%; Fase13=0%; PROD READY:NÃO.** Titular aprovou1endereço/2pedidos/detalhes,refresh,logout/relogin Google sem novoSMS/claim,retornoMatriz e ausência de menus administrativos. Leitura posterior confirmou16pós-condições técnicas, mesmo Customer/20documentos/2pedidos/1endereço,owner Google/mappings corretos e única auditoria, sem duplicidade. E-mail/senha já PASS preservado. [Aceite consolidado do caso](evidence/phase10-c15-google-20261113/acceptance.json).
+
+A trilha preserva2solicitações SMS (10h04 expirada;11h38 solicitada/11h39 consumida). Titular confirmou a solicitação das11h38. O limite inicial era1; diferença registrada, sem autorização retroativa presumida e sem envio/claim por ferramenta. Não reenviar nem refazer vínculo: Customer agora proprietário. C16 não é fechado automaticamente; próximos gates são aceites complementares, consolidação/versionamento DEV e revisão aplicável. Sem novo runtime/build/deploy,commit/push ou acesso PROD para registrar o aceite. Estados anteriores abaixo são históricos.
+
+
+## 12/11/2026 — preparação financeira e gates atuais
+
+GaraveloDEV ACTIVE/antoniopedrocm/versão2 confirmado em leitura, Matrizhabilitada sem APIKey no modo básico; nenhum vínculo financeiro cruza lojas. [Estado completo](INFINITEPAY_PREPROD_STATUS.md). G1/G2/G3 já implementados/testados/publicados (d87174b6e sucessores), não são funcionalidades ausentes; registros anteriores de nãoimplementado são históricos. Revisão consolidada preserva prova deG3 sem operação real. GitHubPROD merge/PRdisabled_manually/filas0, CIlocal preparado sem deploy. C15-E e GoogleexistentePASS; faltamprimeiroclaimGoogle eC16. ContasPROD informadas peloDonocomo iguais às respectivasDEV; nenhuma chave/configuraçãoPROD aplicada. Backlog:MercadoPago apósInfinitePayPROD,códigoWhatsAppdepois. Fase9100%;Fase1087,50%;global97,00%;Fase130%;PRODREADY:NÃO.
+
+
 ## Estado vigente — 07/11/2026: revisão do contrato financeiro de 06/11
 
 [Contrato Ricardo/CloudWalk](INFINITEPAY_SUPPORT_CONTRACT_2026-11-06.md) e [auditoria do código](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md), sem alteração funcional: PAID via consulta oficial, merchant persistido, isolamento, recibos/idempotência e operações Staff preservados. G1/G2/G3 comprovados/propostos — seleção de eventos nos links, registro de expired/overdue e proteção explícita contra registrar parcial como refund integral — continuam **abertos para correção/teste/deploy/homologação DEV após autorização**. 18 testes locais com mocks PASS não substituem esse aceite. Não inventar assinatura, API de refund ou disponibilidade da API granular/MCP futuros.

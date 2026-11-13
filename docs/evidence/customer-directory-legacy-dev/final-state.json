@@ -1,0 +1,28 @@
+{
+  "at": "2026-11-12T04:32:53.274Z",
+  "git": {
+    "dev": {
+      "head": "7e7d7b6918d9edb045dd11443a2c42efe114640a",
+      "indexEmpty": true
+    },
+    "prod": {
+      "head": "a0229cc019b3b4cf689d7ab15c47269974d38b71",
+      "indexEmpty": true
+    }
+  },
+  "hostingVersion": "d1b23d2507ff6204",
+  "main": "static/js/main.ae7de988.js",
+  "sourceFiles": 32,
+  "sourceMatchesPublishedArtifact": true,
+  "remote": "api-00078-rig",
+  "rulesUnchanged": true,
+  "prodDeploy": false,
+  "commit": false,
+  "push": false,
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

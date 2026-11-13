@@ -1,0 +1,84 @@
+{
+  "at": "2026-11-13T02:51:26.032Z",
+  "project": "crmdoceria-9959e",
+  "tests": {
+    "dev": {
+      "paymentUnit": 42,
+      "integration": 82,
+      "financialEventsIntegration": 15,
+      "financialUI": 19,
+      "failed": 0
+    },
+    "prod": {
+      "paymentUnit": 42,
+      "integration": 82,
+      "financialEventsIntegration": 15,
+      "financialUI": 19,
+      "failed": 0,
+      "ciExistingBackend": 82,
+      "ciGuard": 7
+    }
+  },
+  "groupsMayOverlap": true,
+  "lint": {
+    "errors": 0,
+    "warnings": 0,
+    "scope": "only new/changed files"
+  },
+  "diffCheck": "PASS both workspaces",
+  "publishedRuntimeFilesUnchanged": 21,
+  "hosting": "sites/crmdoceria-9959e/versions/441974b6f414a567",
+  "publicConfig": [
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "httpStatus": 200,
+      "enabled": true
+    },
+    {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "httpStatus": 200,
+      "enabled": true
+    }
+  ],
+  "localCI": {
+    "files": [
+      {
+        "file": ".github/workflows/firebase-hosting-merge.yml",
+        "beforeSha256": "6f4aebb5f1d1a28f88d025de338f2a230139d2f54d7fa1f605efecce1c68fe9f",
+        "afterSha256": "f509b538228a58b54c6cef0b7abbe830543e0be48a80c9cd7af828a3b3ae4508"
+      },
+      {
+        "file": ".github/workflows/firebase-hosting-pull-request.yml",
+        "beforeSha256": "611f51bbbbe4ae1ab2a2c17b944232ccaa022a8a779c907d8a3d511383020a9a",
+        "afterSha256": "c28b6c113fc553e1f3cab02512b1c928f8ec7c0dfef2d75cbcd1c0722c5eb8a8"
+      }
+    ],
+    "newFiles": [
+      "scripts/check-ci-no-deploy.cjs",
+      "scripts/check-ci-no-deploy.test.cjs"
+    ],
+    "readOnlyPermissions": true,
+    "deployStepsRemoved": true,
+    "remoteWorkflowsEdited": false,
+    "push": false,
+    "workflowRunTriggered": false
+  },
+  "newBuild": false,
+  "newDevDeploy": false,
+  "reasonNoBuildOrDeploy": "Only tests, documentation and PROD-local CI changed; published runtime matches tested artifact.",
+  "prodFirebaseAccess": false,
+  "newLinks": 0,
+  "payments": 0,
+  "refunds": 0,
+  "sms": 0,
+  "claims": 0,
+  "secretPayloadAccess": false,
+  "commit": false,
+  "push": false,
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

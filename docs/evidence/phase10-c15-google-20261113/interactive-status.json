@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "at": "2026-11-13T13:06:34.536Z",
+  "project": "crmdoceria-9959e",
+  "caseId": "a403670c5b1f4151",
+  "stage": "WAITING_FOR_PHONE_PROOF",
+  "uidFingerprint": "e90cb2b1830e3653",
+  "owners": 0,
+  "customerCount": 20,
+  "originalOrders": 2,
+  "relatedOrders": 2,
+  "addresses": 1,
+  "challengeCount": 1,
+  "challengeStates": [
+    "sent"
+  ],
+  "verificationAttempts": [
+    0
+  ],
+  "auditCount": 0,
+  "unexpectedCustomerFields": [],
+  "remoteWritesByThisVerification": 0,
+  "smsRequestedByAgent": 0,
+  "uiAcceptance": "PENDING",
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

@@ -146,9 +146,14 @@ test('integração real dos três cardápios limpa estado anterior e restaura me
     const context=vm.createContext({window,cart:[{id:'old'}],allProducts:[],pendingOrderDetails:{order_nsu:'old'},appliedCupom:{codigo:'OLD'},addressStep:3,checkoutBlockingIssue:{type:'frete'},reorderOwnerUid:null,
       createInitialGuestAddressFlowState:()=>({currentStep:1,formData:{}}),renderCart:()=>{if(fail){fail=false;throw Error('render');}},updateAllSummaries:()=>{},resetWhatsAppConsent:()=>{},
       selectedAddressText:{textContent:'old'},paymentMethodSelect:{value:'old'},guestPaymentMethodSelect:{value:'old'},paymentCupomInput:{value:'OLD'},paymentCupomMessage:{textContent:'old'},paymentError:{textContent:'old'},paymentVerifyCupomButton:{classList:{replace:()=>{}}}});
+    const freightStart=source.indexOf('        const invalidateCheckoutFreight =');
+    const freightEnd=source.indexOf('        const applyCheckoutFreight =',freightStart);
+    assert.ok(freightStart>=0 && freightEnd>freightStart);
+    vm.runInContext(source.slice(freightStart,freightEnd),context);
     vm.runInContext(code,context);const payload={items:[{id:'p',preco:16,quantity:1}],products:[product()],uid:'a'};
     fail=true;assert.throws(()=>context.applyReorderCart(payload));assert.equal(context.cart[0].id,'old');assert.equal(context.window.valorFrete,4);
     context.applyReorderCart(payload);assert.equal(context.cart[0].id,'p');assert.equal(context.reorderOwnerUid,'a');assert.equal(context.window.valorFrete,0);
+    assert.equal(context.window.freightQuoteState,'UNQUOTED');assert.equal(context.window.distanciaFreteKm,null);
     assert.equal(JSON.stringify(context.pendingOrderDetails),'{}');assert.equal(context.appliedCupom,null);assert.equal(context.paymentMethodSelect.value,'');assert.equal(context.selectedAddressText.textContent,'');
   }
 });
@@ -169,7 +174,12 @@ test('restauração real do cardápio aceita mesma sessão e descarta transferê
         sessionStorage:{getItem:()=>JSON.stringify(freshCheckoutState(store,[{id:'p',nome:'p',preco:16,quantity:1}],'a'))},getAuth:()=>({currentUser:uid?{uid}:null}),app:{},
         window:{addressFlowState:{}},addressStep:1,selectedAddressText:{textContent:''},renderCart:()=>{},updateAllSummaries:()=>{},clearCheckoutState:()=>{},console,
         createInitialGuestAddressFlowState:()=>({currentStep:1,formData:{}})});
+      const freightStart=source.indexOf('        const invalidateCheckoutFreight =');
+      const freightEnd=source.indexOf('        const applyCheckoutFreight =',freightStart);
+      assert.ok(freightStart>=0 && freightEnd>freightStart);
+      vm.runInContext(source.slice(freightStart,freightEnd),context);
       vm.runInContext(code,context);context.restoreCheckoutState();assert.equal(context.cart.length,uid==='a'?1:0);
+      if(uid==='a'){assert.equal(context.window.valorFrete,0);assert.equal(context.window.freightQuoteState,'UNQUOTED');}
     }
   }
 });

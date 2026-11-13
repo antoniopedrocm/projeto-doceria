@@ -4,6 +4,12 @@ const {claimedClientPatch,isClientStaffProfile} = require('./crm-client-edit');
 const customer = {authOwnerUid:'customer',authOwnerUids:['customer','second'],identityRegistryVersion:1,phone_verified_at:'verified',telefone:'62985550045',lojaId:'loja-a',lojasVisitadas:['loja-a'],address:{street:'Anterior',number:'123'},enderecos:[{id:'saved'}],numeroDeCompras:5,valorEmCompras:50};
 const owner = {role:'dono',ativo:true};
 const patch = (options={}) => claimedClientPatch({customer,input:{nome:'Revisado',cpf:'52998224725',cep:'74477600',address:{street:'Nova',zip:'74477600'}},profile:owner,lojaId:'loja-a',...options});
+test('reviewed purchase relationship allows legacy CRM edit; body flags never grant access',()=>{
+  const options={profile:{role:'atendente',lojaIds:['loja-a']},customer:{...customer,lojaId:null,lojasVisitadas:[]}};
+  assert.throws(()=>patch({...options,input:{nome:'Test',storeRelationshipVerified:true}}),e=>e.httpStatus===403);
+  assert.equal(patch({...options,storeRelationshipVerified:true}).nome,'Revisado');
+  assert.throws(()=>patch({...options,storeRelationshipVerified:true,profile:{role:'atendente',lojaIds:['loja-b']}}),e=>e.httpStatus===403);
+});
 test('CRM allows linked-customer contact/fiscal data without identity/phone/history mutation', () => {
   const before=JSON.stringify(customer);
   const result=patch({input:{...customer,nome:'Revisado',authOwnerUid:'forged',role:'dono',phone_verified_at:null,telefone:'62985550045',numeroDeCompras:999,valorEmCompras:999,enderecos:[],saved_cards:['forged'],provider:'forged',address:{street:'Nova',phoneVerified:true}}});

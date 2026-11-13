@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-12T04:32:52.775Z",
+  "ownerStatement": "acredito que 12, mas amanha eu confirmo",
+  "confirmedBaseline": null,
+  "possibleBaseline": 12,
+  "sharedMerchantDecision": null,
+  "noActivation": true,
+  "reminder": {
+    "id": "confirmar-parcelamento-infinitepay",
+    "date": "2026-11-13",
+    "time": "09:00",
+    "timezone": "America/Sao_Paulo"
+  }
+}

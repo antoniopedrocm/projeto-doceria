@@ -1,0 +1,35 @@
+{
+  "at": "2026-11-13T14:47:41.378Z",
+  "project": "crmdoceria-9959e",
+  "caseId": "a403670c5b1f4151",
+  "initialAuthorizedMaximumSms": 1,
+  "observedRequestCount": 2,
+  "requests": [
+    {
+      "state": "consumed",
+      "createdAt": "2026-11-13T14:38:21.170Z",
+      "expiresAt": "2026-11-13T14:43:21.170Z",
+      "consumedAt": "2026-11-13T14:39:18.581Z",
+      "attempts": 1,
+      "storeOriginal": true,
+      "customerOriginal": true,
+      "provider": "google"
+    },
+    {
+      "state": "sent",
+      "createdAt": "2026-11-13T13:04:45.980Z",
+      "expiresAt": "2026-11-13T13:09:45.980Z",
+      "consumedAt": null,
+      "attempts": 0,
+      "storeOriginal": true,
+      "customerOriginal": true,
+      "provider": "google"
+    }
+  ],
+  "remainingAuthorizedSms": 0,
+  "automaticResendAllowed": false,
+  "secondRequestOrigin": "PENDING_TITULAR_CLARIFICATION",
+  "retroactiveAuthorizationAssumed": false,
+  "agentSmsRequests": 0,
+  "remoteWritesByVerification": 0
+}

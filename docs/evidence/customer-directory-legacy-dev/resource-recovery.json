@@ -1,0 +1,8 @@
+{
+  "at": "2026-11-12T04:29:16.070Z",
+  "initialFailure": "Build process out of memory; C drive approximately 246 MB free",
+  "recovery": "Single build worker, max old space 1024 MiB, max semi space 16 MiB; no source changes or filesystem deletion",
+  "buildPassed": true,
+  "noUserAppsClosed": true,
+  "noPersistentSystemConfigurationChanged": true
+}

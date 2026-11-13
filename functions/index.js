@@ -44,6 +44,7 @@ const {
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
 const db = admin.firestore();
+const {createStaffCustomerDirectory,mountStaffCustomerDirectory,createDirectoryAuthorizer}=require('./staff-customer-directory');
 const whatsappWorker = createWhatsAppWorker({db, logger});
 Object.assign(exports, createWhatsAppWorkerFunctions({db, onDocumentCreated, onDocumentUpdated, onSchedule, logger, worker: whatsappWorker}));
 Object.assign(exports, createWhatsAppAdminFunctions({db, onCall, HttpsError}));
@@ -434,6 +435,9 @@ const {createAdminOrderEdit,createOrderAuthorizer} = require('./admin-order-edit
 const adminOrderEdit = createAdminOrderEdit({db, admin, HttpsError, authorize:createOrderAuthorizer({db,HttpsError,assertActiveUser,sanitizePermissions,extractStoreIds})});
 exports.adminOrderSave = onCall({region:'us-central1',timeoutSeconds:60},adminOrderEdit.save);
 exports.adminOrderHistory = onCall({region:'us-central1',timeoutSeconds:60},adminOrderEdit.history);
+const {createManualOrderPayment,createManualPaymentAuthorizer}=require('./manual-order-payment');
+exports.adminOrderReceivePayment=onCall({region:'us-central1',timeoutSeconds:60},createManualOrderPayment({db,admin,HttpsError,
+  authorize:createManualPaymentAuthorizer({db,HttpsError,assertActiveUser,sanitizePermissions,extractStoreIds,normalizeRole})}));
 const {createStoreManagement}=require('./store-management');
 const {persistedStaffRole,assertOwnerAccountChange}=require('./store-owner-policy');
 const storeManagement=createStoreManagement({db,admin,HttpsError,assertActiveUser,extractStoreIds,normalizeRole,getAvailability:config=>getStoreAvailability(config)});
@@ -527,6 +531,12 @@ const {createPaymentSettings,assertFinancialPermissionGrant}=require('./payment-
 const paymentSettings=createPaymentSettings({db,admin,normalizeRole,extractStoreIds});
 exports.paymentSettingsGet=onCall({region:'us-central1'},paymentSettings.get);
 exports.paymentSettingsSave=onCall({region:'us-central1'},paymentSettings.save);
+const {createInfinitePaySecretStore}=require('./infinitepay-secret-store');
+const {createPaymentCredentials}=require('./payment-credentials');
+const paymentCredentials=createPaymentCredentials({db,HttpsError,projectId:db.projectId,authorizeRequest:paymentSettings.authorizeCredential,authorizeTransaction:paymentSettings.authorizeTransaction,secretStore:createInfinitePaySecretStore({projectId:db.projectId})});
+const paymentCredentialRuntime={region:'us-central1',serviceAccount:`payment-credentials@${db.projectId}.iam.gserviceaccount.com`,timeoutSeconds:120,maxInstances:2,concurrency:10};
+exports.paymentCredentialSave=onCall(paymentCredentialRuntime,paymentCredentials.save);
+exports.paymentCredentialActivate=onCall(paymentCredentialRuntime,paymentCredentials.activate);
 
 const verifyPointStoreAccess = async (uid, lojaId) => {
   const profile = await assertActiveUser(uid);
@@ -1283,6 +1293,9 @@ const getStoreAvailability = (storeConfig, now = new Date()) => {
 const app = express();
 app.use(cors({origin: true})); // Habilita CORS para a API do cardápio
 app.use(express.json());
+const staffCustomerDirectory=createStaffCustomerDirectory({db,resolveCustomerId:id=>customerRegistry.resolveId(id),
+  authorize:createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePermissions,extractStoreIds})});
+// Specific lookup route is mounted after /clientes/buscar to preserve its contract.
 const adminCustomerPreview=createAdminCustomerPreview({db,registry:customerRegistry,authorize:verifyManagementAccess});
 mountAdminCustomerPreview(app,adminCustomerPreview,checkoutToken);
 const storeResolver = createStoreResolver({db,getAvailability:getStoreAvailability,loadPaymentConfig:store=>checkoutPayments.config(store)});
@@ -1501,6 +1514,8 @@ const upsertClientDocument = async ({
   crmStaffUid = null,
 }) => {
   const timestamp = FieldValue.serverTimestamp();
+  let storeRelationshipVerified=false;
+  if (crmStaffUid) {await staffCustomerDirectory.detail(crmStaffUid,lojaId,targetRef.id);storeRelationshipVerified=true;}
   return db.runTransaction(async (transaction) => {
     const snap = await transaction.get(targetRef);
     if(!snap.exists) throw createHttpError(404,'Cliente não encontrado.');
@@ -1512,7 +1527,7 @@ const upsertClientDocument = async ({
         transaction.get(db.collection('users').doc(crmStaffUid)),
         transaction.get(db.collection('customProfiles').doc(crmStaffUid)),
       ]);
-      const patch = claimedClientPatch({customer: snap.data(), input: data, profile: staffSnap.data(), customProfile: customSnap.data(), lojaId});
+      const patch = claimedClientPatch({customer: snap.data(), input: data, profile: staffSnap.data(), customProfile: customSnap.data(), lojaId, storeRelationshipVerified});
       if (Object.hasOwn(data, 'telefone')) customerRegistry.assertPhoneUnchanged(snap.data(), data.telefone);
       transaction.update(targetRef, {...patch, atualizadoEm: timestamp});
       transaction.create(db.collection('auditLogs').doc(), {
@@ -1571,7 +1586,7 @@ async function isClientStaff(token,lojaId) {
   return isClientStaffProfile(staff,lojaId);
 }
 async function canManageClient(token,lojaId,clientId) {
-  if(await isClientStaff(token,lojaId)) return true;
+  if(await isClientStaff(token,lojaId)) {await staffCustomerDirectory.detail(token.uid,lojaId,clientId);return true;}
   try {return (await customerAccounts.account({auth:{uid:token.uid,token}})).customer?.id===clientId;}
   catch {return false;}
 }
@@ -1592,29 +1607,25 @@ app.get("/clientes/buscar", async (req, res) => {
       return res.status(404).json({message: 'Cliente não encontrado.'});
     }
 
-    const refreshed = await getClientsCollection().doc(existing.id).get();
-    return res.status(200).json({id: refreshed.id, ...refreshed.data()});
+    return res.status(200).json(await staffCustomerDirectory.detail(token.uid,lojaId,existing.id));
   } catch (error) {
     logger.error("Erro ao buscar cliente por telefone:", error);
     res.status(500).send("Erro ao buscar cliente.");
   }
 });
 
-// Rota para buscar todos os clientes
+mountStaffCustomerDirectory(app,staffCustomerDirectory,checkoutToken);
+// Compatibility route returns the same scoped, allowlisted CRM projection.
 app.get("/clientes", async (req, res) => {
   const lojaId = requireStoreId(req, res);
   if (!lojaId) return;
   try {
     const token = await checkoutToken(req);
-    const staff = (await db.collection('users').doc(token.uid).get()).data();
-    if (!staff || staff.ativo === false || staff.status === 'inativo' || !['dono', 'gerente', 'atendente'].includes(staff.role)) return res.status(403).json({message:'Acesso restrito à equipe.'});
-    if (staff.role !== 'dono' && staff.lojaId !== lojaId && !staff.lojaIds?.includes(lojaId)) return res.status(403).json({message:'Loja não autorizada.'});
-    const snapshot = await getClientsCollection().where('lojasVisitadas', 'array-contains', lojaId).get();
-    const clients = snapshot.docs.filter(doc=>doc.data().canonicalStatus!=='ALIAS').map((doc) => ({id: doc.id, ...doc.data()}));
-    res.status(200).json(clients);
+    const result=await staffCustomerDirectory.list(token.uid,lojaId);
+    res.status(200).json(result.clients);
   } catch (error) {
     logger.error("Erro ao buscar clientes:", error);
-    res.status(500).send("Erro ao buscar clientes.");
+    res.status(error.httpStatus || 500).json({message:error.message || 'Erro ao buscar clientes.'});
   }
 });
 

@@ -83,7 +83,7 @@ function createAdminOrderEdit({db, admin, HttpsError, authorize}) {
         }
         if (patch.categoria && !['Delivery','Festa'].includes(patch.categoria) && patch.categoria !== order.categoria) fail('invalid-argument','Categoria inválida.');
         if (Object.hasOwn(input,'clienteId') && input.clienteId !== order.clienteId) {
-          if (order.ownerUid || order.paymentId || order.canonicalCustomerId) fail('failed-precondition', 'Este pedido possui ownership vinculado. O cliente original deve ser preservado.');
+          if (order.ownerUid || order.paymentId || order.canonicalCustomerId || order.manualPaymentReceipt) fail('failed-precondition', 'Este pedido possui ownership ou recebimento vinculado. O cliente original deve ser preservado.');
           if (!validId(input.clienteId)) fail('invalid-argument','Cliente inválido.');
           let customer = await tx.get(db.doc(`clientes/${input.clienteId}`));
           if (customer.get('canonicalCustomerId') && customer.get('canonicalStatus') === 'ALIAS') customer = await tx.get(db.doc(`clientes/${customer.get('canonicalCustomerId')}`));
@@ -135,6 +135,7 @@ function createAdminOrderEdit({db, admin, HttpsError, authorize}) {
         if (order.desconto == null && patch.desconto === 0) delete patch.desconto;
       }
       const changes = Object.entries(patch).filter(([key,value]) => key !== 'paymentMethodResolvedAt' && !same(auditValue(order[key]),auditValue(value))).map(([field,after]) => ({field,before:auditValue(order[field]),after:auditValue(after)}));
+      if(order.manualPaymentReceipt&&patch.total!=null&&cents(patch.total)!==order.manualPaymentReceipt.amountCents)fail('failed-precondition','Pedido com recebimento manual confirmado. Alterar o total exige conciliação específica.');
       const material = changes.some(change => !['status','observacao'].includes(change.field));
       if (material) {
         const invoices = await tx.get(db.collection('lojas').doc(data.storeId).collection('invoices').where('orderId','==',data.orderId).limit(25));

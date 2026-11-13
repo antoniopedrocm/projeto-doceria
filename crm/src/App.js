@@ -11,6 +11,7 @@ import FulfillmentSettings from './stores/FulfillmentSettings';
 import {staffDirectoryKey,reconcileStoreSelection,staffStoreSelectionKey,storeFriendlyName} from './stores/staffDirectory';
 import useStaffSection,{reconcileStaffSection} from './stores/useStaffSection';
 import {storeDeadline} from './stores/storeRequests';
+import {createCustomerDirectorySync} from './utils/customerDirectorySync';
 import {normalizeRole, isActiveStaffProfile} from './customer/staffRole';
 import {createCapabilityResolver} from './customer/userCapabilities';
 import {logoutCanonicalSession} from './customer/customerRuntime';
@@ -30,6 +31,7 @@ import OrderStatusBadge from './components/orders/OrderStatusBadge';
 import {getOrderStatusLabel} from './utils/orderStatus';
 import {OPERATIONAL_ORDER_STATUSES} from './utils/onlineOrderStatus.mjs';
 import {adminOrderRequest} from './utils/adminOrderEdit';
+import ReceiveOrderPayment,{canReceiveOrderPayment} from './components/orders/ReceiveOrderPayment';
 import {clientApiRequest} from './utils/clientApi';
 import OrderAdminHistory,{OrderPaymentAdjustment} from './components/orders/OrderAdminHistory';
 import FiscalCloneConfirmation from './components/FiscalCloneConfirmation';
@@ -3509,6 +3511,8 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
   },[availableStores,storeInfoMap,directoryNames]);
   const [selectedStoreId, setSelectedStoreId] = usePersistentState(staffStoreSelectionKey(staffUid), null);
   const [showStoreManager, setShowStoreManager] = useState(false);
+  const [receivingOrder,setReceivingOrder] = useState(null);
+  useEffect(()=>setReceivingOrder(null),[staffUid,selectedStoreId,currentPage]);
 
 
   // --- REVISADO: Refs de Áudio ---
@@ -3520,7 +3524,10 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
   const initialDataLoaded = useRef(false);
   const storeCollectionsDataRef = useRef({});
   const clientesDataRef = useRef([]);
-  const customerMetricsEnsuredStoresRef = useRef(new Set());
+  const refreshCustomersRef = useRef(() => {});
+  const [customerDirectoryIssues,setCustomerDirectoryIssues] = useState([]);
+  const [customerDirectoryDiagnosticsAllowed,setCustomerDirectoryDiagnosticsAllowed] = useState(false);
+  const [customerDirectoryError,setCustomerDirectoryError] = useState('');
   const pushTokenRef = useRef(null);
   const pushLogoutInProgressRef = useRef(false);
   const configMigrationStatusRef = useRef(new Set());
@@ -3640,32 +3647,9 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
       });
     });
 
-    const allClientes = clientesDataRef.current || [];
-    const storeIdSet = new Set(storeIds);
-
-    const matchesStore = (cliente) => {
-      const visitedStores = Array.isArray(cliente.lojasVisitadas) ? cliente.lojasVisitadas : [];
-      if (visitedStores.some((id) => storeIdSet.has(id))) return true;
-      if (cliente.lojaId && storeIdSet.has(cliente.lojaId)) return true;
-      if (cliente.lojaAtual && storeIdSet.has(cliente.lojaAtual)) return true;
-      return false;
-    };
-
-    const addResolvedStoreToClient = (cliente) => {
-      const visitedStores = Array.isArray(cliente.lojasVisitadas) ? cliente.lojasVisitadas : [];
-      const resolvedLojaId = visitedStores.length === 1
-        ? visitedStores[0]
-        : (cliente.lojaAtual || cliente.lojaId || null);
-
-      if (!resolvedLojaId) return cliente;
-      return { ...cliente, lojaId: resolvedLojaId };
-    };
-
-    if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
-      base.clientes = allClientes.map(addResolvedStoreToClient);
-    } else {
-      base.clientes = allClientes.filter(matchesStore).map(addResolvedStoreToClient);
-    }
+    // The API already enforces scope and canonical association. Do not re-filter
+    // by stale lojasVisitadas/lojaId metadata after the purchase-history join.
+    base.clientes = clientesDataRef.current || [];
 
     return base;
   }, [user, resolveStoreIdsForView, selectedStoreId]);
@@ -4291,52 +4275,44 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
           }
 
           const setupClientesListener = () => {
-                const uniqueStoreIds = Array.from(new Set(storeIds)).filter(Boolean);
-                const clientesRef = collection(db, 'clientes');
-
-                let clientesQuery;
-                if (user.role === ROLE_OWNER && selectedStoreId === STORE_ALL_KEY) {
-                      clientesQuery = query(clientesRef);
-                } else if (uniqueStoreIds.length === 1) {
-                      clientesQuery = query(clientesRef, where('lojasVisitadas', 'array-contains', uniqueStoreIds[0]));
-                } else if (uniqueStoreIds.length > 1) {
-                      clientesQuery = query(clientesRef, where('lojasVisitadas', 'array-contains-any', uniqueStoreIds.slice(0, 10)));
-                } else {
-                      clientesQuery = query(clientesRef);
-                }
-
                 let initialResolved = false;
-                const unsubscribe = onSnapshot(
-                      clientesQuery,
-                      (snapshot) => {
-                            if (!isMounted) return;
-
-                            clientesDataRef.current = snapshot.docs.filter(docSnap => docSnap.data().canonicalStatus !== 'ALIAS').map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-                            const computedData = recomputeDataForView();
-                            setData(computedData);
-
-                            if (!initialResolved) {
-                                  markInitialLoaded();
-                                  initialResolved = true;
-                            }
-                      },
-                      (error) => {
-                            console.error('[App.js] Erro ao sincronizar clientes:', { code: error?.code || null, message: error?.originalMessage || error?.message || null });
-                            setLoginError(error?.message || 'Não foi possível sincronizar os dados de clientes.');
-                            if (!initialResolved) {
-                                  markInitialLoaded();
-                                  initialResolved = true;
-                            }
-                      },
-                      {
-                            __listenerOptions: true,
-                            operation: 'sync-clientes',
-                            route: currentPage,
-                            uid: userId
-                      }
-                );
-
-                unsubscribes.push(() => unsubscribe());
+                clientesDataRef.current = [];
+                setCustomerDirectoryIssues([]);setCustomerDirectoryDiagnosticsAllowed(false);setCustomerDirectoryError('');
+                setData(recomputeDataForView());
+                const sync = createCustomerDirectorySync({
+                  isVisible: () => !document.hidden,
+                  load: () => clientApiRequest({auth,baseUrl:API_BASE_URL,path:'/clientes/diretorio?usage=crm',
+                    storeId:selectedStoreId===STORE_ALL_KEY?STORE_ALL_KEY:storeIds[0]}),
+                  onData: result => {
+                    if (!isMounted) return;
+                    clientesDataRef.current = result.clients;
+                    setCustomerDirectoryDiagnosticsAllowed(result.canViewHistoryIssues===true);
+                    setCustomerDirectoryIssues(result.canViewHistoryIssues===true?(result.issues || []):[]);setCustomerDirectoryError('');
+                    setData(recomputeDataForView());
+                    if (!initialResolved) {markInitialLoaded();initialResolved=true;}
+                  },
+                  onError: error => {
+                    if (!isMounted) return;
+                    clientesDataRef.current=[];
+                    setCustomerDirectoryIssues([]);setCustomerDirectoryDiagnosticsAllowed(false);
+                    setCustomerDirectoryError(error.message || 'Não foi possível carregar os clientes desta loja.');
+                    setData(recomputeDataForView());
+                    setLoginError(error.message || 'Não foi possível carregar os clientes desta loja.');
+                    if (!initialResolved) {markInitialLoaded();initialResolved=true;}
+                  }
+                });
+                refreshCustomersRef.current = sync.queue;
+                const changed = () => sync.queue();
+                const visible = () => {if(!document.hidden) void sync.start();};
+                window.addEventListener('doceria:clients-changed',changed);
+                document.addEventListener('visibilitychange',visible);
+                sync.start();
+                unsubscribes.push(() => {
+                  sync.dispose();
+                  window.removeEventListener('doceria:clients-changed',changed);
+                  document.removeEventListener('visibilitychange',visible);
+                  if(refreshCustomersRef.current===sync.queue) refreshCustomersRef.current=()=>{};
+                });
           };
 
           if (canSyncClientes) {
@@ -4372,6 +4348,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
                               setData(computedData);
 
                               if (collectionName === 'pedidos') {
+                                    if (changes.length) refreshCustomersRef.current();
                                     const activeOrders = (computedData.pedidos || []).filter(
                                           (p) => p.status !== 'Finalizado' && p.status !== 'Cancelado' && !p._isPendingSync
                                     );
@@ -9478,26 +9455,12 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
 
   const Clientes = () => {
     const { clientes } = data;
+    const generalView = isGeneralViewSelected;
     const [searchTerm, setSearchTerm] = usePersistentState("clientes_searchTerm", "");
     const [showModal, setShowModal] = useState(false);
     const [editingClient, setEditingClient] = useState(null);
     const defaultClientFormData = { nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", bairro: "", cidade: "Goiania", uf: "GO", codigoIbge: "5208707", aniversario: "", status: "Ativo" };
     const [formData, setFormData] = useState(defaultClientFormData);
-
-    useEffect(() => {
-      const storeIds = isGeneralViewSelected
-        ? availableStores
-        : [selectedStoreIdForAlarm].filter(Boolean);
-      storeIds.forEach((storeId) => {
-        if (customerMetricsEnsuredStoresRef.current.has(storeId)) return;
-        customerMetricsEnsuredStoresRef.current.add(storeId);
-        const ensureMetrics = httpsCallable(functions, 'ensureCustomerPurchaseMetrics');
-        ensureMetrics({ lojaId: storeId }).catch((error) => {
-          customerMetricsEnsuredStoresRef.current.delete(storeId);
-          console.error('[Clientes] Falha ao sincronizar histórico de compras:', error);
-        });
-      });
-    }, []);
 
     const getPurchaseMetrics = (client) => {
       if (!isGeneralViewSelected && selectedStoreIdForAlarm) {
@@ -9512,8 +9475,8 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
     const filteredClients = useMemo(() => {
       const term = searchTerm.toLowerCase();
       const digitsTerm = searchTerm.replace(/\D/g, '');
-      return (clientes || []).filter(c => (c.nome && c.nome.toLowerCase().includes(term)) || (c.email && c.email.toLowerCase().includes(term)) || (digitsTerm && (c.cpf || c.documento) && String(c.cpf || c.documento).includes(digitsTerm)));
-    }, [clientes, searchTerm]);
+      return (clientes || []).filter(c => generalView || c.hasStoreHistory || c.hasStorePurchases).filter(c => (c.nome && c.nome.toLowerCase().includes(term)) || (c.email && c.email.toLowerCase().includes(term)) || (digitsTerm && (c.cpf || c.documento) && String(c.cpf || c.documento).includes(digitsTerm)));
+    }, [clientes, searchTerm, generalView]);
 
 
 
@@ -9598,9 +9561,9 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
             return `${day}/${month}`;
           }
         },
-        { header: "Valor em Compras", render: (row) => { const metrics = getPurchaseMetrics(row); return (<span className="font-semibold text-green-600">R$ {(metrics.valorEmCompras || 0).toFixed(2)}</span>); } },
-        { header: "Última Compra", render: (row) => { const metrics = getPurchaseMetrics(row); return metrics.ultimaCompra ? getJSDate(metrics.ultimaCompra)?.toLocaleDateString('pt-BR') : '-'; } },
-        { header: "Status", render: (row) => (<span className={`px-3 py-1 rounded-full text-xs font-medium ${row.status === 'VIP' ? 'bg-purple-100 text-purple-800' : 'bg-green-100 text-green-800'}`}>{row.status}</span>) }
+        { header: "Valor em Compras", render: (row) => { const metrics = getPurchaseMetrics(row); return (<div><span className="font-semibold text-green-600">R$ {(metrics.valorEmCompras || 0).toFixed(2)}</span>{metrics.pedidosPendentes>0 && <><p className="text-xs text-gray-600">Acumulado confirmado</p><p className="text-xs text-amber-800 mt-1">R$ {metrics.valorPendente.toFixed(2)} pendentes · {metrics.pedidosPendentes} pedido(s) finalizado(s) com pagamento pendente</p></>}</div>); } },
+        { header: "Última Compra", render: (row) => { const metrics = getPurchaseMetrics(row); return <div>{metrics.ultimaCompra ? getJSDate(metrics.ultimaCompra)?.toLocaleDateString('pt-BR') : '-'}{metrics.ultimoPedidoPendente && <p className="text-xs text-amber-800 mt-1">Último pedido: {getJSDate(metrics.ultimoPedidoPendente)?.toLocaleDateString('pt-BR')} · pagamento pendente</p>}</div>; } },
+        { header: "Status", render: (row) => {const status=typeof row.status==='string'&&row.status.trim()?row.status.trim():'Não informado';return <span className={`px-3 py-1 rounded-full text-xs font-medium ${status === 'VIP' ? 'bg-purple-100 text-purple-800' : status==='Ativo'?'bg-green-100 text-green-800':'bg-gray-100 text-gray-700'}`}>{status}</span>;} }
     ];
     const actions = [ ...(canPreviewCustomer(user?.role,user?.permissions,user?.permissionDetails)?[{icon:Eye,label:"Visualizar como Cliente — somente leitura",onClick:row=>{
       window.history.pushState(null,'','/admin/customer-preview/'+encodeURIComponent(row.id));setPreviewId(row.id);
@@ -9609,6 +9572,8 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Clientes</h1><p className="text-gray-600 mt-1">Gerencie seus clientes</p></div><Button onClick={handleNewClient} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Novo Cliente</Button></div>
         <div className="relative max-w-md"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" /><input type="text" placeholder="Buscar clientes..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-pink-500" /></div>
+        {customerDirectoryError && <div role="alert" className="p-4 rounded-xl border border-red-200 bg-red-50 text-red-800">{customerDirectoryError}<Button variant="secondary" onClick={()=>refreshCustomersRef.current()}>Tentar novamente</Button></div>}
+        {customerDirectoryDiagnosticsAllowed && customerDirectoryIssues.length>0 && <details className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900"><summary>{customerDirectoryIssues.length} ocorrência(s) exigem regularização do histórico. Nenhum vínculo foi presumido.</summary><ul className="mt-2 space-y-2">{customerDirectoryIssues.map((issue,index)=><li key={issue.orderPath+index}>{({STORE_UNRESOLVED_OR_CONFLICTING:'Loja não identificada ou divergente no pedido.',CUSTOMER_UNRESOLVED_OR_CONFLICTING:'Referência do cliente ausente ou divergente.',OWNER_CONFLICT:'Titularidade do pedido divergente.',DUPLICATE_ORDER_CONFLICT:'Cópias do pedido com dados divergentes.',DUPLICATE_PAYMENT_CONFLICT:'Referências do pagamento com dados divergentes.',DUPLICATE_PAYMENT_REFERENCE:'Pagamento referenciado em mais de um pedido.'})[issue.reason] || 'Histórico precisa de conferência administrativa.'}<code className="block break-all text-xs">{issue.orderPath} · {issue.reason}</code></li>)}</ul></details>}
         <Table columns={columns} data={filteredClients} actions={actions} />
         <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingClient ? "Editar Cliente" : "Novo Cliente"} size="lg">
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -12869,7 +12834,7 @@ const [orderSyncNotice, setOrderSyncNotice] = useState('');
 
         const [configSnap, clientSnap, productSnaps, couponSnap] = await Promise.all([
             getDoc(getStoreConfigDocRef(storeId)),
-            getDoc(getStoreDocRef(storeId, 'clientes', orderData.clienteId)),
+            clientApiRequest({auth,baseUrl:API_BASE_URL,path:'/clientes/'+encodeURIComponent(orderData.clienteId),storeId}).then(client=>({id:client.id,exists:()=>true,data:()=>client})),
             Promise.all(productRefs.map((productRef) => getDoc(productRef))),
             couponRef ? getDoc(couponRef) : Promise.resolve(null)
         ]);
@@ -12930,6 +12895,7 @@ const [orderSyncNotice, setOrderSyncNotice] = useState('');
         const currentAuthUser = await ensureAuthenticatedUserForWrite();
         const orderRef = editingOrder ? getStoreDocRef(storeId, 'pedidos', editingOrder.id) : doc(getStoreCollectionRef(storeId, 'pedidos'));
         const orderId = orderRef.id;
+        const authorizedClient=await clientApiRequest({auth,baseUrl:API_BASE_URL,path:'/clientes/'+encodeURIComponent(orderData.clienteId),storeId});
 
         await runWithRetry(
           'pedidos:save-transaction',
@@ -12956,7 +12922,7 @@ const [orderSyncNotice, setOrderSyncNotice] = useState('');
                 productSnapMap.set(productId, productSnap);
             }
 
-            const clientSnap = await transaction.get(getStoreDocRef(storeId, 'clientes', orderData.clienteId));
+            const clientSnap = {id:authorizedClient.id,exists:()=>true,data:()=>authorizedClient};
             if (!clientSnap.exists()) {
                 throw new Error('O cliente selecionado não existe mais. Selecione o cliente novamente.');
             }
@@ -13479,7 +13445,8 @@ const handleSubmit = async (e) => {
     };
 
     const columns = [ { header: "ID do Pedido", render: (row) => <span className="font-mono text-xs text-gray-500">{row.id?.substring(0, 8) || 'N/A'}</span> }, { header: "Cliente", key: "clienteNome" }, { header: "Total", render: (row) => <div><span className="font-semibold text-green-600">R$ {(row.total || 0).toFixed(2)}</span>{row.adminPaymentAdjustment?.state==='REVIEW_REQUIRED' && <p className="mt-1 text-xs font-medium text-amber-800">Diferença de pagamento a conciliar</p>}</div> }, { header: "Data", render: (row) => { const date = getJSDate(row.createdAt); return date ? date.toLocaleDateString('pt-BR') : '-'; } }, { header: "Origem", key: "origem"}, { header: "Status", render: (row) => <OrderStatusBadge order={row} pendingSync={row._isPendingSync} className="px-3 py-1" /> } ];
-    const actions = [ { icon: Eye, label: "Ver", onClick: (row) => setViewingOrder(row) }, { icon: Edit, label: "Editar Pedido", onClick: row=>handleEdit(row,'FULL') }, {icon:RefreshCw,label:'Atualizar Status',onClick:row=>handleEdit(row,'STATUS')}, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidos', row.id) }) } ];
+    const openReceipt=order=>setReceivingOrder({...order,lojaId:getOrderStoreId(order)});
+    const actions = [ { icon: Eye, label: "Ver", onClick: (row) => setViewingOrder(row) }, { icon: Edit, label: "Editar Pedido", onClick: row=>handleEdit(row,'FULL') }, {icon:RefreshCw,label:'Atualizar Status',onClick:row=>handleEdit(row,'STATUS')}, {icon:Banknote,label:'Registrar pagamento recebido',isVisible:row=>canReceiveOrderPayment(row,user?.permissions),onClick:openReceipt}, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('pedidos', row.id) }) } ];
 
     return (
         <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
@@ -13788,6 +13755,7 @@ const handleSubmit = async (e) => {
                             <div className="flex flex-wrap justify-end pt-4 mt-4 border-t gap-3">
                                  <Button variant="secondary" onClick={()=>{const order=viewingOrder;setViewingOrder(null);handleEdit(order,'FULL');}}>Editar Pedido</Button>
                                  <Button variant="secondary" onClick={()=>{const order=viewingOrder;setViewingOrder(null);handleEdit(order,'STATUS');}}>Atualizar Status</Button>
+                                 {canReceiveOrderPayment(viewingOrder,user?.permissions)&&<Button onClick={()=>{const order=viewingOrder;setViewingOrder(null);openReceipt(order);}}>Registrar pagamento recebido</Button>}
                                  <Button
                                     onClick={handlePrint}
                                     variant="secondary"
@@ -21493,6 +21461,10 @@ const handleSubmit = async (e) => {
             {renderCurrentPage()}
         </main>
       </div>
+
+      <Modal isOpen={!!receivingOrder} onClose={()=>setReceivingOrder(null)} title="Registrar pagamento recebido" size="lg">
+        {receivingOrder&&<ReceiveOrderPayment key={receivingOrder.lojaId+':'+receivingOrder.id} order={receivingOrder} functions={functions} onCancel={()=>setReceivingOrder(null)} onRecorded={()=>refreshCustomersRef.current()}/>}
+      </Modal>
 
       <StoreManagementModal isOpen={showStoreManager} onClose={()=>setShowStoreManager(false)} Modal={Modal} Button={Button} Input={Input}
         canManage={false} selectionOnly={true} onSelectStore={selectStoreById} allowAllOption={user?.role===ROLE_OWNER} allKey={STORE_ALL_KEY} currentStoreId={currentStoreIdForDisplay}

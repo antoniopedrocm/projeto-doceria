@@ -1,0 +1,17 @@
+{
+  "at": "2026-11-13T15:14:42.075Z",
+  "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree",
+  "emulatorProject": "demo-doceria-checkout",
+  "exitCode": 0,
+  "tests": 37,
+  "passed": 37,
+  "failed": 0,
+  "files": [
+    "functions/checkout-http.test.js"
+  ],
+  "externalNetworkBlockedInTestProcess": true,
+  "remoteWrites": 0,
+  "sms": 0,
+  "payments": 0,
+  "prod": false
+}

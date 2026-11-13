@@ -1,0 +1,28 @@
+{
+  "at": "2026-11-13T15:05:26.057Z",
+  "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree",
+  "emulatorProject": "demo-doceria-final-20261113",
+  "exitCode": 1,
+  "tests": 147,
+  "passed": 110,
+  "failed": 37,
+  "files": [
+    "functions/manual-order-payment-emulator.test.js",
+    "functions/staff-customer-directory-emulator.test.js",
+    "functions/customer-registry-rules.test.js",
+    "functions/crm-client-edit.test.js",
+    "functions/admin-order-edit.integration.test.js",
+    "functions/firestore.rules.test.js",
+    "functions/fiscal-numbering.rules.test.js",
+    "functions/guest-checkout-emulator.test.js",
+    "functions/checkout-http.test.js",
+    "functions/checkout-reservation-emulator.test.js",
+    "functions/store-fulfillment.integration.test.js",
+    "functions/payment-financial-events-emulator.test.js"
+  ],
+  "externalNetworkBlockedInTestProcess": true,
+  "remoteWrites": 0,
+  "sms": 0,
+  "payments": 0,
+  "prod": false
+}

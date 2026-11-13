@@ -1,0 +1,59 @@
+{
+  "scope": "Synthetic only; no real customer data",
+  "matrix": {
+    "matriz": [
+      {
+        "id": "a",
+        "total": 10,
+        "lastPurchase": "2026-11-01T12:00:00.000Z",
+        "count": 1
+      },
+      {
+        "id": "both",
+        "total": 30,
+        "lastPurchase": "2026-11-01T12:00:00.000Z",
+        "count": 1
+      }
+    ],
+    "garavelo": [
+      {
+        "id": "b",
+        "total": 20,
+        "lastPurchase": "2026-11-01T12:00:00.000Z",
+        "count": 1
+      },
+      {
+        "id": "both",
+        "total": 40,
+        "lastPurchase": "2026-11-02T12:00:00.000Z",
+        "count": 1
+      }
+    ],
+    "general": [
+      {
+        "id": "a",
+        "total": 10,
+        "lastPurchase": "2026-11-01T12:00:00.000Z",
+        "count": 1
+      },
+      {
+        "id": "b",
+        "total": 20,
+        "lastPurchase": "2026-11-01T12:00:00.000Z",
+        "count": 1
+      },
+      {
+        "id": "both",
+        "total": 70,
+        "lastPurchase": "2026-11-02T12:00:00.000Z",
+        "count": 2
+      },
+      {
+        "id": "new",
+        "total": 0,
+        "lastPurchase": null,
+        "count": 0
+      }
+    ]
+  }
+}

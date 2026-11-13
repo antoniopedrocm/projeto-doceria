@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "at": "2026-11-13T14:51:53.613Z",
+  "project": "crmdoceria-9959e",
+  "caseId": "a403670c5b1f4151",
+  "scenario": "FIRST_GOOGLE_CLAIM_OF_UNOWNED_LEGACY_CUSTOMER",
+  "status": "PASS",
+  "source": "Explicit titular/Owner replies in this conversation plus read-only backend verification",
+  "humanReply": "pass",
+  "checks": {
+    "historicalAddressVisible": "PASS",
+    "twoHistoricalOrdersAndDetails": "PASS",
+    "refresh": "PASS",
+    "logoutAndSameGoogleReloginWithoutNewSmsOrClaim": "PASS",
+    "returnToMatriz": "PASS",
+    "noAdministrativeMenus": "PASS"
+  },
+  "technicalEvidence": "after-technical.json",
+  "technicalChecks": 16,
+  "customerDocumentsBefore": 20,
+  "customerDocumentsAfter": 20,
+  "originalOrders": 2,
+  "originalAddresses": 1,
+  "firstGoogleOwner": true,
+  "claimAuditCount": 1,
+  "hosting": "22c9613fe531a63f",
+  "executionVariance": {
+    "initialSmsAuthorizationMaximum": 1,
+    "observedSmsRequests": 2,
+    "first": "10:04 expired without verification",
+    "second": "11:38 requested; 11:39 consumed",
+    "holderClarification": "foi solicitado as 11:38",
+    "retroactiveAuthorizationAssumed": false,
+    "agentSmsRequests": 0,
+    "agentClaims": 0,
+    "noFurtherSmsAuthorized": true
+  },
+  "phase15": "PASS together with preserved email/password acceptance",
+  "phase16": "PENDING consolidation and applicable review",
+  "formal": {
+    "phase9": 100,
+    "phase10": 93.75,
+    "completedCriteria": 15,
+    "totalCriteria": 16,
+    "global": 97,
+    "phase13": 0
+  },
+  "prodReady": false
+}

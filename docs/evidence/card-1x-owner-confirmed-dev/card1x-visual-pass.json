@@ -1,0 +1,32 @@
+{
+  "at": "2026-11-12T19:36:36.587Z",
+  "project": "crmdoceria-9959e",
+  "merchant": "ana_guimares",
+  "diagnostic": "EXISTING_AUTHORIZED_SINGLE_R1_LINK",
+  "scope": "ACCOUNT_DEFAULT_INHERITED_WITHOUT_API_KEY",
+  "ownerCompletedContact": true,
+  "observedBy": "AGENT_READ_ONLY_BROWSER",
+  "paymentType": "CREDIT_CARD",
+  "installmentOption": "1x sem juros de R$ 1,00",
+  "selectedInstallments": 1,
+  "installmentCents": 100,
+  "subtotalCents": 100,
+  "feesCents": 0,
+  "totalCents": 100,
+  "card1xVisualVerification": "PASS_NO_PAYMENT",
+  "cardDataEnteredByAgent": false,
+  "paymentSubmittedByAgent": false,
+  "paymentCheckCalled": false,
+  "additionalLinksCreated": 0,
+  "firebaseWrites": 0,
+  "credentialChanges": 0,
+  "crmPerStoreControl": "BLOCKED_PER_STORE_API_KEY_REQUIRED",
+  "financialSettlementHomologation": false,
+  "prodServiceAccess": false,
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

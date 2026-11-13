@@ -1,0 +1,90 @@
+{
+  "at": "2026-11-12T20:53:05.750Z",
+  "project": "crmdoceria-9959e",
+  "tests": {
+    "dev": {
+      "unit": {
+        "passed": 38,
+        "failed": 0
+      },
+      "integration": {
+        "passed": 81,
+        "failed": 0
+      },
+      "react": {
+        "passed": 655,
+        "failed": 0
+      },
+      "finalCopyFocused": {
+        "passed": 12,
+        "failed": 0
+      }
+    },
+    "prod": {
+      "unit": {
+        "passed": 38,
+        "failed": 0
+      },
+      "integration": {
+        "passed": 81,
+        "failed": 0
+      },
+      "react": {
+        "passed": 628,
+        "failed": 0
+      }
+    }
+  },
+  "groupsOverlap": true,
+  "builds": {
+    "dev": "PASS isolated DEV artifact",
+    "prodLocal": "PASS local only"
+  },
+  "lint": {
+    "devDeltaErrors": 0,
+    "devDeltaWarnings": 0,
+    "prodNewFindings": 0,
+    "prodPreexistingIndexErrors": 2
+  },
+  "diffCheck": "PASS both workspaces",
+  "publication": {
+    "hosting": "sites/crmdoceria-9959e/versions/441974b6f414a567",
+    "api": "api-00079-xid",
+    "targets": 5,
+    "unrelatedRegionalV2FunctionsUnchanged": 131,
+    "rulesUnchanged": true,
+    "hostingHashes": 61,
+    "routes": 6
+  },
+  "sourceFiles": [
+    "functions/card-1x-fee-policy.js",
+    "functions/card-1x-fee-policy.test.js",
+    "functions/card-1x-fee-native.test.js",
+    "functions/card-1x-fee-credentials.js",
+    "functions/card-1x-fee-settings-emulator.test.js",
+    "functions/checkout-payment.js",
+    "functions/payment-settings.js",
+    "crm/src/payments/InfinitePaySettings.js",
+    "crm/src/payments/InfinitePaySettings.test.js",
+    "functions/infinitepay-secret-store.js",
+    "functions/infinitepay-secret-store.test.js",
+    "functions/payment-credential-status.js",
+    "functions/payment-credentials.js",
+    "functions/payment-credentials-emulator.test.js",
+    "crm/src/payments/InfinitePayCredentialForm.js",
+    "crm/src/payments/InfinitePayCredentialForm.test.js",
+    "functions/index.js"
+  ],
+  "realCredentialValidation": "PENDING_OWNER_INPUT_AND_REVIEW",
+  "realSecretsWrittenByAgent": 0,
+  "realPayments": 0,
+  "prodRemoteAccess": false,
+  "commit": false,
+  "push": false,
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

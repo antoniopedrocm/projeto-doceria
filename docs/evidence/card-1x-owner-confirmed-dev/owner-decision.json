@@ -1,0 +1,31 @@
+{
+  "at": "2026-11-12T19:09:00.516Z",
+  "source": "OWNER_EXPLICIT_CONFIRMATION_IN_CHAT",
+  "merchant": "ana_guimares",
+  "previousAppPolicy": {
+    "assuredInstallments": 0,
+    "allFeesPaidByCustomer": true
+  },
+  "currentApprovedPolicy": {
+    "baselineAssuredInstallments": 1,
+    "STORE": 1,
+    "CUSTOMER": 0,
+    "installments2Plus": "CUSTOMER",
+    "pix": "UNCHANGED",
+    "agreedLater": "UNCHANGED"
+  },
+  "appChangePerformedBy": "OWNER",
+  "sharedDevMerchantConfirmed": true,
+  "productionMerchantDecision": "NOT_DEFINED",
+  "backendBindingApplied": false,
+  "realApiKeysRead": false,
+  "realApiKeysProvisioned": false,
+  "firestoreWrites": 0,
+  "crmOrdersCreated": 0,
+  "realPayments": 0,
+  "reminder": {
+    "id": "confirmar-parcelamento-infinitepay",
+    "status": "PAUSED",
+    "reason": "OWNER_ALREADY_CONFIRMED"
+  }
+}

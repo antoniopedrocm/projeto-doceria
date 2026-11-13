@@ -1,0 +1,87 @@
+{
+  "at": "2026-11-12T01:40:33.634Z",
+  "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree",
+  "project": "crmdoceria-9959e",
+  "head": "7e7d7b6918d9edb045dd11443a2c42efe114640a",
+  "branch": "feature/infinitepay-customer-auth",
+  "status": "DEV_DEPLOYED_TECHNICAL_PASS_MANUAL_UI_PENDING",
+  "permanentDevDeployAuthorization": true,
+  "commit": false,
+  "push": false,
+  "deploy": {
+    "api": "api-00077-qux",
+    "hosting": "sites/crmdoceria-9959e/versions/186b142d3703e536",
+    "rules": "projects/crmdoceria-9959e/rulesets/eaa8ed3d-0434-41c7-bc5b-587530841fbb",
+    "order": [
+      "API",
+      "Hosting",
+      "Rules"
+    ],
+    "unrelatedFunctionsUnchanged": 145,
+    "apiEnvironmentAndCredentialReferencesUnchanged": true
+  },
+  "tests": {
+    "react": 631,
+    "node": 60,
+    "emulator": 63,
+    "lintErrors": 0,
+    "lintWarnings": 66,
+    "baselineWarnings": 66
+  },
+  "countsOverlap": true,
+  "hostingHashes": 61,
+  "publicRoutes": 6,
+  "unauthenticatedApiTests": 6,
+  "realDevReadOnlyAudit": true,
+  "independentReadOnlyReconciliationPassed": true,
+  "manualAcceptance": {
+    "status": "PENDING",
+    "reason": "Browser controller failed to initialize; requested authenticated read-only Owner acceptance",
+    "lastUserResponse": "tente novamente",
+    "lastResponseIsPass": false,
+    "browserRetryStatus": "INITIALIZATION_FAILED_AFTER_RESET"
+  },
+  "dataRegularization": {
+    "unresolvedStoreOrders": 38,
+    "unresolvedCustomerOrders": 5,
+    "automaticallyAssociated": 0,
+    "phase10OriginalDebtsNotReopened": true
+  },
+  "performance": {
+    "coldReadDocumentsIncludingAuthorization": {
+      "matriz": 91,
+      "garavelo": 31,
+      "general": 139
+    },
+    "generalProjectionDocuments": 137,
+    "warmAuthorizationReads": 2,
+    "limit": 10000,
+    "cacheMs": 5000,
+    "pollMs": 30000,
+    "pauseWhenHidden": true,
+    "distributedCache": false
+  },
+  "scope": {
+    "prodAccess": false,
+    "prodLocalAccess": false,
+    "businessDataMutations": false,
+    "realPayments": false,
+    "sms": false,
+    "whatsApp": false,
+    "permanentClaims": false,
+    "feeChangesDeployed": false
+  },
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "diffCheck": "PASS",
+  "headUnchanged": true,
+  "indexEmpty": true,
+  "pendingFeeWorkPreserved": true,
+  "evidenceCredentialPatternScan": "PASS",
+  "checkedAt": "2026-11-12T01:42:33.576Z",
+  "lastRecheck": "2026-11-12T03:02:04.495Z"
+}

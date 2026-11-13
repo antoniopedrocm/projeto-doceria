@@ -1,0 +1,18 @@
+{
+  "at": "2026-11-13T02:51:26.032Z",
+  "source": "Explicit Owner reply in this conversation",
+  "purpose": "future production receiving account planning only",
+  "stores": [
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "approvedHandle": "ana_guimares"
+    },
+    {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "approvedHandle": "antoniopedrocm"
+    }
+  ],
+  "productionAccessAuthorized": false,
+  "credentialCopyAuthorized": false,
+  "productionConfigured": false
+}

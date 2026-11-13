@@ -1,0 +1,342 @@
+{
+  "at": "2026-11-12T01:33:04.320Z",
+  "project": "crmdoceria-9959e",
+  "hashesPassed": 61,
+  "totalHashes": 61,
+  "main": "static/js/main.52d9bfdb.js",
+  "feeChangesExcluded": true,
+  "routes": [
+    {
+      "path": "/",
+      "status": 200
+    },
+    {
+      "path": "/cardapio-matriz",
+      "status": 200
+    },
+    {
+      "path": "/cardapio-garavelo",
+      "status": 200
+    },
+    {
+      "path": "/area-cliente",
+      "status": 200
+    },
+    {
+      "path": "/minha-conta",
+      "status": 200
+    },
+    {
+      "path": "/meus-pedidos",
+      "status": 200
+    }
+  ],
+  "files": [
+    {
+      "file": ".well-known/assetlinks.json",
+      "status": 200,
+      "sha256": "dd4e2783217aa9e394b763f252cc1a7634aabe3f974199523be185b6ef9fed9d"
+    },
+    {
+      "file": "address-management.mjs",
+      "status": 200,
+      "sha256": "b1180d73ab61e599da70c892b2386ac0baa8027579b9151f6d16db2f367e2cfa"
+    },
+    {
+      "file": "address-verification-firebase.mjs",
+      "status": 200,
+      "sha256": "9e51a934dfc289dc2c344c233cee257e9bdf16dbde781377265c94c24ae29bc3"
+    },
+    {
+      "file": "asset-manifest.json",
+      "status": 200,
+      "sha256": "4f595362b438764d7fd42c4d91b0704f0c5c6482118dc406368625e81c976e62"
+    },
+    {
+      "file": "audio/alarm_old.mp3",
+      "status": 200,
+      "sha256": "1ab889a19998f0f0872fa7a8971dde5847b57e85be6ccad960e688f9d310a91a"
+    },
+    {
+      "file": "audio/alarm.mp3",
+      "status": 200,
+      "sha256": "2c4e76e82db26f9ad7f817c9463a97ecc4ffc309131e2f4449e218036d112dc9"
+    },
+    {
+      "file": "audio/mixkit_vintage_warning_alarm_990.mp3",
+      "status": 200,
+      "sha256": "1ab889a19998f0f0872fa7a8971dde5847b57e85be6ccad960e688f9d310a91a"
+    },
+    {
+      "file": "canonical-auth.mjs",
+      "status": 200,
+      "sha256": "de7e3c080f2189895cc4c8a25e84253653ca9f121c6748b5bc7b46fb2b198d60"
+    },
+    {
+      "file": "canonical-session.mjs",
+      "status": 200,
+      "sha256": "08615e2d82b9342309ea0e4d6771fba65b2b47badb0bf93c494ae5c0c7980e79"
+    },
+    {
+      "file": "cardapio-festa.html",
+      "status": 200,
+      "sha256": "117471b0a4d6c7c9ec06c19cfa5fa1abcbb6ae841ba1abd2bc2a46a182aa42d1"
+    },
+    {
+      "file": "cardapio-garavelo.html",
+      "status": 200,
+      "sha256": "117471b0a4d6c7c9ec06c19cfa5fa1abcbb6ae841ba1abd2bc2a46a182aa42d1"
+    },
+    {
+      "file": "cardapio-matriz.html",
+      "status": 200,
+      "sha256": "117471b0a4d6c7c9ec06c19cfa5fa1abcbb6ae841ba1abd2bc2a46a182aa42d1"
+    },
+    {
+      "file": "cardapio.html",
+      "status": 200,
+      "sha256": "117471b0a4d6c7c9ec06c19cfa5fa1abcbb6ae841ba1abd2bc2a46a182aa42d1"
+    },
+    {
+      "file": "checkout-addresses.mjs",
+      "status": 200,
+      "sha256": "0144b08620389b5363e36964da7320dfc48475e75fcf1580e27a1bd5096c6752"
+    },
+    {
+      "file": "checkout-environment.js",
+      "status": 200,
+      "sha256": "43607fb48b40e8db8cedad754e5753b2540097422d68814f09221e111c423bcd"
+    },
+    {
+      "file": "checkout-identity.mjs",
+      "status": 200,
+      "sha256": "afb028eee588a278391a60719a95c11d8ee74c06b5d49817b9948f5fe0e4c58d"
+    },
+    {
+      "file": "checkout-modal-layout.js",
+      "status": 200,
+      "sha256": "d8990404aaa93f4c2dabd0590ce1bc22bd74fccbc373af5416d12c84d0aa99b2"
+    },
+    {
+      "file": "checkout-modal.css",
+      "status": 200,
+      "sha256": "204c1e7d70535d045368ee151e0ed645c221637311c5841752b9c375b8245a9e"
+    },
+    {
+      "file": "checkout-payment-choice.mjs",
+      "status": 200,
+      "sha256": "cc8ea74a9252a7f69e15a71017ea351fc1330f91f72c558eff55e5d94671cd61"
+    },
+    {
+      "file": "checkout-payment-client.js",
+      "status": 200,
+      "sha256": "4d8f65d3a69a6377109d929d2f0651c4ab80163295cba6d7d14f84d928161b98"
+    },
+    {
+      "file": "customer-account-core.mjs",
+      "status": 200,
+      "sha256": "6d67ff1f0e2114e454096b7dd55974534254077a3d1a1db54c220336404e9c60"
+    },
+    {
+      "file": "customer-account.js",
+      "status": 200,
+      "sha256": "835befb4fd07c09283523d019c1d59615ff873994c893cdf41e7f6fa83f41b20"
+    },
+    {
+      "file": "customer-area.css",
+      "status": 200,
+      "sha256": "9c87eae22e8154efc9efc69cea7d2255ac5d4aff6b5b7b1fb674d4dc76510e31"
+    },
+    {
+      "file": "customer-area.mjs",
+      "status": 200,
+      "sha256": "fa11cca0a05adcf9319345802a5b6cf31adfefa5163a46601de6d844e853ec38"
+    },
+    {
+      "file": "customer-auth-errors.mjs",
+      "status": 200,
+      "sha256": "dd269af1acf6350557d5fa4a5e7c5dbd486872fceca5fb0c6ab528cda8a30293"
+    },
+    {
+      "file": "customer-home.js",
+      "status": 200,
+      "sha256": "c188b7a750d6da3eda8484b0cb4f229090955112cc690b87549257ba029a5efd"
+    },
+    {
+      "file": "customer-orders-view.mjs",
+      "status": 200,
+      "sha256": "743b5f4eb455fa474ea608587668db33c2e04bee004442a05e4b34f88067d9e2"
+    },
+    {
+      "file": "customer-phone-claim.mjs",
+      "status": 200,
+      "sha256": "face9da002fe17dba675c32839c3fcfdc029255279eccecbe6b18d5f29bd74cc"
+    },
+    {
+      "file": "customer-profile.mjs",
+      "status": 200,
+      "sha256": "dae5eb09cd84b8fedff67e11d45482b4a559f0eb09beaf84a937024982d3bf55"
+    },
+    {
+      "file": "customer-reorder-view.mjs",
+      "status": 200,
+      "sha256": "1b33d0283025c3167eecfefbd752688104f44b484ebbad9cf06fdca4b3a779a4"
+    },
+    {
+      "file": "customer-session.mjs",
+      "status": 200,
+      "sha256": "7662a5f71fa780acb101eca624e03c537fe6b823070938b83508be83cbf86f62"
+    },
+    {
+      "file": "firebase-messaging-sw.js",
+      "status": 200,
+      "sha256": "8f748521758365a78f8c390dc1de3d41a0adef86db4607f5eff8370bcb6029fc"
+    },
+    {
+      "file": "firebaseClientConfig.js",
+      "status": 200,
+      "sha256": "b5f3a71c9e94528100f779690246f8a0dcfd7d345ddd630a3baedb6d6e4bee8e"
+    },
+    {
+      "file": "fulfillment-availability.mjs",
+      "status": 200,
+      "sha256": "b26f5cefe28c96844d530364ebcc287f7bc5c4944ac05b921e05176d4e54eaeb"
+    },
+    {
+      "file": "guest-payment-attempt.mjs",
+      "status": 200,
+      "sha256": "dcf1949077086c3f8d54dc144e27ef8292832f49a234055667ddc39ec4196782"
+    },
+    {
+      "file": "ic_launcher_foreground.png",
+      "status": 200,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227"
+    },
+    {
+      "file": "ic_launcher_round.png",
+      "status": 200,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227"
+    },
+    {
+      "file": "ic_launcher.png",
+      "status": 200,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227"
+    },
+    {
+      "file": "index.html",
+      "status": 200,
+      "sha256": "cf5491e7e7ab52df75c556b5a8a9d2c90c72b117a92efabf7b57f8b701c4870a"
+    },
+    {
+      "file": "legacy-address-save.mjs",
+      "status": 200,
+      "sha256": "16a50455d8997b48c24eb19aee4418cb057d303550d2949754b29ae75ed5d6e3"
+    },
+    {
+      "file": "logo_old.png",
+      "status": 200,
+      "sha256": "fcc58c55add19249721ec0bbcc36f916ffdea5c53ab79837a230344a575dadd6"
+    },
+    {
+      "file": "logo.png",
+      "status": 200,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227"
+    },
+    {
+      "file": "logo192.png",
+      "status": 200,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227"
+    },
+    {
+      "file": "logo512.png",
+      "status": 200,
+      "sha256": "edc186b79ef0aa78fa8727e77f17c752bf917e8ececc6fee86cd8fd3d9031227"
+    },
+    {
+      "file": "logotipo.png",
+      "status": 200,
+      "sha256": "a6df8f594b9a6370df209f465086f1bf0fe64be079b558cf595060e8ad5ff63c"
+    },
+    {
+      "file": "manifest.json",
+      "status": 200,
+      "sha256": "77ceefbd5951f3e4747ef40e1d46838ab4f883ba01a5a4badd1f2e36e5404712"
+    },
+    {
+      "file": "payment-return.html",
+      "status": 200,
+      "sha256": "20aaca1ced610d3610963e687674ac7bd83e8b55fcd1f1e5e00e5ade411c34a0"
+    },
+    {
+      "file": "payment-return.js",
+      "status": 200,
+      "sha256": "c8c3fd58b108e170d84e0676e04dcc0db5dfac4d1abf7633fd213678a8289457"
+    },
+    {
+      "file": "reorder-cart.mjs",
+      "status": 200,
+      "sha256": "e911254d7a3b2db5d198e39d5dcaf4c66754a6ec1015ed166954a4f16808002d"
+    },
+    {
+      "file": "slide/slide1.png",
+      "status": 200,
+      "sha256": "06e61c2e860c70014d67d112863517f96f28bb40110aa120abc64372a7777b25"
+    },
+    {
+      "file": "slide/slide2.png",
+      "status": 200,
+      "sha256": "a996fa2fd945e672f7ab3f0b3ab0b55c490a72a474229291d1fcba2bcb41f7a7"
+    },
+    {
+      "file": "slide/slide3.png",
+      "status": 200,
+      "sha256": "fcc9c5358439ae82cded1c34f8fa9f883d0af4dae66af7934e01d05087f4f46f"
+    },
+    {
+      "file": "sms-enterprise.mjs",
+      "status": 200,
+      "sha256": "ab32c3649ff749f89f98785d3cc5fc00330e875461532d8daf16893341759187"
+    },
+    {
+      "file": "staff-push-cleanup.mjs",
+      "status": 200,
+      "sha256": "8bdd4b71b1e2c534d84b362548ccb4d51e62e7f28cd5cf18e42da0f41466458a"
+    },
+    {
+      "file": "static/css/main.95884c12.css",
+      "status": 200,
+      "sha256": "b3d7f9c746c1343530b8ace407b03a930454519641bc6a4928310f1bbd136009"
+    },
+    {
+      "file": "static/js/732.e46175af.chunk.js",
+      "status": 200,
+      "sha256": "85ad46a25f22c6166a4b5587ec3306c1453424c4b7f536361cb046bc96a6c498"
+    },
+    {
+      "file": "static/js/main.52d9bfdb.js",
+      "status": 200,
+      "sha256": "efe0a59e9cb9700680d7ea31e57695fed031c4cabbee2ba10d7bd625628794fc"
+    },
+    {
+      "file": "static/js/main.52d9bfdb.js.LICENSE.txt",
+      "status": 200,
+      "sha256": "3af38016848e12134186cf2143270bc0836d6c2cee899ab6fd7dfd3636e357a2"
+    },
+    {
+      "file": "store-availability.mjs",
+      "status": 200,
+      "sha256": "954ef802f847a2a90fb09d8f82ed75d18f1543e8489ecd9ad7be8cad55fb481c"
+    },
+    {
+      "file": "store-links.mjs",
+      "status": 200,
+      "sha256": "93cd4881fe89b4fc8b2636dc0c8636506aa43b677fb1e2b69a50f916beafd673"
+    },
+    {
+      "file": "store-public-config.mjs",
+      "status": 200,
+      "sha256": "af19cd31fb63585f6f6ee3d4213e1c44b94eec1295ab27e082272193aac3c072"
+    }
+  ],
+  "authenticatedUiTested": false
+}

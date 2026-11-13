@@ -30,5 +30,7 @@ export async function clientApiRequest({auth, baseUrl, path, storeId, method = '
     if (response.status === 403) error.code = 'permission-denied';
     throw error;
   }
-  return response.status === 204 ? null : response.json();
+  const result = response.status === 204 ? null : await response.json();
+  if (method !== 'GET' && typeof window !== 'undefined') window.dispatchEvent(new Event('doceria:clients-changed'));
+  return result;
 }

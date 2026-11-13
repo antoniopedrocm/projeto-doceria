@@ -1,5 +1,29 @@
 # Fase 10 — execução de C15 e fechamento de C16
 
+## 13/11/2026 — C15 encerrado: primeiro vínculo Google e continuidade aprovados
+
+**C15 PASS; Fase10=93,75% (15/16). C16 permanece PENDENTE. Fase9=100%; global ponderado=97,00%; Fase13=0%; PROD READY:NÃO.** Titular aprovou1endereço/2pedidos/detalhes,refresh,logout/relogin Google sem novoSMS/claim,retornoMatriz e ausência de menus administrativos. Leitura posterior confirmou16pós-condições técnicas, mesmo Customer/20documentos/2pedidos/1endereço,owner Google/mappings corretos e única auditoria, sem duplicidade. E-mail/senha já PASS preservado. [Aceite consolidado do caso](evidence/phase10-c15-google-20261113/acceptance.json).
+
+A trilha preserva2solicitações SMS (10h04 expirada;11h38 solicitada/11h39 consumida). Titular confirmou a solicitação das11h38. O limite inicial era1; diferença registrada, sem autorização retroativa presumida e sem envio/claim por ferramenta. Não reenviar nem refazer vínculo: Customer agora proprietário. C16 não é fechado automaticamente; próximos gates são aceites complementares, consolidação/versionamento DEV e revisão aplicável. Sem novo runtime/build/deploy,commit/push ou acesso PROD para registrar o aceite. Estados anteriores abaixo são históricos.
+
+
+## 13/11/2026 — primeiro claim Google realizado; continuidade UI em validação
+
+Caso `a403670c5b1f4151`: titular confirmou recebimento/campo/código na aplicação. [16pós-condições técnicas PASS](evidence/phase10-c15-google-20261113/after-technical.json), mesmo Customer/2pedidos/1endereço,20Customers preservados,owner Google correto e1auditoria. Trilha contém solicitação10h04 expirada e outra11h38 consumida11h39; origem manual da segunda solicitada ao titular, sem presumir autorização retroativa (limite inicial1SMS). Nenhum envio/claim por ferramenta. Não repetir vínculo ou apagar tentativa expirada. [Estado completo](PHASE10_C15_GOOGLE_FIRST_CLAIM.md).
+
+C15-E permanecePASS; falta somente aceite da continuidade UI Google e esclarecimento do procedimento. C15 geral/C16 ainda pendentes; Fase10=87,50%, global97,00%, Fase9=100%, Fase13=0%. Não pontuar publicação, login ou diagnóstico isolados.
+
+## 13/11/2026 — primeiro claim Google: caso autorizado em execução
+
+Caso `a403670c5b1f4151`/final1755 selecionado pelo Dono, titular presente e consentimento específico registrado. Pré-check atual PASS: nenhum proprietário/mapping, telefone e índice READY,2pedidos Matriz e1endereço preservados na baseline. Conta Google indicada ainda ausente no Auth DEV. Destinatário liberado por uma única atualização transacional da allowlist, demais campos preservados; Enterprise pronto. **0SMS/0claims executados pelo agente; orçamento autorizado:até1SMS.**
+
+[Roteiro atual](PHASE10_C15_GOOGLE_FIRST_CLAIM.md), [baseline/autorização sanitizadas](evidence/phase10-c15-google-20261113/before-and-authorization.json). Aguardar login Google humano, conferir destino antes do envio; depois titular confirma código somente na aplicação. Não repetir C15-E/Google já vinculado. C15-G e C16 continuam pendentes; Fase10=87,50%, global=97,00%, Fase9=100%, Fase13=0%.
+
+## 12/11/2026 — novos candidatos conferidos, sem vínculo executado
+
+Leitura autorizada do próprio cadastro do Dono confirmou vínculo Google já existente, sem elegibilidade de primeiro claim. Sete casos sem owner/identidade foram encontrados; dois têm2pedidos e1endereço. Nomes e telefones mascarados somente para escolha privada, sem dados no Git. [Escopo e autorização ainda necessária](PHASE10_C15_SELECTION_SCOPE.md). Nenhum SMS/claim/allowlist alterado. C15-E/acessoGoogleexistente preservados; C15-Gprimeiroclaim/C16 pendentes. Fase1087,50%; global97,00%; Fase9100%; Fase130%.
+
+
 ## Estado vigente — 07/11/2026: Google existente PASS, claim inicial ainda não demonstrado
 
 [Caso final 8602 no perfil Chrome da Ana](PHASE10_C15_GOOGLE_8602.md) homologado: 2 endereços/1 pedido, refresh, detalhe, retorno Matriz, logout/refresh sem shell privado/loading, Google relogin sem SMS/claim e atalho dual-role PASS. [8 verificações posteriores](evidence/phase10-google-8602-data-preservation-dev.json) confirmam Customer/owner/índices/versão do pedido preservados. Sessão final deixada autenticada no cardápio, sem alterar dados. C15-E já está integralmente aceito; não repetir nenhum desses testes.

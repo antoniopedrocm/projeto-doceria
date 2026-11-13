@@ -1,0 +1,35 @@
+{
+  "at": "2026-11-13T02:36:58.502Z",
+  "errors": 0,
+  "warnings": 0,
+  "files": [
+    {
+      "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree",
+      "file": "functions\\card-1x-fee-settings-emulator.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-multiloja",
+      "file": "functions\\card-1x-fee-settings-emulator.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-multiloja",
+      "file": "scripts\\check-ci-no-deploy.cjs",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-multiloja",
+      "file": "scripts\\check-ci-no-deploy.test.cjs",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    }
+  ]
+}

@@ -1,5 +1,35 @@
 # Autenticação de clientes e pagamento online
 
+## 13/11/2026 — consolidação C16 e revisão em recuperação
+
+C15-E/G PASS preservados. [C16 consolidado](PHASE10_C16_CONSOLIDATION.md): candidato congelado,164 unidades/34 públicos finais PASS,655React e147integrações anteriores consolidados,61/61arquivos DEV publicados revalidados. Astra Low documental concluída; revisão completa ainda impedida no preflight pela indisponibilidade de Python3 aprovado, sem modificar política Windows. [Handoff](C16_ASTRA_REVIEW_HANDOFF.md). Não repetir vínculo ou elevar porcentagem por preparação. **C16 PENDENTE; Fase10=93,75%(15/16); Fase9=100%; global97,00%; Fase13=0%; PRODREADY:NÃO.** Sem runtime/deploy novo, commit/push ou FirebasePROD. Sequência: recuperar preflight/revisão, resolver achados, revisão/versionamento DEV, fechar C16, integrar seletivamente PROD local e concluir seus gates antes da janela final.
+
+## 13/11/2026 — C15 encerrado: primeiro vínculo Google e continuidade aprovados
+
+**C15 PASS; Fase10=93,75% (15/16). C16 permanece PENDENTE. Fase9=100%; global ponderado=97,00%; Fase13=0%; PROD READY:NÃO.** Titular aprovou1endereço/2pedidos/detalhes,refresh,logout/relogin Google sem novoSMS/claim,retornoMatriz e ausência de menus administrativos. Leitura posterior confirmou16pós-condições técnicas, mesmo Customer/20documentos/2pedidos/1endereço,owner Google/mappings corretos e única auditoria, sem duplicidade. E-mail/senha já PASS preservado. [Aceite consolidado do caso](evidence/phase10-c15-google-20261113/acceptance.json).
+
+A trilha preserva2solicitações SMS (10h04 expirada;11h38 solicitada/11h39 consumida). Titular confirmou a solicitação das11h38. O limite inicial era1; diferença registrada, sem autorização retroativa presumida e sem envio/claim por ferramenta. Não reenviar nem refazer vínculo: Customer agora proprietário. C16 não é fechado automaticamente; próximos gates são aceites complementares, consolidação/versionamento DEV e revisão aplicável. Sem novo runtime/build/deploy,commit/push ou acesso PROD para registrar o aceite. Estados anteriores abaixo são históricos.
+
+
+## 13/11/2026 — C15-G: primeiro vínculo real técnico comprovado
+
+Titular confirmou SMS/código na aplicação; [16pós-condições técnicas PASS](evidence/phase10-c15-google-20261113/after-technical.json): Customer original/2pedidos/1endereço preservados,20Customers sem duplicidade,Google owner/mappings corretos,semStaff e1auditoria. Aceite de continuidade UI ainda pendente. Dois registros de solicitação (primeiro expirado,segundo consumido) preservados; origem do segundo em esclarecimento com o titular, sem nova autorização presumida. Nenhum envio/claim por ferramenta. [Roteiro atual](PHASE10_C15_GOOGLE_FIRST_CLAIM.md). Não repetir vínculo. Fase9=100%;Fase10=87,50%;global97,00%;Fase13=0%;PRODREADY:NÃO.
+
+## 13/11/2026 — C15-G: envio único aceito; prova não concluída
+
+Reteste Edge após correção de origem chegou a Status200/Start200;1challenge SMS autorizado, sem confirmação, expirado10h09min45s Brasília. Entrega no aparelho/avanço visual ainda não confirmados, owner0, nenhum claim. Saldo de SMS autorizado0; não reenviar ou testar código expirado. [Checkpoint do caso](PHASE10_C15_GOOGLE_FIRST_CLAIM.md). Não transformar solicitação aceita em PASS ou inferir nova causa sem informação da tela. Fase9=100%;Fase10=87,50% (14/16);global97,00%;Fase13=0%;PRODREADY:NÃO.
+
+## 13/11/2026 — C15-G real iniciado; impedimento de origem antes do SMS
+
+**Complemento publicado e verificado:** Hosting DEV `22c9613fe531a63f`,61/61hashes, apenas módulo público do claim atualizado; bundles/API/Rules anteriores preservados.34testes locais/lint/sintaxe/diff e build PASS. Titular retesta a mesma sessão Edge; primeiro SMS/claim e aceite C15 ainda não comprovados. Nenhum percentual avança por correção/publicação. [Evidência](evidence/phase10-c15-google-20261113/origin-fix-validation.json).
+
+Titular legítimo selecionado, baseline e autorização específica registradas; único destinatário liberado em DEV, Google autenticado sem vínculo/duplicidade/privilégio Staff. Primeiro claim ainda não ocorreu. Edge evidenciou modal ignorando `returnTo=/cardapio-matriz` e fallback relativo de listagem incorreto;0challenges SMS. Correção mínima UI com34testes/lint/sintaxe/diff PASS, build isolado em andamento para HostingDEV. [Roteiro e limites](PHASE10_C15_GOOGLE_FIRST_CLAIM.md). Não modificar evidências C01–C14/C15-E nem declarar compatibilidade física universal. Fase9=100%;Fase10=87,50% (14/16);global97,00%;Fase13=0%;PRODREADY:NÃO.
+
+## 12/11/2026 — preparação financeira e gates atuais
+
+GaraveloDEV ACTIVE/antoniopedrocm/versão2 confirmado em leitura, Matrizhabilitada sem APIKey no modo básico; nenhum vínculo financeiro cruza lojas. [Estado completo](INFINITEPAY_PREPROD_STATUS.md). G1/G2/G3 já implementados/testados/publicados (d87174b6e sucessores), não são funcionalidades ausentes; registros anteriores de nãoimplementado são históricos. Revisão consolidada preserva prova deG3 sem operação real. GitHubPROD merge/PRdisabled_manually/filas0, CIlocal preparado sem deploy. C15-E e GoogleexistentePASS; faltamprimeiroclaimGoogle eC16. ContasPROD informadas peloDonocomo iguais às respectivasDEV; nenhuma chave/configuraçãoPROD aplicada. Backlog:MercadoPago apósInfinitePayPROD,códigoWhatsAppdepois. Fase9100%;Fase1087,50%;global97,00%;Fase130%;PRODREADY:NÃO.
+
+
 ## Estado vigente — 07/11/2026: confirmação técnica CloudWalk de 06/11 incorporada
 
 [Contrato oficial fornecido pelo Dono](INFINITEPAY_SUPPORT_CONTRACT_2026-11-06.md), [auditoria de impacto](INFINITEPAY_CONTRACT_AUDIT_2026-11-06.md): webhook sem assinatura, aprovação por consulta oficial server-side; oito eventos selecionáveis, sem consulta pública de falha/refund/cancelamento/liquidação ou estorno parcial. Retry em não 2xx sem limite/intervalo divulgado; API Key `inchk_` exclusivamente backend para options, não exigida pelo fluxo simples atual. Provider não exige homologação separada; API granular/MCP anunciados são futuros.
@@ -422,12 +452,12 @@ Fórmula: `contribuição em p.p. = peso (%) × conclusão interna (%) / 100`; `
 | 6C — Comprar Novamente | 7% | 0% | 100% | 0,00 → 7,00 | Implementação local concluída: ownership, catálogo/preço/estoque atuais, confirmação e conflitos, carrinho novo e testes; homologação em 12 |
 | 7 — Estados/reservas/cupons | 8% | 100% | 100% | 8,00 → 8,00 | Núcleo local e invariantes testados; confirmação/release não duplicam operações |
 | 8 — InfinitePay por loja | 10% | 100% | 100% | 10,00 → 10,00 | Configuração, permissão, auditoria, checkout e prefill locais; contas/ensaio real em 12 |
-| 9 — Webhook/conciliação | 8% | 75% | 75% | 6,00 → 6,00 | Verificação financeira, idempotência e revisão/recuperação presentes; Contrato oficial recebido em 25/10; faltam tratamento dos eventos/operações esperadas e reconciliação, testes, deploy e homologação DEV |
+| 9 — Webhook/conciliação | 8% | 75% | **100%** | 6,00 → 8,00 | Aceite formal04/11 preservado; G1/G2/G3 implementados/testados/publicados, revisão consolidada dos complementos no gate final |
 | 11 — Validação local do escopo completo | 5% | 75% | 100% | 3,75 → 5,00 | CONCLUÍDA em 2026-10-20: bateria atual backend/CRM/Customer/Auth/multiloja/frete/reorder/cart/FCM/Rules/ESM, build e jornada visual aprovada reutilizada. Sem regressão nova remanescente; fixtures e lint preexistentes demonstrados no baseline, resultados globais não omitidos |
 | 12 — Homologação DEV | 7% | 25% | 100% | 1,75 → 7,00 | CONCLUÍDA em 2026-10-20: quatro marcos de 25% concluídos; Marco 4 encerrado por aprovação manual consolidada dos Blocos 1–10, com evidências funcionais anteriores reutilizadas. Duas ressalvas BAIXAS/UX aceitas em backlog, sem reabrir o marco. Produção não iniciada |
 | 13 — Produção | 3% | 0% | 0% | 0,00 → 0,00 | Não iniciada; exige homologação e autorização específicas |
-| **Total obrigatório** | **100%** | — | — | **72,50 → 95,00** | Linha formal inicial → atual; fechamento da Fase 11 acrescenta 1,25 p.p. ao anterior 93,75%. Fase 9 ainda tem 2,00 p.p. pendentes; Fase 13 mantém seus 3,00 p.p. não iniciados |
-| 10 — Recuperação completa de legado — obrigatória pré-PROD | **0% / fora da ponderação** | 0% histórico não auditado | **75% auditado (12/16)** | **não contabilizada** | Gate obrigatório por decisão do proprietário; C13–C16 pendentes. Peso global só muda com rebaseline explicitamente autorizado |
+| **Total obrigatório** | **100%** | — | — | **72,50 → 97,00** | Estado ponderado vigente; Fase13 mantém3,00p.p. não iniciados. Fase10 é gate obrigatório fora da ponderação |
+| 10 — Recuperação completa de legado — obrigatória pré-PROD | **0% / fora da ponderação** | 0% histórico não auditado | **93,75% (15/16)** | **não contabilizada** | C01–C15 PASS; C16 pendente de consolidação/aceite/revisão. Sem rebaseline de pesos |
 
 Critério interno: marco aceito exige implementação e teste local; homologação real é contabilizada separadamente em 12. Para fases parciais, os seguintes marcos têm pesos iguais dentro da própria fase:
 

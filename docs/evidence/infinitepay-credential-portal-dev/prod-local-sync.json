@@ -1,0 +1,82 @@
+{
+  "at": "2026-11-12T20:36:15.501Z",
+  "dev": "C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree",
+  "prod": "C:/Users/antonio.pedro/Projeto/projeto-doceria-multiloja",
+  "heads": {
+    "dev": "7e7d7b6918d9edb045dd11443a2c42efe114640a",
+    "prod": "a0229cc019b3b4cf689d7ab15c47269974d38b71"
+  },
+  "files": {
+    "functions/card-1x-fee-policy.js": {
+      "before": "c44ea5b898fbd3f389b17c2598cc552d0cab89b363591fd6ab172a1d0969744d",
+      "after": "94a476e823838ac5acdf73b2920ddcf727f50d60e94890cd367fdad154519d97"
+    },
+    "functions/card-1x-fee-policy.test.js": {
+      "before": "7b7302fdfc2513b26ecce17121f0dd8cf0ad9e29a55e9417cb70e0bbb6ac8f07",
+      "after": "7b7302fdfc2513b26ecce17121f0dd8cf0ad9e29a55e9417cb70e0bbb6ac8f07"
+    },
+    "functions/card-1x-fee-native.test.js": {
+      "before": "59f2fb7dcae45183b38e6bd8e4b576cd81e228c9a26b5fedc5b8cec4080e4599",
+      "after": "40c50488c381dff4596b5489ce6d637487d1ae34dc506af3f5b9ce5acb900484"
+    },
+    "functions/card-1x-fee-credentials.js": {
+      "before": "ee79a1ef50cdcce213e8dff344600098a1af44652c21665b544082a4003837e2",
+      "after": "ee79a1ef50cdcce213e8dff344600098a1af44652c21665b544082a4003837e2"
+    },
+    "functions/card-1x-fee-settings-emulator.test.js": {
+      "before": "b2f38a634789692e492292a53cf5b81645c8a5d20220140187c9d4145d3276a7",
+      "after": "8db5b861a14a7940b628e90829f0046486dea98cf14b2e6c0cd63445aace49e4"
+    },
+    "functions/checkout-payment.js": {
+      "before": "60a192fccf0f34bf5ce8957d1be677d3096b6395806854c7e5fbb87b6483163b",
+      "after": "f41ec3b98174ddd209be2c3db6cf148b3abccb06b73fd2fa67d047f291909e40"
+    },
+    "functions/payment-settings.js": {
+      "before": "c0ea1b46897634f39f2c6600c39b1b56e9bb0e58b429d6f94037150ff4aa608a",
+      "after": "020a80c566127b134bd34905b3df1b411a6b0410d2a675d9318981ec1895a7f6"
+    },
+    "crm/src/payments/InfinitePaySettings.js": {
+      "before": "ecaff9723d83cfc8f4abb9600165cc6c45bde7c490f493b2b3a318e4ee3f9c9d",
+      "after": "8ea05b225a77c27d6246d075bb30f635eb832e95874eb261e8c2d6f505390ec2"
+    },
+    "crm/src/payments/InfinitePaySettings.test.js": {
+      "before": "7088ffc86e61fb4d0110df47397c9c92ccd4d675f056563e86a89f9cef88102c",
+      "after": "1b9dd473e01b6b2d8966a7cf6d9e39728e69e829867fd597594499af5221b421"
+    },
+    "functions/infinitepay-secret-store.js": {
+      "before": null,
+      "after": "6ad885d6b4b6dec29dc94c97c0682369623dcfc56c81bca41d8aef71739e3fc2"
+    },
+    "functions/infinitepay-secret-store.test.js": {
+      "before": null,
+      "after": "4e93655569d644acb1d97720b654f46721ee5d041a779e3c2a448af0ca423946"
+    },
+    "functions/payment-credential-status.js": {
+      "before": null,
+      "after": "4d4fcc398c4c2a17a4613c125718a44710f05d1e44d2495543e8e052ce8fe593"
+    },
+    "functions/payment-credentials.js": {
+      "before": null,
+      "after": "4ad2e5086e9a6ab0ee1e8c8d211ab164131b10d17fae2917c92e2566282a122c"
+    },
+    "functions/payment-credentials-emulator.test.js": {
+      "before": null,
+      "after": "b49a749fd190e70323dd57b33b27069ad6e1a85cf28c6b3f06d1e45d0267785a"
+    },
+    "crm/src/payments/InfinitePayCredentialForm.js": {
+      "before": null,
+      "after": "70b434304742d2b1a7299b9f0623a1af7423b1b9ac2e703197f90de1d5a2f4e5"
+    },
+    "crm/src/payments/InfinitePayCredentialForm.test.js": {
+      "before": null,
+      "after": "07ba348159bc5313973bade20ccd6bb913e6e8766a5833cefcf7c74536901b8f"
+    },
+    "functions/index.js": {
+      "before": "92b112e14e6293dec4261e9f1209513238a67a54e939c6279594600f9f299367",
+      "after": "e8672e573f0160924d61c83f0cea5f2023ac24f7265f56aaefdd89c87262b439"
+    }
+  },
+  "prodRemote": false,
+  "commit": false,
+  "push": false
+}

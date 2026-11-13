@@ -1,5 +1,9 @@
 # Fase 10 — auditoria de recuperação completa de legado
 
+## Estado vigente — 13/11/2026: C15 integral PASS; C16 em consolidação/revisão
+
+C15-E e primeiroGoogle legítimo aprovados tecnicamente e pelos titulares, Customer original/endereço/2pedidos preservados em cada caso, sem duplicidade; não repetir SMS/claim. [Matriz C16 atual](PHASE10_C16_CONSOLIDATION.md), [aceite Google](evidence/phase10-c15-google-20261113/acceptance.json). C01–C15 PASS preservados, Fase10=93,75%(15/16). Astra Low documental conferiu44links e sustenta os aceites; revisão completa de código/segurança/financeiro aguarda recuperação do preflight Python aprovado. C16PENDENTE, global97,00%,Fase9=100%,Fase13=0%,PRODREADY:NÃO. Registros abaixo são históricos e não instruem novo vínculo. Nenhuma migração ou dado remoto alterado nesta consolidação.
+
 ## Estado vigente — 07/11/2026: acesso Google existente homologado
 
 C15-E integral PASS preservado. [Google final 8602 no perfil separado da Ana](PHASE10_C15_GOOGLE_8602.md): 2 endereços/1 pedido, refresh/detalhe/retorno, saída sem shell privado/loading e reentrada Google sem SMS/claim PASS. [8 verificações de preservação](evidence/phase10-google-8602-data-preservation-dev.json): Customer original, owner, índices e versão/referência do pedido inalterados. O caso já tinha owner; primeiro claim Google continua não demonstrado, sem desfazer vínculo para fabricar evidência. C15 geral/C16 pendentes; **Fase 10 87,50%; global formal 97,00%; Fase 9 100%; Fase 13 0%; PROD READY: NÃO**. Sem código/deploy ou mudança administrativa de dados. Pendências anteriores de login Google abaixo são históricas, superadas apenas para o acesso existente.

@@ -1,0 +1,19 @@
+{
+  "at": "2026-11-13T17:31:09.290Z",
+  "codeDigest": "7e4f6ea1a97553e3e9afa2c184dae44d38f9a0522b21114adc04f64b3a3731d1",
+  "exitCode": 0,
+  "files": [
+    "crm/tests/customer-phone-claim.test.mjs",
+    "crm/tests/sms-enterprise.test.mjs",
+    "crm/tests/customer-return-path.test.mjs",
+    "crm/tests/customer-first-registration-return.test.mjs",
+    "crm/tests/canonical-auth.test.mjs"
+  ],
+  "tests": 34,
+  "passed": 34,
+  "failed": 0,
+  "remoteWrites": 0,
+  "realSms": 0,
+  "realPayments": 0,
+  "network": "test process restricted to loopback"
+}

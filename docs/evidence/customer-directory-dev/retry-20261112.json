@@ -1,0 +1,31 @@
+{
+  "at": "2026-11-12T03:02:04.495Z",
+  "project": "crmdoceria-9959e",
+  "request": "tente novamente",
+  "cliAuth": "PASS_HTTP_200_SYSTEM_CA",
+  "remoteRecheck": "PASS",
+  "api": "api-00077-qux",
+  "hosting": "sites/crmdoceria-9959e/versions/186b142d3703e536",
+  "rules": "projects/crmdoceria-9959e/rulesets/eaa8ed3d-0434-41c7-bc5b-587530841fbb",
+  "mainHashMatches": true,
+  "unrelatedFunctionsUnchanged": 145,
+  "browser": {
+    "attempts": 2,
+    "resets": 1,
+    "status": "INITIALIZATION_FAILED",
+    "error": "failed to write kernel assets: O sistema não pode encontrar o caminho especificado. (os error 3)",
+    "devCdpTabsAvailable": false
+  },
+  "manualAcceptance": "PENDING_NOT_PASS",
+  "newDeploy": false,
+  "runtimeCodeChanges": false,
+  "commit": false,
+  "push": false,
+  "prodAccess": false,
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

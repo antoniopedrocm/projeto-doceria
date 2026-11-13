@@ -1,0 +1,847 @@
+{
+  "at": "2026-11-13T14:53:46.431Z",
+  "project": "crmdoceria-9959e",
+  "mode": "READ_ONLY_REAL_DEV_OAUTH_AND_ACTUAL_STAFF_POLICY",
+  "noFirebaseAuthImpersonation": true,
+  "counts": {
+    "customers": 20,
+    "aliases": 4,
+    "orders": 109
+  },
+  "knownStores": [
+    "ana-guimaraes-doceria-garavelo",
+    "ana-guimaraes-doceria-matriz",
+    "apfood",
+    "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+    "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2"
+  ],
+  "ownStaffCaseId": "f8c3811e79e7bf05",
+  "ownRole": "dono",
+  "allNonAliasCustomers": 16,
+  "generalRows": 16,
+  "generalCoversAllNonAlias": true,
+  "scopes": {
+    "ana-guimaraes-doceria-matriz": {
+      "buyers": 6,
+      "crmProfiles": 7,
+      "purchaseCount": 47,
+      "totalCents": 91301,
+      "lastPurchase": "2026-11-09T00:05:15.750Z",
+      "pendingCount": 1,
+      "pendingCents": 1478,
+      "issues": [],
+      "projectionMatchesDirectSnapshot": true,
+      "durationMs": 499,
+      "queries": 7,
+      "readDocuments": 92,
+      "rows": [
+        {
+          "caseId": "48d5c1f07f26197e",
+          "purchases": 37,
+          "totalCents": 46877,
+          "latest": "2026-10-30T02:04:19.115Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "a1f3a5861cbdc471",
+          "purchases": 5,
+          "totalCents": 38600,
+          "latest": "2026-08-21T00:16:37.980Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "d6c7863bbec07990",
+          "purchases": 1,
+          "totalCents": 1478,
+          "latest": "2026-11-09T00:05:15.750Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "087e49fcd89b46d5",
+          "purchases": 2,
+          "totalCents": 2800,
+          "latest": "2026-06-21T10:16:11.068Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "a1b7bd008ec0f45d",
+          "purchases": 1,
+          "totalCents": 100,
+          "latest": "2026-11-08T19:06:37.735Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "782c8c2af9dc4397",
+          "purchases": 1,
+          "totalCents": 1446,
+          "latest": "2026-10-24T18:43:59.580Z",
+          "hasStorePurchases": true
+        }
+      ],
+      "outdatedMetadataRecovered": [],
+      "warmCacheAdditionalDocuments": 2,
+      "warmCacheAdditionalQueries": 2
+    },
+    "ana-guimaraes-doceria-garavelo": {
+      "buyers": 0,
+      "crmProfiles": 2,
+      "purchaseCount": 0,
+      "totalCents": 0,
+      "lastPurchase": null,
+      "pendingCount": 0,
+      "pendingCents": 0,
+      "issues": [],
+      "projectionMatchesDirectSnapshot": true,
+      "durationMs": 433,
+      "queries": 7,
+      "readDocuments": 31,
+      "rows": [],
+      "outdatedMetadataRecovered": [],
+      "warmCacheAdditionalDocuments": 2,
+      "warmCacheAdditionalQueries": 2
+    },
+    "__all__": {
+      "buyers": 16,
+      "crmProfiles": 16,
+      "purchaseCount": 47,
+      "totalCents": 91301,
+      "lastPurchase": "2026-11-09T00:05:15.750Z",
+      "pendingCount": 1,
+      "pendingCents": 1478,
+      "issues": [
+        {
+          "caseId": "8d5612018d92bb0a",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "6d339ce0b621e952",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "82d3c33f6b0eaa1c",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "7ce5ee83ce003577",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "20ac3c2907909b67",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "366ba28a92becbdb",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "38bfe27056cc7c13",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "55479f669c0d595a",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "598d8627896364e6",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "5a9a4b7f2258a248",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "bf54c32e9eb82f46",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "6b0127da56e90021",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "379dedc41e9ea0f6",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "634b041c265b1625",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "e681e5c9d154ca75",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "aef0934021773332",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "c253cac2ef1dc3f3",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "83e08c69cb0747e0",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "dceb5da1a50360e0",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "52e9bf6e96d26943",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "252d3463c911490d",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "eb84e995c9130ce4",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "6af177dd34c51478",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "c77ec661cd4c31c4",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "0c2b5ea017729a01",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "42864d4f32b7173b",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "21d639e18980834d",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "9c2ad4051130a8e5",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "43a5f424110680f7",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "56f9ba347be21434",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "b2ad83fc46e19ad7",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "fd6d7a34cb67bca9",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "0587ceb93ca302ed",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "3972a037f2d61f1b",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "0143a70d7f81bb36",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "8254f97a641853ec",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "8e27aea5871c8f47",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        },
+        {
+          "caseId": "200797119c5c577e",
+          "reason": "STORE_UNRESOLVED_OR_CONFLICTING"
+        }
+      ],
+      "projectionMatchesDirectSnapshot": true,
+      "durationMs": 801,
+      "queries": 11,
+      "readDocuments": 140,
+      "rows": [
+        {
+          "caseId": "754d435c7cabf649",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        },
+        {
+          "caseId": "48d5c1f07f26197e",
+          "purchases": 37,
+          "totalCents": 46877,
+          "latest": "2026-10-30T02:04:19.115Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "a1f3a5861cbdc471",
+          "purchases": 5,
+          "totalCents": 38600,
+          "latest": "2026-08-21T00:16:37.980Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "d6c7863bbec07990",
+          "purchases": 1,
+          "totalCents": 1478,
+          "latest": "2026-11-09T00:05:15.750Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "0f25bf320d7b07b8",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        },
+        {
+          "caseId": "da3091480eb206bd",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        },
+        {
+          "caseId": "71d0254ebc166c3a",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        },
+        {
+          "caseId": "b089557f092dc0e9",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        },
+        {
+          "caseId": "1fd49cf567fd9e90",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        },
+        {
+          "caseId": "087e49fcd89b46d5",
+          "purchases": 2,
+          "totalCents": 2800,
+          "latest": "2026-06-21T10:16:11.068Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "b0d7f7ad2f51d86e",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        },
+        {
+          "caseId": "edee20341a533191",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        },
+        {
+          "caseId": "db0ed0a03cc84069",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        },
+        {
+          "caseId": "a1b7bd008ec0f45d",
+          "purchases": 1,
+          "totalCents": 100,
+          "latest": "2026-11-08T19:06:37.735Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "782c8c2af9dc4397",
+          "purchases": 1,
+          "totalCents": 1446,
+          "latest": "2026-10-24T18:43:59.580Z",
+          "hasStorePurchases": true
+        },
+        {
+          "caseId": "3ad2679103f04af9",
+          "purchases": 0,
+          "totalCents": 0,
+          "latest": null,
+          "hasStorePurchases": false
+        }
+      ],
+      "outdatedMetadataRecovered": [],
+      "warmCacheAdditionalDocuments": 2,
+      "warmCacheAdditionalQueries": 2
+    }
+  },
+  "bothStoresCases": [],
+  "financialConflicts": [],
+  "permissions": [
+    {
+      "actorCaseId": "09f234729085fee2",
+      "sourceRole": "atendente",
+      "normalizedRole": "atendente",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "__all__",
+          "allowed": false,
+          "status": 403
+        }
+      ]
+    },
+    {
+      "actorCaseId": "d2b4a6a9a350e8b2",
+      "sourceRole": "atendente",
+      "normalizedRole": "atendente",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "__all__",
+          "allowed": false,
+          "status": 403
+        }
+      ]
+    },
+    {
+      "actorCaseId": "2666b239c2ee312f",
+      "sourceRole": "admin",
+      "normalizedRole": "dono",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": true
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": true
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": true
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": true
+        },
+        {
+          "store": "__all__",
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "actorCaseId": "5585e3aebd26df0d",
+      "sourceRole": "gerente",
+      "normalizedRole": "gerente",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": true
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "apfood",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "__all__",
+          "allowed": false,
+          "status": 403
+        }
+      ]
+    },
+    {
+      "actorCaseId": "e65122ff14888934",
+      "sourceRole": "contador",
+      "normalizedRole": "contador",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "__all__",
+          "allowed": false,
+          "status": 403
+        }
+      ]
+    },
+    {
+      "actorCaseId": "f8c3811e79e7bf05",
+      "sourceRole": "dono",
+      "normalizedRole": "dono",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": true
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": true
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": true
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": true
+        },
+        {
+          "store": "__all__",
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "actorCaseId": "57e2d9a944442850",
+      "sourceRole": "admin",
+      "normalizedRole": "dono",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": true
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": true
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": true
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": true
+        },
+        {
+          "store": "__all__",
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "actorCaseId": "1a02eb1a70ea136c",
+      "sourceRole": "admin",
+      "normalizedRole": "dono",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": true
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": true
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": true
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": true
+        },
+        {
+          "store": "__all__",
+          "allowed": true
+        }
+      ]
+    },
+    {
+      "actorCaseId": "e8e0e6091f0a24c1",
+      "sourceRole": "atendente",
+      "normalizedRole": "atendente",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "__all__",
+          "allowed": false,
+          "status": 403
+        }
+      ]
+    },
+    {
+      "actorCaseId": "d6329fe629f9f6e6",
+      "sourceRole": "atendente",
+      "normalizedRole": "atendente",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "__all__",
+          "allowed": false,
+          "status": 403
+        }
+      ]
+    },
+    {
+      "actorCaseId": "632320ef6ec7b684",
+      "sourceRole": "gerente",
+      "normalizedRole": "gerente",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": true
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "apfood",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "__all__",
+          "allowed": false,
+          "status": 403
+        }
+      ]
+    },
+    {
+      "actorCaseId": "97e64c1864a3f606",
+      "sourceRole": "gerente",
+      "normalizedRole": "gerente",
+      "checks": [
+        {
+          "store": "ana-guimaraes-doceria-garavelo",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "ana-guimaraes-doceria-matriz",
+          "allowed": true
+        },
+        {
+          "store": "apfood",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+          "allowed": false,
+          "status": 403
+        },
+        {
+          "store": "__all__",
+          "allowed": false,
+          "status": 403
+        }
+      ]
+    }
+  ],
+  "measuredReads": {
+    "queries": 175,
+    "returnedDocuments": 401,
+    "emptyQueries": 19,
+    "byCollection": {
+      "users/TCNsjLDfnaXdo53tAl2z5R87ovH2": 12,
+      "customProfiles/TCNsjLDfnaXdo53tAl2z5R87ovH2": 12,
+      "clientes": 60,
+      "integrations/customerRegistry/aliases": 12,
+      "lojas/ana-guimaraes-doceria-matriz/pedidos": 132,
+      "pedidos": 38,
+      "lojas/ana-guimaraes-doceria-garavelo/pedidos": 10,
+      "lojas": 5,
+      "lojas/apfood/pedidos": 0,
+      "lojas/loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237/pedidos": 0,
+      "lojas/loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2/pedidos": 0,
+      "users/3uHSOqd3qLbMMFZ9kN9BKMjNYcK2": 6,
+      "customProfiles/3uHSOqd3qLbMMFZ9kN9BKMjNYcK2": 6,
+      "users/4GkI9B02Woc1N0AKIgaFKcwHLCG3": 6,
+      "customProfiles/4GkI9B02Woc1N0AKIgaFKcwHLCG3": 6,
+      "users/5vNyWp5FZIBLGeCOITPj": 6,
+      "customProfiles/5vNyWp5FZIBLGeCOITPj": 0,
+      "users/LD6pW98tT9gv4S2P5g8nIWA8MHj1": 6,
+      "customProfiles/LD6pW98tT9gv4S2P5g8nIWA8MHj1": 6,
+      "users/QqmsljjhLrNf4MLfKUfnmgVzd2s1": 6,
+      "customProfiles/QqmsljjhLrNf4MLfKUfnmgVzd2s1": 6,
+      "users/YwVjC7QnsMglNX8wC97i": 6,
+      "customProfiles/YwVjC7QnsMglNX8wC97i": 0,
+      "users/hsdihKLcpHYsNCXbgxnoxSYS8oy2": 6,
+      "customProfiles/hsdihKLcpHYsNCXbgxnoxSYS8oy2": 6,
+      "users/lzSvz8tuxhRQHIcfbZXOC6gSkFM2": 6,
+      "customProfiles/lzSvz8tuxhRQHIcfbZXOC6gSkFM2": 6,
+      "users/ubItmn4rJvZIj94y1P64rJtRrAe2": 6,
+      "customProfiles/ubItmn4rJvZIj94y1P64rJtRrAe2": 6,
+      "users/uf0e78UNtGf8w4F3WPZCvCNEUmP2": 6,
+      "customProfiles/uf0e78UNtGf8w4F3WPZCvCNEUmP2": 6,
+      "users/xdL9hNhlGufNEDAkkdoFeB2OXQn1": 6,
+      "customProfiles/xdL9hNhlGufNEDAkkdoFeB2OXQn1": 6
+    }
+  },
+  "comparison": "projection query result versus bounded direct snapshot using same pure builder; synthetic independent expected matrices tested separately",
+  "remoteWrites": 0,
+  "noPIIPersisted": true
+}

@@ -1,7 +1,9 @@
 import {createEnterpriseSmsVerifier} from './sms-enterprise.mjs';
+import {customerMenuDestination,resolvePublicMenuRoute,validStoreId} from './store-links.mjs';
 
 // A one-time claim of an existing Customer, not an address grant or Phone login.
-export function createCustomerPhoneClaimView({document,window,call,auth,onLinked}) {
+export function createCustomerPhoneClaimView({document,window,call,auth,onLinked,
+  getApiBase=async()=>(await import('./checkout-environment.js')).apiBaseUrl}) {
   const dialog=document.createElement('dialog');dialog.className='rounded-lg shadow-xl p-6 w-full max-w-md';
   dialog.setAttribute('aria-label','Vincular cadastro existente');
   dialog.innerHTML=`<h2 class="font-bold text-xl">Confirme seu número</h2><p data-claim-message role="status" class="my-3"></p>
@@ -22,14 +24,24 @@ export function createCustomerPhoneClaimView({document,window,call,auth,onLinked
     message(identityReviewRequired?'Este cadastro já está vinculado a outra conta. É necessária conferência para conservar os acessos existentes.':'Para recuperar seu cadastro existente, confirme o celular terminado em '+String(phone).replace(/\D/g,'').slice(-4)+'.');
     el('send').hidden=!!identityReviewRequired;el('send').disabled=false;el('store-label').hidden=true;el('store').disabled=false;
     if(!dialog.open)dialog.showModal();if(identityReviewRequired)return;
-    let storeId=new URL(window.location.href).searchParams.get('store');
-    try {storeId ||= JSON.parse(window.sessionStorage.getItem('checkoutState_v1') || '{}').storeId;}catch { /* No inferred store fallback. */ }
-    if(/^[a-zA-Z0-9_-]{1,150}$/.test(storeId || '')){c.storeId=storeId;return;}
+    const location=new URL(window.location.href);
+    let storeId=null;
+    const route=resolvePublicMenuRoute({pathname:location.pathname,search:location.search});
+    if(route.kind==='menu')storeId=route.storeId;
+    if(!storeId) {
+      let storage;try {storage=window.sessionStorage;}catch { /* Public returnTo works without storage. */ }
+      const destination=customerMenuDestination(storage,location.search,{referrer:document.referrer,origin:location.origin});
+      const origin=resolvePublicMenuRoute({pathname:new URL(destination,location.origin).pathname,search:new URL(destination,location.origin).search});
+      if(origin.kind==='menu')storeId=origin.storeId;
+    }
+    if(validStoreId(storeId)){c.storeId=storeId;return;}
+    el('send').disabled=true;
     try {
-      const response=await window.fetch('/api/store/public-list');if(!response.ok)throw Error();const result=await response.json();if(!same(seq,c))return;
+      const base=await getApiBase();if(!same(seq,c))return;
+      const response=await window.fetch(`${base}/store/public-list`);if(!response.ok)throw Error();const result=await response.json();if(!same(seq,c))return;
       el('store').replaceChildren(new window.Option('Selecione uma loja',''));
-      const seen=new Set();for(const store of result.stores || [])if(!seen.has(store.storeId)){seen.add(store.storeId);el('store').append(new window.Option(store.name,store.storeId));}
-      el('store-label').hidden=false;
+      const seen=new Set();for(const store of result.stores || [])if(validStoreId(store.storeId)&&!seen.has(store.storeId)){seen.add(store.storeId);el('store').append(new window.Option(store.name,store.storeId));}
+      el('store-label').hidden=false;el('send').disabled=false;
     }catch {if(same(seq,c))message('Não foi possível carregar as lojas. Tente novamente mais tarde.');}
   }
   el('send').onclick=async()=>{

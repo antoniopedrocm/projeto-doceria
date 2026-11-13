@@ -1,0 +1,51 @@
+{
+  "at": "2026-11-13T17:31:58.721Z",
+  "repository": "antoniopedrocm/projeto-doceria-Multilojas",
+  "workflows": [
+    {
+      "id": 274898027,
+      "name": "Deploy to Firebase Hosting on merge",
+      "path": ".github/workflows/firebase-hosting-merge.yml",
+      "state": "disabled_manually"
+    },
+    {
+      "id": 274898028,
+      "name": "Deploy to Firebase Hosting on PR",
+      "path": ".github/workflows/firebase-hosting-pull-request.yml",
+      "state": "disabled_manually"
+    }
+  ],
+  "active": [
+    {
+      "status": "queued",
+      "total": 0,
+      "runs": []
+    },
+    {
+      "status": "in_progress",
+      "total": 0,
+      "runs": []
+    },
+    {
+      "status": "waiting",
+      "total": 0,
+      "runs": []
+    },
+    {
+      "status": "pending",
+      "total": 0,
+      "runs": []
+    },
+    {
+      "status": "requested",
+      "total": 0,
+      "runs": []
+    }
+  ],
+  "hooks": [],
+  "firebaseProdAccess": false,
+  "remoteWrites": 0,
+  "push": 0,
+  "deploy": 0,
+  "otherFirebaseCloudBuildOrExternalPublisherInventory": "NOT_VERIFIED: owner prohibits Firebase PROD access; repository evidence cannot prove absence of external mechanisms"
+}

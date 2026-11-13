@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-12T01:37:17.488Z",
+  "project": "crmdoceria-9959e",
+  "readOnly": true,
+  "independentFromDirectoryBuilder": true,
+  "usesExistingRegistryResolverReadOnlyInMemory": true,
+  "sourceDocuments": 132,
+  "omittedStore": 38,
+  "omittedCustomer": 5,
+  "verified": {
+    "ana-guimaraes-doceria-matriz": {
+      "rows": 4,
+      "purchases": 44,
+      "totalCents": 89223,
+      "amountsDatesAndMembershipMatch": true
+    },
+    "ana-guimaraes-doceria-garavelo": {
+      "rows": 0,
+      "purchases": 0,
+      "totalCents": 0,
+      "amountsDatesAndMembershipMatch": true
+    },
+    "__all__": {
+      "rows": 16,
+      "purchases": 44,
+      "totalCents": 89223,
+      "amountsDatesAndMembershipMatch": true
+    }
+  }
+}

@@ -1,5 +1,13 @@
 # Checkout por modalidade de acesso — implementação local DEV
 
+> **Etapa atual — planejamento de Pix exclusivo:** [plano e riscos](GUEST_PIX_ONLY_PLAN.md) e [consulta técnica ao suporte](INFINITEPAY_PIX_ONLY_TECHNICAL_QUERY.md) preparados em 08/11. Sem implementação; aguardando contrato oficial e posterior aprovação do Dono. A consulta não foi enviada. Publicação `c2a387e4` e percentuais preservados.
+
+## Nova solicitação de habilitação — dependência reconfirmada em 08/11/2026
+
+Após a publicação, o Dono solicitou Pix online visitante habilitado, sem cartão. A leitura atual das duas fontes oficiais abaixo continua negando desativação de cartão no Checkout Integrado. O código `InfinitePayProvider.create` gera POST `/links`; remover a guarda Guest não cria uma cobrança Pix exclusiva. Não existe nova capacidade documentada para implementar dentro do escopo atual. Nenhum runtime/credencial/dado remoto alterado e nenhum link real criado. Os 2 testes da guarda passaram; não são teste de sucesso Pix-only. Checkpoint atualizado com a dependência e decisão necessária; global 97,00% preservado. Não há build/deploy necessário para esta anotação.
+
+Para concluir o requisito sem cartão, falta contrato de Pix exclusivo compatível com a integração atual, ou autorização de escopo para uma API Pix específica. A confirmação desse novo meio teria de seguir o respectivo provider, preservando isolamento/idempotência/valores server-side; não se pode reutilizar `/payment_check` para validar transações de um provider diferente. Nenhuma integração alternativa foi implementada ou escolhida nesta investigação.
+
 ## Publicação DEV verificada — 08/11/2026
 
 **`c2a387e4`**, commit/push concluídos na branch DEV; API **`api-00076-vas`** ACTIVE + Hosting **`ce2b15beb1ebc780`**, publicado às **10:54 (-03)**, somente `crmdoceria-9959e`. [Evidência remota](evidence/auth-payment-access-dev.json): **62/62 hashes**, 7 rotas e 4 GETs PASS; 145 outras Functions e Rules inalteradas. Artefato isolado contém 66 arquivos runtime rastreados, inclusive o módulo novo, sem testes/fixtures/functions.yaml untracked. O conector informou sucesso sem nova revisão; a CLI explícita concluiu e a revisão foi conferida remotamente. Ambiente do conector restaurado para o worktree DEV.

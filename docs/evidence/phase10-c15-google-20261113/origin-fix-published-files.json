@@ -1,0 +1,314 @@
+{
+  "at": "2026-11-13T12:04:28.509Z",
+  "project": "crmdoceria-9959e",
+  "version": "sites/crmdoceria-9959e/versions/22c9613fe531a63f",
+  "files": [
+    {
+      "file": "address-verification-firebase.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "address-management.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "asset-manifest.json",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": ".well-known/assetlinks.json",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "audio/alarm.mp3",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "canonical-session.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "audio/alarm_old.mp3",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "canonical-auth.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "checkout-addresses.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "audio/mixkit_vintage_warning_alarm_990.mp3",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "cardapio-festa.html",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "checkout-environment.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "cardapio-garavelo.html",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "cardapio.html",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "cardapio-matriz.html",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "checkout-identity.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "checkout-modal-layout.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "checkout-payment-choice.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "checkout-modal.css",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "checkout-payment-client.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-area.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-area.css",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-account.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-home.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-auth-errors.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-orders-view.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-profile.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-phone-claim.mjs",
+      "status": 200,
+      "match": true,
+      "cacheControl": "no-cache, max-age=0, must-revalidate",
+      "sha256": "a5e51a8d16762be3f61f9820860936b5fdfcbbbfb67051b7d9137d7ebc54524c"
+    },
+    {
+      "file": "customer-reorder-view.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-session.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "firebase-messaging-sw.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "firebaseClientConfig.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "customer-account-core.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "fulfillment-availability.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "guest-payment-attempt.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "ic_launcher_foreground.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "ic_launcher.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "ic_launcher_round.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "legacy-address-save.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "logo.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "index.html",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "logo512.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "logo_old.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "logo192.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "manifest.json",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "payment-return.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "reorder-cart.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "logotipo.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "payment-return.html",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "staff-push-cleanup.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "sms-enterprise.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "slide/slide1.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "static/js/732.e46175af.chunk.js",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "slide/slide2.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "store-availability.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "static/js/main.0ada6298.js.LICENSE.txt",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "store-links.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "slide/slide3.png",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "store-public-config.mjs",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "static/css/main.95884c12.css",
+      "status": 200,
+      "match": true
+    },
+    {
+      "file": "static/js/main.0ada6298.js",
+      "status": 200,
+      "match": true
+    }
+  ]
+}

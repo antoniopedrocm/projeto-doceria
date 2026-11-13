@@ -1,0 +1,137 @@
+{
+  "at": "2026-11-13T02:26:02.149Z",
+  "project": "crmdoceria-9959e",
+  "apiRevision": "api-00079-xid",
+  "stores": [
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "enabled": true,
+      "handle": "ana_guimares",
+      "payer": "STORE",
+      "version": 3,
+      "credentialState": "NOT_CONFIGURED",
+      "binding": null,
+      "feeStatus": {
+        "payer": "STORE",
+        "application": "PENDING_PROVIDER_VALIDATION",
+        "reason": "CREDENTIAL_AND_MERCHANT_POLICY_REQUIRED",
+        "baselineAssuredInstallments": null,
+        "customerPassThroughAvailable": false
+      },
+      "snapshot": null,
+      "secretMetadata": {
+        "httpStatus": 404
+      },
+      "activeVersionMetadata": null,
+      "operation": null,
+      "auditActions": []
+    },
+    {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "enabled": true,
+      "handle": "antoniopedrocm",
+      "payer": "STORE",
+      "version": 5,
+      "credentialState": "ACTIVE",
+      "binding": {
+        "enabled": true,
+        "storeId": "ana-guimaraes-doceria-garavelo",
+        "handle": "antoniopedrocm",
+        "secretVersion": "projects/crmdoceria-9959e/secrets/infinitepay-checkout-a1cccade83b8102c97d1/versions/2",
+        "baselineAssuredInstallments": 1,
+        "validationState": "VERIFIED_NO_PAYMENT",
+        "reviewedAt": "2026-11-12T21:15:02.684Z"
+      },
+      "feeStatus": {
+        "payer": "STORE",
+        "application": "LINK_POLICY_VERIFIED_NO_PAYMENT",
+        "reason": "NATIVE_LINK_POLICY_ACTIVATED",
+        "baselineAssuredInstallments": 1,
+        "customerPassThroughAvailable": true
+      },
+      "snapshot": {
+        "schemaVersion": 1,
+        "storeId": "ana-guimaraes-doceria-garavelo",
+        "handle": "antoniopedrocm",
+        "payer": "STORE",
+        "baselineAssuredInstallments": 1,
+        "assuredInstallments": 1,
+        "secretVersion": "projects/crmdoceria-9959e/secrets/infinitepay-checkout-a1cccade83b8102c97d1/versions/2"
+      },
+      "secretMetadata": {
+        "httpStatus": 200,
+        "name": "projects/389481198252/secrets/infinitepay-checkout-a1cccade83b8102c97d1",
+        "state": null,
+        "labels": {
+          "doceria_component": "infinitepay",
+          "doceria_store": "a1cccade83b8102c97d1f01f34db94d0109e1443",
+          "doceria_project": "crmdoceria-9959e"
+        },
+        "createTime": "2026-11-12T21:05:32.152344Z"
+      },
+      "activeVersionMetadata": {
+        "httpStatus": 200,
+        "name": "projects/389481198252/secrets/infinitepay-checkout-a1cccade83b8102c97d1/versions/2",
+        "state": "ENABLED",
+        "labels": null,
+        "createTime": "2026-11-12T21:11:43.518839Z"
+      },
+      "operation": {
+        "state": "ACTIVE",
+        "handle": "antoniopedrocm",
+        "storeId": "ana-guimaraes-doceria-garavelo",
+        "secretVersion": "projects/crmdoceria-9959e/secrets/infinitepay-checkout-a1cccade83b8102c97d1/versions/2",
+        "startedAt": "2026-11-12T21:11:43.172Z",
+        "activatedAt": "2026-11-12T21:15:02.684Z",
+        "links": [
+          {
+            "mode": "STORE",
+            "state": "READY",
+            "amountCents": 100,
+            "assuredInstallments": 1,
+            "expiresAt": 1794521504391,
+            "expired": true
+          },
+          {
+            "mode": "CUSTOMER",
+            "state": "READY",
+            "amountCents": 100,
+            "assuredInstallments": 0,
+            "expiresAt": 1794521506644,
+            "expired": true
+          }
+        ]
+      },
+      "auditActions": [
+        "INFINITEPAY_CREDENTIAL_LINK_VALIDATED",
+        "INFINITEPAY_CREDENTIAL_LINK_VALIDATED",
+        "INFINITEPAY_CREDENTIAL_ACTIVATED",
+        "INFINITEPAY_CREDENTIAL_PENDING_REVIEW",
+        "INFINITEPAY_CREDENTIAL_CONFIG_STARTED",
+        "INFINITEPAY_CREDENTIAL_VERSION_STORED",
+        "INFINITEPAY_CREDENTIAL_LINK_VALIDATED",
+        "INFINITEPAY_CREDENTIAL_LINK_VALIDATED",
+        "INFINITEPAY_CREDENTIAL_PENDING_REVIEW",
+        "INFINITEPAY_CREDENTIAL_CONFIG_STARTED",
+        "INFINITEPAY_CREDENTIAL_VERSION_STORED"
+      ],
+      "checks": {
+        "active": true,
+        "merchant": true,
+        "store": true,
+        "version2": true,
+        "storePolicy": true,
+        "twoNativePolicies": true,
+        "reviewed": true,
+        "metadataIdentified": true
+      },
+      "passed": true
+    }
+  ],
+  "secretPayloadAccessed": false,
+  "providerRequests": 0,
+  "newLinks": 0,
+  "writes": 0,
+  "payments": 0,
+  "prodAccess": false
+}

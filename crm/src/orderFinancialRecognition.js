@@ -7,6 +7,6 @@ export function isRecognizedOrderReceipt(order) {
   return true;
 }
 export function recognizedOrderTotal(order) {
-  const paid=order.adminPaymentAdjustment?.paidCents;
+  const paid=order.adminPaymentAdjustment?.paidCents ?? order.manualPaymentReceipt?.amountCents;
   return Number.isSafeInteger(paid) && paid>=0 ? paid/100 : Number(order.total || 0);
 }

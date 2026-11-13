@@ -1,0 +1,10 @@
+{
+  "at": "2026-11-12T20:47:52.306Z",
+  "project": "crmdoceria-9959e",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree\\.deploy-infinitepay-credential-portal-20261112",
+  "targets": "functions:api,functions:paymentSettingsGet,functions:paymentSettingsSave,functions:paymentCredentialSave,functions:paymentCredentialActivate",
+  "exitCode": 0,
+  "prod": false,
+  "commit": false,
+  "push": false
+}

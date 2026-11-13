@@ -1,0 +1,92 @@
+{
+  "date": "2026-11-11",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "branch": "feature/infinitepay-customer-auth",
+  "head": "7e7d7b6918d9edb045dd11443a2c42efe114640a",
+  "status": "LOCAL_TESTED_AWAITING_REVIEW",
+  "react": {
+    "tests": 629,
+    "passed": 629,
+    "failed": 0,
+    "suites": 62
+  },
+  "node": {
+    "tests": 59,
+    "passed": 59,
+    "failed": 0
+  },
+  "emulator": {
+    "tests": 62,
+    "passed": 62,
+    "failed": 0
+  },
+  "countsNotAdditive": true,
+  "lint": {
+    "errors": 0,
+    "warnings": 66,
+    "baselineWarnings": 66
+  },
+  "build": {
+    "result": "PASS",
+    "project": "crmdoceria-9959e",
+    "entry": "main.db2c1cbc.js"
+  },
+  "diffCheck": "PASS",
+  "scope": {
+    "commit": false,
+    "push": false,
+    "deploy": false,
+    "prodAccess": false,
+    "prodLocalAccess": false,
+    "remoteBusinessReads": false,
+    "remoteWrites": false,
+    "remoteMetadataRead": "DEV default Firestore edition STANDARD only",
+    "realPayments": false,
+    "sms": false,
+    "whatsapp": false
+  },
+  "unchanged": [
+    "functions/checkout-payment.js",
+    "functions/checkout-auth.js",
+    "functions/customer-registry.js",
+    "functions/customer-orders.js",
+    "functions/admin-order-edit.js",
+    "firebase.json",
+    "firestore.indexes.json",
+    "crm/package.json",
+    "crm/package-lock.json",
+    "functions/package.json",
+    "functions/package-lock.json"
+  ],
+  "sourceHashes": {
+    "crm/src/App.js": "f89c90a34957baa81a40504e04d725f7bbc7b0ab2926334e3ed4b9b6ab4ae8a6",
+    "crm/src/utils/clientApi.js": "d536e5e343411b860fd5a2dddcafaa98d93eae955a9ab7e8a3e53ae297b86bf0",
+    "crm/src/utils/customerDirectorySync.js": "1033ccd6407eb6c75e7413f61ac81044e35cd37b73334eac0ffb11dc93b1712f",
+    "crm/src/utils/customerDirectorySync.test.js": "db3b895a46dffc9090fae77d8f3e66e72a559c69c814c03b6730c4ff5f7a827c",
+    "crm/src/customerDirectoryView.test.js": "3a1c9b93bb0e43775174fd520f4a00015fbcdfb5863df04cd52ed32278331831",
+    "crm/src/crmReconciliation.test.js": "d75c5dbc968e8e3b88f8fb01a0f5f95423087539fa604d98a2ead17462ef5778",
+    "functions/index.js": "91c14bb8ead7c8fd07c4bcbffcc072c4c14fa54d2957cd297e38a8bde28bd2c3",
+    "functions/crm-client-edit.js": "4c6e4a8bb7040e4d0694dd9dc55716103280ab7a5f75ca22c4104950c8bdf153",
+    "functions/crm-client-edit.test.js": "1e2a6adad8c44896c0e36b78c447bf43092df2c3daf79a6c54fecc39313030a4",
+    "functions/staff-customer-directory.js": "4bc61a7a44f0caef1c9a81e68e23768be0bce0681dda6f66c1bf9a4a70cd43f9",
+    "functions/staff-customer-directory.test.js": "2aef497fb467d0b44a966d7294eab2dc8b56bc30d9c5014608874f5dc5d11aef",
+    "functions/staff-customer-directory-emulator.test.js": "40e222e7e638e784cf194aa8898c84ec3692ef28dc0902851307c24ad3fc9ac2",
+    "functions/firestore.rules.test.js": "c5cb008438f6383de336d7f1cccf2488a937d3a2a9db7c5cb711e0606bd06d21",
+    "firestore.rules": "8ce911a5d6c5c779f6a5d881010df03b537fdee6f7f7b5d6357fab2f3a3a69b5"
+  },
+  "limits": {
+    "maxDocumentsPerProjection": 10000,
+    "batchSize": 400,
+    "cacheMs": 5000,
+    "maxCacheScopes": 8,
+    "coalescingMs": 5250,
+    "pollMs": 30000,
+    "liveDataVolumeNotInventoried": true
+  },
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "at": "2026-11-12T04:32:52.771Z",
+  "project": "crmdoceria-9959e",
+  "mode": "AUTHENTICATED_OWNER_UI_READ_ONLY",
+  "customerDirectory": {
+    "matrizRows": 6,
+    "garaveloRows": 0,
+    "generalRows": 16,
+    "generalRowsAfterRefresh": 16,
+    "generalRegularization": 38,
+    "jessicaPendingCents": 2956,
+    "fabiolaConfirmedCents": 100,
+    "emptyStatusesReadable": true
+  },
+  "manualReceipt": {
+    "opened": true,
+    "amountCents": 1478,
+    "method": "Cartão de Crédito",
+    "explicitCheckboxChecked": false,
+    "submitDisabled": true,
+    "persistedAcrossRefreshAndResize": true,
+    "cancelledWithoutSubmission": true
+  },
+  "fees": {
+    "stores": [
+      "ana-guimaraes-doceria-matriz",
+      "ana-guimaraes-doceria-garavelo"
+    ],
+    "default": "STORE",
+    "customerOptionDisabled": true,
+    "financialApplication": "PENDING",
+    "viewport": {
+      "width": 390,
+      "height": 800,
+      "scrollWidth": 375
+    }
+  },
+  "realWrites": 0,
+  "realFinancialActions": 0,
+  "userFinalAcceptance": false,
+  "prodAccess": false
+}

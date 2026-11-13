@@ -1,0 +1,69 @@
+{
+  "at": "2026-11-13T02:32:25.239Z",
+  "repository": "antoniopedrocm/projeto-doceria-Multilojas",
+  "workflows": {
+    "ok": true,
+    "items": [
+      {
+        "id": 274898027,
+        "name": "Deploy to Firebase Hosting on merge",
+        "path": ".github/workflows/firebase-hosting-merge.yml",
+        "state": "disabled_manually",
+        "html_url": "https://github.com/antoniopedrocm/projeto-doceria-Multilojas/blob/main/.github/workflows/firebase-hosting-merge.yml"
+      },
+      {
+        "id": 274898028,
+        "name": "Deploy to Firebase Hosting on PR",
+        "path": ".github/workflows/firebase-hosting-pull-request.yml",
+        "state": "disabled_manually",
+        "html_url": "https://github.com/antoniopedrocm/projeto-doceria-Multilojas/blob/main/.github/workflows/firebase-hosting-pull-request.yml"
+      }
+    ]
+  },
+  "nonCompletedRuns": {
+    "queued": {
+      "ok": true,
+      "count": 0,
+      "runs": []
+    },
+    "in_progress": {
+      "ok": true,
+      "count": 0,
+      "runs": []
+    },
+    "waiting": {
+      "ok": true,
+      "count": 0,
+      "runs": []
+    },
+    "pending": {
+      "ok": true,
+      "count": 0,
+      "runs": []
+    },
+    "requested": {
+      "ok": true,
+      "count": 0,
+      "runs": []
+    }
+  },
+  "repositoryHooks": {
+    "ok": true,
+    "status": 200,
+    "count": 0,
+    "items": []
+  },
+  "actionsPermissions": {
+    "enabled": true,
+    "allowedActions": "all"
+  },
+  "recentDeploymentMetadata": [],
+  "githubWrites": 0,
+  "workflowRunsTriggered": 0,
+  "push": false,
+  "firebaseProdAccess": false,
+  "limits": [
+    "External Firebase/Google Cloud production integrations and other repositories were not queried; not authorized.",
+    "Disabled workflow state and empty run queues are point-in-time evidence."
+  ]
+}

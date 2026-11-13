@@ -1,0 +1,56 @@
+{
+  "at": "2026-11-12T20:45:00.281Z",
+  "prodLocalBaselineFindings": [
+    {
+      "ruleId": "no-unused-vars",
+      "severity": 2,
+      "message": "'claimOnlineOrderNotification' is assigned a value but never used.",
+      "line": 90,
+      "column": 8,
+      "nodeType": "Identifier",
+      "messageId": "unusedVar",
+      "endLine": 90,
+      "endColumn": 36
+    },
+    {
+      "ruleId": "no-unexpected-multiline",
+      "severity": 2,
+      "message": "Unexpected newline between object and [ of property access.",
+      "line": 531,
+      "column": 7,
+      "nodeType": "CallExpression",
+      "messageId": "property",
+      "endLine": 531,
+      "endColumn": 8
+    }
+  ],
+  "currentFindings": [
+    {
+      "ruleId": "no-unused-vars",
+      "severity": 2,
+      "message": "'claimOnlineOrderNotification' is assigned a value but never used.",
+      "line": 90,
+      "column": 8,
+      "nodeType": "Identifier",
+      "messageId": "unusedVar",
+      "endLine": 90,
+      "endColumn": 36
+    },
+    {
+      "ruleId": "no-unexpected-multiline",
+      "severity": 2,
+      "message": "Unexpected newline between object and [ of property access.",
+      "line": 531,
+      "column": 7,
+      "nodeType": "CallExpression",
+      "messageId": "property",
+      "endLine": 531,
+      "endColumn": 8
+    }
+  ],
+  "newFindings": 0,
+  "devDeltaErrors": 0,
+  "devDeltaWarnings": 0,
+  "otherProdDeltaErrors": 0,
+  "otherProdDeltaWarnings": 0
+}

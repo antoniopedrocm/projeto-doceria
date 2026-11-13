@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-12T20:53:05.750Z",
+  "project": "crmdoceria-9959e",
+  "authenticatedRole": "Dono",
+  "storesReviewed": [
+    "ana-guimaraes-doceria-matriz",
+    "ana-guimaraes-doceria-garavelo"
+  ],
+  "credentialState": "NOT_CONFIGURED",
+  "passwordInputType": "password",
+  "customerOptionDisabled": true,
+  "desktop": {
+    "width": 1920,
+    "scrollWidth": 1920
+  },
+  "mobile": {
+    "width": 390,
+    "height": 800,
+    "scrollWidth": 375
+  },
+  "realKeyEntered": false,
+  "storeConfigSaved": false,
+  "paymentCreated": false,
+  "privateScreenshot": "Temp only; not copied to Git"
+}

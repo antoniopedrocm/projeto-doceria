@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-12T19:02:41.090Z",
+  "project": "crmdoceria-9959e",
+  "storeContext": "ana-guimaraes-doceria-matriz",
+  "sharedDevMerchant": "ana_guimares",
+  "ownerAuthorized": true,
+  "scope": "AUTHORIZED_ISOLATED_PROVIDER_LINK_ONLY",
+  "state": "CREATED",
+  "amountCents": 100,
+  "payload": {
+    "handle": "ana_guimares",
+    "order_nsu": "dev-fee1x-21fd4cb5-0b42-4378-af58-3e1baa9219f3",
+    "items": [
+      {
+        "quantity": 1,
+        "price": 100,
+        "description": "Validacao DEV - cartao 1x - NAO PAGAR"
+      }
+    ],
+    "redirect_url": "https://crmdoceria-9959e.web.app/?public=1"
+  },
+  "paymentUrlSha256": "dd70f21b8d5a2f8437aec8712f8a045c56b9f695ff8f723dc701c5b78056a55a",
+  "paymentUrlHost": "checkout.infinitepay.io",
+  "urlStoredOnlyInTemp": true,
+  "apiKeyUsed": false,
+  "optionsSent": false,
+  "providerCreationCalls": 1,
+  "automaticCreationRetry": false,
+  "crmOrdersCreated": 0,
+  "firebaseWrites": 0,
+  "stockChanges": 0,
+  "couponChanges": 0,
+  "customerDataSent": false,
+  "paymentsCompleted": 0,
+  "installmentsVisuallyVerified": true,
+  "selectedInstallments": 1,
+  "installmentCents": 100,
+  "observedFeesCents": 0,
+  "visualProof": "card1x-visual-pass.json"
+}

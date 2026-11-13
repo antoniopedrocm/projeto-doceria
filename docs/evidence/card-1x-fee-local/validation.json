@@ -1,0 +1,134 @@
+{
+  "date": "2026-11-11",
+  "area": "DEV",
+  "workspace": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+  "projectAssociation": "crmdoceria-9959e",
+  "branch": "feature/infinitepay-customer-auth",
+  "head": "7e7d7b6918d9edb045dd11443a2c42efe114640a",
+  "stage": "LOCAL_REVIEW_REQUIRED",
+  "status": "PREFERENCE_IMPLEMENTED_PROVIDER_APPLICATION_PENDING",
+  "formalProgress": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "tests": {
+    "fullReact": {
+      "passed": 632,
+      "suites": 62
+    },
+    "focusedReactAfterFinalUiAdjustment": {
+      "passed": 5
+    },
+    "nodeRegression": {
+      "passed": 24
+    },
+    "localEmulatorIntegration": {
+      "passed": 64
+    },
+    "groupsOverlap": true,
+    "realProviderFeeEnforcementTested": false
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 0,
+    "scope": [
+      "functions/card-1x-fee-policy.js",
+      "functions/payment-settings.js",
+      "crm/src/payments/InfinitePaySettings.js",
+      "functions/card-1x-fee-policy.test.js",
+      "functions/card-1x-fee-settings-emulator.test.js",
+      "crm/src/payments/InfinitePaySettings.test.js"
+    ]
+  },
+  "build": {
+    "passed": true,
+    "mainBundle": "main.7d196dcb.js",
+    "localOnly": true
+  },
+  "safety": {
+    "commit": false,
+    "push": false,
+    "deploy": false,
+    "remoteBusinessReads": false,
+    "remoteDataChanges": false,
+    "credentialChanges": false,
+    "realPayments": false,
+    "sms": false,
+    "whatsApp": false,
+    "prodServicesAccessed": false
+  },
+  "nativeContract": {
+    "source": "https://www.infinitepay.io/checkout-documentacao",
+    "optionsRequireServerApiKey": true,
+    "assuredInstallmentsIsInclusiveThreshold": true,
+    "customer1xActivationAllowed": false,
+    "appliedToNewProviderLinks": false
+  },
+  "sourceHashes": {
+    "functions/card-1x-fee-policy.js": "a8947c651c426f7698b3f269f72bdd3438b9c1caab39bc4b03348c290af29e61",
+    "functions/payment-settings.js": "f1cf6805abbe6af560365c0fee464c60070b97bd76dee448b797ac4e48991bd9",
+    "crm/src/payments/InfinitePaySettings.js": "d090d8f8a955c596dee422b55307a1f4df53bf8d455fde3af784f196ffe7800f",
+    "functions/card-1x-fee-policy.test.js": "a1ed92488e660352eedc8f50788827c223377c1d260c52de3e2523bbf3f35335",
+    "functions/card-1x-fee-settings-emulator.test.js": "60dc8cd4903b9ca2276de9714069de4329742cccb07585bc1e14b6c4c0245820",
+    "crm/src/payments/InfinitePaySettings.test.js": "49938c58e9f99ef296eb104b95dc7e2ff1a1b1afe7a8a0f900d6f00b6f1a22b3"
+  },
+  "protectedHashes": {
+    ".firebaserc": {
+      "sha256": "fad4286732caf9d3b05e132bcb009a39a8cb767674e43cfc86b4812d225d2843",
+      "matchesHeadAfterEolNormalization": true
+    },
+    "firebase.json": {
+      "sha256": "c3212d11bfa05825d05dab12a9f367aa512f71f64adf6436cc4ce01e74e882d6",
+      "matchesHeadAfterEolNormalization": true
+    },
+    "functions/checkout-payment.js": {
+      "sha256": "2c32401c9118ad8d09e3e44780fd76f1f2d8467d5c40cc9e7e2e99a1ca39a224",
+      "matchesHeadAfterEolNormalization": true
+    },
+    "functions/payment-verification.js": {
+      "sha256": "b84859d82ad894471004ebaff20e939f1db52e0b070229f10f7c2f283465cce7",
+      "matchesHeadAfterEolNormalization": true
+    },
+    "functions/payment-signal-policy.js": {
+      "sha256": "b0e612712d7b516654de196419d387d9f5215f153593948e0f6fa6f0ecd44a72",
+      "matchesHeadAfterEolNormalization": true
+    },
+    "functions/package.json": {
+      "sha256": "42bf5bab0f201847d780f28d90271694d434da5361379860f60dfa92cc578911",
+      "matchesHeadAfterEolNormalization": true
+    },
+    "functions/package-lock.json": {
+      "sha256": "3ac7b157c9e4c0f010f9a40cbbb62c1084fc982db417f3948312be4760f89879",
+      "matchesHeadAfterEolNormalization": true
+    },
+    "crm/package.json": {
+      "sha256": "6faa4bf983331e0086d247851d29b26b47a80ebe076ca35b450cce483f5aa8f7",
+      "matchesHeadAfterEolNormalization": true
+    },
+    "crm/package-lock.json": {
+      "sha256": "dbe635eaa3ee76eb4df055454b03f084441b744a1f3288cdd385c3cdb6cb44b9",
+      "matchesHeadAfterEolNormalization": true
+    }
+  },
+  "diffCheck": {
+    "passed": true,
+    "trackedWorkingTree": true,
+    "newTaskSourcesChecked": true,
+    "indexEmpty": true,
+    "headUnchanged": true
+  },
+  "evidenceCredentialPatternScan": {
+    "passed": true,
+    "files": [
+      "build.txt",
+      "emulator.txt",
+      "lint.json",
+      "react-focused.txt",
+      "react.txt",
+      "unit.txt",
+      "validation.json"
+    ]
+  }
+}

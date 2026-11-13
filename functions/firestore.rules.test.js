@@ -307,7 +307,9 @@ describe("Contador administrador do modulo Nota Fiscal", () => {
     await assertSucceeds(getDoc(doc(db, "lojas", STORE_A, "pedidos", "pedido-fiscal")));
     await assertFails(getDoc(doc(db, "lojas", STORE_B, "pedidos", "pedido-fiscal")));
     await assertSucceeds(getDoc(doc(db, "lojas", STORE_A, "invoices", "nota-fiscal")));
-    await assertSucceeds(getDoc(doc(db, "clientes", "cliente-a")));
+    // Global Customer documents contain cross-store metrics; the fiscal UI now
+    // uses the authenticated store-scoped profile API (integration-tested).
+    await assertFails(getDoc(doc(db, "clientes", "cliente-a")));
     await assertFails(getDoc(doc(db, "clientes", "cliente-b")));
   });
 

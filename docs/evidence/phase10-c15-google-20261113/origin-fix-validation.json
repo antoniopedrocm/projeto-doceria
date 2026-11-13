@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "at": "2026-11-13T11:56:06.623Z",
+  "project": "crmdoceria-9959e",
+  "diagnosis": {
+    "observedMessage": "Selecione uma loja para continuar.",
+    "origin": "area-cliente?returnTo=%2Fcardapio-matriz",
+    "rootCause": "Claim modal ignored validated public returnTo; missing cart context left storeId null. Relative directory URL returned Hosting SPA HTML.",
+    "hostingDirectoryProbe": {
+      "url": "/api/store/public-list",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8"
+    },
+    "browserReported": "Microsoft Edge",
+    "browserSpecificFailure": false,
+    "publicDirectoryApiProbe": {
+      "status": 200,
+      "validJson": true
+    }
+  },
+  "fix": {
+    "publicOriginResolver": "existing store-links allowlist",
+    "noArbitraryStoreFallback": true,
+    "publicDirectoryApi": "existing checkout-environment.apiBaseUrl",
+    "storageOptional": true,
+    "staleAsyncGuard": true,
+    "automaticSms": false,
+    "authOrOwnershipRulesChanged": false
+  },
+  "tests": {
+    "command": "node --test tests/customer-phone-claim.test.mjs tests/sms-enterprise.test.mjs tests/customer-return-path.test.mjs tests/customer-first-registration-return.test.mjs tests/canonical-auth.test.mjs",
+    "passed": 34,
+    "failed": 0,
+    "scope": "local mocks/jsdom only; no real SMS or Auth"
+  },
+  "lint": {
+    "files": [
+      "crm/public/customer-phone-claim.mjs",
+      "crm/tests/customer-phone-claim.test.mjs"
+    ],
+    "errors": 0,
+    "warnings": 0
+  },
+  "syntax": "PASS",
+  "diffCheck": "PASS",
+  "build": "PASS",
+  "deployment": {
+    "project": "crmdoceria-9959e",
+    "scope": "hosting only",
+    "version": "sites/crmdoceria-9959e/versions/22c9613fe531a63f",
+    "filesVerified": 61,
+    "module": {
+      "file": "customer-phone-claim.mjs",
+      "status": 200,
+      "match": true,
+      "cacheControl": "no-cache, max-age=0, must-revalidate",
+      "sha256": "a5e51a8d16762be3f61f9820860936b5fdfcbbbfb67051b7d9137d7ebc54524c"
+    },
+    "mainBundlePreserved": "static/js/main.0ada6298.js",
+    "routes": [
+      {
+        "path": "/area-cliente?returnTo=%2Fcardapio-matriz",
+        "status": 200
+      },
+      {
+        "path": "/cardapio-matriz",
+        "status": 200
+      },
+      {
+        "path": "/cardapio-garavelo",
+        "status": 200
+      }
+    ],
+    "apiRevision": "api-00079-xid",
+    "apiPreserved": true,
+    "ruleset": "projects/crmdoceria-9959e/rulesets/eaa8ed3d-0434-41c7-bc5b-587530841fbb",
+    "rulesPreserved": true,
+    "verifiedAt": "2026-11-13T12:04:28.509Z"
+  },
+  "realSmsRequestedByAgent": 0,
+  "claim": "PENDING",
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  },
+  "physicalEdgeRetest": "PASS for SMS receipt, code field and confirmation, per titular; account continuity pending",
+  "physicalMobileRetest": "PENDING",
+  "noClaimAllBrandsHomologated": true,
+  "obsoleteSelectionReminderRemoved": true,
+  "reasonReminderRemoved": "Titular selected and C15-G in progress; no repeated selection reminder needed",
+  "buildWarnings": "Existing baseline-browser/source-map/unused-hooks warnings; changed module/tests lint 0 errors/0 warnings",
+  "publicationMode": "previous verified 61-file release plus one external ESM replacement"
+}

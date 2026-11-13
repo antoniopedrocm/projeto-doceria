@@ -1,0 +1,21 @@
+{
+  "at": "2026-11-12T04:32:52.771Z",
+  "project": "crmdoceria-9959e",
+  "mode": "AUTHENTICATED_OWNER_UI_READ_ONLY",
+  "fees": {
+    "stores": [
+      "ana-guimaraes-doceria-matriz",
+      "ana-guimaraes-doceria-garavelo"
+    ],
+    "default": "STORE",
+    "customerOptionDisabled": true,
+    "financialApplication": "PENDING",
+    "viewport": {
+      "width": 390,
+      "height": 800,
+      "scrollWidth": 375
+    }
+  },
+  "remoteConfigurationWrites": 0,
+  "financialHomologation": false
+}

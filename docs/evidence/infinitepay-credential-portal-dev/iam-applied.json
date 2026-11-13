@@ -1,0 +1,80 @@
+{
+  "at": "2026-11-12T20:37:53.977Z",
+  "project": "crmdoceria-9959e",
+  "dedicatedServiceAccount": "payment-credentials@crmdoceria-9959e.iam.gserviceaccount.com",
+  "roles": [
+    {
+      "name": "projects/crmdoceria-9959e/roles/doceriaInfinitePaySecretCreator",
+      "permissions": [
+        "secretmanager.secrets.create"
+      ]
+    },
+    {
+      "name": "projects/crmdoceria-9959e/roles/doceriaInfinitePaySecretVersioner",
+      "permissions": [
+        "secretmanager.secrets.get",
+        "secretmanager.versions.add",
+        "secretmanager.versions.access"
+      ]
+    },
+    {
+      "name": "projects/crmdoceria-9959e/roles/doceriaInfinitePaySecretReader",
+      "permissions": [
+        "secretmanager.versions.access"
+      ]
+    },
+    {
+      "name": "projects/crmdoceria-9959e/roles/doceriaInfinitePayUserCheck",
+      "permissions": [
+        "firebaseauth.users.get"
+      ]
+    }
+  ],
+  "bindingsAdded": [
+    {
+      "role": "projects/crmdoceria-9959e/roles/doceriaInfinitePaySecretCreator",
+      "members": [
+        "serviceAccount:payment-credentials@crmdoceria-9959e.iam.gserviceaccount.com"
+      ]
+    },
+    {
+      "role": "projects/crmdoceria-9959e/roles/doceriaInfinitePaySecretVersioner",
+      "members": [
+        "serviceAccount:payment-credentials@crmdoceria-9959e.iam.gserviceaccount.com"
+      ],
+      "condition": {
+        "title": "DoceriaInfinitePaySecretsOnly",
+        "description": "Only store-derived InfinitePay credential resources in DEV",
+        "expression": "resource.name.startsWith(\"projects/389481198252/secrets/infinitepay-checkout-\") || resource.name.startsWith(\"projects/crmdoceria-9959e/secrets/infinitepay-checkout-\")"
+      }
+    },
+    {
+      "role": "projects/crmdoceria-9959e/roles/doceriaInfinitePayUserCheck",
+      "members": [
+        "serviceAccount:payment-credentials@crmdoceria-9959e.iam.gserviceaccount.com"
+      ]
+    },
+    {
+      "role": "roles/datastore.user",
+      "members": [
+        "serviceAccount:payment-credentials@crmdoceria-9959e.iam.gserviceaccount.com"
+      ]
+    },
+    {
+      "role": "projects/crmdoceria-9959e/roles/doceriaInfinitePaySecretReader",
+      "members": [
+        "serviceAccount:389481198252-compute@developer.gserviceaccount.com"
+      ],
+      "condition": {
+        "title": "DoceriaInfinitePaySecretsOnly",
+        "description": "Only store-derived InfinitePay credential resources in DEV",
+        "expression": "resource.name.startsWith(\"projects/389481198252/secrets/infinitepay-checkout-\") || resource.name.startsWith(\"projects/crmdoceria-9959e/secrets/infinitepay-checkout-\")"
+      }
+    }
+  ],
+  "readbackVerified": true,
+  "existingApiBroadRolesPreserved": true,
+  "secretValuesAccessed": false,
+  "secretsCreated": 0,
+  "prodAccess": false
+}

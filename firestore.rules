@@ -657,11 +657,9 @@ match /cupons/{cupomId} {
 match /clientes/{clienteId} {
   // Canonical phone uniqueness and identity/alias writes require Admin transactions.
   allow create: if false;
-  allow read: if isSignedIn() && (
-    !isReadOnlyAccountant()
-    || accountantHasModule('clientes')
-    || accountantCanReadFiscalClient()
-  );
+  // Raw Customers contain global metrics/identity metadata. Scoped Staff use
+  // the authenticated CRM projection API; Firestore cannot redact fields.
+  allow read: if isOwnerUser() && staffStoreIds().size() == 0;
   allow update, delete: if false;
 }
 
@@ -947,6 +945,7 @@ match /{collection}/{document=**} {
     && (!(collection in ['contas_a_pagar', 'contas_a_receber']) || canReadLegacyOrder(resource.data))
     && collection != 'lojas'
     && collection != 'pedidos'
+    && collection != 'clientes'
     && collection != 'checkoutPayments'
     && collection != 'checkoutReceipts'
     && collection != 'checkoutNotificationAttempts'

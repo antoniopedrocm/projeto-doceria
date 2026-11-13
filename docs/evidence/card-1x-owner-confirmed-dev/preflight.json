@@ -1,0 +1,69 @@
+{
+  "at": "2026-11-12T19:01:55.271Z",
+  "project": "crmdoceria-9959e",
+  "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree",
+  "head": "7e7d7b6918d9edb045dd11443a2c42efe114640a",
+  "prodLocalHead": "a0229cc019b3b4cf689d7ab15c47269974d38b71",
+  "files": {
+    "functions/card-1x-fee-policy.js": {
+      "sha256": "c44ea5b898fbd3f389b17c2598cc552d0cab89b363591fd6ab172a1d0969744d",
+      "equivalent": true
+    },
+    "functions/card-1x-fee-policy.test.js": {
+      "sha256": "7b7302fdfc2513b26ecce17121f0dd8cf0ad9e29a55e9417cb70e0bbb6ac8f07",
+      "equivalent": true
+    },
+    "functions/card-1x-fee-native.test.js": {
+      "sha256": "59f2fb7dcae45183b38e6bd8e4b576cd81e228c9a26b5fedc5b8cec4080e4599",
+      "equivalent": true
+    },
+    "functions/card-1x-fee-credentials.js": {
+      "sha256": "ee79a1ef50cdcce213e8dff344600098a1af44652c21665b544082a4003837e2",
+      "equivalent": true
+    },
+    "functions/card-1x-fee-settings-emulator.test.js": {
+      "sha256": "159ce159e16e683374e7838e1f9f3e935c3286b3dc532ee2ea7e0d88bca90963",
+      "equivalent": true
+    },
+    "functions/checkout-payment.js": {
+      "sha256": "60a192fccf0f34bf5ce8957d1be677d3096b6395806854c7e5fbb87b6483163b",
+      "equivalent": true
+    },
+    "functions/payment-settings.js": {
+      "sha256": "c0ea1b46897634f39f2c6600c39b1b56e9bb0e58b429d6f94037150ff4aa608a",
+      "equivalent": true
+    },
+    "crm/src/payments/InfinitePaySettings.js": {
+      "sha256": "ecaff9723d83cfc8f4abb9600165cc6c45bde7c490f493b2b3a318e4ee3f9c9d",
+      "equivalent": true
+    },
+    "crm/src/payments/InfinitePaySettings.test.js": {
+      "sha256": "7088ffc86e61fb4d0110df47397c9c92ccd4d675f056563e86a89f9cef88102c",
+      "equivalent": true
+    }
+  },
+  "stores": [
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "handle": "ana_guimares",
+      "enabled": true,
+      "preference": "STORE",
+      "bindingEnabled": false,
+      "storedBaseline": null
+    },
+    {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "handle": "ana_guimares",
+      "enabled": true,
+      "preference": "STORE",
+      "bindingEnabled": false,
+      "storedBaseline": null
+    }
+  ],
+  "apiRevision": "api-00078-rig",
+  "hostingVersion": "sites/crmdoceria-9959e/versions/d1b23d2507ff6204",
+  "runtimeServiceAccount": "389481198252-compute@developer.gserviceaccount.com",
+  "remoteWrites": 0,
+  "prodServiceAccess": false,
+  "secretsRead": false
+}

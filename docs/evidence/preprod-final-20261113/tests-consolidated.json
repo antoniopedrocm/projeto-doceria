@@ -1,0 +1,46 @@
+{
+  "at": "2026-11-13T17:33:44.600Z",
+  "react": {
+    "passed": 655,
+    "failed": 0,
+    "suites": 65,
+    "artifact": "react-tests.json"
+  },
+  "integration": {
+    "uniqueTests": 147,
+    "passed": 147,
+    "failed": 0,
+    "explanation": "110 passed in original run; 37 HTTP tests passed after runner supplied Auth and matching demo project. Earlier runner failures remain in original evidence; no application change to pass.",
+    "initial": "integration-tests.json",
+    "intermediate": "integration-http-retry.json",
+    "finalHttp": "integration-http-final.json"
+  },
+  "realSms": 0,
+  "payments": 0,
+  "remoteWrites": 0,
+  "prod": false,
+  "candidateManifest": "candidate-manifest-v2.json",
+  "phase10Units": {
+    "passed": 164,
+    "failed": 0,
+    "artifact": "c16-phase10-units-final.json",
+    "initialFailurePreserved": "c16-phase10-units.json",
+    "fix": "test VM now loads real existing freight invalidation helper; runtime unchanged"
+  },
+  "publicRegression": {
+    "passed": 34,
+    "failed": 0,
+    "artifact": "c16-public-regression.json"
+  },
+  "prodLocalReorder": {
+    "passed": 24,
+    "failed": 0,
+    "log": "C:/Users/antonio.pedro/AppData/Local/Temp/c16-prod-local-reorder-tests.log",
+    "runtimeChanged": false
+  },
+  "prodLocalCiGuard": {
+    "passed": 7,
+    "failed": 0
+  },
+  "doNotSumOverlappingGroups": true
+}

@@ -1,0 +1,446 @@
+{
+  "at": "2026-11-12T04:29:16.269Z",
+  "project": "crmdoceria-9959e",
+  "originalGeneralOccurrences": 43,
+  "originalMatrizOccurrences": 5,
+  "matrizSubsetOfGeneral": true,
+  "cases": [
+    {
+      "caseId": "8d5612018d92bb0a",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1500,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "6d339ce0b621e952",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "82d3c33f6b0eaa1c",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 400,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "7ce5ee83ce003577",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_AND_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 500,
+      "customerCaseId": null,
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "20ac3c2907909b67",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 400,
+      "customerCaseId": "b0d7f7ad2f51d86e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "366ba28a92becbdb",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "38bfe27056cc7c13",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1000,
+      "customerCaseId": "3ad2679103f04af9",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "55479f669c0d595a",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "598d8627896364e6",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 400,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "5a9a4b7f2258a248",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 400,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "bf54c32e9eb82f46",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "6b0127da56e90021",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1900,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "379dedc41e9ea0f6",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Pendente",
+      "paymentStatus": null,
+      "totalCents": 2985,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "634b041c265b1625",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 400,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "e681e5c9d154ca75",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "aef0934021773332",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "c253cac2ef1dc3f3",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 700,
+      "customerCaseId": "754d435c7cabf649",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "83e08c69cb0747e0",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1400,
+      "customerCaseId": "3ad2679103f04af9",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "dceb5da1a50360e0",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 400,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "52e9bf6e96d26943",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_AND_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1000,
+      "customerCaseId": null,
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "252d3463c911490d",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1000,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "eb84e995c9130ce4",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "b0d7f7ad2f51d86e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "6af177dd34c51478",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_AND_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1900,
+      "customerCaseId": null,
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "c77ec661cd4c31c4",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_AND_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1900,
+      "customerCaseId": null,
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "0c2b5ea017729a01",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1400,
+      "customerCaseId": "3ad2679103f04af9",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "42864d4f32b7173b",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_AND_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 48000,
+      "customerCaseId": null,
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "21d639e18980834d",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "9c2ad4051130a8e5",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 400,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "43a5f424110680f7",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1000,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "56f9ba347be21434",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1000,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "b2ad83fc46e19ad7",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1800,
+      "customerCaseId": "da3091480eb206bd",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "fd6d7a34cb67bca9",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1500,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "0587ceb93ca302ed",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1500,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "3972a037f2d61f1b",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1500,
+      "customerCaseId": "edee20341a533191",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "0143a70d7f81bb36",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_AND_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 2400,
+      "customerCaseId": null,
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "8254f97a641853ec",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 1275,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "8e27aea5871c8f47",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "1fd49cf567fd9e90",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "200797119c5c577e",
+      "scope": "LEGACY_UNKNOWN_STORE",
+      "classification": "CUSTOMER_RESOLVED_STORE_UNPROVEN",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 800,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "PRESERVE_UNCHANGED_REQUEST_STORE_EVIDENCE"
+    },
+    {
+      "caseId": "f17f50681913f74b",
+      "scope": "ana-guimaraes-doceria-matriz",
+      "classification": "EXPECTED_GUEST_WITHOUT_CUSTOMER",
+      "operationalStatus": "Pendente",
+      "paymentStatus": "PENDING",
+      "totalCents": 1446,
+      "customerCaseId": null,
+      "action": "NO_CUSTOMER_LINK_EXPECTED"
+    },
+    {
+      "caseId": "122660055d33290e",
+      "scope": "ana-guimaraes-doceria-matriz",
+      "classification": "EXPECTED_GUEST_WITHOUT_CUSTOMER",
+      "operationalStatus": "Reserva expirada",
+      "paymentStatus": "EXPIRED",
+      "totalCents": 1442,
+      "customerCaseId": null,
+      "action": "NO_CUSTOMER_LINK_EXPECTED"
+    },
+    {
+      "caseId": "9778fa10325a6020",
+      "scope": "ana-guimaraes-doceria-matriz",
+      "classification": "EXPECTED_GUEST_WITHOUT_CUSTOMER",
+      "operationalStatus": "Reserva expirada",
+      "paymentStatus": "EXPIRED",
+      "totalCents": 1444,
+      "customerCaseId": null,
+      "action": "NO_CUSTOMER_LINK_EXPECTED"
+    },
+    {
+      "caseId": "31981365c9ce415a",
+      "scope": "ana-guimaraes-doceria-matriz",
+      "classification": "EXPECTED_GUEST_WITHOUT_CUSTOMER",
+      "operationalStatus": "Pendente",
+      "paymentStatus": "PENDING",
+      "totalCents": 1446,
+      "customerCaseId": null,
+      "action": "NO_CUSTOMER_LINK_EXPECTED"
+    },
+    {
+      "caseId": "08981d72af634eb5",
+      "scope": "ana-guimaraes-doceria-matriz",
+      "classification": "TRUSTED_LEGACY_REFERENCE_RECOVERED",
+      "operationalStatus": "Finalizado",
+      "paymentStatus": null,
+      "totalCents": 500,
+      "customerCaseId": "48d5c1f07f26197e",
+      "action": "READ_ONLY_PROJECTION_RECOVERY"
+    }
+  ],
+  "counts": {
+    "CUSTOMER_RESOLVED_STORE_UNPROVEN": 32,
+    "CUSTOMER_AND_STORE_UNPROVEN": 6,
+    "EXPECTED_GUEST_WITHOUT_CUSTOMER": 4,
+    "TRUSTED_LEGACY_REFERENCE_RECOVERED": 1
+  },
+  "remoteWrites": 0
+}

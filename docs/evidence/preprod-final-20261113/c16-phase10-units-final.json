@@ -1,0 +1,29 @@
+{
+  "at": "2026-11-13T17:34:02.304Z",
+  "codeDigest": "3bdff367c2a31154184de342384341bb9bd93f9331cd2dfeb91720ea5cd3332a",
+  "exitCode": 0,
+  "files": [
+    "functions/address-verification-provider.test.js",
+    "functions/admin-customer-preview.test.js",
+    "functions/checkout-auth.test.js",
+    "functions/customer-area.test.js",
+    "functions/customer-legacy-compat.test.js",
+    "functions/customer-migration-writes.test.js",
+    "functions/customer-orders.test.js",
+    "functions/customer-phone.test.js",
+    "functions/customer-profile-security.test.js",
+    "functions/customer-profile.test.js",
+    "functions/customer-reorder-view.test.js",
+    "functions/customer-reorder.test.js",
+    "functions/customer-session.test.js",
+    "functions/recaptcha-enterprise.test.js",
+    "scripts/phase10-claim-preflight.test.cjs"
+  ],
+  "tests": 164,
+  "passed": 164,
+  "failed": 0,
+  "remoteWrites": 0,
+  "realSms": 0,
+  "realPayments": 0,
+  "network": "test process restricted to loopback"
+}

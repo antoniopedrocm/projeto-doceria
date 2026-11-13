@@ -1,0 +1,2316 @@
+{
+  "schema": 1,
+  "at": "2026-11-13T17:28:38.858Z",
+  "workspace": "C:/Users/antonio.pedro/Projeto/projeto-doceria-main/infinitepay-auth-worktree",
+  "project": "crmdoceria-9959e",
+  "branch": "feature/infinitepay-customer-auth",
+  "head": "7e7d7b6918d9edb045dd11443a2c42efe114640a",
+  "candidateDirectory": "C:\\Users\\ANTONI~1.PED\\AppData\\Local\\Temp\\doceria-c16-candidate-20261113-v1",
+  "codeDigest": "7e4f6ea1a97553e3e9afa2c184dae44d38f9a0522b21114adc04f64b3a3731d1",
+  "files": [
+    {
+      "file": "crm/package-lock.json",
+      "sha256": "dbe635eaa3ee76eb4df055454b03f084441b744a1f3288cdd385c3cdb6cb44b9",
+      "bytes": 751168
+    },
+    {
+      "file": "crm/package.json",
+      "sha256": "6faa4bf983331e0086d247851d29b26b47a80ebe076ca35b450cce483f5aa8f7",
+      "bytes": 1708
+    },
+    {
+      "file": "crm/public/.well-known/assetlinks.json",
+      "sha256": "dd4e2783217aa9e394b763f252cc1a7634aabe3f974199523be185b6ef9fed9d",
+      "bytes": 275
+    },
+    {
+      "file": "crm/public/address-management.mjs",
+      "sha256": "6d444fd075eccd04cf75ed071df54877aa5bec0ee030315f5c1cb8115aff13f8",
+      "bytes": 14442
+    },
+    {
+      "file": "crm/public/address-verification-firebase.mjs",
+      "sha256": "3ccf55cb69921c2d7dd45ea8d9e1b7bfab3982ff532d521bba92e48a7f4d135a",
+      "bytes": 492
+    },
+    {
+      "file": "crm/public/canonical-auth.mjs",
+      "sha256": "023f27616c6761b4eb845358f72ba2afb8490d622f3815033bce5b74c7dfc7f5",
+      "bytes": 787
+    },
+    {
+      "file": "crm/public/canonical-session.mjs",
+      "sha256": "ecbcc6457b99d3fe13ee0ff2c5374b5398e3fc3abed83d0acbad1bda6d2e3697",
+      "bytes": 3565
+    },
+    {
+      "file": "crm/public/cardapio-festa.html",
+      "sha256": "c138b4870311e14ee10c402f7e168c7cb0c1e12f34e762ac9e94e1a09b5ccb1f",
+      "bytes": 222288
+    },
+    {
+      "file": "crm/public/cardapio-garavelo.html",
+      "sha256": "c138b4870311e14ee10c402f7e168c7cb0c1e12f34e762ac9e94e1a09b5ccb1f",
+      "bytes": 222288
+    },
+    {
+      "file": "crm/public/cardapio-matriz.html",
+      "sha256": "c138b4870311e14ee10c402f7e168c7cb0c1e12f34e762ac9e94e1a09b5ccb1f",
+      "bytes": 222288
+    },
+    {
+      "file": "crm/public/cardapio.html",
+      "sha256": "c138b4870311e14ee10c402f7e168c7cb0c1e12f34e762ac9e94e1a09b5ccb1f",
+      "bytes": 222288
+    },
+    {
+      "file": "crm/public/checkout-addresses.mjs",
+      "sha256": "69d40df3ca2325ff3fdd5f3b5a6a6b2fcd01d453529f2127b6e8dd929f8cd705",
+      "bytes": 3608
+    },
+    {
+      "file": "crm/public/checkout-environment.js",
+      "sha256": "ae6615f05f5c02e4aa3d112e5849b787399b7525ed51bd244a49d0c5341f428c",
+      "bytes": 1131
+    },
+    {
+      "file": "crm/public/checkout-identity.mjs",
+      "sha256": "2f8e02920e31e3ecdbe9f9aea01455112af429b6203c88c4324f5b621eb4bdc7",
+      "bytes": 2209
+    },
+    {
+      "file": "crm/public/checkout-modal-layout.js",
+      "sha256": "2f1fb4296300e73881022c8114a3ef157780e55ece2f018360edcff53d7e5664",
+      "bytes": 3807
+    },
+    {
+      "file": "crm/public/checkout-modal.css",
+      "sha256": "7c2d314543acfa250c23adfb5aefe2aeaa283639baead66ee0efc392bf4b813d",
+      "bytes": 2444
+    },
+    {
+      "file": "crm/public/checkout-payment-choice.mjs",
+      "sha256": "c3be904f43f7f2b779708763cebf03ca435927103696ca89e2b327e7607373dc",
+      "bytes": 2465
+    },
+    {
+      "file": "crm/public/checkout-payment-client.js",
+      "sha256": "0d1483321dddbb089c020c812696eb86f39fef2bf6582da169898008e7eabbc6",
+      "bytes": 3880
+    },
+    {
+      "file": "crm/public/customer-account-core.mjs",
+      "sha256": "6d67ff1f0e2114e454096b7dd55974534254077a3d1a1db54c220336404e9c60",
+      "bytes": 33123
+    },
+    {
+      "file": "crm/public/customer-account.js",
+      "sha256": "0f75e1edb057e00bbab91f83fe58723f1d383c6fc91eea108b1c7e5be30156c6",
+      "bytes": 582
+    },
+    {
+      "file": "crm/public/customer-area.css",
+      "sha256": "488e2b8585b5a25725029a1ff4d784d69e4cdd29fd700dfca06352b4573e3002",
+      "bytes": 13236
+    },
+    {
+      "file": "crm/public/customer-area.mjs",
+      "sha256": "2a99ab7c8fe1c316e257b8f5b6c77e8951e3f57882fc5543e47476267038280a",
+      "bytes": 1083
+    },
+    {
+      "file": "crm/public/customer-auth-errors.mjs",
+      "sha256": "dbc11992b825feb1d50802bd7b8f7caabd988fb1136d06db275569a77b2a93f0",
+      "bytes": 1278
+    },
+    {
+      "file": "crm/public/customer-home.js",
+      "sha256": "31aa2381382bfc7895596c3979352f861706bef4871f959d89de3d55d28988e4",
+      "bytes": 180
+    },
+    {
+      "file": "crm/public/customer-orders-view.mjs",
+      "sha256": "743b5f4eb455fa474ea608587668db33c2e04bee004442a05e4b34f88067d9e2",
+      "bytes": 10932
+    },
+    {
+      "file": "crm/public/customer-phone-claim.mjs",
+      "sha256": "a5e51a8d16762be3f61f9820860936b5fdfcbbbfb67051b7d9137d7ebc54524c",
+      "bytes": 6084
+    },
+    {
+      "file": "crm/public/customer-profile.mjs",
+      "sha256": "f1a0c9ae7fa58e234eb345d81fc11b802e81f2fb9722b6b6d14cc788729571d3",
+      "bytes": 2460
+    },
+    {
+      "file": "crm/public/customer-reorder-view.mjs",
+      "sha256": "873bf43854daf81ad093c152c0c0e96e83e2cf4cfa21f696a1fb48112b0a4d90",
+      "bytes": 6168
+    },
+    {
+      "file": "crm/public/customer-session.mjs",
+      "sha256": "79dc36150be36a8cfa4448380ac315d38f5bf9fe285c6268f8a3a6c7583293ea",
+      "bytes": 1306
+    },
+    {
+      "file": "crm/public/firebase-messaging-sw.js",
+      "sha256": "65d0989ad6c4f8afa6f184f82fdcce9df5a1d4a578adbc50da95aa7eb556f550",
+      "bytes": 3584
+    },
+    {
+      "file": "crm/public/firebaseClientConfig.js",
+      "sha256": "bb0bf2341afa894b44bfeb14ca68d3d6dbfd5563cc2045205e2b7408c2ca546b",
+      "bytes": 7824
+    },
+    {
+      "file": "crm/public/fulfillment-availability.mjs",
+      "sha256": "60ded146e30a86c27e34514731827193bbef08e456779a09954b7d147c05f100",
+      "bytes": 318
+    },
+    {
+      "file": "crm/public/guest-payment-attempt.mjs",
+      "sha256": "37374b699410ff501132b0eb8a85ac9706c50d4b3f6da5fc550e275a8bb50310",
+      "bytes": 3261
+    },
+    {
+      "file": "crm/public/index.html",
+      "sha256": "2193fc6a1f19395173c246fd5409603433321700db5703b4622e576e0af9948e",
+      "bytes": 7657
+    },
+    {
+      "file": "crm/public/legacy-address-save.mjs",
+      "sha256": "000a945da73ac59b61e119405865ec3e013d25638e9af4a1612961bbc59b189a",
+      "bytes": 1901
+    },
+    {
+      "file": "crm/public/manifest.json",
+      "sha256": "77ceefbd5951f3e4747ef40e1d46838ab4f883ba01a5a4badd1f2e36e5404712",
+      "bytes": 515
+    },
+    {
+      "file": "crm/public/payment-return.html",
+      "sha256": "ce518aa64291a8ce877c886dc34c076cf25af598a1da911663fc2523c2beb9f4",
+      "bytes": 840
+    },
+    {
+      "file": "crm/public/payment-return.js",
+      "sha256": "36ea556eb17cf48ab998905c892f7a20ff4c388be8eae2f76f46f81e4f20a4ca",
+      "bytes": 2829
+    },
+    {
+      "file": "crm/public/reorder-cart.mjs",
+      "sha256": "e911254d7a3b2db5d198e39d5dcaf4c66754a6ec1015ed166954a4f16808002d",
+      "bytes": 6258
+    },
+    {
+      "file": "crm/public/sms-enterprise.mjs",
+      "sha256": "077fb61e3db70781bde4bb75299d1385af8b53d82b005627d5e6b5cb902eae2f",
+      "bytes": 2716
+    },
+    {
+      "file": "crm/public/staff-push-cleanup.mjs",
+      "sha256": "2d0f428c65600f3aebf1fcb061017954667038eafb61f65187ab466568636a9b",
+      "bytes": 4127
+    },
+    {
+      "file": "crm/public/store-availability.mjs",
+      "sha256": "591bc1d9491e9a5e101f874a055e76a4654778250bab30367535bcc93be98bc2",
+      "bytes": 2507
+    },
+    {
+      "file": "crm/public/store-links.mjs",
+      "sha256": "0754084ecd071bbc6dfd85429db645a85cedeb61738eec4a29d7209a111d2d74",
+      "bytes": 6222
+    },
+    {
+      "file": "crm/public/store-public-config.mjs",
+      "sha256": "768ebda155d222f401618a6bd05fa6fb2c5c7fd3a049c30817f439809d7ca96b",
+      "bytes": 3704
+    },
+    {
+      "file": "crm/src/App.css",
+      "sha256": "61f6c43a638172676cd2813c94dc4db88f6cf73faec19d0cd116b1ff19e46efc",
+      "bytes": 602
+    },
+    {
+      "file": "crm/src/App.js",
+      "sha256": "efbd25c208c161dfc4db0042be0413c33aad2de6289b941f5a7ae95d5766fd9d",
+      "bytes": 1117814
+    },
+    {
+      "file": "crm/src/caixa/caixaCore.js",
+      "sha256": "1feb899098c94ac456ba858f7599d1364e7cda4442406f0cfeaf356383ef1a3f",
+      "bytes": 6137
+    },
+    {
+      "file": "crm/src/caixa/caixaCore.test.js",
+      "sha256": "8fbd6dafa4d53dab82a178aa42ad0301ac1623b987c751653abc1f68e192e8d2",
+      "bytes": 3303
+    },
+    {
+      "file": "crm/src/canonicalAuth.mjs",
+      "sha256": "023f27616c6761b4eb845358f72ba2afb8490d622f3815033bce5b74c7dfc7f5",
+      "bytes": 787
+    },
+    {
+      "file": "crm/src/clientEditHandlers.test.js",
+      "sha256": "73e56f99f80cf10ec947ee4027a9860e16dcb0d5dad64f93c44030a65b085e6a",
+      "bytes": 2994
+    },
+    {
+      "file": "crm/src/components/FiscalCloneConfirmation.js",
+      "sha256": "50ac0e1372a73e584b49f36b113a5ab3f09f4a956b5e1912927df22fb89727e1",
+      "bytes": 1362
+    },
+    {
+      "file": "crm/src/components/FiscalCloneConfirmation.test.js",
+      "sha256": "fd59a84e51c8fbccb9a3cd49241ac9ffb91559b1da6dd426b8513246e06c945d",
+      "bytes": 2607
+    },
+    {
+      "file": "crm/src/components/FiscalInvoiceHistory.js",
+      "sha256": "00520d816793cf5b0a44e0ee53791609e1e7c55d0aad1298d29ddb982b44fd46",
+      "bytes": 1277
+    },
+    {
+      "file": "crm/src/components/FiscalInvoiceHistory.test.js",
+      "sha256": "803d93b0c7bb572c74b01c375c5b3664684137ecbdfd5ea6338f20b412334cb7",
+      "bytes": 3045
+    },
+    {
+      "file": "crm/src/components/FiscalNumberingControls.js",
+      "sha256": "f87edee21bf481c22dd593dfa55fbfe709a83e8a15f51837795543b2cc7f30f7",
+      "bytes": 7289
+    },
+    {
+      "file": "crm/src/components/FiscalNumberingControls.test.js",
+      "sha256": "0df2bf0072086997d1218a48b192a7cd34272e35558563559c096d944a5d42bc",
+      "bytes": 7200
+    },
+    {
+      "file": "crm/src/components/FiscalOrderPaymentField.js",
+      "sha256": "e04b0d634a918be9e588526fa88e8450cd2243b9021c3624fcf13dcbcbec9bef",
+      "bytes": 752
+    },
+    {
+      "file": "crm/src/components/FiscalOrderPaymentField.test.js",
+      "sha256": "f083a7a4340327358e4665322fee265574bb640a0cf37954754c9aaf9cbdee52",
+      "bytes": 1987
+    },
+    {
+      "file": "crm/src/components/PaymentReconciliation.js",
+      "sha256": "74cbd5fc270ef2abe79da128e86098cb796196b501f1604c179bf430914a6976",
+      "bytes": 11358
+    },
+    {
+      "file": "crm/src/components/PaymentReconciliation.test.js",
+      "sha256": "4f36e4b2909a3f0682ed76389d1d7d1da34d3ba3a8940530d9c99170f31963e3",
+      "bytes": 8392
+    },
+    {
+      "file": "crm/src/components/Products.js",
+      "sha256": "2c88f8812051f41173598e8c94c3998f2fdf005997a14ad543da950fe9acaaea",
+      "bytes": 20098
+    },
+    {
+      "file": "crm/src/components/WhatsAppOrderStatus.js",
+      "sha256": "edbd57f5daa267a3edca078adb07f2fcd3720dbcf9a137fe2ed286f715bdabd6",
+      "bytes": 5838
+    },
+    {
+      "file": "crm/src/components/WhatsAppOrderStatus.test.js",
+      "sha256": "3136af55c4edb7cdb0dcda346e9f7dddad95197a7f88da04439d6fd9f74aac1c",
+      "bytes": 3946
+    },
+    {
+      "file": "crm/src/components/caixa/CaixaTab.js",
+      "sha256": "13ebb03a52bb5bb9add543689e6ea500485f8dbd6732ef9f643a67ce863258b8",
+      "bytes": 64011
+    },
+    {
+      "file": "crm/src/components/caixa/PostClosingConfirmation.js",
+      "sha256": "c7170a738c8f9f69267052f26585ffbfe004dd99c1b83661b41468ef19c2a72b",
+      "bytes": 2400
+    },
+    {
+      "file": "crm/src/components/configuracoes/AlertasNotificacoesTab.js",
+      "sha256": "7c494a692d74f245b9b3c01f43526e99544f1050b5d31dd131306da415a33c76",
+      "bytes": 35476
+    },
+    {
+      "file": "crm/src/components/financeiro/AnnualCashFlowChart.js",
+      "sha256": "1992efabdc7594a64f47de8400e00b6247e7f0763ac24aebc6a8dcdc835edee5",
+      "bytes": 1469
+    },
+    {
+      "file": "crm/src/components/financeiro/FinancialControlPanel.js",
+      "sha256": "c2301a3ef0322fa1c1d62acdd566c7e291ff50118c8ef2fdf42c1c881c3050b8",
+      "bytes": 25368
+    },
+    {
+      "file": "crm/src/components/financeiro/FinancialKpiCard.js",
+      "sha256": "b534d766f3f6d429128c11b0fdbc4e53c8c09309baa6cc36603c0f6a5affdad8",
+      "bytes": 1262
+    },
+    {
+      "file": "crm/src/components/financeiro/FinancialRankings.js",
+      "sha256": "d46e777a22adab5c18b6d65e74825619f2d93e87755f59acba551c28ddb00ec3",
+      "bytes": 2251
+    },
+    {
+      "file": "crm/src/components/financeiro/TransactionTable.js",
+      "sha256": "9ae807607b54dcb39bc2ce0a0a0130eb2ff685dd1ff099f3b11dd5b696c52a97",
+      "bytes": 5175
+    },
+    {
+      "file": "crm/src/components/financeiro/TrendIndicator.js",
+      "sha256": "ec735cf6e4d1fa8814f65917401aad0f67e8afb00a479e470273a8141cb6ae13",
+      "bytes": 1190
+    },
+    {
+      "file": "crm/src/components/financeiro/financialUtils.js",
+      "sha256": "0f12cb467f50bb12b95266d18275700d79ee0c810c23675a5285fde3051077a6",
+      "bytes": 3980
+    },
+    {
+      "file": "crm/src/components/financeiro/useFinancialComparison.js",
+      "sha256": "be29cef1cfcb023ec68e1a1a4efa4dcbbb57bb2fad2b7f66d9fd0489d3b8be9b",
+      "bytes": 5452
+    },
+    {
+      "file": "crm/src/components/financeiro/useFinancialData.js",
+      "sha256": "9577d5b1fea369815e04603350214e1421c279666911ebde36a6efe80991b67b",
+      "bytes": 3832
+    },
+    {
+      "file": "crm/src/components/food99/Food99Hub.js",
+      "sha256": "d31236b0f23b1d61f296d9207da3e01bfe30b7e9ad05e9f583a2ba013d77139c",
+      "bytes": 108162
+    },
+    {
+      "file": "crm/src/components/food99/food99UiCore.js",
+      "sha256": "896e35de1ed0bd8d0a58bfe8ae4aff05061207482081f09bf55729084685aa5c",
+      "bytes": 9119
+    },
+    {
+      "file": "crm/src/components/food99/food99UiCore.test.js",
+      "sha256": "8d1820743f0dfe97ddb262b354bca4053fdf3a95e1d06bfac13a6505ee4b0eaf",
+      "bytes": 6292
+    },
+    {
+      "file": "crm/src/components/fornecedores/ProducaoVitrine.js",
+      "sha256": "e16f827fdb74c0b49dc30b38794a124a67853768cbea67d2678d55cae6fda3e5",
+      "bytes": 35492
+    },
+    {
+      "file": "crm/src/components/fornecedores/ReceitasList.js",
+      "sha256": "9172b04613546d64ff3a1e6aae050e2a6e2a52ae0f4b3624657e679c91d66667",
+      "bytes": 2403
+    },
+    {
+      "file": "crm/src/components/fornecedores/ReceitasModal.js",
+      "sha256": "9c5041184f7cbfc9180372581d8b6a2f2790b87f1107c454d8b2c9dc2acb48eb",
+      "bytes": 3426
+    },
+    {
+      "file": "crm/src/components/ifood/IfoodHub.js",
+      "sha256": "e4453dbe4772df7c71a7006a4b6b619dd44c2c50e6d11263724f7908644c2a7b",
+      "bytes": 65628
+    },
+    {
+      "file": "crm/src/components/notifications/NotificationsBell.js",
+      "sha256": "f888d65a37c0afc7514d26a4fbb9ca27d02da58b48f78c71e41446084c79ea37",
+      "bytes": 17301
+    },
+    {
+      "file": "crm/src/components/orders/OrderAdminHistory.js",
+      "sha256": "18803b991cf98e69cf8e835a39b2e9b810bfb265d35a4b506ec8201f7d01d048",
+      "bytes": 5673
+    },
+    {
+      "file": "crm/src/components/orders/OrderAdminHistory.test.js",
+      "sha256": "5dc62e03e5418a02cf4cf820bda8dbd719427076497f162814e6fd8f6105a1da",
+      "bytes": 3140
+    },
+    {
+      "file": "crm/src/components/orders/OrderPaymentStatus.js",
+      "sha256": "6d1c3ad6cae4c5f446cc23f50ee154d08984cde9bc5d02f3231cf999dcb223b4",
+      "bytes": 607
+    },
+    {
+      "file": "crm/src/components/orders/OrderPaymentStatus.test.js",
+      "sha256": "b092436196c7d674c55ec436e9d747e45413538788c2fbc8c92ae2600fe58e71",
+      "bytes": 2018
+    },
+    {
+      "file": "crm/src/components/orders/OrderStatusBadge.js",
+      "sha256": "b5d99a5325f000df3e7e79c10bf734f4eff1441c57a6949774904a1081c116c8",
+      "bytes": 867
+    },
+    {
+      "file": "crm/src/components/orders/OrderStatusBadge.test.js",
+      "sha256": "8fec022d6c5a2a23bdf18d2b0454719b41177ab24818312c6e4cd69d7380a5c0",
+      "bytes": 3917
+    },
+    {
+      "file": "crm/src/components/orders/ReceiveOrderPayment.js",
+      "sha256": "6a50431fcac0aaa70cbd5b8ae4bc2814b34b30c27d012099d8ec4a88d532cf9e",
+      "bytes": 4205
+    },
+    {
+      "file": "crm/src/components/orders/ReceiveOrderPayment.test.js",
+      "sha256": "9701244b9bcb445aa49e0768bbf53adbe78d3d439423bfdfdd3164d86b8ff7be",
+      "bytes": 3268
+    },
+    {
+      "file": "crm/src/components/orders/SearchableClientSelect.js",
+      "sha256": "064b69a1c028ccd753b2a5a51f640d5ad5e62770797e444b8fee219af32ed283",
+      "bytes": 6356
+    },
+    {
+      "file": "crm/src/components/orders/SearchableClientSelect.test.js",
+      "sha256": "8ec33154428af9c9c8fc38de2641582bda0cee6da41bd0b54e7c1ef5c9b59585",
+      "bytes": 1523
+    },
+    {
+      "file": "crm/src/components/relatorios/EntreLojasReport.js",
+      "sha256": "ac444f597ee4b90ee1cb22f794ec940e8c8921d43152c25d54ec647009b36e31",
+      "bytes": 26874
+    },
+    {
+      "file": "crm/src/crmReconciliation.test.js",
+      "sha256": "d75c5dbc968e8e3b88f8fb01a0f5f95423087539fa604d98a2ead17462ef5778",
+      "bytes": 4298
+    },
+    {
+      "file": "crm/src/customer/AdminCustomerPreview.js",
+      "sha256": "642f6b5fafc82b8fab63eb6853be47325c90fb799a04dd14000c34cc082cc1e5",
+      "bytes": 11541
+    },
+    {
+      "file": "crm/src/customer/AdminCustomerPreview.test.js",
+      "sha256": "850fa8938b68532db1a9d4bafdc7db9bfcfa0ded5135234c91a4093deae03de4",
+      "bytes": 6831
+    },
+    {
+      "file": "crm/src/customer/ApplicationGate.js",
+      "sha256": "b84434c363dcd066baff87cca538347297f6e5c5bf02b101a19253cf51e985bf",
+      "bytes": 9198
+    },
+    {
+      "file": "crm/src/customer/ApplicationGate.test.js",
+      "sha256": "4577deba6e014bc49ab80e1d40676050d982a8e38e83b42f709afc7700bfa674",
+      "bytes": 19340
+    },
+    {
+      "file": "crm/src/customer/CustomerFrame.js",
+      "sha256": "4f19734f40da5450929f41af9a739019955d275913cf4e2f4804d86c4c5c26a1",
+      "bytes": 5576
+    },
+    {
+      "file": "crm/src/customer/CustomerLogout.test.js",
+      "sha256": "d0a194f1fa8e1f237e5804ea780c55ca042a9386debf86fd3f26c5ca52c28ba5",
+      "bytes": 8161
+    },
+    {
+      "file": "crm/src/customer/CustomerShell.js",
+      "sha256": "c7075ba73bec8f57531816d8d6c9b3ab1c000a5c49b120fd267d0feb652708e6",
+      "bytes": 7930
+    },
+    {
+      "file": "crm/src/customer/CustomerShell.test.js",
+      "sha256": "62644bf536c987da1d6793a2f52c1ee1a3acc361f4563b8073b751af1b7b1075",
+      "bytes": 22363
+    },
+    {
+      "file": "crm/src/customer/LegacyCustomerShell.js",
+      "sha256": "d9bccbe7ec7a7f06ab345f1ae24fa7d11500172711fd9af49984d41255474794",
+      "bytes": 10187
+    },
+    {
+      "file": "crm/src/customer/LegacyCustomerShell.test.js",
+      "sha256": "742df35cebf64ec54767d39b82fb1e3cb31f74108f592536e6f92e80b943d38a",
+      "bytes": 3244
+    },
+    {
+      "file": "crm/src/customer/LegacyPhoneAccess.js",
+      "sha256": "c24787e5d5989ab1ffab10f48549d729ec8c911fc366d0154fcd8d988b08b451",
+      "bytes": 2912
+    },
+    {
+      "file": "crm/src/customer/adminCustomerPreview.css",
+      "sha256": "7c620782c5ac90214680f201d725627fb5a98e501f14743c62bb5efb7ecb8bdf",
+      "bytes": 1011
+    },
+    {
+      "file": "crm/src/customer/adminPreviewAccess.js",
+      "sha256": "08ccac889573f551f750930a831e54109a78b2ff25998c2f88c59ba07ad42173",
+      "bytes": 590
+    },
+    {
+      "file": "crm/src/customer/customerAccount.css",
+      "sha256": "edc57fbfe97f1d7921d260cde6a6b62b942e37dcad4426fcac900db606384658",
+      "bytes": 8624
+    },
+    {
+      "file": "crm/src/customer/customerContext.js",
+      "sha256": "4fb7f6af7f34570e131d77e14976f02b70c29be3b711852f1ccde848f96d8e80",
+      "bytes": 1805
+    },
+    {
+      "file": "crm/src/customer/customerLogin.css",
+      "sha256": "e9e76c43f8c3be29a0fd737ff1e099bc002bb4e6d26d08eeab1ee6e8e677f684",
+      "bytes": 4558
+    },
+    {
+      "file": "crm/src/customer/customerRuntime.js",
+      "sha256": "0ba70f7ac278af1da849bb770a94af24d5f02151006cc499e512c696af56c22b",
+      "bytes": 3143
+    },
+    {
+      "file": "crm/src/customer/customerRuntimePhoneLogout.test.js",
+      "sha256": "c12519870b7f2dcfb086748184461526c053b7020bd47763b146744d679c9014",
+      "bytes": 2406
+    },
+    {
+      "file": "crm/src/customer/customerShell.css",
+      "sha256": "1bfd05d787e36520135668ec55ed397d6f984d9c03dde1881a2b8284b29bd983",
+      "bytes": 7602
+    },
+    {
+      "file": "crm/src/customer/legacyPhoneSession.js",
+      "sha256": "25dad436f353e9cdb04941b8d01adec80eb5c271b04e7ab7e553715289c653fb",
+      "bytes": 1175
+    },
+    {
+      "file": "crm/src/customer/staffRole.js",
+      "sha256": "97f5d81190b62f63050a82817632c2a241d5f3af748ee2a6937e894838a59202",
+      "bytes": 2120
+    },
+    {
+      "file": "crm/src/customer/staffUiState.js",
+      "sha256": "259ea9d691584a2bf5072ab63b8b2393dad0439a4aff96e75e75739acde92d7a",
+      "bytes": 622
+    },
+    {
+      "file": "crm/src/customer/userCapabilities.js",
+      "sha256": "cac06b46c201e1a4e5f4d7e5897a51fe7b6dc97ee50210d30616e2a82a146f59",
+      "bytes": 1565
+    },
+    {
+      "file": "crm/src/customer/userCapabilities.test.js",
+      "sha256": "e1e542b5ad0694b8a5c86c10a39106f5429dfc882f01c91ef630476b2dbb3a05",
+      "bytes": 3561
+    },
+    {
+      "file": "crm/src/customerDirectoryView.test.js",
+      "sha256": "094b0257e4f379e08fdabc5c7d8449e2d0341b33ce3e098e18cd2a1d333d1560",
+      "bytes": 5223
+    },
+    {
+      "file": "crm/src/firebaseConfig.js",
+      "sha256": "071696569bd6565e306f2ca0557cc69d10e4b167e105e904ca7dcac0f4d2f3c5",
+      "bytes": 15543
+    },
+    {
+      "file": "crm/src/firebaseMessagingInit.test.js",
+      "sha256": "19fe129afaacf0375fff4c64d4acb5d391ccb6b961f39baf8e0eee0dcd9e1a80",
+      "bytes": 1582
+    },
+    {
+      "file": "crm/src/firebaseRuntime.js",
+      "sha256": "7735d993f5b5bbc5ada18b1ee94375191e36293238bd780488f77b9755599759",
+      "bytes": 249
+    },
+    {
+      "file": "crm/src/firebaseRuntime.test.js",
+      "sha256": "cf54a78eeedbc131bbaaad44fae42111eef3b593fe5cd72b5779090df1f4bc1a",
+      "bytes": 767
+    },
+    {
+      "file": "crm/src/fiscalEmitHandlers.test.js",
+      "sha256": "614592096257bbcc67bba1d3fcfe9bc581d4de30df6efeb5e80dead03c34527e",
+      "bytes": 7086
+    },
+    {
+      "file": "crm/src/fiscalOrderActions.js",
+      "sha256": "7a3ab2aa078f63130de774fd1d41e25d4f0043a5c255e9bf871bd77bce86263c",
+      "bytes": 2960
+    },
+    {
+      "file": "crm/src/fiscalOrderActions.test.js",
+      "sha256": "542bbb0ab9bfd8490f774929d94cdb0fd04ffdc441508dc59def61a16d14e824",
+      "bytes": 5984
+    },
+    {
+      "file": "crm/src/fiscalQueueEligibility.test.js",
+      "sha256": "63d8f1110215c51458cbdbc2ee5ab361194c0949afead93130bdb2689d2684c9",
+      "bytes": 1998
+    },
+    {
+      "file": "crm/src/fornecedores/purchaseOrderCore.js",
+      "sha256": "8d7e6b472214c5aa4b7b4ca9e1f0d8ad84ac1f62b7ef3b83cd354611bb105748",
+      "bytes": 14342
+    },
+    {
+      "file": "crm/src/fornecedores/purchaseOrderCore.test.js",
+      "sha256": "ba36697c33eee4587e30f80e590a605309171add57966a022776ccdfab28f3ed",
+      "bytes": 11188
+    },
+    {
+      "file": "crm/src/index.css",
+      "sha256": "f332dddc15bdef963ea166a4386fa2a0019d2633c37f3564bc0d1c267e7fb99e",
+      "bytes": 371
+    },
+    {
+      "file": "crm/src/index.js",
+      "sha256": "e18aedee51a3192f607df179d4014733997a81ae4e4abad2408073f5c4b11d3b",
+      "bytes": 605
+    },
+    {
+      "file": "crm/src/meuEspaco/PointWorkScheduleFields.js",
+      "sha256": "7116ccf788928b40583616630b9b1c8789252a1ed0f05353a6201b8ba41539d0",
+      "bytes": 13099
+    },
+    {
+      "file": "crm/src/meuEspaco/pointCalculationCore.js",
+      "sha256": "6344ad30ccd6cddf9d6df87bae7bd7563e9c5b87130960eba47b44ab4a857f52",
+      "bytes": 32645
+    },
+    {
+      "file": "crm/src/meuEspaco/pointCalculationCore.test.js",
+      "sha256": "129d0061941ec3a4be4d3de8e2cf3c4d18cae3a1e3dd5e96b499b67fda22a395",
+      "bytes": 19865
+    },
+    {
+      "file": "crm/src/meuEspaco/pointDayConsolidation.js",
+      "sha256": "76e9e3165ab73cd7bb0e6c1ca946d723ecc8d55bf2c8136ad302ffd5ddb45d33",
+      "bytes": 13440
+    },
+    {
+      "file": "crm/src/meuEspaco/pointDayConsolidation.test.js",
+      "sha256": "778941ec8b423d749b076c3a78037fba0b2e249fc01b58f905e82b3d1e665d05",
+      "bytes": 10501
+    },
+    {
+      "file": "crm/src/meuEspaco/pointHourly.test.js",
+      "sha256": "2c283175825f0ef22e393adf8453c3fdb9b4b3b17977d7598f19bb68e60a25ad",
+      "bytes": 25007
+    },
+    {
+      "file": "crm/src/meuEspaco/pointMonthSummary.js",
+      "sha256": "959219fe2812b6282f0494003dc6147bf0f8e1af7f70a571344fc4c217622291",
+      "bytes": 1718
+    },
+    {
+      "file": "crm/src/meuEspaco/pointPresentation.js",
+      "sha256": "ad0673496758cf2d0bd8bfc11dcaf33bcc1ae5fd006f480a365a85a533d45e7d",
+      "bytes": 9540
+    },
+    {
+      "file": "crm/src/meuEspaco/pointPresentation.test.js",
+      "sha256": "89d5c7abff4bb1ee70b15976ed40010946f09041d9974c292f611f39aa481b1d",
+      "bytes": 11087
+    },
+    {
+      "file": "crm/src/meuEspaco/pointScheduleCore.js",
+      "sha256": "8509cde860206a63e59e5cb524a0c608ab3cf816f4e18f0e1f39273f9cbb5389",
+      "bytes": 10942
+    },
+    {
+      "file": "crm/src/orderFinancialRecognition.js",
+      "sha256": "cedd4ad870fb8d0e25edb1aa75a86296daf12446973deefe67ba1ea4b5189e12",
+      "bytes": 662
+    },
+    {
+      "file": "crm/src/orderFinancialRecognition.test.js",
+      "sha256": "a47b57e45707070810f3768eb37ac1ffc71e931a9c73fbbd63605f0bad740093",
+      "bytes": 1646
+    },
+    {
+      "file": "crm/src/payments/InfinitePayCredentialForm.js",
+      "sha256": "70b434304742d2b1a7299b9f0623a1af7423b1b9ac2e703197f90de1d5a2f4e5",
+      "bytes": 7599
+    },
+    {
+      "file": "crm/src/payments/InfinitePayCredentialForm.test.js",
+      "sha256": "07ba348159bc5313973bade20ccd6bb913e6e8766a5833cefcf7c74536901b8f",
+      "bytes": 5658
+    },
+    {
+      "file": "crm/src/payments/InfinitePaySettings.js",
+      "sha256": "8ea05b225a77c27d6246d075bb30f635eb832e95874eb261e8c2d6f505390ec2",
+      "bytes": 7624
+    },
+    {
+      "file": "crm/src/payments/InfinitePaySettings.test.js",
+      "sha256": "1b9dd473e01b6b2d8966a7cf6d9e39728e69e829867fd597594499af5221b421",
+      "bytes": 6589
+    },
+    {
+      "file": "crm/src/performance/storeBootstrapPerf.js",
+      "sha256": "fe61db7f4162212a7c24fe85cf7805a596728e4ef16179ee89f1794a9ede3b15",
+      "bytes": 879
+    },
+    {
+      "file": "crm/src/performance/storeBootstrapPerf.test.js",
+      "sha256": "5f070422f5f6b286e7372f14855e5e7f93b9e037173a89faae991212ae2956d6",
+      "bytes": 4008
+    },
+    {
+      "file": "crm/src/receiptDialogLifetime.test.js",
+      "sha256": "22845cc5cfed9dd5204bc5260ab01f1058131c98cc5824c9b223f2aa2f4e217e",
+      "bytes": 4138
+    },
+    {
+      "file": "crm/src/reportWebVitals.js",
+      "sha256": "5efbb84cbed52b82cab1165c816c92390b0a5d752e490ca564172a14e3a84a6d",
+      "bytes": 375
+    },
+    {
+      "file": "crm/src/serviceWorker.js",
+      "sha256": "adaf5e88637ebd1d63419ee8231b895bae09ade02cbb24465d3c19dbe3590b0e",
+      "bytes": 4012
+    },
+    {
+      "file": "crm/src/services/caixaService.js",
+      "sha256": "aa85f039f9588c956d38be487f35be15030f62d79761c8e799abb8f601a1171c",
+      "bytes": 2132
+    },
+    {
+      "file": "crm/src/services/entreLojasService.js",
+      "sha256": "69e12b2278697523dfddb416f83e39ceb7587f027eb0da0b4e88f3cd14a1bd2c",
+      "bytes": 396
+    },
+    {
+      "file": "crm/src/services/entreLojasService.test.js",
+      "sha256": "533feacb19c5627bf8e39e7be2be8920de95b3a9dbb7b4fb36a49d38cda49bed",
+      "bytes": 1102
+    },
+    {
+      "file": "crm/src/services/freightConfigService.js",
+      "sha256": "3caf61b2c24738026c929b8e5cd82aabc235150a7fb98ab6449bd76ee14027e3",
+      "bytes": 1536
+    },
+    {
+      "file": "crm/src/services/freightConfigService.test.js",
+      "sha256": "0ee060ce98b5ab0facb2b1e0cb963d9ff2903f7b90546e24faa0b9068c83fcfd",
+      "bytes": 1631
+    },
+    {
+      "file": "crm/src/services/producaoVitrineService.js",
+      "sha256": "bebdd9096e68fdc0345866fd540a927eaca88960d4bab1293a51c8dafcd0c43c",
+      "bytes": 1040
+    },
+    {
+      "file": "crm/src/services/stockService.js",
+      "sha256": "e0f82c360c09c129e2a143ea35887b7ab31c3dfe52300eceda14cf0f0db4b02a",
+      "bytes": 3509
+    },
+    {
+      "file": "crm/src/services/stockService.test.js",
+      "sha256": "6603b6ab17ee4d78055c69024f419bc016230351246f1ca9ed09a1af56334c85",
+      "bytes": 2927
+    },
+    {
+      "file": "crm/src/shims/capacitor.js",
+      "sha256": "c9cca2af7b9e164da7f9178f76c9430f1afe3c0acde83686f18401be1bed9218",
+      "bytes": 1090
+    },
+    {
+      "file": "crm/src/shims/nativeAudio.js",
+      "sha256": "a6c6089c228fb74b91e7809fcbd3c0bf0f73a825f831b97f0a1563af959a2745",
+      "bytes": 1561
+    },
+    {
+      "file": "crm/src/storefront/ApplicationEntry.js",
+      "sha256": "5bf6c5643ad3954b7d186c8ecaa056f8023f7f052328eb091afe0c72c5510a6b",
+      "bytes": 1367
+    },
+    {
+      "file": "crm/src/storefront/ApplicationEntry.test.js",
+      "sha256": "fa282cf3f44fac0d837c55b784c7e799c483375af36bf38e93911d3c3fd9365d",
+      "bytes": 2265
+    },
+    {
+      "file": "crm/src/storefront/CrmHome.js",
+      "sha256": "46a7dd253c000c53da4975f0bc44d4e611ada14f3805b349fe0ee77c9df2fad8",
+      "bytes": 4275
+    },
+    {
+      "file": "crm/src/storefront/StorefrontLinks.js",
+      "sha256": "2322e59db0da7bd48973c0ebc649aac13db320ce839dcd8a4d3035bb998cba88",
+      "bytes": 2724
+    },
+    {
+      "file": "crm/src/storefront/StorefrontLinks.test.js",
+      "sha256": "f03f1c50e37426b344e2d362a49b3ebe15575e1326f025af5d376569600fa0e5",
+      "bytes": 4460
+    },
+    {
+      "file": "crm/src/storefront/storeRoutes.mjs",
+      "sha256": "0754084ecd071bbc6dfd85429db645a85cedeb61738eec4a29d7209a111d2d74",
+      "bytes": 6222
+    },
+    {
+      "file": "crm/src/stores/FulfillmentSettings.js",
+      "sha256": "98bb45498e807ff08d54efb3c46ab7d6cdb829fc5e484a38fa31135f50d2ee4e",
+      "bytes": 5596
+    },
+    {
+      "file": "crm/src/stores/FulfillmentSettings.test.js",
+      "sha256": "23598772e9051edeb9ad0918e25c986209cdc1fd4951de3321ee0dadc79e0e02",
+      "bytes": 4056
+    },
+    {
+      "file": "crm/src/stores/StoreManagementModal.js",
+      "sha256": "cb9d92681d5b401bf72f774f0213384db3561f652f17fe0d408feb3182a3f54a",
+      "bytes": 13278
+    },
+    {
+      "file": "crm/src/stores/StoreManagementModal.test.js",
+      "sha256": "31136cbbdcb36347e40633748a3248d9927200db73c2f22ba8df44315c05e675",
+      "bytes": 5146
+    },
+    {
+      "file": "crm/src/stores/StoreManagementSettings.js",
+      "sha256": "4bf0f4105483ebc229daeeac2bf5693bfd9d6b3c1ee76c7136e3a2774d0aa5de",
+      "bytes": 826
+    },
+    {
+      "file": "crm/src/stores/StoreManagementSettings.test.js",
+      "sha256": "33399e40b24dd9f5218bd644d85213c8c04265095ba658cb133d774738019bda",
+      "bytes": 4330
+    },
+    {
+      "file": "crm/src/stores/StoreSelector.js",
+      "sha256": "a9ddff8b6af6de726e00bb5736b8ab71f56a8b32d2ce556703b3d80af438dc7b",
+      "bytes": 1408
+    },
+    {
+      "file": "crm/src/stores/StoreSelector.test.js",
+      "sha256": "011bb88ac1229ed96b02a233427ee441d1c77a6856ddf9ce012b36c77b3ac774",
+      "bytes": 2669
+    },
+    {
+      "file": "crm/src/stores/staffDirectory.js",
+      "sha256": "b355a2e5ffb87c9613e21f6e02f5675b8c37aab91f0983d873214e4ec6f7c725",
+      "bytes": 1677
+    },
+    {
+      "file": "crm/src/stores/staffDirectory.test.js",
+      "sha256": "e5111843bde9729b8c9462776aed0c7d9e42862a72a9f0d80a37bc5d96bb1c17",
+      "bytes": 2485
+    },
+    {
+      "file": "crm/src/stores/storeRequests.js",
+      "sha256": "31b7309e5b2b5d7bee37f4b93e556c9df832cce32cf3ba1ab690079c4362ee42",
+      "bytes": 1966
+    },
+    {
+      "file": "crm/src/stores/storeRequests.test.js",
+      "sha256": "0a221ea64342c7faa9596a92417ab3f6dd4d1a8299d51620161cb0103a043c4a",
+      "bytes": 2230
+    },
+    {
+      "file": "crm/src/stores/useStaffSection.js",
+      "sha256": "98408c94eab3ce5efe37ec79cc4aea0f59567e39c0573d5d3aad98f300ee8988",
+      "bytes": 1400
+    },
+    {
+      "file": "crm/src/stores/useStaffSection.test.js",
+      "sha256": "c9c44d4b99e6a1a9d0f8ad360a91d508875d11de48b8ca6973ab4c5ba1dc8804",
+      "bytes": 4739
+    },
+    {
+      "file": "crm/src/utils/AudioManager.js",
+      "sha256": "86c7dacc7103cccd2afa1c8c23258e0cc6dcace19c350df89602ec0771d6ee62",
+      "bytes": 24637
+    },
+    {
+      "file": "crm/src/utils/AudioManager.test.js",
+      "sha256": "b60533a2d18e0e41260656e2de1ab0573eb6168364da73290c626d7db39792fc",
+      "bytes": 9062
+    },
+    {
+      "file": "crm/src/utils/adminOrderEdit.js",
+      "sha256": "e5fe2761d68852ac8b9f49bf70a7b9eb8d3a69142b396cdd88cf9cd46682c00b",
+      "bytes": 737
+    },
+    {
+      "file": "crm/src/utils/adminOrderEdit.test.js",
+      "sha256": "839fc383582d13c01b013417e541c8a6406543a1c6304c4a41c486eb70f6b496",
+      "bytes": 1159
+    },
+    {
+      "file": "crm/src/utils/alarmPauseNative.js",
+      "sha256": "62bec1bc56f6004211f3254dc5a5116e1b200cace70826f326079e396c453980",
+      "bytes": 808
+    },
+    {
+      "file": "crm/src/utils/alarmPauseStorage.js",
+      "sha256": "619449f6981c56f617d2ec7edbc316734e90e556bccb2a141bc4f6843f8ad4e4",
+      "bytes": 3177
+    },
+    {
+      "file": "crm/src/utils/alarmPauseStorage.test.js",
+      "sha256": "0598ec406d1c10a08145944e7b51c4d30ad9509af745ac652c625eaf3ecd2f32",
+      "bytes": 3118
+    },
+    {
+      "file": "crm/src/utils/clientApi.js",
+      "sha256": "d536e5e343411b860fd5a2dddcafaa98d93eae955a9ab7e8a3e53ae297b86bf0",
+      "bytes": 1900
+    },
+    {
+      "file": "crm/src/utils/clientApi.test.js",
+      "sha256": "40905420623306a95f45c03b10401b1688997114854d40cbee665c30a8d4686d",
+      "bytes": 5308
+    },
+    {
+      "file": "crm/src/utils/clientSearch.js",
+      "sha256": "59cfe781ed389805a53c4b7319fbf19bfe3573a1866e033c6766748ecd53191f",
+      "bytes": 1187
+    },
+    {
+      "file": "crm/src/utils/clientSearch.test.js",
+      "sha256": "2958116b6907ac1fc0c9038ab74a60ae00fb2046ff70dbe29f99444fae463b99",
+      "bytes": 1567
+    },
+    {
+      "file": "crm/src/utils/customerDirectorySync.js",
+      "sha256": "f3da3789375a382bd2d2e40e65700b92a4827e484e0e2b631f99dc6ff1944fc8",
+      "bytes": 1323
+    },
+    {
+      "file": "crm/src/utils/customerDirectorySync.test.js",
+      "sha256": "df05b5f1afe1f1c6981142bb6a5cd210ca18e6e3abfd0685903dbfd58b91be73",
+      "bytes": 5041
+    },
+    {
+      "file": "crm/src/utils/entreLojasPermissions.js",
+      "sha256": "dcb11fc794aa850bc5576db660c89da469f021ea22f488d88219351f40f56de3",
+      "bytes": 10015
+    },
+    {
+      "file": "crm/src/utils/entreLojasPermissions.test.js",
+      "sha256": "8493481f233ea774314c9303d0a16a85a287972760e0406f13505e368c76638f",
+      "bytes": 12478
+    },
+    {
+      "file": "crm/src/utils/fiscalMoney.js",
+      "sha256": "0b397164aca69945e1b3840b56cc79f2c23f6cb8788d2b586bcf3d8fdcfb28cf",
+      "bytes": 2220
+    },
+    {
+      "file": "crm/src/utils/fiscalMoney.test.js",
+      "sha256": "0c779bd23f2bb3ab7d9bd2e54c762964c50131468fd74fa77f72f0d2da2bf25c",
+      "bytes": 954
+    },
+    {
+      "file": "crm/src/utils/notifications.js",
+      "sha256": "a5b7f2dc0f4780e23691f9302f921f575b996a696b9adae42aae203afdf69c21",
+      "bytes": 10999
+    },
+    {
+      "file": "crm/src/utils/notifications.test.js",
+      "sha256": "0775177b3e45a9eda74abc923871793b75b4ddd1964b95a81b0970dec8ecd7b0",
+      "bytes": 14460
+    },
+    {
+      "file": "crm/src/utils/onlineOrderStatus.mjs",
+      "sha256": "5da2c40c05860707ea87ecf70d171d9accb099e801df3c7a6a82d17656744471",
+      "bytes": 1800
+    },
+    {
+      "file": "crm/src/utils/orderAlarmRules.js",
+      "sha256": "60c7bbc28f46f863def669eb593af619916c67c3ace8cb12100706b2e8dbf341",
+      "bytes": 1523
+    },
+    {
+      "file": "crm/src/utils/orderAlarmRules.test.js",
+      "sha256": "a3c07f4f07590e7cd10a1a991af06c9c5fe8def5000699e15b1f723286fb0803",
+      "bytes": 3097
+    },
+    {
+      "file": "crm/src/utils/orderAlertDeduper.js",
+      "sha256": "9049d03107f2116edc112c77b6b4641610166311960c81f9580c2a54cb7890ab",
+      "bytes": 2751
+    },
+    {
+      "file": "crm/src/utils/orderAlertDeduper.test.js",
+      "sha256": "bba0191912e3cfa736651d880f138e9f47de083af5fb6efe33470cc9354e02b9",
+      "bytes": 2005
+    },
+    {
+      "file": "crm/src/utils/orderDateFilter.js",
+      "sha256": "7c27b4aa1f9377712db98c5785981b0265ad12d276b9daa70b8153fcf4b47080",
+      "bytes": 768
+    },
+    {
+      "file": "crm/src/utils/orderDateFilter.test.js",
+      "sha256": "7c69e659dbf0725ce79bb9d58e63441972e21a6d5231846d89503a340dd9b09a",
+      "bytes": 2576
+    },
+    {
+      "file": "crm/src/utils/orderFreight.js",
+      "sha256": "c97a8da6300a32a87821ab9ab59c562a955fc9e63afd0d49c774008c03bce41c",
+      "bytes": 1266
+    },
+    {
+      "file": "crm/src/utils/orderFreight.test.js",
+      "sha256": "642464f858dcda8e6a6c9a99ab571f47c912805b866fc55d2183148c5aded427",
+      "bytes": 1500
+    },
+    {
+      "file": "crm/src/utils/orderStatus.js",
+      "sha256": "c2f0d54b2badbc66c2ff160c9184e7f19bc4fcc69cb0efd137a02ba30257d2fa",
+      "bytes": 913
+    },
+    {
+      "file": "crm/src/utils/rideService.js",
+      "sha256": "d819fb5d5735cd6b65a0739ffaad9bd1cd5d645e15001eefaf5c16a003bb6304",
+      "bytes": 4751
+    },
+    {
+      "file": "crm/src/utils/rideService.test.js",
+      "sha256": "efcf76cb235e3f042671ee40a7754243be5a35d08e9886aaa42dfa29205fd728",
+      "bytes": 4530
+    },
+    {
+      "file": "crm/src/utils/transferStatusVisibility.js",
+      "sha256": "d04cd815d97115a2a2886671687720d4f2bfe4f221d6318da78394a4ef47af56",
+      "bytes": 324
+    },
+    {
+      "file": "crm/src/utils/transferStatusVisibility.test.js",
+      "sha256": "3cb4260355d32ce36c60fadba0c647244cce8e1acb4f491550a43804503f2c18",
+      "bytes": 1771
+    },
+    {
+      "file": "crm/tests/address-management.test.mjs",
+      "sha256": "96d014a5003ab3417390845fc5ebe2f18d52418bb9abb397166f89535e801bfb",
+      "bytes": 15227
+    },
+    {
+      "file": "crm/tests/auth-persistence-browser.cjs",
+      "sha256": "1cfe4b1279b7662e7a94cb16740f4acf6d631fc389c9dbdda2da456d8fcd3459",
+      "bytes": 7759
+    },
+    {
+      "file": "crm/tests/canonical-auth.test.mjs",
+      "sha256": "5ae3b07bc423f4423c1a85fc99fdfdb95c4647d6b4310b969f13e97eb4f27f7f",
+      "bytes": 2616
+    },
+    {
+      "file": "crm/tests/cart-hydration.test.cjs",
+      "sha256": "313911db35d2bf1753e3811fa1b4ec9632fae2914d0cbcec59d2ab258ffe868a",
+      "bytes": 13698
+    },
+    {
+      "file": "crm/tests/checkout-addresses.test.mjs",
+      "sha256": "c1382593a3254ff44da93b6d04dff53b459a37acb3697c098e9b3c84dfb5f526",
+      "bytes": 10260
+    },
+    {
+      "file": "crm/tests/checkout-completion.test.mjs",
+      "sha256": "951c1d6d9cc59ca5d730943bf75ad5b7c3d267f8ff2307db262cd86cafc34de1",
+      "bytes": 3861
+    },
+    {
+      "file": "crm/tests/checkout-freight-refresh.test.mjs",
+      "sha256": "c4e1b54bd8a113c80a8ad55494bb896129713d7863aaca4d6b812587ead2378e",
+      "bytes": 15089
+    },
+    {
+      "file": "crm/tests/checkout-freight-visual-review.cjs",
+      "sha256": "8e0d64518418e1129eb1613b3338d9cf60eb570c8080b3d9782e8bb8fa1beeaf",
+      "bytes": 7508
+    },
+    {
+      "file": "crm/tests/checkout-identity.test.mjs",
+      "sha256": "a60db238bad73eb708c0d98a4b32c34a38cfe7c07993c1588d25d2404930507c",
+      "bytes": 4564
+    },
+    {
+      "file": "crm/tests/checkout-modal-responsive.cjs",
+      "sha256": "af7483ac11030ea708c16403bba6caaefeb625807a080d0e83b32352cd3b118d",
+      "bytes": 10350
+    },
+    {
+      "file": "crm/tests/checkout-payment-choice.test.mjs",
+      "sha256": "7b57a2a39046fefc8f4cc31a7cfd3914f681d18b61a6adb2781bca7264a004c1",
+      "bytes": 6206
+    },
+    {
+      "file": "crm/tests/customer-account-entry.test.mjs",
+      "sha256": "eff0003ea8274d3b3c31911ee77630ed3729fde47445c3bf1c0211225df94c1e",
+      "bytes": 8405
+    },
+    {
+      "file": "crm/tests/customer-account-styles.test.cjs",
+      "sha256": "6664104017d400831cebbf617600c06dcce89c03d855c22182f792d867b94c6e",
+      "bytes": 1358
+    },
+    {
+      "file": "crm/tests/customer-auth-errors.test.mjs",
+      "sha256": "8f8a3ae655558b8c06ab78bd6a618e1d84f7cef35d94b073eba491c1622ba0ef",
+      "bytes": 1218
+    },
+    {
+      "file": "crm/tests/customer-first-registration-return.test.mjs",
+      "sha256": "941c112b813b3b391db648d68400bca3249a26bc1e6d888cfdd9ba3ebf9205a6",
+      "bytes": 6408
+    },
+    {
+      "file": "crm/tests/customer-inline-login.test.mjs",
+      "sha256": "132f61a081be6ca78e7602fcf4d7dba9002f12c2dc7f1d9c0e9442a67aaf91d1",
+      "bytes": 7362
+    },
+    {
+      "file": "crm/tests/customer-phone-claim.test.mjs",
+      "sha256": "6d87cf1274e3fa6e9f1cf2904fea1651ccd9d64b4a8821afe242b740aaeb6950",
+      "bytes": 6899
+    },
+    {
+      "file": "crm/tests/customer-return-path.test.mjs",
+      "sha256": "a741f6aade2011d6f5ffdc2d14bb03de0e821223a466722a05220c6942c84583",
+      "bytes": 7012
+    },
+    {
+      "file": "crm/tests/customer-visual-review.cjs",
+      "sha256": "48111da087aff2b35a023013e96cbd8915350c3f716b78c1792a997021bbc6bb",
+      "bytes": 12124
+    },
+    {
+      "file": "crm/tests/fiscal-eligibility-audit.test.cjs",
+      "sha256": "b55a75c95ed32be7a4d26ed7710fd7963abfea71a712135bf438ca794d1caf0c",
+      "bytes": 4794
+    },
+    {
+      "file": "crm/tests/fixtures/auth-persistence-browser-entry.js",
+      "sha256": "46f045ca8ab40d307d8df52ffdeafb5335e9e11355d1fdb883a451ccb20a596f",
+      "bytes": 4828
+    },
+    {
+      "file": "crm/tests/fixtures/customer-visual-entry.js",
+      "sha256": "fa4a51e6644628a3987a5dbaed53e4ed88f5c2c9e1332a27036f91848977d4bc",
+      "bytes": 1114
+    },
+    {
+      "file": "crm/tests/fixtures/customer-visual-runtime.js",
+      "sha256": "491724e2e72912acdb86c3b08feb8026f0882c1e81625a66c0f051edabc37242",
+      "bytes": 2370
+    },
+    {
+      "file": "crm/tests/fixtures/legacy-customer-visual-entry.js",
+      "sha256": "9d0a13f9e9ce5426bc295f356f2594e201e03f3962e7eac6aeb2b6500c7acca1",
+      "bytes": 1781
+    },
+    {
+      "file": "crm/tests/friendly-menu-routes.test.mjs",
+      "sha256": "98bbb4fc8bb220087315d29cbd93e6b365690d7f06d8160332660eb659dbd3b8",
+      "bytes": 8910
+    },
+    {
+      "file": "crm/tests/fulfillment-availability.test.cjs",
+      "sha256": "db08778826dde2761ab0ab32e6fc322cc20ba5cd598092adfc80f81ae245de80",
+      "bytes": 1946
+    },
+    {
+      "file": "crm/tests/full-order-edit-form.test.cjs",
+      "sha256": "154ab28375cdd8d27d72c3057c7778097cc95b5f719e8ceda92f014859e6aadf",
+      "bytes": 2244
+    },
+    {
+      "file": "crm/tests/guest-checkout-payment.test.mjs",
+      "sha256": "99a3d1ab70750d389a37aec226234c28498459d521002eec62748770aafc61fa",
+      "bytes": 23134
+    },
+    {
+      "file": "crm/tests/guest-checkout-visual-review.cjs",
+      "sha256": "b1553fc38f7e705d602352e22c24cd174f5b9a5e859e95f7344f781f79c73e9c",
+      "bytes": 7163
+    },
+    {
+      "file": "crm/tests/guest-payment-attempt.test.mjs",
+      "sha256": "d8033f122c8b55018f431df2684db9237cc53e8e54f52873bd9fbc65c6e04d58",
+      "bytes": 6294
+    },
+    {
+      "file": "crm/tests/helpers/order-edit-modal.cjs",
+      "sha256": "8b6ea789fe9ad4a95cb56b3a731ccd0af1b14839e74b234fe148655abb1a9b52",
+      "bytes": 3903
+    },
+    {
+      "file": "crm/tests/hosting-cache.test.cjs",
+      "sha256": "4f1dc8318ab0d4ea4608fe8b9d06416273394b0753bc271251c666c041c36712",
+      "bytes": 4913
+    },
+    {
+      "file": "crm/tests/legacy-address-save.test.mjs",
+      "sha256": "de6a83d3dc417a11460830bd93064a87b566e0546891f8b3d0e74b76a95ef8f1",
+      "bytes": 2898
+    },
+    {
+      "file": "crm/tests/legacy-address-trust.test.mjs",
+      "sha256": "1ad1eabed3193aba2f23b68f691cb43e6142df8916e883fc4fc99cf8575ee2c3",
+      "bytes": 4833
+    },
+    {
+      "file": "crm/tests/menu-header-review.cjs",
+      "sha256": "275b5872e4d51506ca559a3aafd90a538d9d90ab14fc1818b4d9cb3add3459a3",
+      "bytes": 8828
+    },
+    {
+      "file": "crm/tests/online-order-status-handler.test.cjs",
+      "sha256": "80cf305f9202053f85ef4b8e3daaef11c541c475d41b470e2c5a552886a4ed98",
+      "bytes": 3817
+    },
+    {
+      "file": "crm/tests/online-order-status.test.mjs",
+      "sha256": "323719c76b371e4e7ddf752dd268d9610f08416fcfbcb8bafbf1dbf40ec96442",
+      "bytes": 2835
+    },
+    {
+      "file": "crm/tests/payment-choice-visual-review.cjs",
+      "sha256": "dca1ced71e48b570ad76dcc17941a992a3a82cc3cec80d195647d8095ffffae5",
+      "bytes": 5168
+    },
+    {
+      "file": "crm/tests/public-auth-esm.test.mjs",
+      "sha256": "64b3aef7985c850b050f8ccb3e98bc7dd8726e04ad9d1c8f791f7712e1e4a617",
+      "bytes": 6323
+    },
+    {
+      "file": "crm/tests/sms-enterprise.test.mjs",
+      "sha256": "46b013a3d5cef6a4b2da97883069a2ef291ab46928189204f87767002816ad7c",
+      "bytes": 3322
+    },
+    {
+      "file": "crm/tests/staff-push-cross-tab.test.mjs",
+      "sha256": "1df7f5dc8ca575eca1e6ea5bf56f6f46d5c44b6dd34b3c3d1bc6bdd73fa2f598",
+      "bytes": 11466
+    },
+    {
+      "file": "crm/tests/store-availability.test.mjs",
+      "sha256": "7f014f65c0c7404280997b2cceec34b906a4ab6dd4221324b31dbc72d5937f4c",
+      "bytes": 2020
+    },
+    {
+      "file": "crm/tests/storefront.test.mjs",
+      "sha256": "8a21c4a1f2c16761159a5f5ce675096009853231427a9d6e807ae03ab6c8c2cd",
+      "bytes": 6564
+    },
+    {
+      "file": "firebase.json",
+      "sha256": "c3212d11bfa05825d05dab12a9f367aa512f71f64adf6436cc4ce01e74e882d6",
+      "bytes": 1495
+    },
+    {
+      "file": "firestore.indexes.json",
+      "sha256": "b88751cd5e5ee84c2c449e3bd8535adad18e5f1155ead2e17d38985e02e24dcc",
+      "bytes": 8927
+    },
+    {
+      "file": "firestore.rules",
+      "sha256": "8ce911a5d6c5c779f6a5d881010df03b537fdee6f7f7b5d6357fab2f3a3a69b5",
+      "bytes": 38377
+    },
+    {
+      "file": "functions/address-verification-emulator.test.js",
+      "sha256": "850bf0eeb514655d0a9471707327c2ed448429f5b5f20ccd55e9b87f43f1b1ad",
+      "bytes": 19210
+    },
+    {
+      "file": "functions/address-verification-provider.js",
+      "sha256": "dac2186eb7264bd7af7fe68b53935d7d3022de20635232eb990711b20ed8cefa",
+      "bytes": 6731
+    },
+    {
+      "file": "functions/address-verification-provider.test.js",
+      "sha256": "77f34cd0fd2c44b446cd56ff32a97046414577b7b175502cd1eab2346a22d3d7",
+      "bytes": 5886
+    },
+    {
+      "file": "functions/address-verification.js",
+      "sha256": "6ed6e6e0be695cc1063ef41e864228922598fab330a0dd99dbbf13fafbac8c64",
+      "bytes": 22469
+    },
+    {
+      "file": "functions/admin-customer-preview-emulator.test.js",
+      "sha256": "fe0e94183dda10dfffc02279b7c0b717a3e7565141ca9f18f6f000b551bef3cc",
+      "bytes": 12626
+    },
+    {
+      "file": "functions/admin-customer-preview.js",
+      "sha256": "961bb8e4ffe45d786ff336447a3bf27fc8c99f0ba0f873e70d10a32519316bb0",
+      "bytes": 8453
+    },
+    {
+      "file": "functions/admin-customer-preview.test.js",
+      "sha256": "65c000fed3bc1ec154c2d632fa3afcefaf7c7763c64e572683e44c3232c2dcbc",
+      "bytes": 1776
+    },
+    {
+      "file": "functions/admin-order-audit-rules.test.js",
+      "sha256": "d1bef12555546920751ce94460c58e35fd0084ee7a671c845bcc315f65aed1c7",
+      "bytes": 1422
+    },
+    {
+      "file": "functions/admin-order-edit.integration.test.js",
+      "sha256": "d6750982a64ea9330d28c9c59edc04ce7c1bbda67408d1d553cd7b872b9e4b82",
+      "bytes": 10481
+    },
+    {
+      "file": "functions/admin-order-edit.js",
+      "sha256": "ccea92e83aac76660219f5ab3f2f7647906ab7246d3a861474ba82c117f1ef3c",
+      "bytes": 17569
+    },
+    {
+      "file": "functions/admin-order-total.test.js",
+      "sha256": "03f4ab3c475f2b1279952ab829deac3c7876bc1c488221b17b41699b774503ae",
+      "bytes": 4349
+    },
+    {
+      "file": "functions/agreed-payment-rules.test.js",
+      "sha256": "f26b78001bacbe5f058c1b09f743b1265513c739a696a8d0d040e1daddf01312",
+      "bytes": 1539
+    },
+    {
+      "file": "functions/caixa-core.js",
+      "sha256": "0345c9160e91f9ded5f8611093a03650451cec713ac0506e8f165c287d5122f4",
+      "bytes": 17811
+    },
+    {
+      "file": "functions/caixa-core.test.js",
+      "sha256": "97ec5571d14451fcecfd2156c7669e08f8f6a993c2af5c24837ae325c6e9723a",
+      "bytes": 6468
+    },
+    {
+      "file": "functions/caixa-functions.integration.test.js",
+      "sha256": "5d8e012afdf17e240de7fd335060686de6469a0f603ed28da21764554f1f84eb",
+      "bytes": 21336
+    },
+    {
+      "file": "functions/caixa.js",
+      "sha256": "2fbc2c7b7bc9f4bbee40c651fba7a0d47379b5ef9c285762d803a9166094a8df",
+      "bytes": 78779
+    },
+    {
+      "file": "functions/canonical-session.test.mjs",
+      "sha256": "a8eb517345d0109c4aafb883b71c89c81555eaadaa0a1c82636fe6b642589005",
+      "bytes": 5295
+    },
+    {
+      "file": "functions/card-1x-fee-credentials.js",
+      "sha256": "ee79a1ef50cdcce213e8dff344600098a1af44652c21665b544082a4003837e2",
+      "bytes": 1977
+    },
+    {
+      "file": "functions/card-1x-fee-native.test.js",
+      "sha256": "40c50488c381dff4596b5489ce6d637487d1ae34dc506af3f5b9ce5acb900484",
+      "bytes": 6598
+    },
+    {
+      "file": "functions/card-1x-fee-policy.js",
+      "sha256": "94a476e823838ac5acdf73b2920ddcf727f50d60e94890cd367fdad154519d97",
+      "bytes": 4277
+    },
+    {
+      "file": "functions/card-1x-fee-policy.test.js",
+      "sha256": "7b7302fdfc2513b26ecce17121f0dd8cf0ad9e29a55e9417cb70e0bbb6ac8f07",
+      "bytes": 2072
+    },
+    {
+      "file": "functions/card-1x-fee-settings-emulator.test.js",
+      "sha256": "c9ca59a61a8736cd3aa8bc8c95fada2d0a03a7105eb1a3596c4507fb80f4b782",
+      "bytes": 14785
+    },
+    {
+      "file": "functions/catalog-session.test.js",
+      "sha256": "ba76e9f73e7aaf34fec2a05dfd69022f0952e2389423759e9c6d868a1b9404d8",
+      "bytes": 8711
+    },
+    {
+      "file": "functions/checkout-addresses-emulator.test.js",
+      "sha256": "7c3d4af36bac64752e00f623b65240cee97f0d2e8e0d64e100e0dfed13c43241",
+      "bytes": 14343
+    },
+    {
+      "file": "functions/checkout-addresses.js",
+      "sha256": "ddd35c26976a142095418cdb87f6194d46f4bc268b0f2dbd8d25a692517cd803",
+      "bytes": 3514
+    },
+    {
+      "file": "functions/checkout-addresses.test.js",
+      "sha256": "c7f09267bbe1e8ec70cbfe41c24b1ed14fa6c4627e35a780d0196e1f54fc5600",
+      "bytes": 4082
+    },
+    {
+      "file": "functions/checkout-auth.js",
+      "sha256": "1260ffd71f714ec1274a93be27544ff2fe905a9a32aa2eb5eb5929fbb56823ee",
+      "bytes": 13274
+    },
+    {
+      "file": "functions/checkout-auth.test.js",
+      "sha256": "9fb7b6b8ee3e367e844bbedbef70f8340707b2ebe581efe9beae4a5fc1c9e87f",
+      "bytes": 3030
+    },
+    {
+      "file": "functions/checkout-emulator.test.js",
+      "sha256": "db71f36c87774873fa3d16ba01d1ef133ca3b1ff2fb6d65bf36be1cb542a9feb",
+      "bytes": 12096
+    },
+    {
+      "file": "functions/checkout-http.test.js",
+      "sha256": "c12031e389aa63732f642dbd310ef795aa538fb68327e942af81c919d1c3c57a",
+      "bytes": 61482
+    },
+    {
+      "file": "functions/checkout-identity-rules.test.js",
+      "sha256": "080a6889867cbcd464e18fdb6e51c6e21df25aae21e4c53b44bdcf35daca996f",
+      "bytes": 2014
+    },
+    {
+      "file": "functions/checkout-identity.js",
+      "sha256": "2c084f81c7afbd63f1ee6febfa3ae2ee63dd454ef133747f8de404c390df543c",
+      "bytes": 2737
+    },
+    {
+      "file": "functions/checkout-notification.js",
+      "sha256": "4316c97969103a91f62d2c8b8113b92604df4a8d58a77a17cf4de8e3ade5fefc",
+      "bytes": 1072
+    },
+    {
+      "file": "functions/checkout-payment-access.js",
+      "sha256": "5032ff4e68e1c044ccd2bbadc91908c26cf565babb90d0e239d9093fd3416f25",
+      "bytes": 585
+    },
+    {
+      "file": "functions/checkout-payment-access.test.js",
+      "sha256": "339e04fce0d21dbb7d910696f456488f939884bb82592c0febf46295d5b1eaaf",
+      "bytes": 708
+    },
+    {
+      "file": "functions/checkout-payment.js",
+      "sha256": "f41ec3b98174ddd209be2c3db6cf148b3abccb06b73fd2fa67d047f291909e40",
+      "bytes": 20656
+    },
+    {
+      "file": "functions/checkout-payment.test.js",
+      "sha256": "47b717ff966e8b6a41f4509d78811376a081313c9441d057eae0e236d56c98cf",
+      "bytes": 1348
+    },
+    {
+      "file": "functions/checkout-reservation-emulator.test.js",
+      "sha256": "11c902e3a38ae4bee951855a1825ab585ea7781e87ab0597d7b6d0576b6de095",
+      "bytes": 8037
+    },
+    {
+      "file": "functions/checkout-reservation.js",
+      "sha256": "10cf6ac1b0496a3e9ffac1fa71c3a26edfea89177644fe18501a19bfbde00ea4",
+      "bytes": 2347
+    },
+    {
+      "file": "functions/checkout-reservation.test.js",
+      "sha256": "945e16c236a177300644944b3e74af6f87de740b663b2e376123e494b350293a",
+      "bytes": 969
+    },
+    {
+      "file": "functions/crm-client-edit.js",
+      "sha256": "4c6e4a8bb7040e4d0694dd9dc55716103280ab7a5f75ca22c4104950c8bdf153",
+      "bytes": 2401
+    },
+    {
+      "file": "functions/crm-client-edit.test.js",
+      "sha256": "1e2a6adad8c44896c0e36b78c447bf43092df2c3daf79a6c54fecc39313030a4",
+      "bytes": 3807
+    },
+    {
+      "file": "functions/customer-area.test.js",
+      "sha256": "1bdda8f055964e91fe9b4ad48282d565ba26f5527c78ecfa8b72ecea48782b50",
+      "bytes": 34568
+    },
+    {
+      "file": "functions/customer-canonical-history-emulator.test.js",
+      "sha256": "72ddb87d0fc6d6d3a443411033ed1b03dc493d46444f97aa6da7595ba15544a5",
+      "bytes": 4246
+    },
+    {
+      "file": "functions/customer-cors.test.js",
+      "sha256": "4de23cbd764e9966a4d9ff950c713e12057fe696449099adf8fc9d8535778436",
+      "bytes": 2037
+    },
+    {
+      "file": "functions/customer-legacy-compat.test.js",
+      "sha256": "17a03092b6d7bdb688235d9f0bfccee22ef662a392a15a31d91aac4c728c1fae",
+      "bytes": 17375
+    },
+    {
+      "file": "functions/customer-legacy.test-fixture.js",
+      "sha256": "cac562247db43e06005c2035008cd20cda2ae0518e4e6c216471edc956a74068",
+      "bytes": 3584
+    },
+    {
+      "file": "functions/customer-migration-driver-emulator.test.js",
+      "sha256": "15b9bf661f4727ea5f5b8c898f3549aa4cb0d99272d22a724b313ed8a066f5e0",
+      "bytes": 5468
+    },
+    {
+      "file": "functions/customer-migration-plan.js",
+      "sha256": "58821a5a46e2730eb008b8ab81bfb363e62b1d3adc978b1d560fb620c3096369",
+      "bytes": 8806
+    },
+    {
+      "file": "functions/customer-migration-writes.js",
+      "sha256": "8f9fdb2c7bd6f488fef1f4def6592aed7393f926c9d2861e0e03d16d2975ec89",
+      "bytes": 7295
+    },
+    {
+      "file": "functions/customer-migration-writes.test.js",
+      "sha256": "7d01730878764d7962c52be4bf9aa8ed50383f9aa3fc68734ecbe295583212dc",
+      "bytes": 4384
+    },
+    {
+      "file": "functions/customer-orders-emulator.test.js",
+      "sha256": "0a48fec6be590ff448b8544dcc7aaa6ef722315068fbb3932856ef0486875ca4",
+      "bytes": 13871
+    },
+    {
+      "file": "functions/customer-orders.js",
+      "sha256": "6675d331dc5795c4db1c33dc338708b0b9480070a30c9b69d66c3055e596b97f",
+      "bytes": 11438
+    },
+    {
+      "file": "functions/customer-orders.test.js",
+      "sha256": "ae30b195cf28c2997ada318ae615a451f5da9ed46ba677fc56032e55e1319f19",
+      "bytes": 15484
+    },
+    {
+      "file": "functions/customer-ownership.js",
+      "sha256": "b32ac07555ad13f610d17887a44c2247bb688d1ccf6fcb80fb6a927af70315fb",
+      "bytes": 589
+    },
+    {
+      "file": "functions/customer-phone-claim-emulator.test.js",
+      "sha256": "03e744c9598a34b1ba6eec5449db26369cd1fec05713a201c599218d7200c748",
+      "bytes": 8604
+    },
+    {
+      "file": "functions/customer-phone-claim.js",
+      "sha256": "f76980c6bedb0695ca34af1b5e9807e817ef063ce3ebf7784d11b48928a159fd",
+      "bytes": 6773
+    },
+    {
+      "file": "functions/customer-phone.js",
+      "sha256": "fad853247d3ac6fcc25804a7cd5e969d990ec5620716955857ac1ad7f6b6ce90",
+      "bytes": 1363
+    },
+    {
+      "file": "functions/customer-phone.test.js",
+      "sha256": "cd4a77c6910e7bb71da43ab00b2879620598176703b59714791e7fc381f19a2c",
+      "bytes": 5330
+    },
+    {
+      "file": "functions/customer-profile-emulator.test.js",
+      "sha256": "db1b096ede54a8d42de6d362d1414d0585dc2c0690555cf479a87e3bd43bfbde",
+      "bytes": 5724
+    },
+    {
+      "file": "functions/customer-profile-security.test.js",
+      "sha256": "2b8c7e219c60d78110ef241cca8fb5a002831feb552bca246151433803103b73",
+      "bytes": 3383
+    },
+    {
+      "file": "functions/customer-profile.test.js",
+      "sha256": "9fff519e87242c90c789eed844df17144a0dddaa7e8a5c6f37612bed27901d83",
+      "bytes": 12287
+    },
+    {
+      "file": "functions/customer-registry-api-emulator.test.js",
+      "sha256": "49693646867d397e1fe9de385a004267da8de860b45b87a669445fd2053e23a0",
+      "bytes": 9483
+    },
+    {
+      "file": "functions/customer-registry-emulator.test.js",
+      "sha256": "a2703a1d3402ba088fa69b2706cd9acce6a8cabdb36e6cb6dda14860a278f9dc",
+      "bytes": 5804
+    },
+    {
+      "file": "functions/customer-registry-rules.test.js",
+      "sha256": "517ab04c59fefed14cb8346ec779d3816d11cd8a866c5fe5c87e966cb3ef7c86",
+      "bytes": 2044
+    },
+    {
+      "file": "functions/customer-registry.js",
+      "sha256": "da680f0a6576c1a8d9c0f01da7cbc79d29d03fa99ef74051781dd434838ba76a",
+      "bytes": 12455
+    },
+    {
+      "file": "functions/customer-registry.test-fixture.js",
+      "sha256": "8ab966e1971bfe30ffafc8231dd1d24676e14f664a6f4206331c914a8e56ceeb",
+      "bytes": 1020
+    },
+    {
+      "file": "functions/customer-reorder-view.test.js",
+      "sha256": "eca5faef2e3fa7a429b5f621ea926e2be883dc54f71c89d6b9042a06d042d288",
+      "bytes": 17442
+    },
+    {
+      "file": "functions/customer-reorder.js",
+      "sha256": "3db44e64f818c29911006b3f52ebda6c60ad75fa60605c68b07b4022caa15314",
+      "bytes": 2994
+    },
+    {
+      "file": "functions/customer-reorder.test.js",
+      "sha256": "3f71affba75defe676db7e47d79c5bd181291f5fa1484b231de114d175cc2f35",
+      "bytes": 6588
+    },
+    {
+      "file": "functions/customer-session.test.js",
+      "sha256": "25cdd35b3f39cb4e827cb88829f4cf6558ab3fac103c8dd2a5067214836fb483",
+      "bytes": 2945
+    },
+    {
+      "file": "functions/customer-shell-emulator.test.js",
+      "sha256": "f78cbfee13dde49da2b1424a4446d9f1eb9ed0c1805b5b2202a2270d597a6d43",
+      "bytes": 7204
+    },
+    {
+      "file": "functions/entre-lojas.js",
+      "sha256": "c8ea6892eb5bd592d4201029bb466bc13b5c4e84149e8b2ab034522f2b2ac284",
+      "bytes": 6238
+    },
+    {
+      "file": "functions/entre-lojas.test.js",
+      "sha256": "bae6f83122c4f1c7dc1635945776bae77f2dd41f75616f65e084aeb25bb80a7d",
+      "bytes": 1708
+    },
+    {
+      "file": "functions/firestore.rules.test.js",
+      "sha256": "c5cb008438f6383de336d7f1cccf2488a937d3a2a9db7c5cb711e0606bd06d21",
+      "bytes": 35439
+    },
+    {
+      "file": "functions/fiscal-clone.js",
+      "sha256": "1d4b835f7583d86e813c5a0216fc93c929d692365b24f5c566010b61e24eb7d3",
+      "bytes": 4129
+    },
+    {
+      "file": "functions/fiscal-clone.test.js",
+      "sha256": "7cdff2d13f0c60962b0ef4ea89034c1797e7faf5fdb4e629307590b22b886a32",
+      "bytes": 2613
+    },
+    {
+      "file": "functions/fiscal-core.js",
+      "sha256": "53995523b0c1757c058b42e5328e77757574dae3eb5d0834057eef7fe71d90fd",
+      "bytes": 976
+    },
+    {
+      "file": "functions/fiscal-core.test.js",
+      "sha256": "97cbba4cd3de88e638e532d609b396125fd5351365995bff05b4745c045fc09e",
+      "bytes": 629
+    },
+    {
+      "file": "functions/fiscal-flow.integration.test.js",
+      "sha256": "47c330a47f04df60ce300c96bd6384ca91a1b9c9e7fbff099b3f68304b3e6dd3",
+      "bytes": 14376
+    },
+    {
+      "file": "functions/fiscal-flow.test.js",
+      "sha256": "7778b8aa10f5c51dd343244d16c0830460e25ac878bc9c7e3083e36a5aa811dc",
+      "bytes": 52574
+    },
+    {
+      "file": "functions/fiscal-money.js",
+      "sha256": "5ee6496a3075529673736284b3200b45f4b5c5e85deabee0d2f194602fabe5f2",
+      "bytes": 2230
+    },
+    {
+      "file": "functions/fiscal-money.test.js",
+      "sha256": "30532c3bad76984d45163a09c954225ecdc3f55e2df997314e5eb1598c69c5ac",
+      "bytes": 1256
+    },
+    {
+      "file": "functions/fiscal-ncm-options.test.js",
+      "sha256": "a201a39f58f4e5440bec7a569edb2e646dd6c287a37fd43bc98254aa3d031156",
+      "bytes": 6477
+    },
+    {
+      "file": "functions/fiscal-numbering.js",
+      "sha256": "098144b5fc89dedca3139edd99c26ff64cdc6686865ea92867d446ea77eadba2",
+      "bytes": 2771
+    },
+    {
+      "file": "functions/fiscal-numbering.rules.test.js",
+      "sha256": "e6f02a13f0d6ab2c9fe96f756f22760432bde3cf50a86f9d558b4951cc674bec",
+      "bytes": 2875
+    },
+    {
+      "file": "functions/fiscal-numbering.test.js",
+      "sha256": "eceb71a80c429f99f0c73b64a974b783359443765e2aeb571021d7b6004b79f0",
+      "bytes": 3114
+    },
+    {
+      "file": "functions/fiscal-permissions.js",
+      "sha256": "d3eff810fc6972de629ef1089226a10a62fc7130c80699ab3059f1682b2388f9",
+      "bytes": 816
+    },
+    {
+      "file": "functions/fiscal-permissions.test.js",
+      "sha256": "49f4d61f3251e000d67d88996291d9092f8e90acc6ce9c46eb3851a328f5803d",
+      "bytes": 1921
+    },
+    {
+      "file": "functions/fiscal.js",
+      "sha256": "5563d19284b10e1b359fe914a10ec04a64e3d43686b4c427bb18be76dfefe8cf",
+      "bytes": 161934
+    },
+    {
+      "file": "functions/fixtures/staff-push-dev-contract.rules",
+      "sha256": "9ab06aa423cc5d3a170b8b91b7ca884fa9cbf78bfd9966419aa33823fee23b88",
+      "bytes": 1446
+    },
+    {
+      "file": "functions/fixtures/stores-v1.cjs",
+      "sha256": "f0c9085e50ce95fcdd82f0e47b20407479306bc4d7747bc113c8d109470c1992",
+      "bytes": 2000
+    },
+    {
+      "file": "functions/freight-checkout.test.js",
+      "sha256": "6edb448cdb774f5107b0d0216c45844ae551f0b86298de0fe6f6f16d4abc3592",
+      "bytes": 7724
+    },
+    {
+      "file": "functions/freight-core.js",
+      "sha256": "85f2aba23f92486a253a6a05cde95f4549db979e7a19d364fbcd992b526c990e",
+      "bytes": 4920
+    },
+    {
+      "file": "functions/freight-core.test.js",
+      "sha256": "a9ce3d72d6ad24ceb02c76f7a9ca9cfb621408859e31209aca3c0009d7f8c06f",
+      "bytes": 1851
+    },
+    {
+      "file": "functions/freight-distance.js",
+      "sha256": "960794a5fb62d10c27a985cd64ae5d898405f98717928b4f03c3d69d259b9971",
+      "bytes": 2519
+    },
+    {
+      "file": "functions/freight-distance.test.js",
+      "sha256": "4466b5539c9189d66a706deed88d8eec046b24075a44372bfcb75eff440aba08",
+      "bytes": 3423
+    },
+    {
+      "file": "functions/freight-pages.test.js",
+      "sha256": "c43cd65650bd85241a1ff81ed1c7f423e5f2976be906c694121c06c2ad486f54",
+      "bytes": 13148
+    },
+    {
+      "file": "functions/guest-checkout-emulator.test.js",
+      "sha256": "b9c23d9d325fa0302dc7a5bde42fa7dd95068afafcf7e24a837346137e28f821",
+      "bytes": 4314
+    },
+    {
+      "file": "functions/index.js",
+      "sha256": "5ebbd65f4d3ffdc62d0b56bd87aa4cbd508fc53f75048b64cefa1ac1e9711de5",
+      "bytes": 185648
+    },
+    {
+      "file": "functions/infinitepay-diagnostics.js",
+      "sha256": "2771476e77b13bcb8c137854f8b0db68d0f544aebf2bbbd5b0e153996fb7921b",
+      "bytes": 4573
+    },
+    {
+      "file": "functions/infinitepay-diagnostics.test.js",
+      "sha256": "cded0a0bd7282f5dc36aaa8725032ccf6ee6c88e8cecc59e0f5f5a6fc9c5ada0",
+      "bytes": 6768
+    },
+    {
+      "file": "functions/infinitepay-secret-store.js",
+      "sha256": "6ad885d6b4b6dec29dc94c97c0682369623dcfc56c81bca41d8aef71739e3fc2",
+      "bytes": 3251
+    },
+    {
+      "file": "functions/infinitepay-secret-store.test.js",
+      "sha256": "4e93655569d644acb1d97720b654f46721ee5d041a779e3c2a448af0ca423946",
+      "bytes": 5507
+    },
+    {
+      "file": "functions/legacy-customer-session-emulator.test.js",
+      "sha256": "a6a4f7573ffdb6ee23bea1e3393036c64881259d38acd3e6c83f2e941e449a13",
+      "bytes": 6112
+    },
+    {
+      "file": "functions/legacy-customer-session.js",
+      "sha256": "7873d9af8de1cf65f5bf2006e7985b36e0671d065b530dba67921d5dcf36d2c0",
+      "bytes": 3566
+    },
+    {
+      "file": "functions/legacy-phone-emulator.test.js",
+      "sha256": "79684ff337ac6662bca694dcebf419719b4a0d5f9129343f2dc475f5f9a9b6c5",
+      "bytes": 3791
+    },
+    {
+      "file": "functions/manual-order-payment-emulator.test.js",
+      "sha256": "dfbd26d8a8562f359304f84872f96d65ab8ae6c0c3d31c9f8f84b5276e47531b",
+      "bytes": 8494
+    },
+    {
+      "file": "functions/manual-order-payment.js",
+      "sha256": "124ef14764d59b0bad4328f305641dd3ff2cf86fa7fb184ec0e83ed05585feb7",
+      "bytes": 8116
+    },
+    {
+      "file": "functions/new-order-notifications.js",
+      "sha256": "f20503f2d90a93aa118fb792bcd7f8f15ad7add071692e9e38cc065ab0cc98aa",
+      "bytes": 4713
+    },
+    {
+      "file": "functions/new-order-notifications.test.js",
+      "sha256": "40b3b11353d8eb4540c6c701e1a282b1acfacf59e2501fca060c3c163fe003b8",
+      "bytes": 3283
+    },
+    {
+      "file": "functions/online-order-status-rules.test.js",
+      "sha256": "45b8612b35f0c2213db9131edb40b2850c234cb6d69707b9a548d38baffffaa4",
+      "bytes": 2618
+    },
+    {
+      "file": "functions/order-payment-method.js",
+      "sha256": "b7d90867fe570d8432b54cbaa90d15ba0ba76fec8c8b79414523860c63a376a8",
+      "bytes": 2963
+    },
+    {
+      "file": "functions/order-payment-method.test.js",
+      "sha256": "f7579ff2baa1f0eb331529946b288ff0febc832e9923a0fcec9a77807c43ba6f",
+      "bytes": 2018
+    },
+    {
+      "file": "functions/package-lock.json",
+      "sha256": "3ac7b157c9e4c0f010f9a40cbbb62c1084fc982db417f3948312be4760f89879",
+      "bytes": 234665
+    },
+    {
+      "file": "functions/package.json",
+      "sha256": "42bf5bab0f201847d780f28d90271694d434da5361379860f60dfa92cc578911",
+      "bytes": 2341
+    },
+    {
+      "file": "functions/payment-contract-emulator.test.js",
+      "sha256": "aafd5d669df5d85639939382b8370b8bcf00058745498e8a6f81110eba55d81e",
+      "bytes": 13899
+    },
+    {
+      "file": "functions/payment-credential-status.js",
+      "sha256": "4d4fcc398c4c2a17a4613c125718a44710f05d1e44d2495543e8e052ce8fe593",
+      "bytes": 964
+    },
+    {
+      "file": "functions/payment-credentials-emulator.test.js",
+      "sha256": "b49a749fd190e70323dd57b33b27069ad6e1a85cf28c6b3f06d1e45d0267785a",
+      "bytes": 13115
+    },
+    {
+      "file": "functions/payment-credentials.js",
+      "sha256": "4ad2e5086e9a6ab0ee1e8c8d211ab164131b10d17fae2917c92e2566282a122c",
+      "bytes": 12418
+    },
+    {
+      "file": "functions/payment-financial-events-emulator.test.js",
+      "sha256": "764a156be2f3ab04edb8b0cde9a340e8a65589fbd6eaf7b40cf3c328cc8a2b37",
+      "bytes": 16879
+    },
+    {
+      "file": "functions/payment-financial-events.js",
+      "sha256": "e1275feff42b8b47d789f2b11de7f7c1d3e80b52da769b988e7489e1b722a9ce",
+      "bytes": 14096
+    },
+    {
+      "file": "functions/payment-prefill.js",
+      "sha256": "671529789f81ad54677dd9273db48f77e7f4a179cd5f7a0bb2cb84fbe4d21890",
+      "bytes": 1151
+    },
+    {
+      "file": "functions/payment-prefill.test.js",
+      "sha256": "2bd1f25cd2db1e4b7712d52f0d09cda7b1bd9b011683faaca0dd978b5e22ec95",
+      "bytes": 3095
+    },
+    {
+      "file": "functions/payment-return-auth.js",
+      "sha256": "1093ade82cb88954a881db916bb3de43a0ea936b58352dec24c923797ed6aa8e",
+      "bytes": 1255
+    },
+    {
+      "file": "functions/payment-return-auth.test.js",
+      "sha256": "b857ff59a86e8d58d88ad0f55851fd5fab78f78f081f6373ed9eb781f7749b4f",
+      "bytes": 1125
+    },
+    {
+      "file": "functions/payment-settings-emulator.test.js",
+      "sha256": "78bec59a411fe8308eb37ce10db3389fbc10e260cda3c517e8e50062f297ecff",
+      "bytes": 6102
+    },
+    {
+      "file": "functions/payment-settings.js",
+      "sha256": "020a80c566127b134bd34905b3df1b411a6b0410d2a675d9318981ec1895a7f6",
+      "bytes": 5892
+    },
+    {
+      "file": "functions/payment-signal-policy.js",
+      "sha256": "b0e612712d7b516654de196419d387d9f5215f153593948e0f6fa6f0ecd44a72",
+      "bytes": 3247
+    },
+    {
+      "file": "functions/payment-signal-policy.test.js",
+      "sha256": "ea3d360ba4b6ded18a377d319f095c9e906c8f06093add4d3796c97968484fc5",
+      "bytes": 4964
+    },
+    {
+      "file": "functions/payment-verification.js",
+      "sha256": "b84859d82ad894471004ebaff20e939f1db52e0b070229f10f7c2f283465cce7",
+      "bytes": 1401
+    },
+    {
+      "file": "functions/payment-verification.test.js",
+      "sha256": "139023aebf299663658bef91c3028fae12d9d2a0afafbc090bd0769174b16c84",
+      "bytes": 1790
+    },
+    {
+      "file": "functions/payment-webhook-payload.test.js",
+      "sha256": "61749e05af480d6d10195b9c25b01bb9fdaa0c45c68aa502f6a40775dae6cd25",
+      "bytes": 3897
+    },
+    {
+      "file": "functions/phone-payment-http.test.js",
+      "sha256": "a030083223635c87c5275dc1cb75741e2d850e4db78d2f6c1eb04843569b6caa",
+      "bytes": 6966
+    },
+    {
+      "file": "functions/preprod-store-boundary-rules.test.js",
+      "sha256": "3a827b547293c67ca51197af6754d2bb7c64cd4c8654da475cfa47ff4442ca61",
+      "bytes": 8408
+    },
+    {
+      "file": "functions/recaptcha-enterprise.js",
+      "sha256": "23bdb620f8d18b06716d97bdfb9162bf766e80538cbcd5cf74d8a6f82b719a12",
+      "bytes": 967
+    },
+    {
+      "file": "functions/recaptcha-enterprise.test.js",
+      "sha256": "0ed43b3d25dde3971b84569452ab17d128e379d35d0eff57ef16dcc168c8cbed",
+      "bytes": 1571
+    },
+    {
+      "file": "functions/staff-customer-directory-emulator.test.js",
+      "sha256": "7f8ea34789cafd4452b0f13157f1b9ddf001699a77a5696d36ac9e619a089994",
+      "bytes": 12142
+    },
+    {
+      "file": "functions/staff-customer-directory.js",
+      "sha256": "ed5605a6e2ca3d771a1a6dc63fc40fe5771f99adb169c64ce379a1c8c083f533",
+      "bytes": 16761
+    },
+    {
+      "file": "functions/staff-customer-directory.test.js",
+      "sha256": "2b270e2218e7e30be596b435a554d2a2083240745e2ced0cf518f366699137f8",
+      "bytes": 15227
+    },
+    {
+      "file": "functions/staff-push-logout-emulator.test.js",
+      "sha256": "f0bd3352072c211c40ea27c3021fc0137631bcaa3f27e90e871abe63d716eef4",
+      "bytes": 3901
+    },
+    {
+      "file": "functions/store-config-emulator.test.js",
+      "sha256": "ab4633357ed00451c21d105c1f331f344fe0fec94b486d224c99a0ae21c22981",
+      "bytes": 6754
+    },
+    {
+      "file": "functions/store-config.js",
+      "sha256": "731e8ecd8c118444af9c3bbb091c4e47fbef3328ce88e4f41154e284455c3088",
+      "bytes": 10781
+    },
+    {
+      "file": "functions/store-config.test.js",
+      "sha256": "fb74a144aac719b865ba02c70e11e637f9b8c823f1d15eb370853739fe4f5cc4",
+      "bytes": 5686
+    },
+    {
+      "file": "functions/store-directory.test.js",
+      "sha256": "51edd2a5316e7a525c8733a8451885bd311b5e50b29e3bf7a6143883d108968c",
+      "bytes": 4328
+    },
+    {
+      "file": "functions/store-fulfillment-admin.js",
+      "sha256": "fa1f723443f1e01ae8c052250bf29fdc119af9315c407f4753da8efe0706403d",
+      "bytes": 5471
+    },
+    {
+      "file": "functions/store-fulfillment-rules.test.js",
+      "sha256": "cdc595044ee0eec6f9f41ffcc2c72f40a90794c2ddbbfcd3d15f1b5665c2bb84",
+      "bytes": 2014
+    },
+    {
+      "file": "functions/store-fulfillment.integration.test.js",
+      "sha256": "096b1b55d53aee357a5af112ab4592beaca78b9100ddba56f74e2b92b95c9400",
+      "bytes": 7519
+    },
+    {
+      "file": "functions/store-management-rules.test.js",
+      "sha256": "0af4a9607560933a871177f3216e2ac53678e42eebca6cdb15ecf89f2ad43fd5",
+      "bytes": 2451
+    },
+    {
+      "file": "functions/store-management.integration.test.js",
+      "sha256": "d1530affd2518bf1fc85667eac8a3ddc18dfc056aff011ea46ead78d42f9cad5",
+      "bytes": 10820
+    },
+    {
+      "file": "functions/store-management.js",
+      "sha256": "20705d07ac8e9fc52b62cca428157f7bdbab65ba5d71ab4e515560f50a2de51f",
+      "bytes": 19216
+    },
+    {
+      "file": "functions/store-owner-policy.js",
+      "sha256": "f3911f039ee92069806decd822593455b46b803239a055cebf8f2955a663f7ba",
+      "bytes": 1029
+    },
+    {
+      "file": "functions/user-status-core.js",
+      "sha256": "58fb6cfbaeddbb05bc627a99878e3baaf3e337c0cf7b766a80b135ff98daf1a5",
+      "bytes": 2433
+    },
+    {
+      "file": "functions/user-status-core.test.js",
+      "sha256": "6692694770336cae03d1fa5ad0e0cdcd020550ad05d194b400552c126ea1d1dc",
+      "bytes": 3048
+    },
+    {
+      "file": "functions/whatsapp-access.js",
+      "sha256": "3f69d064f2b4d4172cc1e051899d30ec09a5aa7299178b1b3e417acb4d8d4529",
+      "bytes": 713
+    },
+    {
+      "file": "functions/whatsapp-admin.js",
+      "sha256": "1801275333a64bd47e823be07e7911c9d31e4e44b91cb6845a066d040f8a91ab",
+      "bytes": 8257
+    },
+    {
+      "file": "functions/whatsapp-admin.test.js",
+      "sha256": "ece6ee7fe9542b13679540327d81980d9eb8a96aa11696b8731af3df72bc2656",
+      "bytes": 11358
+    },
+    {
+      "file": "functions/whatsapp-checkout.js",
+      "sha256": "3dc00d4e0f85b0c7ff4483f137d4e55111a46c3a118da01a50b5b53ce99b9c9c",
+      "bytes": 2688
+    },
+    {
+      "file": "functions/whatsapp-checkout.test.js",
+      "sha256": "52e673cfa36c498c7b633b78ffd7f0a939e20ad816fbd43de482b84e9bf7faee",
+      "bytes": 11836
+    },
+    {
+      "file": "functions/whatsapp-client.js",
+      "sha256": "180ff93258e953e41e13199dde10a44c8c6b5f4dc2eec69a02e2136193fb5ff4",
+      "bytes": 4034
+    },
+    {
+      "file": "functions/whatsapp-config.js",
+      "sha256": "e9c11432339933b2d210f4a7f208c6003040df0cde5e51e19812c46d459a9547",
+      "bytes": 2730
+    },
+    {
+      "file": "functions/whatsapp-history.js",
+      "sha256": "291da7d9915d918d58e488a6be76a4f7ad5d6dca966935d706be2ee2cf0a0d36",
+      "bytes": 3749
+    },
+    {
+      "file": "functions/whatsapp-history.test.js",
+      "sha256": "930edaaf83647bf112c8732163e350f4f9fa877f281e761bb5ea40134cdd501b",
+      "bytes": 3181
+    },
+    {
+      "file": "functions/whatsapp-order-summary.js",
+      "sha256": "30ac2b24229911c03d7eca02b75357245cab474071fe7a10bc9732038360588f",
+      "bytes": 6442
+    },
+    {
+      "file": "functions/whatsapp-order-summary.test.js",
+      "sha256": "58648910376bd38a4593d293cf9ef6cdc10cdaebda3c219f61e16e35ad8d67a5",
+      "bytes": 8109
+    },
+    {
+      "file": "functions/whatsapp-test-support.js",
+      "sha256": "5dc60f50afb5218c6a5cc7aa34d39d806efeb04478271059c577e2547696e2e3",
+      "bytes": 2065
+    },
+    {
+      "file": "functions/whatsapp-webhook.js",
+      "sha256": "36d353ccacb827852701fe26cc2eeff3366ba1d4dbea554a273561007de05d2c",
+      "bytes": 8395
+    },
+    {
+      "file": "functions/whatsapp-webhook.test.js",
+      "sha256": "5d834dad508e32da40a2e6629519afec34c6c3ae76f8d53592e04f50c6407140",
+      "bytes": 7241
+    },
+    {
+      "file": "functions/whatsapp-worker.js",
+      "sha256": "528b333e4639ce4c2154d67bd7565e304d979939ace5d5fb4cff2e30b69c1fbc",
+      "bytes": 14878
+    },
+    {
+      "file": "functions/whatsapp-worker.test.js",
+      "sha256": "8a507d88e96a81808b25fb77eb14f530baa274cee32ed34e63bb39f0dca0ae05",
+      "bytes": 22068
+    },
+    {
+      "file": "functions/whatsapp.js",
+      "sha256": "d10a95460f2d2f3907fd0ece677e88ec1e69a987498efe7f55f006164957dd96",
+      "bytes": 3541
+    },
+    {
+      "file": "functions/whatsapp.test.js",
+      "sha256": "fa74afd99d0b0d7199c28a022c0b73efcae1420d3ecaa6f5d3f9ba2f38d1dcd0",
+      "bytes": 12414
+    },
+    {
+      "file": "package-lock.json",
+      "sha256": "17d0934025ebe5c200251128c43baa828615fd07b2d7ca5484343d7374300a0e",
+      "bytes": 711129
+    },
+    {
+      "file": "package.json",
+      "sha256": "553959c677bee24ac458f253e93eeb45275afbbfabb0b1bbecb36301dab0f8b1",
+      "bytes": 1126
+    },
+    {
+      "file": "scripts/assert-dev-client-config.cjs",
+      "sha256": "8ed3a31aa05a514c718382ecf8b2497374cb96facada1db8d2c785a78b75291c",
+      "bytes": 2042
+    },
+    {
+      "file": "scripts/assert-dev-client-config.test.cjs",
+      "sha256": "1c1ef80c05a36c40a46f9a4628228cad602799df543524251c919808c113c258",
+      "bytes": 1864
+    },
+    {
+      "file": "scripts/assert-dev-deploy.cjs",
+      "sha256": "02d7e213e2dfcdaf260801852dc3c339e53cfd930e4d368061100b9434536102",
+      "bytes": 912
+    },
+    {
+      "file": "scripts/customer-phone-migrate.cjs",
+      "sha256": "a5331a5d014a43cd96b441ab27749a4b433c479288b515fbc96dce13b67ccd65",
+      "bytes": 7884
+    },
+    {
+      "file": "scripts/phase10-claim-preflight.cjs",
+      "sha256": "33471a754aa76b3da3332351b13ffb785994f1f2f71a637c87109d51d268c0bf",
+      "bytes": 8740
+    },
+    {
+      "file": "scripts/phase10-claim-preflight.test.cjs",
+      "sha256": "a2fa2fd067e1382e5d703375bf683a42771dbabdb0df96a7df34b30e386beaa2",
+      "bytes": 3919
+    },
+    {
+      "file": "scripts/sync-canonical-auth.cjs",
+      "sha256": "f2d273e5df883183a66ffb39e3a9e63f27dc66cc5536617748579fd519998813",
+      "bytes": 787
+    },
+    {
+      "file": "scripts/sync-fiscal-money.cjs",
+      "sha256": "07b50e11316724bc7ba56b4ed15659b90b0297ea98aadba4162f5860b8ae7841",
+      "bytes": 624
+    },
+    {
+      "file": "scripts/test-admin-customer-preview.cjs",
+      "sha256": "4ee1dc9f54bd2d38d2f09033424ea127e7176e5b3f0cd056b14979778f15b47b",
+      "bytes": 2117
+    },
+    {
+      "file": "storage.rules",
+      "sha256": "89e9407ba30fb4bcc18b8914c16948dee2c76e642d3e12c8f30420506d4abd30",
+      "bytes": 411
+    }
+  ],
+  "changedSourceFiles": [
+    "crm/public/customer-phone-claim.mjs",
+    "crm/src/App.js",
+    "crm/src/components/orders/OrderAdminHistory.js",
+    "crm/src/components/orders/ReceiveOrderPayment.js",
+    "crm/src/components/orders/ReceiveOrderPayment.test.js",
+    "crm/src/crmReconciliation.test.js",
+    "crm/src/customerDirectoryView.test.js",
+    "crm/src/orderFinancialRecognition.js",
+    "crm/src/orderFinancialRecognition.test.js",
+    "crm/src/payments/InfinitePayCredentialForm.js",
+    "crm/src/payments/InfinitePayCredentialForm.test.js",
+    "crm/src/payments/InfinitePaySettings.js",
+    "crm/src/payments/InfinitePaySettings.test.js",
+    "crm/src/receiptDialogLifetime.test.js",
+    "crm/src/utils/clientApi.js",
+    "crm/src/utils/customerDirectorySync.js",
+    "crm/src/utils/customerDirectorySync.test.js",
+    "crm/tests/customer-phone-claim.test.mjs",
+    "firestore.rules",
+    "functions/admin-order-edit.js",
+    "functions/card-1x-fee-credentials.js",
+    "functions/card-1x-fee-native.test.js",
+    "functions/card-1x-fee-policy.js",
+    "functions/card-1x-fee-policy.test.js",
+    "functions/card-1x-fee-settings-emulator.test.js",
+    "functions/checkout-payment.js",
+    "functions/crm-client-edit.js",
+    "functions/crm-client-edit.test.js",
+    "functions/firestore.rules.test.js",
+    "functions/index.js",
+    "functions/infinitepay-secret-store.js",
+    "functions/infinitepay-secret-store.test.js",
+    "functions/manual-order-payment-emulator.test.js",
+    "functions/manual-order-payment.js",
+    "functions/payment-credential-status.js",
+    "functions/payment-credentials-emulator.test.js",
+    "functions/payment-credentials.js",
+    "functions/payment-settings.js",
+    "functions/staff-customer-directory-emulator.test.js",
+    "functions/staff-customer-directory.js",
+    "functions/staff-customer-directory.test.js"
+  ],
+  "untrackedSourceFiles": [
+    "crm/src/components/orders/ReceiveOrderPayment.js",
+    "crm/src/components/orders/ReceiveOrderPayment.test.js",
+    "crm/src/customerDirectoryView.test.js",
+    "crm/src/payments/InfinitePayCredentialForm.js",
+    "crm/src/payments/InfinitePayCredentialForm.test.js",
+    "crm/src/receiptDialogLifetime.test.js",
+    "crm/src/utils/customerDirectorySync.js",
+    "crm/src/utils/customerDirectorySync.test.js",
+    "functions/card-1x-fee-credentials.js",
+    "functions/card-1x-fee-native.test.js",
+    "functions/card-1x-fee-policy.js",
+    "functions/card-1x-fee-policy.test.js",
+    "functions/card-1x-fee-settings-emulator.test.js",
+    "functions/infinitepay-secret-store.js",
+    "functions/infinitepay-secret-store.test.js",
+    "functions/manual-order-payment-emulator.test.js",
+    "functions/manual-order-payment.js",
+    "functions/payment-credential-status.js",
+    "functions/payment-credentials-emulator.test.js",
+    "functions/payment-credentials.js",
+    "functions/staff-customer-directory-emulator.test.js",
+    "functions/staff-customer-directory.js",
+    "functions/staff-customer-directory.test.js"
+  ],
+  "secretsCopied": false,
+  "environmentFilesCopied": false,
+  "remoteWrites": 0,
+  "commit": false,
+  "push": false,
+  "deploy": false
+}

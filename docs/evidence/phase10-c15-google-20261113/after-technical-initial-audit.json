@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "at": "2026-11-13T14:40:50.781Z",
+  "project": "crmdoceria-9959e",
+  "caseId": "a403670c5b1f4151",
+  "stage": "POSTCHECK_REQUIRES_REVIEW",
+  "uidFingerprint": "e90cb2b1830e3653",
+  "checks": {
+    "originalCustomerExists": true,
+    "singleGoogleOwner": true,
+    "uidMappingOriginal": false,
+    "googleIdentityOriginal": true,
+    "phoneIndexPreserved": true,
+    "phoneOwnershipVerified": true,
+    "noCustomerCreated": true,
+    "noCrossCustomerOwnership": true,
+    "customerFieldsPreserved": true,
+    "historicalOrdersUnchanged": true,
+    "noRelatedOrderDuplicated": true,
+    "addressesPreserved": true,
+    "noAdministrativeProfile": true,
+    "singleChallengeConsumed": false,
+    "oneClaimAudit": true
+  },
+  "owners": 1,
+  "customerCount": 20,
+  "originalOrders": 2,
+  "relatedOrders": 2,
+  "addresses": 1,
+  "challengeCount": 2,
+  "challengeStates": [
+    "consumed",
+    "sent"
+  ],
+  "verificationAttempts": [
+    1,
+    0
+  ],
+  "auditCount": 1,
+  "unexpectedCustomerFields": [],
+  "remoteWritesByThisVerification": 0,
+  "smsRequestedByAgent": 0,
+  "uiAcceptance": "PENDING",
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

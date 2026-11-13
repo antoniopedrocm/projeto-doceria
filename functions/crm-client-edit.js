@@ -9,11 +9,11 @@ const pickText = (input, allowed) => Object.fromEntries(allowed.filter(key => Ob
   if (input[key] !== null && typeof input[key] !== 'string') fail('Campo de cadastro inválido: ' + key + '.', 400);
   return [key, input[key]];
 }));
-function claimedClientPatch({customer, input, profile, customProfile = {}, lojaId}) {
+function claimedClientPatch({customer, input, profile, customProfile = {}, lojaId, storeRelationshipVerified=false}) {
   if (!lojaId || lojaId === '__all__' || !isClientStaffProfile(profile, lojaId)) fail('Você não tem permissão para alterar clientes nesta loja.');
   const permissions = customProfile.permissions || profile.permissions || {};
   if (permissions.clientes === false) fail('O módulo Clientes não está habilitado para este usuário.');
-  if (profile.role !== 'dono' && customer.lojaId !== lojaId && !(Array.isArray(customer.lojasVisitadas) && customer.lojasVisitadas.includes(lojaId))) fail('O cliente não está vinculado à loja autorizada.');
+  if (profile.role !== 'dono' && !storeRelationshipVerified && customer.lojaId !== lojaId && !(Array.isArray(customer.lojasVisitadas) && customer.lojasVisitadas.includes(lojaId))) fail('O cliente não está vinculado à loja autorizada.');
   const patch = pickText(input, fields);
   if (Object.hasOwn(input, 'address')) {
     if (input.address === null) patch.address = null;

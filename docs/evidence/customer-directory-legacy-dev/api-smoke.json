@@ -1,0 +1,62 @@
+{
+  "at": "2026-11-12T04:12:41.142Z",
+  "project": "crmdoceria-9959e",
+  "passed": 6,
+  "cases": [
+    {
+      "route": "/clientes/diretorio",
+      "store": "ana-guimaraes-doceria-matriz",
+      "auth": "absent",
+      "status": 401,
+      "noCustomerData": true,
+      "noStoreFallback": true,
+      "cacheControl": "no-store"
+    },
+    {
+      "route": "/clientes/diretorio",
+      "store": "ana-guimaraes-doceria-matriz",
+      "auth": "forged",
+      "status": 401,
+      "noCustomerData": true,
+      "noStoreFallback": true,
+      "cacheControl": "no-store"
+    },
+    {
+      "route": "/clientes/diretorio",
+      "store": "ana-guimaraes-doceria-garavelo",
+      "auth": "absent",
+      "status": 401,
+      "noCustomerData": true,
+      "noStoreFallback": true,
+      "cacheControl": "no-store"
+    },
+    {
+      "route": "/clientes/diretorio",
+      "store": "ana-guimaraes-doceria-garavelo",
+      "auth": "forged",
+      "status": 401,
+      "noCustomerData": true,
+      "noStoreFallback": true,
+      "cacheControl": "no-store"
+    },
+    {
+      "route": "/clientes/diretorio",
+      "store": "__all__",
+      "auth": "absent",
+      "status": 401,
+      "noCustomerData": true,
+      "noStoreFallback": true,
+      "cacheControl": "no-store"
+    },
+    {
+      "route": "/clientes/diretorio",
+      "store": "__all__",
+      "auth": "forged",
+      "status": 401,
+      "noCustomerData": true,
+      "noStoreFallback": true,
+      "cacheControl": "no-store"
+    }
+  ],
+  "realAuthSessionTested": false
+}

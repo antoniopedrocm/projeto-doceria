@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {httpsCallable} from 'firebase/functions';
 import {functions} from '../../firebaseConfig';
-const labels={status:'Status',clienteId:'Cliente',clienteNome:'Nome do cliente',categoria:'Categoria',formaPagamento:'Forma de pagamento',observacao:'Observação',desconto:'Desconto',subtotal:'Subtotal',total:'Total',cupom:'Cupom',dataEntrega:'Data de entrega',paymentMethod:'Método real',fiscalPaymentCode:'Código fiscal',paymentMethodSource:'Origem do método'};
+const labels={status:'Status',clienteId:'Cliente',clienteNome:'Nome do cliente',categoria:'Categoria',formaPagamento:'Forma de pagamento',observacao:'Observação',desconto:'Desconto',subtotal:'Subtotal',total:'Total',cupom:'Cupom',dataEntrega:'Data de entrega',paymentMethod:'Método real',fiscalPaymentCode:'Código fiscal',paymentMethodSource:'Origem do método',paymentStatus:'Status do pagamento',payment_status:'Status do pagamento',statusPagamento:'Status do pagamento',valorRecebido:'Valor recebido'};
 const money=value=>Number(value || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 function describe(change) {
   if(change.field==='itens') {
@@ -14,7 +14,7 @@ function describe(change) {
       return qty(a)!==qty(b)?`${b.nome || id}: ${qty(a)} → ${qty(b)}`:null;
     }).filter(Boolean).join('; ') || 'Itens atualizados';
   }
-  const display=value=>value == null || value===''?'—':['desconto','subtotal','total'].includes(change.field)?money(value):typeof value==='object'?JSON.stringify(value):String(value);
+  const display=value=>value == null || value===''?'—':['desconto','subtotal','total','valorRecebido'].includes(change.field)?money(value):value==='PAID'?'Pago':value==='PENDING'?'Pendente':typeof value==='object'?JSON.stringify(value):String(value);
   return `${labels[change.field] || change.field}: ${display(change.before)} → ${display(change.after)}`;
 }
 export function OrderPaymentAdjustment({order,total=order?.total}) {
@@ -36,7 +36,7 @@ export default function OrderAdminHistory({order}) {
     {state==='loading'&&<p role="status" className="text-sm text-gray-500">Carregando histórico…</p>}
     {state==='error'&&<p role="alert">Não foi possível carregar o histórico. <button type="button" className="text-pink-700 underline" onClick={()=>setRetry(n=>n+1)}>Tentar novamente</button></p>}
     {state==='ready'&&!events.length&&<p className="text-sm text-gray-500">Nenhuma alteração registrada pela nova trilha. Registros anteriores permanecem nos logs existentes do CRM.</p>}
-    <ol className="space-y-4">{[...events].sort((a,b)=>a.revision-b.revision).map(event=><li key={event.id} className="border-l-2 border-pink-200 pl-3 text-sm"><p className="font-medium">{new Date(event.createdAt).toLocaleString('pt-BR')} · {event.actorName || event.actorUid}</p><p className="text-gray-500">{event.source==='CRM_UPDATE_STATUS'?'Status atualizado':'Pedido editado'}</p><ul className="mt-1 space-y-1">{event.changes.map((change,index)=><li key={index}>{describe(change)}</li>)}</ul>{event.stockChanges?.length>0&&<p className="mt-1 text-gray-500">Estoque ajustado em {event.stockChanges.length} produto(s), na mesma operação.</p>}</li>)}</ol>
+    <ol className="space-y-4">{[...events].sort((a,b)=>a.revision-b.revision).map(event=><li key={event.id} className="border-l-2 border-pink-200 pl-3 text-sm"><p className="font-medium">{new Date(event.createdAt).toLocaleString('pt-BR')} · {event.actorName || event.actorUid}</p><p className="text-gray-500">{event.source==='CRM_MANUAL_PAYMENT_RECEIPT'?'Pagamento recebido':event.source==='CRM_UPDATE_STATUS'?'Status atualizado':'Pedido editado'}</p><ul className="mt-1 space-y-1">{event.changes.map((change,index)=><li key={index}>{describe(change)}</li>)}</ul>{event.stockChanges?.length>0&&<p className="mt-1 text-gray-500">Estoque ajustado em {event.stockChanges.length} produto(s), na mesma operação.</p>}</li>)}</ol>
     {cursor&&<button type="button" onClick={more} disabled={state==='loading-more'} className="rounded-lg border px-3 py-2 text-sm">Ver alterações anteriores</button>}
     {state==='error-more'&&<p role="alert" className="text-sm text-red-700">Não foi possível carregar alterações anteriores. Tente novamente.</p>}
   </section>;

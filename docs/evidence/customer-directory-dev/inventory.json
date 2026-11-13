@@ -1,0 +1,54 @@
+{
+  "at": "2026-11-12T01:21:16.513Z",
+  "project": "crmdoceria-9959e",
+  "edition": "STANDARD",
+  "type": "FIRESTORE_NATIVE",
+  "stores": [
+    {
+      "id": "ana-guimaraes-doceria-garavelo",
+      "data": {
+        "nome": "Ana Guimarães Doceria",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "id": "ana-guimaraes-doceria-matriz",
+      "data": {
+        "nome": "Ana Guimarães Doceria",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "id": "apfood",
+      "data": {
+        "nome": "ApFood"
+      }
+    },
+    {
+      "id": "loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237",
+      "data": {
+        "nome": "teste",
+        "status": "ACTIVE"
+      }
+    },
+    {
+      "id": "loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2",
+      "data": {
+        "nome": "teste1",
+        "status": "ACTIVE"
+      }
+    }
+  ],
+  "counts": {
+    "clientes": 20,
+    "pedidos": 38,
+    "integrations/customerRegistry/aliases": 4,
+    "lojas/ana-guimaraes-doceria-garavelo/pedidos": 5,
+    "lojas/ana-guimaraes-doceria-matriz/pedidos": 65,
+    "lojas/apfood/pedidos": 0,
+    "lojas/loja-2c91ca7c-e6c2-421c-8fb7-e95d29098237/pedidos": 0,
+    "lojas/loja-32bf5592-bfcc-4518-af62-3038c8b3d8b2/pedidos": 0
+  },
+  "estimatedMaxDocs": 137,
+  "readOnly": true
+}

@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-12T04:07:34.185Z",
+  "project": "crmdoceria-9959e",
+  "readOnly": true,
+  "stores": [
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "handle": "ana_guimares",
+      "enabled": true,
+      "preference": "STORE",
+      "explicitPreference": false,
+      "baseline": null,
+      "bindingPresent": false,
+      "secretIdRequired": "infinitepay-checkout-0ac34f0f9345e914f3f3"
+    },
+    {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "handle": "ana_guimares",
+      "enabled": true,
+      "preference": "STORE",
+      "explicitPreference": false,
+      "baseline": null,
+      "bindingPresent": false,
+      "secretIdRequired": "infinitepay-checkout-a1cccade83b8102c97d1"
+    }
+  ],
+  "runtimeServiceAccount": "389481198252-compute@developer.gserviceaccount.com",
+  "realCredentialValuesRead": false,
+  "remoteWrites": 0
+}

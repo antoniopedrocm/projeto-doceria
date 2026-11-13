@@ -1,0 +1,61 @@
+{
+  "area": "prod",
+  "errors": 0,
+  "warnings": 0,
+  "files": [
+    {
+      "file": "crm\\src\\payments\\InfinitePaySettings.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "crm\\src\\payments\\InfinitePaySettings.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-policy.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-policy.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-native.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-credentials.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\card-1x-fee-settings-emulator.test.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\checkout-payment.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    },
+    {
+      "file": "functions\\payment-settings.js",
+      "errors": 0,
+      "warnings": 0,
+      "messages": []
+    }
+  ]
+}

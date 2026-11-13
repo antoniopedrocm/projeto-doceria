@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-12T20:11:56.106Z",
+  "project": "crmdoceria-9959e",
+  "httpStatus": 200,
+  "availablePermissions": [
+    "iam.roles.create",
+    "iam.roles.update",
+    "iam.serviceAccounts.actAs",
+    "iam.serviceAccounts.create",
+    "resourcemanager.projects.getIamPolicy",
+    "resourcemanager.projects.setIamPolicy"
+  ],
+  "mutationPerformed": false
+}

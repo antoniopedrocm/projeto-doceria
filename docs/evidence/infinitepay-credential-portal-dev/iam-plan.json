@@ -1,0 +1,46 @@
+{
+  "at": "2026-11-12T20:30:56.571Z",
+  "project": "crmdoceria-9959e",
+  "currentApiServiceAccount": "389481198252-compute@developer.gserviceaccount.com",
+  "currentApiRoles": [
+    {
+      "role": "roles/editor",
+      "conditional": false
+    },
+    {
+      "role": "roles/eventarc.eventReceiver",
+      "conditional": false
+    },
+    {
+      "role": "roles/run.invoker",
+      "conditional": false
+    },
+    {
+      "role": "roles/secretmanager.admin",
+      "conditional": false
+    }
+  ],
+  "plannedCredentialServiceAccount": "payment-credentials@crmdoceria-9959e.iam.gserviceaccount.com",
+  "separation": "Dedicated credential functions; existing API permissions are preserved",
+  "newSecretPermissions": {
+    "creator": [
+      "secretmanager.secrets.create"
+    ],
+    "versioner": [
+      "secretmanager.secrets.get",
+      "secretmanager.versions.add",
+      "secretmanager.versions.access"
+    ],
+    "reader": [
+      "secretmanager.versions.access"
+    ]
+  },
+  "forbiddenNewPermissions": [
+    "secretmanager.secrets.delete",
+    "secretmanager.secrets.setIamPolicy",
+    "secretmanager.versions.destroy",
+    "secretmanager.versions.disable",
+    "secretmanager.secrets.list"
+  ],
+  "remoteWrites": 0
+}

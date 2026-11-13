@@ -11,3 +11,7 @@ test('verified PAID is recognized once at original paid amount after an administ
  expect(isRecognizedOrderReceipt(order)).toBe(true);expect(recognizedOrderTotal(order)).toBe(10);
  expect(isRecognizedOrderReceipt({...order,requiresReview:true})).toBe(false);
 });
+test('manual agreed receipt is recognized only after explicit PAID and retains the original received amount',()=>{
+ const pending={status:'Finalizado',paymentMode:'AGREED_LATER',paymentStatus:'PENDING',total:14.78};expect(isRecognizedOrderReceipt(pending)).toBe(false);
+ const paid={...pending,paymentStatus:'PAID',manualPaymentReceipt:{amountCents:1478}};expect(isRecognizedOrderReceipt(paid)).toBe(true);expect(recognizedOrderTotal({...paid,total:99})).toBe(14.78);
+});

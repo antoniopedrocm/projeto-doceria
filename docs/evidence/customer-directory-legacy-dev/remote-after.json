@@ -1,0 +1,76 @@
+{
+  "at": "2026-11-12T04:29:57.204Z",
+  "project": "crmdoceria-9959e",
+  "functionCount": 147,
+  "updatedFunctions": [
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/paymentSettingsGet",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-12T04:08:37.118532417Z",
+      "uri": "https://paymentsettingsget-6i65vyioiq-uc.a.run.app",
+      "revision": "paymentsettingsget-00002-baf",
+      "environmentFingerprint": "e56b1374e5e2ed13b1a22e2def115e3c636f6cd674d98b502f8735fb535b732a",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/paymentSettingsSave",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-12T04:08:36.781943903Z",
+      "uri": "https://paymentsettingssave-6i65vyioiq-uc.a.run.app",
+      "revision": "paymentsettingssave-00002-vod",
+      "environmentFingerprint": "9121fb07083af3c6995635cd53ee44f2af04bb43888074b2fda31ea8b36fab90",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/api",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-12T04:08:36.366049949Z",
+      "uri": "https://api-6i65vyioiq-uc.a.run.app",
+      "revision": "api-00078-rig",
+      "environmentFingerprint": "3c955b1edebd259e21639c531fac493e5b047b797cbc0bdb7698a3d5af5265c8",
+      "secretReferencesFingerprint": "9b3b8a6443b4711586bdf9cc9c157269d5640e817bc3c7807c9a57f8d94456ac",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/adminOrderReceivePayment",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-12T04:08:29.601909684Z",
+      "uri": "https://adminorderreceivepayment-6i65vyioiq-uc.a.run.app",
+      "revision": "adminorderreceivepayment-00001-maw",
+      "environmentFingerprint": "6fb9437d1b892cb82f34bb256eaf32ceaa7cffbd7821edc393d817d28989bc66",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    }
+  ],
+  "api": {
+    "name": "projects/crmdoceria-9959e/locations/us-central1/functions/api",
+    "state": "ACTIVE",
+    "updateTime": "2026-11-12T04:08:36.366049949Z",
+    "uri": "https://api-6i65vyioiq-uc.a.run.app",
+    "revision": "api-00078-rig",
+    "environmentFingerprint": "3c955b1edebd259e21639c531fac493e5b047b797cbc0bdb7698a3d5af5265c8",
+    "secretReferencesFingerprint": "9b3b8a6443b4711586bdf9cc9c157269d5640e817bc3c7807c9a57f8d94456ac",
+    "runtime": "nodejs22"
+  },
+  "unrelatedFunctionsUnchanged": 143,
+  "credentialsAndEnvironmentUnchanged": true,
+  "ruleRelease": {
+    "name": "projects/crmdoceria-9959e/releases/cloud.firestore",
+    "rulesetName": "projects/crmdoceria-9959e/rulesets/eaa8ed3d-0434-41c7-bc5b-587530841fbb",
+    "updateTime": "2026-11-12T01:34:09.021915Z",
+    "sourceSha256Normalized": "70a85b55a6ba0cbe35b62b00f60a86990c4f34cadf5d050025a822bafcf15a29",
+    "matchesTestedRules": true,
+    "releaseUnchanged": true
+  },
+  "hosting": {
+    "version": "sites/crmdoceria-9959e/versions/d1b23d2507ff6204",
+    "release": "sites/crmdoceria-9959e/channels/live/releases/1794457776605000",
+    "releaseTime": "2026-11-12T04:29:36.605Z"
+  },
+  "commit": false,
+  "push": false,
+  "prodAccess": false,
+  "businessDataMutations": false
+}

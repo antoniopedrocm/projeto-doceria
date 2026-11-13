@@ -1,0 +1,988 @@
+rules_version = '2';
+service cloud.firestore {
+match /databases/{database}/documents {
+function isPublicRead() {
+  return true;
+}
+
+function isAuthenticated() {
+  return request.auth != null;
+}
+
+function isSignedIn() {
+  return isAuthenticated()
+    && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['dono', 'owner', 'admin', 'adm', 'administrador', 'administradora', 'administrador_master', 'gerente', 'atendente', 'funcionario', 'contador', 'corretor']
+    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('ativo', true) != false
+    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'ativo') != 'inativo';
+}
+
+function hasCurrentUserProfile() {
+  return isSignedIn()
+    && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+}
+
+function isReadOnlyAccountant() {
+  return isSignedIn()
+    && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'contador';
+}
+
+function storeNotDeleting(lojaId) {
+  return exists(/databases/$(database)/documents/lojas/$(lojaId))
+    && get(/databases/$(database)/documents/lojas/$(lojaId)).data.get('deletionLock', null) == null;
+}
+function storeAcceptsNewOrders(lojaId) {
+  let store = get(/databases/$(database)/documents/lojas/$(lojaId)).data;
+  return store.get('ativo', true) != false && store.get('ativa', true) != false
+    && !(store.get('status', 'ACTIVE') in ['INACTIVE', 'DRAFT', 'inativo', 'inactive']);
+}
+function canStaffWrite() {
+  return isSignedIn() && !isReadOnlyAccountant();
+}
+
+function accountantHasModule(moduleId) {
+  return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions.get(moduleId, false);
+}
+
+function accountantHasStore(lojaId) {
+  return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lojaId == lojaId
+    || lojaId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lojaIds;
+}
+
+function accountantCanReadFiscalClient() {
+  return accountantHasModule('nota-fiscal')
+    && resource.data.lojasVisitadas is list
+    && (
+      resource.data.lojasVisitadas.hasAny(currentUserData().get('lojaIds', []))
+      || currentUserData().get('lojaId', '') in resource.data.lojasVisitadas
+    );
+}
+
+function currentUserData() {
+  return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+}
+
+// Match the backend's extractStoreIds precedence. An empty assignment grants
+// global data scope only to the existing owner/admin data role; other Staff fail closed.
+function staffStoreIds() {
+  let data = currentUserData();
+  return data.get('lojaIds', []) is list && data.get('lojaIds', []).size() > 0 ? data.lojaIds
+    : data.get('lojas', []) is list && data.get('lojas', []).size() > 0 ? data.lojas
+    : data.get('lojaId', '') is list ? data.lojaId
+    : data.get('lojaId', '') is string && data.get('lojaId', '') != '' ? [data.lojaId] : [];
+}
+
+function staffCanAccessStore(lojaId) {
+  let profile = currentUserData();
+  let stores = staffStoreIds();
+  return isSignedIn() && (lojaId in stores
+    || (ownerDataRole(profile.get('role', '')) && stores.size() == 0));
+}
+
+function canWriteStoreData(lojaId) {
+  return staffCanAccessStore(lojaId) && currentUserData().get('role', '') != 'contador' && storeNotDeleting(lojaId);
+}
+
+function staffCanWriteFinance(collection) {
+  let profile = currentUserData();
+  let custom = exists(/databases/$(database)/documents/customProfiles/$(request.auth.uid))
+    ? get(/databases/$(database)/documents/customProfiles/$(request.auth.uid)).data : {};
+  let permissions = custom.get('permissions', profile.get('permissions', {}));
+  // Callers already enforce active non-accountant Staff and store scope. Avoid
+  // repeating the full authorization chain within the Rules expression budget.
+  let management = ownerDataRole(profile.get('role', '')) || profile.get('role', '') == 'gerente';
+  // Supplier expenses are an existing attendant capability (the backend forces
+  // fornecedores=true for that role). Receivables still require financeiro.
+  return permissions.get('financeiro', management) == true
+    || (collection == 'contas_a_pagar' && (profile.get('role', '') in ['atendente', 'funcionario']
+      || permissions.get('fornecedores', management) == true));
+}
+
+function canReadLegacyOrder(data) {
+  let store = data.get('lojaId', data.get('storeId', ''));
+  return isSignedIn() && ((store is string && store != '' && staffCanAccessStore(store))
+    || (store == '' && ownerDataRole(currentUserData().get('role', '')) && staffStoreIds().size() == 0));
+}
+
+function ownerDataRole(role) {
+  return role in [
+    'dono', 'owner', 'admin', 'adm', 'administrador', 'administradora', 'administrador_master'
+  ];
+}
+
+function isOwnerUser() {
+  return hasCurrentUserProfile() && ownerDataRole(currentUserData().role);
+}
+
+function isManagerUser() {
+  return hasCurrentUserProfile() && currentUserData().role == 'gerente';
+}
+
+function isAttendantUser() {
+  return hasCurrentUserProfile() && currentUserData().role == 'atendente';
+}
+
+function isEntreLojasOwnerUser() {
+  return isOwnerUser()
+    || (
+      isSignedIn()
+      && currentUserData().role in [
+        'Dono',
+        'DONO',
+        'owner',
+        'Owner',
+        'admin',
+        'Admin',
+        'adm',
+        'Adm',
+        'administrador',
+        'Administrador',
+        'administradora',
+        'Administradora',
+        'administrador_master',
+        'Administrador Master',
+        'administradora_master',
+        'Administradora Master',
+        'admin_master',
+        'Admin Master',
+        'master',
+        'Master',
+        'superadmin',
+        'Superadmin'
+      ]
+    );
+}
+
+function currentUserHasStore(lojaId) {
+  return currentUserData().lojaId == lojaId
+    || (currentUserData().keys().hasAny(['lojaIds']) && lojaId in currentUserData().lojaIds);
+}
+
+function canManageStorePoints(lojaId) {
+  return isSignedIn() && storeNotDeleting(lojaId)
+    && !isReadOnlyAccountant()
+    && (
+      isOwnerUser()
+      || (
+        (currentUserData().role == 'gerente' || currentUserData().role == 'gestor' || currentUserData().role == 'gestora')
+        && currentUserHasStore(lojaId)
+        && currentUserData().get('permissions', {}).get('meu-espaco', true)
+        && currentUserData().get('permissionDetails', {}).get('meu-espaco', {}).get('managePoint', true)
+      )
+    );
+}
+
+function currentUserHasSuppliersModule() {
+  return currentUserData()
+    .get('permissions', {})
+    .get('fornecedores', true);
+}
+
+function canReadOperationalCashRegister(lojaId) {
+  return isOwnerUser()
+    || (
+      isAttendantUser()
+      && currentUserHasStore(lojaId)
+    )
+    || (
+      isManagerUser()
+      && currentUserHasStore(lojaId)
+      && currentUserHasSuppliersModule()
+    );
+}
+
+function managerHasCashPermission(lojaId, permissionId) {
+  return isManagerUser()
+    && currentUserHasStore(lojaId)
+    && currentUserHasSuppliersModule()
+    && currentUserData()
+      .get('permissionDetails', {})
+      .get('caixa', {})
+      .get(permissionId, true);
+}
+
+function canReadCashReconciliation(lojaId) {
+  return isOwnerUser()
+    || (
+      managerHasCashPermission(lojaId, 'visualizarConferencia')
+      && managerHasCashPermission(lojaId, 'visualizarValoresCalculados')
+      && managerHasCashPermission(lojaId, 'visualizarDivergencias')
+      && managerHasCashPermission(lojaId, 'visualizarSangrias')
+    );
+}
+
+function canReadCashWithdrawals(lojaId) {
+  return isOwnerUser() || managerHasCashPermission(lojaId, 'visualizarSangrias');
+}
+
+function canReadInternalCashSettings(lojaId) {
+  return isOwnerUser()
+    || (
+      isManagerUser()
+      && currentUserHasStore(lojaId)
+      && currentUserHasSuppliersModule()
+    );
+}
+
+function canReadCashAlert(lojaId) {
+  return isOwnerUser()
+    || (
+      managerHasCashPermission(lojaId, 'visualizarDivergencias')
+      && exists(
+        /databases/$(database)/documents/lojas/$(lojaId)/configuracoesInternas/alertas
+      )
+      && get(
+        /databases/$(database)/documents/lojas/$(lojaId)/configuracoesInternas/alertas
+      ).data.get('destinatarios', 'somente_dono') == 'dono_e_gerentes'
+    );
+}
+
+function isCashExpenseWithdrawalValue(value) {
+  return value is string
+    && value.lower().matches(
+      '.*(retirada_caixa|retirada_despesa|retirada_para_despesa|retirada_despesa_caixa).*'
+    );
+}
+
+function isCashExpenseWithdrawal(data) {
+  return data.get('registroCaixa', false) == true
+    || isCashExpenseWithdrawalValue(data.get('origem', ''))
+    || isCashExpenseWithdrawalValue(data.get('tipo', ''));
+}
+
+function isValidOwnClientProfileCreation(userId) {
+  return isAuthenticated()
+    && request.auth.uid == userId
+    && request.resource.data.keys().hasOnly([
+      'email', 'nome', 'role', 'lojaId', 'lojaIds'
+    ])
+    && request.resource.data.role == 'cliente'
+    && request.resource.data.lojaId == null
+    && request.resource.data.lojaIds is list
+    && request.resource.data.lojaIds.size() == 0;
+}
+
+function validTransferenciaEntreLojasStatuses() {
+  return [
+    'rascunho',
+    'aguardando_conferencia',
+    'conferencia_sem_divergencia',
+    'conferencia_com_divergencia',
+    'pagamento_informado',
+    'pagamento_confirmado',
+    'pagamento_contestado',
+    'cancelado',
+    'cancelada'
+  ];
+}
+
+function destinationVisibleTransferenciaEntreLojasStatuses() {
+  return [
+    'aguardando_conferencia',
+    'conferencia_sem_divergencia',
+    'conferencia_com_divergencia',
+    'pagamento_informado',
+    'pagamento_confirmado',
+    'pagamento_contestado',
+    'cancelado',
+    'cancelada'
+  ];
+}
+
+function currentUserHasEntreLojasModule() {
+  return isEntreLojasOwnerUser()
+    || currentUserData().get('permissions', {}).get('entre-lojas', true);
+}
+
+function currentUserHasTransferenciaStatus(status) {
+  return isEntreLojasOwnerUser()
+    || (
+      currentUserHasEntreLojasModule()
+      && (
+        (isManagerUser() && status == 'pagamento_confirmado')
+        || !currentUserData().get('permissionDetails', {}).keys().hasAny(['entre-lojas'])
+        || status in currentUserData().get('permissionDetails', {}).get('entre-lojas', {}).get('statuses', validTransferenciaEntreLojasStatuses())
+      )
+    );
+}
+
+function canReadTransferenciaEntreLojasDoc() {
+  let userData = currentUserData();
+  let role = userData.role;
+  let permissions = userData.get('permissions', {});
+  let permissionDetails = userData.get('permissionDetails', {});
+  let storeIds = userData.get('lojaIds', []);
+  let isOwner = role in [
+    'dono', 'Dono', 'DONO', 'owner', 'Owner', 'admin', 'Admin', 'adm', 'Adm',
+    'administrador', 'Administrador', 'administradora', 'Administradora',
+    'administrador_master', 'Administrador Master',
+    'administradora_master', 'Administradora Master',
+    'admin_master', 'Admin Master', 'master', 'Master', 'superadmin', 'Superadmin'
+  ];
+  let hasModule = isOwner || permissions.get('entre-lojas', true);
+  let hasStatus = isOwner
+    || (
+      hasModule
+      && (
+        (role == 'gerente' && resource.data.status == 'pagamento_confirmado')
+        || !permissionDetails.keys().hasAny(['entre-lojas'])
+        || resource.data.status in permissionDetails.get('entre-lojas', {}).get('statuses', validTransferenciaEntreLojasStatuses())
+      )
+    );
+
+  return isSignedIn()
+    && (role != 'contador' || permissions.get('entre-lojas', false))
+    && hasModule
+    && hasStatus
+    && (
+      isOwner
+      || userData.get('lojaId', null) == resource.data.lojaOrigemId
+      || resource.data.lojaOrigemId in storeIds
+      || (
+        (
+          userData.get('lojaId', null) == resource.data.lojaDestinoId
+          || resource.data.lojaDestinoId in storeIds
+        )
+        && resource.data.status in destinationVisibleTransferenciaEntreLojasStatuses()
+      )
+    );
+}
+
+function canReadFechamentoEntreLojasDoc() {
+  return isSignedIn()
+    && (!isReadOnlyAccountant() || accountantHasModule('entre-lojas'))
+    && currentUserHasEntreLojasModule()
+    && (
+      isEntreLojasOwnerUser()
+      || currentUserHasStore(resource.data.lojaOrigemId)
+      || currentUserHasStore(resource.data.lojaDestinoId)
+    );
+}
+
+function isEntreLojasManagerRelated(data) {
+  return isManagerUser()
+    && (currentUserHasStore(data.lojaOrigemId) || currentUserHasStore(data.lojaDestinoId));
+}
+
+function isEntreLojasManagerOrigin(data) {
+  return isManagerUser() && currentUserHasStore(data.lojaOrigemId);
+}
+
+function transferChangedFieldsOnly(fields) {
+  return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+}
+
+function lastEntreLojasHistoryActorIsCurrentUser() {
+  return request.resource.data.historico is list
+    && request.resource.data.historico.size() > resource.data.get('historico', []).size()
+    && request.resource.data.historico[
+      request.resource.data.historico.size() - 1
+    ].usuarioUid == request.auth.uid;
+}
+
+function isTransferConfirmationUpdate() {
+  return resource.data.status == 'aguardando_conferencia'
+    && request.resource.data.status in [
+      'conferencia_sem_divergencia', 'conferencia_com_divergencia'
+    ]
+    && request.resource.data.conferidoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && transferChangedFieldsOnly([
+      'status', 'dataConferencia', 'conferidoPorUid', 'conferidoPorNome',
+      'observacaoDestino', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isTransferMarkPaidUpdate() {
+  return resource.data.status in [
+      'aguardando_conferencia', 'conferencia_sem_divergencia',
+      'conferencia_com_divergencia', 'pagamento_informado'
+    ]
+    && request.resource.data.status == 'pagamento_informado'
+    && request.resource.data.pagamentoInformadoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && transferChangedFieldsOnly([
+      'status', 'dataPagamentoInformado', 'pagamentoInformadoPorUid',
+      'pagamentoInformadoPorNome', 'observacaoPagamento', 'formaPagamento',
+      'dataPagamento', 'fechamentoStatus', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isTransferConfirmOrContestPaymentUpdate() {
+  return resource.data.status == 'pagamento_informado'
+    && request.resource.data.status in ['pagamento_confirmado', 'pagamento_contestado']
+    && (
+      request.resource.data.status == 'pagamento_contestado'
+      || request.resource.data.pagamentoConfirmadoPorUid == request.auth.uid
+    )
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && transferChangedFieldsOnly([
+      'status', 'dataPagamentoConfirmado', 'pagamentoConfirmadoPorUid',
+      'pagamentoConfirmadoPorNome', 'observacaoPagamento', 'fechamentoStatus',
+      'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isTransferCancelUpdate() {
+  return !(resource.data.status in ['pagamento_confirmado', 'cancelado', 'cancelada'])
+    && request.resource.data.status in ['cancelado', 'cancelada']
+    && request.resource.data.canceladoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && transferChangedFieldsOnly([
+      'status', 'dataCancelamento', 'canceladoPorUid', 'canceladoPorNome',
+      'observacaoCancelamento', 'fechamentoId', 'fechamentoNome',
+      'fechamentoStatus', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isTransferDraftSendUpdate() {
+  return resource.data.status == 'rascunho'
+    && request.resource.data.status == 'aguardando_conferencia';
+}
+
+function canCreateTransferenciaEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      (isManagerUser() || isAttendantUser())
+      && currentUserHasStore(request.resource.data.lojaOrigemId)
+    );
+}
+
+function canUpdateTransferenciaEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      isManagerUser()
+      && (
+        (
+          (isTransferConfirmationUpdate() || isTransferMarkPaidUpdate())
+          && isEntreLojasManagerRelated(resource.data)
+        )
+        || (
+          (isTransferConfirmOrContestPaymentUpdate() || isTransferCancelUpdate())
+          && isEntreLojasManagerOrigin(resource.data)
+        )
+        || (
+          (request.resource.data.status == resource.data.status || isTransferDraftSendUpdate())
+          && currentUserHasStore(resource.data.lojaOrigemId)
+          && currentUserHasStore(request.resource.data.lojaOrigemId)
+        )
+      )
+    )
+    || (
+      isAttendantUser()
+      && (request.resource.data.status == resource.data.status || isTransferDraftSendUpdate())
+      && currentUserHasStore(resource.data.lojaOrigemId)
+      && currentUserHasStore(request.resource.data.lojaOrigemId)
+    );
+}
+
+function canDeleteTransferenciaEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      (isManagerUser() || isAttendantUser())
+      && currentUserHasStore(resource.data.lojaOrigemId)
+      && resource.data.status in ['rascunho', 'aguardando_conferencia']
+    );
+}
+
+function closingChangedFieldsOnly(fields) {
+  return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+}
+
+function isClosingMarkPaidUpdate() {
+  return resource.data.status in ['fechado', 'pagamento_contestado']
+    && request.resource.data.status == 'pagamento_informado'
+    && request.resource.data.pagamentoInformadoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && closingChangedFieldsOnly([
+      'status', 'quantidadeRemessasPagas', 'totalPagoRepasse',
+      'totalPagoRevenda', 'totalRestanteRepasse', 'totalRestanteRevenda',
+      'pagamentoInformadoPorUid', 'pagamentoInformadoPorNome',
+      'dataPagamentoInformado', 'formaPagamento', 'dataPagamento',
+      'observacaoPagamento', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isClosingConfirmOrContestPaymentUpdate() {
+  return resource.data.status == 'pagamento_informado'
+    && request.resource.data.status in ['pagamento_confirmado', 'pagamento_contestado']
+    && (
+      request.resource.data.status == 'pagamento_contestado'
+      || request.resource.data.pagamentoConfirmadoPorUid == request.auth.uid
+    )
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && closingChangedFieldsOnly([
+      'status', 'quantidadeRemessasPagas', 'totalPagoRepasse',
+      'totalPagoRevenda', 'totalRestanteRepasse', 'totalRestanteRevenda',
+      'pagamentoConfirmadoPorUid', 'pagamentoConfirmadoPorNome',
+      'dataPagamentoConfirmado', 'observacaoPagamento', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isClosingCancelUpdate() {
+  return resource.data.status != 'pagamento_confirmado'
+    && request.resource.data.status == 'cancelado'
+    && request.resource.data.canceladoPorUid == request.auth.uid
+    && lastEntreLojasHistoryActorIsCurrentUser()
+    && closingChangedFieldsOnly([
+      'status', 'dataCancelamento', 'canceladoPorUid', 'canceladoPorNome',
+      'observacaoCancelamento', 'dataAtualizacao', 'historico'
+    ]);
+}
+
+function isClosingCloseUpdate() {
+  return resource.data.status == 'aberto' && request.resource.data.status == 'fechado';
+}
+
+function canCreateFechamentoEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      isManagerUser()
+      && (
+        currentUserHasStore(request.resource.data.lojaOrigemId)
+        || currentUserHasStore(request.resource.data.lojaDestinoId)
+      )
+    );
+}
+
+function canUpdateFechamentoEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      isManagerUser()
+      && (
+        (isClosingMarkPaidUpdate() && isEntreLojasManagerRelated(resource.data))
+        || (
+          (
+            isClosingConfirmOrContestPaymentUpdate()
+            || isClosingCancelUpdate()
+            || isClosingCloseUpdate()
+            || request.resource.data.status == resource.data.status
+          )
+          && isEntreLojasManagerOrigin(resource.data)
+        )
+      )
+    );
+}
+
+function canDeleteFechamentoEntreLojas() {
+  return isEntreLojasOwnerUser()
+    || (
+      isManagerUser()
+      && isEntreLojasManagerRelated(resource.data)
+      && resource.data.status in ['aberto', 'cancelado']
+    );
+}
+
+function canReadStoreCollection(lojaId, collection) {
+  return staffCanAccessStore(lojaId) && (
+    !isReadOnlyAccountant()
+    || (accountantHasStore(lojaId) && (
+      (collection == 'pedidos' && (
+        accountantHasModule('dashboard')
+        || accountantHasModule('pedidos')
+        || accountantHasModule('financeiro')
+        || accountantHasModule('relatorios')
+        || accountantHasModule('nota-fiscal')
+      ))
+      || (collection in ['subcategorias'] && accountantHasModule('produtos'))
+      || (collection in ['categoriasFornecedores', 'fornecedores', 'pedidosCompra', 'estoque', 'kardex', 'perdasDescarte', 'receitas'] && (
+        accountantHasModule('fornecedores') || accountantHasModule('relatorios')
+      ))
+      || (collection in ['contas_a_pagar', 'contas_a_receber'] && (
+        accountantHasModule('financeiro') || accountantHasModule('relatorios')
+      ))
+      || (collection in ['fiscalProducts', 'invoices', 'fiscalInutilizations'] && (
+        accountantHasModule('nota-fiscal')
+        || accountantHasModule('financeiro')
+        || accountantHasModule('relatorios')
+      ))
+      || (collection in ['meuEspaco', 'pontos'] && accountantHasModule('meu-espaco'))
+    ))
+  );
+}
+
+function canReadFiscalRecords(lojaId) {
+  return staffCanAccessStore(lojaId) && (
+    isOwnerUser()
+    || (isManagerUser() && currentUserHasStore(lojaId) && (
+      currentUserData().get('permissions', {}).get('nota-fiscal', true)
+      || currentUserData().get('permissions', {}).get('financeiro', true)
+      || currentUserData().get('permissions', {}).get('relatorios', true)
+    ))
+    || (isReadOnlyAccountant() && accountantHasStore(lojaId) && (
+      accountantHasModule('nota-fiscal')
+      || accountantHasModule('financeiro')
+      || accountantHasModule('relatorios')
+    ))
+  );
+}
+
+function isOwnerByUid() {
+  return isSignedIn() && resource.data.uid == request.auth.uid;
+}
+
+function isCreatingOwnClient() {
+  return isSignedIn() && request.resource.data.uid == request.auth.uid;
+}
+
+// --- REGRAS PARA COLEÇÕES PÚBLICAS (Leitura permitida para todos) ---
+
+// PERMITE que qualquer visitante leia a lista de produtos.
+// APENAS usuários autenticados (funcionários no CRM) podem criar, alterar ou deletar produtos.
+match /produtos/{produtoId} {
+  allow read: if true;
+  allow write: if canStaffWrite();
+}
+
+// PERMITE que qualquer visitante leia as configurações da loja (como valor de frete).
+// APENAS usuários autenticados podem alterar as configurações.
+match /configuracoes/{docId} {
+  allow get, list: if isPublicRead();
+  allow create, update, delete: if canStaffWrite();
+}
+
+// PERMITE que qualquer visitante leia as informações de um cupom para validação.
+// APENAS usuários autenticados podem criar ou alterar cupons.
+match /cupons/{cupomId} {
+  allow read: if true;
+  allow write: if canStaffWrite();
+}
+
+// --- REGRAS PARA COLEÇÕES COM ACESSO RESTRITO ---
+
+// PERMITE que a página do cardápio CRIE um novo cliente, mas não leia a lista toda.
+// Fluxo público deve usar Cloud Function para identificação por telefone, sem leitura direta no cliente.
+// Apenas usuários autenticados (CRM) podem ler documentos de clientes.
+match /clientes/{clienteId} {
+  // Canonical phone uniqueness and identity/alias writes require Admin transactions.
+  allow create: if false;
+  // Raw Customers contain global metrics/identity metadata. Scoped Staff use
+  // the authenticated CRM projection API; Firestore cannot redact fields.
+  allow read: if isOwnerUser() && staffStoreIds().size() == 0;
+  allow update, delete: if false;
+}
+
+
+// PERMITE que a página do cardápio CRIE um novo pedido.
+// APENAS usuários autenticados podem ler, alterar ou deletar pedidos existentes.
+match /pedidos/{pedidoId} {
+  // Public checkout is created by the validated API, never a direct SDK write.
+  allow create: if canStaffWrite() && canReadLegacyOrder(request.resource.data);
+  allow read: if canReadLegacyOrder(resource.data);
+  allow update: if canStaffWrite() && canReadLegacyOrder(resource.data)
+    && request.resource.data.get('lojaId', null) == resource.data.get('lojaId', null)
+    && request.resource.data.get('storeId', null) == resource.data.get('storeId', null);
+  allow delete: if canStaffWrite() && canReadLegacyOrder(resource.data);
+}
+
+// --- REGRAS PARA LOJAS (MULTILOJAS) ---
+match /lojas/{lojaId} {
+  // O seletor do CRM lista os documentos raiz para descobrir lojas cadastradas.
+  allow read: if isSignedIn();
+
+  // Online financial state and reservations are changed only by the backend.
+  match /pedidos/{pedidoId} {
+    allow read: if canReadStoreCollection(lojaId, 'pedidos');
+    allow create: if (canWriteStoreData(lojaId)) && storeAcceptsNewOrders(lojaId) && !request.resource.data.keys().hasAny(['paymentId', 'payment_status', 'order_status']);
+    allow delete: if (canWriteStoreData(lojaId)) && !resource.data.keys().hasAny(['paymentId']);
+    allow update: if (canWriteStoreData(lojaId)) && (
+      (!resource.data.keys().hasAny(['paymentId']) && !request.resource.data.keys().hasAny(['paymentId', 'payment_status', 'order_status']))
+      || (resource.data.get('payment_status', '') == 'PAID'
+        && resource.data.get('order_status', '') in ['CONFIRMED', 'PREPARING', 'READY', 'DELIVERED']
+        && resource.data.get('requiresReview', false) == false
+        && request.resource.data.status in ['Pendente', 'Em Produção', 'Pronto para Entrega', 'Finalizado', 'Cancelado']
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'paymentId', 'payment_status', 'order_status', 'requiresReview', 'ownerUid', 'paidAt',
+          'total', 'subtotal', 'desconto', 'valorFrete', 'itens', 'cupom', 'formaPagamento', 'lojaId', 'clienteId',
+          'paymentMode', 'paymentMethod', 'paymentStatus', 'paymentMethodSource', 'paymentMethodResolvedAt',
+          'checkoutIdentity', 'adminPaymentAdjustment', 'financialOperationId'
+        ]))
+    );
+  }
+
+  match /produtos/{produtoId} {
+    allow read: if true;
+    allow write: if (canWriteStoreData(lojaId));
+  }
+
+  // Store display identity is managed by the OWNER callable, not a direct client write.
+  match /info/{infoId} {
+    allow read: if canReadStoreCollection(lojaId, 'info');
+    allow create: if canWriteStoreData(lojaId)
+      && (infoId != 'dados' || !request.resource.data.keys().hasAny(['nome','nomePublico','telefone','endereco']));
+    allow update: if canWriteStoreData(lojaId)
+      && (infoId != 'dados' || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['nome','nomePublico','telefone','endereco']));
+    allow delete: if canWriteStoreData(lojaId) && infoId != 'dados';
+  }
+
+  match /configuracoes/{docId} {
+    // Libera leitura anônima dos caminhos usados no cardápio:
+    // - /lojas/{lojaId}/configuracoes/config
+    // - /lojas/{lojaId}/configuracoes/frete
+    allow get, list: if isPublicRead();
+    // Storefront availability is saved through authorized, audited callables.
+    allow create, update, delete: if docId != 'storefront' && (canWriteStoreData(lojaId));
+
+    match /{subcollection}/{configDocId} {
+      allow get, list: if subcollection == 'cupons'
+        || (staffCanAccessStore(lojaId) && (!isReadOnlyAccountant() || accountantHasModule('configuracoes')));
+      allow create, update, delete: if (canWriteStoreData(lojaId));
+    }
+  }
+
+  match /cupons/{cupomId} {
+    allow read: if true;
+    allow write: if (canWriteStoreData(lojaId));
+  }
+
+  // Dados fiscais confidenciais sao lidos e alterados apenas por callables autorizadas.
+  match /fiscalConfig/{docId} {
+    allow read, write: if false;
+  }
+
+  match /invoices/{invoiceId} {
+    allow read: if canReadFiscalRecords(lojaId);
+    allow write: if false;
+  }
+
+  match /fiscalInutilizations/{operationId} {
+    allow read: if canReadFiscalRecords(lojaId);
+    allow write: if false;
+  }
+
+  // Dados iFood sao lidos pelo painel, mas toda mutacao passa pelas Functions.
+  match /ifood/{docId} {
+    // Contem referencias a segredos e somente e carregado por callable autorizado.
+    allow read: if false;
+  }
+
+  match /ifoodOrders/{docId} {
+    allow read: if staffCanAccessStore(lojaId) && !isReadOnlyAccountant();
+  }
+
+  match /ifoodEvents/{docId} {
+    allow read: if staffCanAccessStore(lojaId) && !isReadOnlyAccountant();
+  }
+
+  match /ifoodAlerts/{docId} {
+    allow read: if staffCanAccessStore(lojaId) && !isReadOnlyAccountant();
+  }
+
+  match /ifoodAudit/{docId} {
+    allow read: if staffCanAccessStore(lojaId) && !isReadOnlyAccountant();
+  }
+
+  match /ifoodHealth/{docId} {
+    allow read: if staffCanAccessStore(lojaId) && !isReadOnlyAccountant();
+  }
+
+  match /ifoodProductMappings/{docId} {
+    allow read: if staffCanAccessStore(lojaId) && !isReadOnlyAccountant();
+  }
+
+  match /ifoodCommands/{docId} {
+    allow read: if staffCanAccessStore(lojaId) && !isReadOnlyAccountant();
+  }
+
+  match /pontos/{pontoId} {
+    allow read: if canReadStoreCollection(lojaId, 'pontos');
+    allow create, update, delete: if canManageStorePoints(lojaId);
+  }
+
+  match /pontosAuditoria/{auditId} {
+    allow read: if canManageStorePoints(lojaId);
+    allow create: if canManageStorePoints(lojaId);
+    allow update, delete: if false;
+
+  }
+
+  // Dados operacionais do caixa podem ser consultados pelos perfis que atuam na loja.
+  // Toda mutacao passa pelas Cloud Functions para garantir transacao e idempotencia.
+  match /caixas/{caixaId} {
+    allow read: if canReadOperationalCashRegister(lojaId);
+    allow create, update, delete: if false;
+  }
+
+  // Calculos, sangrias e alertas canonicos nunca sao gravados pelo cliente.
+  match /conferenciasCaixa/{conferenciaId} {
+    allow read: if canReadCashReconciliation(lojaId);
+    allow create, update, delete: if false;
+  }
+
+  match /sangriasCaixa/{sangriaId} {
+    allow read: if canReadCashWithdrawals(lojaId);
+    allow create, update, delete: if false;
+  }
+
+  match /alertas/{alertaId} {
+    allow read: if canReadCashAlert(lojaId);
+    allow create, update, delete: if false;
+
+    match /auditoria/{auditId} {
+      allow read: if isOwnerUser();
+      allow create, update, delete: if false;
+    }
+  }
+
+  match /configuracoesInternas/{configId} {
+    allow read: if configId == 'alertas'
+      && canReadInternalCashSettings(lojaId);
+    allow create, update, delete: if false;
+  }
+
+  // Contas comuns mantem o fluxo atual. Retiradas de caixa sao criadas somente
+  // pelas Functions e nao podem ser disfarçadas por uma alteracao posterior.
+  match /contas_a_pagar/{contaId} {
+    allow read: if canReadStoreCollection(lojaId, 'contas_a_pagar');
+    allow create: if (canWriteStoreData(lojaId)) && staffCanWriteFinance('contas_a_pagar') && !isCashExpenseWithdrawal(request.resource.data);
+    allow update: if (canWriteStoreData(lojaId)) && staffCanWriteFinance('contas_a_pagar')
+      && !isCashExpenseWithdrawal(resource.data)
+      && !isCashExpenseWithdrawal(request.resource.data);
+    allow delete: if (canWriteStoreData(lojaId)) && staffCanWriteFinance('contas_a_pagar') && !isCashExpenseWithdrawal(resource.data);
+  }
+
+  match /{collection}/{document=**} {
+    allow read: if collection != 'fulfillmentAudit'
+      && collection != 'ifood'
+      && collection != 'fiscalConfig'
+      && collection != 'invoices'
+      && collection != 'fiscalInutilizations'
+      && collection != 'fiscalCounters'
+      && collection != 'fiscalNumberBlocks'
+      && collection != 'caixas'
+      && collection != 'conferenciasCaixa'
+      && collection != 'sangriasCaixa'
+      && collection != 'alertas'
+      && collection != 'configuracoesInternas'
+      && canReadStoreCollection(lojaId, collection);
+    allow write: if collection != 'pedidos' && collection != 'contas_a_pagar' && (canWriteStoreData(lojaId))
+      && (collection != 'contas_a_receber' || staffCanWriteFinance(collection))
+      && collection != 'fulfillmentAudit'
+      && collection != 'configuracoes'
+      && collection != 'info'
+      && collection != 'pedidos'
+      && collection != 'ifood'
+      && collection != 'fiscalConfig'
+      && collection != 'invoices'
+      && collection != 'fiscalInutilizations'
+      && collection != 'fiscalCounters'
+      && collection != 'fiscalNumberBlocks'
+      && collection != 'pontos'
+      && collection != 'pontosAuditoria'
+      && collection != 'caixas'
+      && collection != 'conferenciasCaixa'
+      && collection != 'sangriasCaixa'
+      && collection != 'alertas'
+      && collection != 'configuracoesInternas'
+      && collection != 'contas_a_pagar'
+      && collection != 'ifoodOrders'
+      && collection != 'ifoodEvents'
+      && collection != 'ifoodAlerts'
+      && collection != 'ifoodAudit'
+      && collection != 'ifoodHealth'
+      && collection != 'ifoodProductMappings'
+      && collection != 'ifoodCommands';
+  }
+}
+
+// Credenciais centrais iFood sao manipuladas exclusivamente por Cloud Functions.
+match /integrations/{document=**} {
+  allow read, write: if false;
+}
+
+match /users/{userId} {
+  allow get: if (isAuthenticated() && userId == request.auth.uid
+    && (!exists(/databases/$(database)/documents/users/$(userId))
+      || (resource.data.get('ativo', true) != false && resource.data.get('status', 'ativo') != 'inativo')))
+    || (isSignedIn() && !isReadOnlyAccountant());
+  allow list: if isSignedIn() && !isReadOnlyAccountant();
+  // Administracao de perfis passa pelas Functions. A unica escrita direta
+  // aceita e o bootstrap estrito do proprio perfil como cliente sem loja.
+  allow create: if isValidOwnClientProfileCreation(userId);
+  allow update, delete: if false;
+
+  match /notificacoes/{notificacaoId} {
+    // Alertas financeiros sao consultados por Callable para validar loja,
+    // perfil, configuracao atual e exclusao logica. Outros tipos continuam
+    // com a leitura individual direta ja existente.
+    allow read: if isSignedIn()
+      && request.auth.uid == userId
+      && resource.data.get('categoria', '') != 'caixa';
+    allow create, update, delete: if false;
+  }
+}
+
+// Motivos de inativacao sao privados e acessados somente pelas Functions.
+match /userStatusMetadata/{userId} {
+  allow read, write: if false;
+}
+
+match /customProfiles/{userId} {
+  allow read: if isSignedIn() && (!isReadOnlyAccountant() || userId == request.auth.uid);
+  allow create, update, delete: if false;
+}
+
+match /transferenciasEntreLojas/{transferenciaId} {
+  allow get: if canReadTransferenciaEntreLojasDoc();
+  allow list: if canReadTransferenciaEntreLojasDoc();
+  allow create: if canCreateTransferenciaEntreLojas();
+  allow update: if canUpdateTransferenciaEntreLojas();
+  allow delete: if canDeleteTransferenciaEntreLojas();
+}
+
+match /fechamentosEntreLojas/{fechamentoId} {
+  allow get: if canReadFechamentoEntreLojasDoc();
+  allow list: if canReadFechamentoEntreLojasDoc();
+  allow create: if canCreateFechamentoEntreLojas();
+  allow update: if canUpdateFechamentoEntreLojas();
+  allow delete: if canDeleteFechamentoEntreLojas();
+}
+
+// --- REGRAS PARA OUTRAS COLEÇÕES (Acesso somente para usuários autenticados no CRM) ---
+match /{collection}/{document=**} {
+  allow read: if collection != 'lojas' && collection != 'integrations' && isSignedIn()
+    && (!(collection in ['contas_a_pagar', 'contas_a_receber']) || canReadLegacyOrder(resource.data))
+    && collection != 'lojas'
+    && collection != 'pedidos'
+    && collection != 'clientes'
+    && collection != 'checkoutPayments'
+    && collection != 'checkoutReceipts'
+    && collection != 'checkoutNotificationAttempts'
+    && collection != 'storefrontAliases'
+    && collection != 'storeManagementAudit'
+    && collection != 'storeIdTombstones'
+    && collection != 'integrations'
+    && collection != 'users'
+    && collection != 'customProfiles'
+    && collection != 'userStatusMetadata'
+    && (collection != 'auditLogs' || !resource.data.keys().hasAny(['paymentSettingsStoreId']))
+    && collection != 'transferenciasEntreLojas'
+    && collection != 'fechamentosEntreLojas'
+    && (!isReadOnlyAccountant()
+      || (collection == 'transferenciasEntreLojas' && accountantHasModule('entre-lojas')));
+  allow write: if collection != 'lojas' && collection != 'integrations' && canStaffWrite()
+    && (!(collection in ['contas_a_pagar', 'contas_a_receber']) || (staffCanWriteFinance(collection)
+      && (request.method == 'create' ? canReadLegacyOrder(request.resource.data) : canReadLegacyOrder(resource.data))
+      && (request.method != 'update' || (request.resource.data.get('lojaId', null) == resource.data.get('lojaId', null)
+        && request.resource.data.get('storeId', null) == resource.data.get('storeId', null)))))
+    && collection != 'clientes'
+    && collection != 'pedidos'
+    && collection != 'storefrontAliases'
+    && collection != 'storeManagementAudit'
+    && collection != 'storeIdTombstones'
+    && collection != 'checkoutPayments'
+    && collection != 'checkoutReceipts'
+    && collection != 'checkoutNotificationAttempts'
+    && (collection != 'auditLogs' || ((request.method == 'delete' || !request.resource.data.keys().hasAny(['paymentSettingsStoreId'])) && (request.method == 'create' || !resource.data.keys().hasAny(['paymentSettingsStoreId']))))
+    && collection != 'lojas'
+    && collection != 'integrations'
+    && collection != 'users'
+    && collection != 'customProfiles'
+    && collection != 'userStatusMetadata'
+    && collection != 'transferenciasEntreLojas'
+    && collection != 'fechamentosEntreLojas';
+}
+
+}
+}

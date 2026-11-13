@@ -1,0 +1,372 @@
+{
+  "at": "2026-11-13T11:34:08.274Z",
+  "stage": "READ_ONLY_INVENTORY_WHILE_TITULAR_LOGS_IN",
+  "dev": {
+    "path": "C:\\Users\\antonio.pedro\\Projeto\\projeto-doceria-main\\infinitepay-auth-worktree",
+    "branch": "feature/infinitepay-customer-auth",
+    "head": "7e7d7b6918d9edb045dd11443a2c42efe114640a",
+    "staged": "",
+    "entries": [
+      {
+        "file": "crm/src/App.js",
+        "group": "SHARED_INTEGRATION",
+        "tracked": true,
+        "sha256": "efbd25c208c161dfc4db0042be0413c33aad2de6289b941f5a7ae95d5766fd9d"
+      },
+      {
+        "file": "crm/src/components/orders/OrderAdminHistory.js",
+        "group": "MANUAL_RECEIPT",
+        "tracked": true,
+        "sha256": "18803b991cf98e69cf8e835a39b2e9b810bfb265d35a4b506ec8201f7d01d048"
+      },
+      {
+        "file": "crm/src/crmReconciliation.test.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": true,
+        "sha256": "d75c5dbc968e8e3b88f8fb01a0f5f95423087539fa604d98a2ead17462ef5778"
+      },
+      {
+        "file": "crm/src/orderFinancialRecognition.js",
+        "group": "MANUAL_RECEIPT",
+        "tracked": true,
+        "sha256": "cedd4ad870fb8d0e25edb1aa75a86296daf12446973deefe67ba1ea4b5189e12"
+      },
+      {
+        "file": "crm/src/orderFinancialRecognition.test.js",
+        "group": "MANUAL_RECEIPT",
+        "tracked": true,
+        "sha256": "a47b57e45707070810f3768eb37ac1ffc71e931a9c73fbbd63605f0bad740093"
+      },
+      {
+        "file": "crm/src/payments/InfinitePaySettings.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": true,
+        "sha256": "8ea05b225a77c27d6246d075bb30f635eb832e95874eb261e8c2d6f505390ec2"
+      },
+      {
+        "file": "crm/src/payments/InfinitePaySettings.test.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": true,
+        "sha256": "1b9dd473e01b6b2d8966a7cf6d9e39728e69e829867fd597594499af5221b421"
+      },
+      {
+        "file": "crm/src/utils/clientApi.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": true,
+        "sha256": "d536e5e343411b860fd5a2dddcafaa98d93eae955a9ab7e8a3e53ae297b86bf0"
+      },
+      {
+        "file": "docs/CHECKOUT_PAYMENT_BY_ACCESS.md",
+        "group": "DOCUMENTATION",
+        "tracked": true,
+        "sha256": "6146608f0822c7b717eff6c8a26cabd0735a637675fd8edd9a7fd39ea1b4306c"
+      },
+      {
+        "file": "docs/CHECKPOINT_PREPROD_MISSION.md",
+        "group": "DOCUMENTATION",
+        "tracked": true,
+        "sha256": "acab38db1e0a957a61e812fe70ebed5e41ec502103e14165e205414922cf5677"
+      },
+      {
+        "file": "docs/INFINITEPAY_PROJECT_PLAN.md",
+        "group": "DOCUMENTATION",
+        "tracked": true,
+        "sha256": "b145011e52c71c344805433a2384528be5d0d9a8569eaa1d72ca4a8207a2c877"
+      },
+      {
+        "file": "docs/PHASE10_C15_EXECUTION.md",
+        "group": "DOCUMENTATION",
+        "tracked": true,
+        "sha256": "2c43c5dc65e5436e2b1863844a959bb514fdf9668775896c3921a33f51adf3f7"
+      },
+      {
+        "file": "docs/PHASE10_C16_CONSOLIDATION.md",
+        "group": "DOCUMENTATION",
+        "tracked": true,
+        "sha256": "da5936f491d3aa06c0a251262f5c93084fd24faa2606ae62bb63001f40764d21"
+      },
+      {
+        "file": "docs/PRODUCTION_READINESS_REVIEW.md",
+        "group": "DOCUMENTATION",
+        "tracked": true,
+        "sha256": "d9818d431c501af851d0b0c77f47f1439223e06caebd001ca8b3c6e3874ffaa7"
+      },
+      {
+        "file": "firestore.rules",
+        "group": "SHARED_INTEGRATION",
+        "tracked": true,
+        "sha256": "8ce911a5d6c5c779f6a5d881010df03b537fdee6f7f7b5d6357fab2f3a3a69b5"
+      },
+      {
+        "file": "functions/admin-order-edit.js",
+        "group": "SHARED_INTEGRATION",
+        "tracked": true,
+        "sha256": "ccea92e83aac76660219f5ab3f2f7647906ab7246d3a861474ba82c117f1ef3c"
+      },
+      {
+        "file": "functions/checkout-payment.js",
+        "group": "SHARED_INTEGRATION",
+        "tracked": true,
+        "sha256": "f41ec3b98174ddd209be2c3db6cf148b3abccb06b73fd2fa67d047f291909e40"
+      },
+      {
+        "file": "functions/crm-client-edit.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": true,
+        "sha256": "4c6e4a8bb7040e4d0694dd9dc55716103280ab7a5f75ca22c4104950c8bdf153"
+      },
+      {
+        "file": "functions/crm-client-edit.test.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": true,
+        "sha256": "1e2a6adad8c44896c0e36b78c447bf43092df2c3daf79a6c54fecc39313030a4"
+      },
+      {
+        "file": "functions/firestore.rules.test.js",
+        "group": "SHARED_INTEGRATION",
+        "tracked": true,
+        "sha256": "c5cb008438f6383de336d7f1cccf2488a937d3a2a9db7c5cb711e0606bd06d21"
+      },
+      {
+        "file": "functions/index.js",
+        "group": "SHARED_INTEGRATION",
+        "tracked": true,
+        "sha256": "5ebbd65f4d3ffdc62d0b56bd87aa4cbd508fc53f75048b64cefa1ac1e9711de5"
+      },
+      {
+        "file": "functions/payment-settings.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": true,
+        "sha256": "020a80c566127b134bd34905b3df1b411a6b0410d2a675d9318981ec1895a7f6"
+      },
+      {
+        "file": "crm/src/components/orders/ReceiveOrderPayment.js",
+        "group": "MANUAL_RECEIPT",
+        "tracked": false,
+        "sha256": "6a50431fcac0aaa70cbd5b8ae4bc2814b34b30c27d012099d8ec4a88d532cf9e"
+      },
+      {
+        "file": "crm/src/components/orders/ReceiveOrderPayment.test.js",
+        "group": "MANUAL_RECEIPT",
+        "tracked": false,
+        "sha256": "9701244b9bcb445aa49e0768bbf53adbe78d3d439423bfdfdd3164d86b8ff7be"
+      },
+      {
+        "file": "crm/src/customerDirectoryView.test.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": false,
+        "sha256": "094b0257e4f379e08fdabc5c7d8449e2d0341b33ce3e098e18cd2a1d333d1560"
+      },
+      {
+        "file": "crm/src/payments/InfinitePayCredentialForm.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "70b434304742d2b1a7299b9f0623a1af7423b1b9ac2e703197f90de1d5a2f4e5"
+      },
+      {
+        "file": "crm/src/payments/InfinitePayCredentialForm.test.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "07ba348159bc5313973bade20ccd6bb913e6e8766a5833cefcf7c74536901b8f"
+      },
+      {
+        "file": "crm/src/receiptDialogLifetime.test.js",
+        "group": "MANUAL_RECEIPT",
+        "tracked": false,
+        "sha256": "22845cc5cfed9dd5204bc5260ab01f1058131c98cc5824c9b223f2aa2f4e217e"
+      },
+      {
+        "file": "crm/src/utils/customerDirectorySync.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": false,
+        "sha256": "f3da3789375a382bd2d2e40e65700b92a4827e484e0e2b631f99dc6ff1944fc8"
+      },
+      {
+        "file": "crm/src/utils/customerDirectorySync.test.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": false,
+        "sha256": "df05b5f1afe1f1c6981142bb6a5cd210ca18e6e3abfd0685903dbfd58b91be73"
+      },
+      {
+        "file": "docs/CRM_CUSTOMER_STORE_DIRECTORY.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "7435b5e2612e53841dae09ba63c5835f94a1ed6abb216c546b34719845322a2d"
+      },
+      {
+        "file": "docs/CRM_CUSTOMER_STORE_LEGACY_AUDIT.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "2df12d21efdccca7ff0fa3e7688042aa4986ab32fee48024314eab7eb1d2bbc8"
+      },
+      {
+        "file": "docs/GUEST_PIX_ONLY_PLAN.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "7bda44d2c1c0d8ce6aae19511939dbb40a0f463751835f7028043f6d6cc7b0f0"
+      },
+      {
+        "file": "docs/INFINITEPAY_CARD_1X_FEES.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "f135c8563c8031bc88ad0e273491f132a520ed57cfa532362f1e1b09e4eeeaaf"
+      },
+      {
+        "file": "docs/INFINITEPAY_CARD_1X_NATIVE_SETUP.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "c5800368db0123d5f6b8b0c005eff3c096264ef0e9a3475a9e073087b9a03c02"
+      },
+      {
+        "file": "docs/INFINITEPAY_CARD_1X_OWNER_SETUP.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "627466e124bd6d1ef5abe8763ddfd2dc2eb9b2472328b4c53ab2ef64b91b5cf0"
+      },
+      {
+        "file": "docs/INFINITEPAY_CREDENTIAL_PORTAL.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "e444489b5459941847e434000841d3ef4f92248765c859d765e7a1f70d38590d"
+      },
+      {
+        "file": "docs/INFINITEPAY_PIX_ONLY_TECHNICAL_QUERY.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "e23c54231dc11a6473de3487042745bf547568ee70fd209f76cd14ffd433302b"
+      },
+      {
+        "file": "docs/INFINITEPAY_PREPROD_STATUS.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "b22c7c856f8184fda9c98ee6ee3e71e994dec2c53d8eb75554bfab08fcc76332"
+      },
+      {
+        "file": "docs/PHASE10_C15_GOOGLE_FIRST_CLAIM.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "135898bd2f3d00519e463512cbebfc17c76a690e3daae17bde792a829ed4ee4c"
+      },
+      {
+        "file": "docs/PHASE10_C15_SELECTION_SCOPE.md",
+        "group": "DOCUMENTATION",
+        "tracked": false,
+        "sha256": "0ae1007da03b2241bb11e67211dacf1c1b29a05dac7b4155b6104ec9c5daed37"
+      },
+      {
+        "file": "functions/card-1x-fee-credentials.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "ee79a1ef50cdcce213e8dff344600098a1af44652c21665b544082a4003837e2"
+      },
+      {
+        "file": "functions/card-1x-fee-native.test.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "40c50488c381dff4596b5489ce6d637487d1ae34dc506af3f5b9ce5acb900484"
+      },
+      {
+        "file": "functions/card-1x-fee-policy.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "94a476e823838ac5acdf73b2920ddcf727f50d60e94890cd367fdad154519d97"
+      },
+      {
+        "file": "functions/card-1x-fee-policy.test.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "7b7302fdfc2513b26ecce17121f0dd8cf0ad9e29a55e9417cb70e0bbb6ac8f07"
+      },
+      {
+        "file": "functions/card-1x-fee-settings-emulator.test.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "c9ca59a61a8736cd3aa8bc8c95fada2d0a03a7105eb1a3596c4507fb80f4b782"
+      },
+      {
+        "file": "functions/functions.yaml",
+        "group": "GENERATED_OR_REVIEW_EXCLUDE",
+        "tracked": false,
+        "sha256": "b204bd3443443546cef78af5c580f8453cc93db2bfffb23b9e36b9ea81167113"
+      },
+      {
+        "file": "functions/infinitepay-secret-store.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "6ad885d6b4b6dec29dc94c97c0682369623dcfc56c81bca41d8aef71739e3fc2"
+      },
+      {
+        "file": "functions/infinitepay-secret-store.test.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "4e93655569d644acb1d97720b654f46721ee5d041a779e3c2a448af0ca423946"
+      },
+      {
+        "file": "functions/manual-order-payment-emulator.test.js",
+        "group": "MANUAL_RECEIPT",
+        "tracked": false,
+        "sha256": "dfbd26d8a8562f359304f84872f96d65ab8ae6c0c3d31c9f8f84b5276e47531b"
+      },
+      {
+        "file": "functions/manual-order-payment.js",
+        "group": "MANUAL_RECEIPT",
+        "tracked": false,
+        "sha256": "124ef14764d59b0bad4328f305641dd3ff2cf86fa7fb184ec0e83ed05585feb7"
+      },
+      {
+        "file": "functions/payment-credential-status.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "4d4fcc398c4c2a17a4613c125718a44710f05d1e44d2495543e8e052ce8fe593"
+      },
+      {
+        "file": "functions/payment-credentials-emulator.test.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "b49a749fd190e70323dd57b33b27069ad6e1a85cf28c6b3f06d1e45d0267785a"
+      },
+      {
+        "file": "functions/payment-credentials.js",
+        "group": "INFINITEPAY_CREDENTIALS_AND_FEES",
+        "tracked": false,
+        "sha256": "4ad2e5086e9a6ab0ee1e8c8d211ab164131b10d17fae2917c92e2566282a122c"
+      },
+      {
+        "file": "functions/staff-customer-directory-emulator.test.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": false,
+        "sha256": "7f8ea34789cafd4452b0f13157f1b9ddf001699a77a5696d36ac9e619a089994"
+      },
+      {
+        "file": "functions/staff-customer-directory.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": false,
+        "sha256": "ed5605a6e2ca3d771a1a6dc63fc40fe5771f99adb169c64ce379a1c8c083f533"
+      },
+      {
+        "file": "functions/staff-customer-directory.test.js",
+        "group": "CUSTOMER_DIRECTORY",
+        "tracked": false,
+        "sha256": "2b270e2218e7e30be596b435a554d2a2083240745e2ced0cf518f366699137f8"
+      },
+      {
+        "file": "scripts/checkout-seed.cjs",
+        "group": "GENERATED_OR_REVIEW_EXCLUDE",
+        "tracked": false,
+        "sha256": "bb64832359be4deb88e99b125d7db72221817774fcdc68824b78c1940276d52c"
+      }
+    ]
+  },
+  "prodLocal": {
+    "head": "a0229cc019b3b4cf689d7ab15c47269974d38b71"
+  },
+  "commit": false,
+  "push": false,
+  "deploy": false,
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

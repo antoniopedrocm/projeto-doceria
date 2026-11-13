@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "at": "2026-11-13T11:30:37.904Z",
+  "project": "crmdoceria-9959e",
+  "storeId": "ana-guimaraes-doceria-matriz",
+  "caseId": "a403670c5b1f4151",
+  "phoneSuffix": "1755",
+  "customerFingerprint": "8419e73a183afbb8d4a530c9f5da76305ff06df579285a17766e83dbf7f2f453",
+  "originalCustomerVersion": "2026-10-25T10:43:27.478Z",
+  "ownersBefore": 0,
+  "uidMappingsBefore": 0,
+  "identityMappingsBefore": 0,
+  "canonicalIndexReady": true,
+  "customerDocumentsBefore": 20,
+  "history": {
+    "orders": [
+      {
+        "pathFingerprint": "08c39e19b79cfc47859d65e844bf7c28a244530a786c3fdee587ec554a1e57c8",
+        "version": "2026-06-19T13:21:18.402Z",
+        "fingerprint": "8ec018cddff4c77df0544cf188589758677605ab846ba2d974ba2669d28cc3b3",
+        "total": 12,
+        "status": "Finalizado"
+      },
+      {
+        "pathFingerprint": "572848edf4497099b57d902be881f462d330294505467b33c93f59c938f00af0",
+        "version": "2026-06-21T10:16:46.188Z",
+        "fingerprint": "626b2afed76c473342598d38282585abfb596c8f63f2f247e9d952bd787a9f74",
+        "total": 16,
+        "status": "Finalizado"
+      }
+    ],
+    "addresses": [
+      {
+        "id": "legacy_b83edbb48c91dde94a6223205da1a65cd2c1abf5",
+        "fingerprint": "1b644201d80ad087335285fa6602ae122826b2ec8c13c2f82839feae0cd6b821"
+      }
+    ]
+  },
+  "authorization": {
+    "confirmed": true,
+    "at": "2026-11-13T11:29:31.613Z",
+    "maximumSms": 1,
+    "permanentClaim": true,
+    "scope": "DEV Google -> original Customer after titular OTP; no purchases/profile/address/payment/PROD"
+  },
+  "enterpriseProtectionReady": true,
+  "allowlist": {
+    "configurationWrites": 1,
+    "recipientCountBefore": 3,
+    "recipientCountAfter": 4,
+    "otherFieldsPreserved": true,
+    "existingRecipientsPreserved": true,
+    "exactSingleAddition": true
+  },
+  "smsRequestedByAgent": 0,
+  "claimsByAgent": 0,
+  "stage": "READY_FOR_INTERACTIVE_GOOGLE_LOGIN",
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}

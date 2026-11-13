@@ -52,6 +52,9 @@ test.each([
     update:(ref, data)=>writes.set(ref,data), set:(ref,data)=>writes.set(ref,data),
   };
   const save = actualHandler('persistOrderWithTransaction', {
+    auth:{},API_BASE_URL:'https://example.invalid',clientApiRequest:async({storeId,path})=>{
+      expect(storeId).toBe('matriz');expect(path).toBe('/clientes/client');return {id:'client',nome:'DEV'};
+    },
     ensureAuthenticatedUserForWrite:async()=>({uid:'staff',email:'dev@example.invalid'}),
     editingOrder:{id:'order'}, getStoreDocRef:(store,collection,id)=>`${store}/${collection}/${id}`,
     getStoreConfigDocRef:store=>`${store}/config`, getStoreCollectionRef:(store,collection)=>`${store}/${collection}`,

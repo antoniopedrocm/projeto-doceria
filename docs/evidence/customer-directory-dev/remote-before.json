@@ -1,0 +1,1480 @@
+{
+  "at": "2026-11-12T01:24:39.333Z",
+  "project": "crmdoceria-9959e",
+  "functionCount": 146,
+  "functions": [
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/carimbarPedidoFinalizadoCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:04.583607339Z",
+      "uri": "https://carimbarpedidofinalizadocaixa-6i65vyioiq-rj.a.run.app",
+      "revision": "carimbarpedidofinalizadocaixa-00005-jir",
+      "environmentFingerprint": "471aba1ad9ec57af99107bb91445f14da174bd08701a43a5762df4e2b88eaa33",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/notifyNewOrder",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-28T13:40:58.594109514Z",
+      "uri": "https://notifyneworder-6i65vyioiq-rj.a.run.app",
+      "revision": "notifyneworder-00041-tes",
+      "environmentFingerprint": "2b54547e78268b890e84dcabb031109d14e3a5ec7d390611f19005c6f1f8c7c3",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/enqueueWhatsAppConfirmation",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-09T18:16:11.272750807Z",
+      "uri": "https://enqueuewhatsappconfirmation-6i65vyioiq-rj.a.run.app",
+      "revision": "enqueuewhatsappconfirmation-00002-yuv",
+      "environmentFingerprint": "9aed911e51bae49ff0139f0ef5496e0a75cdd687719ac998c077ad8e091e78a5",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/food99ProductStockChanged",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:04.617264696Z",
+      "uri": "https://food99productstockchanged-6i65vyioiq-rj.a.run.app",
+      "revision": "food99productstockchanged-00016-lij",
+      "environmentFingerprint": "cbcb70bac2ad105ed2bfecaa06900a962748bc29a2d9b35fb41d62b85aca704b",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/requestWhatsAppOrderResend",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-25T13:22:02.653106835Z",
+      "uri": "https://requestwhatsapporderresend-6i65vyioiq-rj.a.run.app",
+      "revision": "requestwhatsapporderresend-00002-hup",
+      "environmentFingerprint": "b0e851596a6c2e5e641e0c89846d18ba6e1b4d52fe0deb255ab4f712f7d3ea16",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/enqueuePaidWhatsAppConfirmation",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-09T18:20:23.699208123Z",
+      "uri": "https://enqueuepaidwhatsappconfirmation-6i65vyioiq-rj.a.run.app",
+      "revision": "enqueuepaidwhatsappconfirmation-00001-hol",
+      "environmentFingerprint": "9b3ba32f656fa4b5f869f41d966419157c4cbdf41ad0b954b3117b6595e62056",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/recoverWhatsAppConfirmations",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-09T18:16:12.387351861Z",
+      "uri": "https://recoverwhatsappconfirmations-6i65vyioiq-rj.a.run.app",
+      "revision": "recoverwhatsappconfirmations-00002-gow",
+      "environmentFingerprint": "63aee70c8c6026807cb1cca4ac16d0139dc246c1d716c62fb8e504f98dbebfae",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/whatsappWebhook",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-21T22:24:27.186593Z",
+      "uri": "https://whatsappwebhook-6i65vyioiq-rj.a.run.app",
+      "revision": "whatsappwebhook-00001-mup",
+      "environmentFingerprint": "aa1676cfcc65d7e1576f9a8637f04795958e002ade2abb1eea6df04a9f2b7403",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/ifoodProductStockChanged",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:04.571451924Z",
+      "uri": "https://ifoodproductstockchanged-6i65vyioiq-rj.a.run.app",
+      "revision": "ifoodproductstockchanged-00033-wiy",
+      "environmentFingerprint": "8cdbca43dd6db0509e68ceddb75119e9c1a13fbcac772292214c8d08af73a641",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/getWhatsAppOrderStatus",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-25T13:22:01.650960701Z",
+      "uri": "https://getwhatsapporderstatus-6i65vyioiq-rj.a.run.app",
+      "revision": "getwhatsapporderstatus-00001-ziz",
+      "environmentFingerprint": "3220eb77ff6af68e22f64d4f2a84aff63a2a34ecf8ca70fa06120fd4007cba30",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/processWhatsAppConfirmation",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-09T18:16:14.547562545Z",
+      "uri": "https://processwhatsappconfirmation-6i65vyioiq-rj.a.run.app",
+      "revision": "processwhatsappconfirmation-00004-det",
+      "environmentFingerprint": "04adcf0bcf62f86a4cf9e5bf3212402fe4d49705b19e1828e35f1065482094bb",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/syncCustomerPurchaseMetrics",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:02.822881439Z",
+      "uri": "https://synccustomerpurchasemetrics-6i65vyioiq-rj.a.run.app",
+      "revision": "synccustomerpurchasemetrics-00002-viz",
+      "environmentFingerprint": "dc98ad1037b528ed63333d67690d467c14f0e45453ed067d9887145666964813",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/southamerica-east1/functions/expireCheckoutReservations",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-28T13:40:24.488536Z",
+      "uri": "https://expirecheckoutreservations-6i65vyioiq-rj.a.run.app",
+      "revision": "expirecheckoutreservations-00001-sep",
+      "environmentFingerprint": "ccd80a43d260cb27a53861a046b55db7534bc25001af1831970ea77eea10755f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99GetPlatformConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:44.266672722Z",
+      "uri": "https://food99getplatformconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "food99getplatformconfiguration-00017-rew",
+      "environmentFingerprint": "e2152f846c3b7741beebb7ce0a112971ed050f5c1639e75da5d3fe0c75ea8a2c",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/marcarTodasNotificacoesCaixaComoLidas",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:49.752276103Z",
+      "uri": "https://marcartodasnotificacoescaixacomolidas-6i65vyioiq-uc.a.run.app",
+      "revision": "marcartodasnotificacoescaixacomolidas-00005-foh",
+      "environmentFingerprint": "f0a3bb94a8acbfb28f8daa716110c47f898637e8735826884bd55cbf41fbad62",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/createStore",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T20:48:47.448622554Z",
+      "uri": "https://createstore-6i65vyioiq-uc.a.run.app",
+      "revision": "createstore-00038-gac",
+      "environmentFingerprint": "d7a0eb7e572855e0a1ea305584ffce6c28fb8fc9d4e74922cb74b67ed614443f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalIssueDraft",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:41.526843330Z",
+      "uri": "https://fiscalissuedraft-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalissuedraft-00007-hom",
+      "environmentFingerprint": "7852729ed7ee32817c7c77b7ed7974c764cdf9000eec2035128699c96fa36191",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/lookupClientByPhone",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:46:25.320358437Z",
+      "uri": "https://lookupclientbyphone-6i65vyioiq-uc.a.run.app",
+      "revision": "lookupclientbyphone-00047-niz",
+      "environmentFingerprint": "e5e59c9502693df573feb091beac4077b4f3e9d6d1540641d03fba5e54041143",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99ImportCatalogProduct",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:45.036311387Z",
+      "uri": "https://food99importcatalogproduct-6i65vyioiq-uc.a.run.app",
+      "revision": "food99importcatalogproduct-00018-huq",
+      "environmentFingerprint": "c2115c9298a7f363ac123912e61ba3d006194724934a68b7a26732588e46e976",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99ScheduledPoll",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:12.151029706Z",
+      "uri": "https://food99scheduledpoll-6i65vyioiq-uc.a.run.app",
+      "revision": "food99scheduledpoll-00017-diw",
+      "environmentFingerprint": "bbbd2831deaa867b46a10051ee76883b426440367351b1ab5949ac9719f773a9",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalGetNumbering",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:22.959013528Z",
+      "uri": "https://fiscalgetnumbering-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalgetnumbering-00001-cay",
+      "environmentFingerprint": "404cd660719e61e7272bdd03fed61aa36a79af78e57c301624492e85598f63fd",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/receiveProductionShowcase",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:23.411447285Z",
+      "uri": "https://receiveproductionshowcase-6i65vyioiq-uc.a.run.app",
+      "revision": "receiveproductionshowcase-00002-boj",
+      "environmentFingerprint": "5463c2bf7dff1d90fa330d63afe4ee569e55fae9bae7b9d0391949f1204e09d8",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodPollNow",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:01.230779644Z",
+      "uri": "https://ifoodpollnow-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodpollnow-00032-vov",
+      "environmentFingerprint": "8b184cd6fcf81375b9d21b0deee591edf76a6087df0568fc5cdf20b97294637e",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerAddAddress",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:44:01.529235278Z",
+      "uri": "https://customeraddaddress-6i65vyioiq-uc.a.run.app",
+      "revision": "customeraddaddress-00005-yes",
+      "environmentFingerprint": "0389406424ee6433ced7fbaddd868050f4a71819b40b5df9f83f5a3b8b915919",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/updateUserPassword",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T20:48:48.837773446Z",
+      "uri": "https://updateuserpassword-6i65vyioiq-uc.a.run.app",
+      "revision": "updateuserpassword-00046-won",
+      "environmentFingerprint": "dbbc915a4b1b56f3827d7bc7475d71c5449702e58afba490cb34409ade041e68",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99PublishProducts",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:08.555190666Z",
+      "uri": "https://food99publishproducts-6i65vyioiq-uc.a.run.app",
+      "revision": "food99publishproducts-00016-tob",
+      "environmentFingerprint": "80c34d2e87e53646d8395d5db48e69eea6e9a0ab2e8098e39ccc63813b1ab12e",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/registrarValorInicialCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:47.383309287Z",
+      "uri": "https://registrarvalorinicialcaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "registrarvalorinicialcaixa-00005-raf",
+      "environmentFingerprint": "e181ffaf265f2bb3eba0e7dd51c2ae3b6b836824792654a194ff5b723191f1e3",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodOrderAction",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:52.156905946Z",
+      "uri": "https://ifoodorderaction-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodorderaction-00032-tom",
+      "environmentFingerprint": "3d22a300a3a07d6092508de0b7feb011a6548961af3fe4aac3d747d4f6dd1f93",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99ImportCatalogProducts",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:09.664702464Z",
+      "uri": "https://food99importcatalogproducts-6i65vyioiq-uc.a.run.app",
+      "revision": "food99importcatalogproducts-00017-goq",
+      "environmentFingerprint": "a5ecff83601d6ac14f8f47de2ad350997f07800a628340c252b4b5ac0122dad3",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99RevealPlatformAppSecret",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:58.519958265Z",
+      "uri": "https://food99revealplatformappsecret-6i65vyioiq-uc.a.run.app",
+      "revision": "food99revealplatformappsecret-00007-cif",
+      "environmentFingerprint": "bca772034e2c171867ee20f115be8508903ad0029b7475c063be7424ee9e7969",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/paymentSettingsGet",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-28T13:40:37.027711962Z",
+      "uri": "https://paymentsettingsget-6i65vyioiq-uc.a.run.app",
+      "revision": "paymentsettingsget-00001-wam",
+      "environmentFingerprint": "e56b1374e5e2ed13b1a22e2def115e3c636f6cd674d98b502f8735fb535b732a",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodWebhook",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:09.187776308Z",
+      "uri": "https://ifoodwebhook-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodwebhook-00032-vuh",
+      "environmentFingerprint": "b6935e4d6edf0b7716f267f2bd3222787671567c474230a9cb43bd875901e1b0",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ensureCustomerPurchaseMetrics",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:46.893608889Z",
+      "uri": "https://ensurecustomerpurchasemetrics-6i65vyioiq-uc.a.run.app",
+      "revision": "ensurecustomerpurchasemetrics-00002-qej",
+      "environmentFingerprint": "93de7f3a3386c079ecf38c709d350953f1408812eda7f61274434fc05ac0888a",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/alterarSituacaoAlertaCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:32.170436312Z",
+      "uri": "https://alterarsituacaoalertacaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "alterarsituacaoalertacaixa-00004-zez",
+      "environmentFingerprint": "14ecb642317782eb2d55a962c8db3295b5cf374f39a33e08b08f9dac31723495",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/excluirAlertasCaixaEmLote",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:25.550288758Z",
+      "uri": "https://excluiralertascaixaemlote-6i65vyioiq-uc.a.run.app",
+      "revision": "excluiralertascaixaemlote-00004-sun",
+      "environmentFingerprint": "473f0677a763a9f360bbc56a845476fb3a2dd2270827015a2f10744bb31c1a56",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/deleteUser",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T20:48:46.506843244Z",
+      "uri": "https://deleteuser-6i65vyioiq-uc.a.run.app",
+      "revision": "deleteuser-00046-gov",
+      "environmentFingerprint": "7c79a365ae88e936854be5e425987490ea6c198ee971959acbf5657bb8df6fd8",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/storeManagementRead",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T20:51:07.532692240Z",
+      "uri": "https://storemanagementread-6i65vyioiq-uc.a.run.app",
+      "revision": "storemanagementread-00001-suz",
+      "environmentFingerprint": "225692a991e6983c4c439c8b6a9d7b24525632dc4e2074f06a68cfa07c510f94",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodScheduledPoll",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:13.135080819Z",
+      "uri": "https://ifoodscheduledpoll-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodscheduledpoll-00032-wob",
+      "environmentFingerprint": "c95c796ef7dddcc1386f2aa8e31f9db51ebc0757134332b17619de712a152d1c",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalSetNextNumber",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:33.874253830Z",
+      "uri": "https://fiscalsetnextnumber-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalsetnextnumber-00001-qaf",
+      "environmentFingerprint": "7b75d5be078ed908b7e5fd4abacfddd109e8181c8a3534827959d643c3511891",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/registrarSangriaCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-04T16:58:32.826324163Z",
+      "uri": "https://registrarsangriacaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "registrarsangriacaixa-00007-biq",
+      "environmentFingerprint": "59a1b937f69e5e248c0ed5b5b66bf812392e7be2438a2ca193069254852a9447",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalCheckDraft",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:35.275962845Z",
+      "uri": "https://fiscalcheckdraft-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalcheckdraft-00007-fac",
+      "environmentFingerprint": "b790f16d2163be93e70054fb45309b42f9beca2e71ab92ec1378832b3bfc8d5c",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodGetPlatformConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:36.208205973Z",
+      "uri": "https://ifoodgetplatformconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodgetplatformconfiguration-00020-jis",
+      "environmentFingerprint": "d8ead6ce30eb0a782e18759c51e3894442f2c77c14efec3a8e6300481b729a74",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/updateClientProfile",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-25T12:58:57.870684787Z",
+      "uri": "https://updateclientprofile-6i65vyioiq-uc.a.run.app",
+      "revision": "updateclientprofile-00042-bos",
+      "environmentFingerprint": "363c07af639d38c7e0c9267ece549593b73fb68d38dbc48d8fabf7bf0ad3a73d",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/obterConfiguracaoAlertasCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:45.840930776Z",
+      "uri": "https://obterconfiguracaoalertascaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "obterconfiguracaoalertascaixa-00005-wuk",
+      "environmentFingerprint": "c51ed814002a6c28f2a226c74a2cd3c7482f34a7475266c458857e2b736b0815",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/createProductionShowcase",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:25.331964812Z",
+      "uri": "https://createproductionshowcase-6i65vyioiq-uc.a.run.app",
+      "revision": "createproductionshowcase-00002-zay",
+      "environmentFingerprint": "d010cd4f9ca16036cfe50e344226efd5e8a3fb8a2b79d3bc9f69ab279756254c",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/getTransferDestinationConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-31T00:12:39.013529202Z",
+      "uri": "https://gettransferdestinationconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "gettransferdestinationconfiguration-00001-haz",
+      "environmentFingerprint": "2113e53acc36b8aca255c83e6a7f7bce5b46e1b08877423ce8bec553d73ee567",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerCompleteProfile",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:43:58.580008147Z",
+      "uri": "https://customercompleteprofile-6i65vyioiq-uc.a.run.app",
+      "revision": "customercompleteprofile-00005-cep",
+      "environmentFingerprint": "09360f449cbe542d9d164acc2736ff9a9d043016659451d8c6f5532a5ae6d878",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/sendProductionShowcase",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:46.897016179Z",
+      "uri": "https://sendproductionshowcase-6i65vyioiq-uc.a.run.app",
+      "revision": "sendproductionshowcase-00002-zuy",
+      "environmentFingerprint": "f05744759d802f6d0affce2e7723f64d7c3fb9e83a39f0afa3c124bc8f26031f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalSaveCfopOption",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:35.225885385Z",
+      "uri": "https://fiscalsavecfopoption-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalsavecfopoption-00002-len",
+      "environmentFingerprint": "025ca904c9248e7e83ca73456d1603d572a14ab3a142da0aab1f723b244982e1",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodSavePlatformConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:50.292972472Z",
+      "uri": "https://ifoodsaveplatformconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodsaveplatformconfiguration-00020-rug",
+      "environmentFingerprint": "d7fb5e17cde6ca013699911ff7b3be369974bf2559156f5570727f56c01472a7",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerPhoneClaimStatus",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:43:59.792668693Z",
+      "uri": "https://customerphoneclaimstatus-6i65vyioiq-uc.a.run.app",
+      "revision": "customerphoneclaimstatus-00003-kay",
+      "environmentFingerprint": "57479cff096b36790a63b00894379532f789ca4f5331636a607ae92e4453f8d6",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalInutilizeNumbering",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:17.621049838Z",
+      "uri": "https://fiscalinutilizenumbering-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalinutilizenumbering-00002-fuv",
+      "environmentFingerprint": "5c765380719628d37cd5ff0dfa9d6e23489b18fde8350b1203e6a0ae535bb7bc",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/listProductionShowcaseProducts",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:39.568821603Z",
+      "uri": "https://listproductionshowcaseproducts-6i65vyioiq-uc.a.run.app",
+      "revision": "listproductionshowcaseproducts-00002-jeq",
+      "environmentFingerprint": "3d0f221af6aec5a5774eb264d2c6a6f8e994488bca2e88711fe6e85cc9eb28f7",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/cancelProductionShowcase",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:44.704513302Z",
+      "uri": "https://cancelproductionshowcase-6i65vyioiq-uc.a.run.app",
+      "revision": "cancelproductionshowcase-00002-nel",
+      "environmentFingerprint": "3c7c2451e9aa818556b8df954d3f2c823ec264c07438244ec17629f4e491fc21",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodImportCatalogProduct",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:46.965620800Z",
+      "uri": "https://ifoodimportcatalogproduct-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodimportcatalogproduct-00021-yel",
+      "environmentFingerprint": "df9aec5cc76a5d8bd87279d8b77b5da26f4ba09ea034b0e52934e6365597be53",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalIssueInvoice",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:49.408913547Z",
+      "uri": "https://fiscalissueinvoice-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalissueinvoice-00045-zah",
+      "environmentFingerprint": "5d8ef68704f69b3e2281ca048273adff34428dd0f2a8929cb362c776da475326",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99Webhook",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:08.928401888Z",
+      "uri": "https://food99webhook-6i65vyioiq-uc.a.run.app",
+      "revision": "food99webhook-00018-foq",
+      "environmentFingerprint": "8e1da83d29a5b26c12cc849f51e798dd086c3bb39189c4167ed822d396bf14e7",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ajustarSangriaCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:41.956608606Z",
+      "uri": "https://ajustarsangriacaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "ajustarsangriacaixa-00005-rir",
+      "environmentFingerprint": "79323a9e1afa29534ccb417bb94599848f603848c027fd97251c736a9d8c365d",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/paymentSettingsSave",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-28T13:40:35.530494150Z",
+      "uri": "https://paymentsettingssave-6i65vyioiq-uc.a.run.app",
+      "revision": "paymentsettingssave-00001-reg",
+      "environmentFingerprint": "9121fb07083af3c6995635cd53ee44f2af04bb43888074b2fda31ea8b36fab90",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalGetInvoiceArtifact",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:26.114884920Z",
+      "uri": "https://fiscalgetinvoiceartifact-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalgetinvoiceartifact-00027-yes",
+      "environmentFingerprint": "22f56bebf48ac6ddabf9a18a918c437fdde56c3c2894ba39d0934b54cd983d6d",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/listarConferenciasCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-04T16:58:33.084305809Z",
+      "uri": "https://listarconferenciascaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "listarconferenciascaixa-00006-xud",
+      "environmentFingerprint": "1b30eb6901095b4efbce52a977413619dd4263f833ef33d51eeb947b1236f914",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99PollNow",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:44.056861664Z",
+      "uri": "https://food99pollnow-6i65vyioiq-uc.a.run.app",
+      "revision": "food99pollnow-00017-tuh",
+      "environmentFingerprint": "e682e0363f2b6d2ad5f143a666eb720d72e6fe027a3bde80729158c0c8866244",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99AuditPlatformAppSecretCopy",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:44.172176351Z",
+      "uri": "https://food99auditplatformappsecretcopy-6i65vyioiq-uc.a.run.app",
+      "revision": "food99auditplatformappsecretcopy-00007-pox",
+      "environmentFingerprint": "7f70ca04776d78c316c927307a80306051b6350712fae8b456373e929c464c22",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99LoadMerchants",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:57.402627017Z",
+      "uri": "https://food99loadmerchants-6i65vyioiq-uc.a.run.app",
+      "revision": "food99loadmerchants-00016-wim",
+      "environmentFingerprint": "7d9b57cf26a3df51a82f3741629d22d56891d45bd4387952001c55ef0e6d5acd",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/registrarEncerramentoCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:38.157862864Z",
+      "uri": "https://registrarencerramentocaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "registrarencerramentocaixa-00005-nel",
+      "environmentFingerprint": "495cc5949b8d51fa01f9fc886fe1d53ab2c3c5df878e5bb9a7d41f78ab8957cd",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodLoadMerchants",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:01.372984331Z",
+      "uri": "https://ifoodloadmerchants-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodloadmerchants-00032-vih",
+      "environmentFingerprint": "0358fe30cbe937131d2c3ab416da164301f1449f5f7746eeb0f6b608923749da",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/staffSaveFulfillment",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T20:51:21.051389314Z",
+      "uri": "https://staffsavefulfillment-6i65vyioiq-uc.a.run.app",
+      "revision": "staffsavefulfillment-00002-qap",
+      "environmentFingerprint": "d8e5710833560c5e6c73e169e061bd798edd4f2592b189148a88fd83ac17116e",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/addClientAddress",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-25T12:58:56.784393655Z",
+      "uri": "https://addclientaddress-6i65vyioiq-uc.a.run.app",
+      "revision": "addclientaddress-00043-fax",
+      "environmentFingerprint": "0ec5a19943a3f81b15184fb31f19a7b3747e15cd41f04ca78fb7ae9e88492224",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/storeManagementWrite",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T20:51:21.160977940Z",
+      "uri": "https://storemanagementwrite-6i65vyioiq-uc.a.run.app",
+      "revision": "storemanagementwrite-00001-yos",
+      "environmentFingerprint": "071936bdf857c45f8cfc1a1bdf4b34690b593c73113fb4269878a9c22d818e33",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99TestConnection",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:44.743311824Z",
+      "uri": "https://food99testconnection-6i65vyioiq-uc.a.run.app",
+      "revision": "food99testconnection-00016-gis",
+      "environmentFingerprint": "b43cee10ee96bd36809a1a1fae1fbf1e61f35e69537a0e7abb2a094687b66720",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/corrigirValoresCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-04T16:58:22.613936059Z",
+      "uri": "https://corrigirvalorescaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "corrigirvalorescaixa-00001-hiv",
+      "environmentFingerprint": "4636274994bbc71fda809904aa944d0205f81296743378a1125dc3bde1468513",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99SyncStockNow",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:49.564767682Z",
+      "uri": "https://food99syncstocknow-6i65vyioiq-uc.a.run.app",
+      "revision": "food99syncstocknow-00016-kur",
+      "environmentFingerprint": "2264a84785466ffe4f85ed140d1890c3678108d129658be5f005e22748ca638a",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99SaveConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:55.512201914Z",
+      "uri": "https://food99saveconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "food99saveconfiguration-00016-nuc",
+      "environmentFingerprint": "f62b16edb3e1e468a34d7d5b092ef98edc308ba8a66c72825ddf256fe460454a",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/listPointEmployees",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-14T02:07:07.797800162Z",
+      "uri": "https://listpointemployees-6i65vyioiq-uc.a.run.app",
+      "revision": "listpointemployees-00001-zat",
+      "environmentFingerprint": "765ccabcd51645f32cc651e9d9e95861ab3d04390c9c36c4768cb9f1807336e6",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/atualizarEstadoNotificacaoCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:44.726944674Z",
+      "uri": "https://atualizarestadonotificacaocaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "atualizarestadonotificacaocaixa-00005-zog",
+      "environmentFingerprint": "26726c073d198d04e879a3ed24534d4a7ccdfbe9078999590e7be8973dcb7e9e",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/excluirAlertaCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:38.169644234Z",
+      "uri": "https://excluiralertacaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "excluiralertacaixa-00004-bov",
+      "environmentFingerprint": "1e7b66c2ac77c76e01c3204da26cac73e2deca49e03c0db574188d60cc74bba2",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/obterRegistroDiarioCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-04T16:58:33.012068442Z",
+      "uri": "https://obterregistrodiariocaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "obterregistrodiariocaixa-00006-lag",
+      "environmentFingerprint": "870d26ca0d0383e9e6ec90882ab62d09bd91c1b4fceb824fb63f6fd7b91377ff",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodSaveProductMapping",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:50.174025175Z",
+      "uri": "https://ifoodsaveproductmapping-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodsaveproductmapping-00032-vif",
+      "environmentFingerprint": "8625a8f8a0313ca68a82df6ed2992ed2823c7f5a6a22305bba55d2dc1c6b9160",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalSaveNcmOption",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:36.206170360Z",
+      "uri": "https://fiscalsavencmoption-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalsavencmoption-00003-yuw",
+      "environmentFingerprint": "048aefed9ff16261f5ef2e08ad700fcdeb92be895673f1d4c0dce251e4477614",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/listProductionShowcase",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:23.087317936Z",
+      "uri": "https://listproductionshowcase-6i65vyioiq-uc.a.run.app",
+      "revision": "listproductionshowcase-00002-tiy",
+      "environmentFingerprint": "5a5fac0a2d778c4eead6306ee28ce48368469881ffe17ff724a60d59b6a84b1f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerUpdate",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:43:59.802951085Z",
+      "uri": "https://customerupdate-6i65vyioiq-uc.a.run.app",
+      "revision": "customerupdate-00005-hov",
+      "environmentFingerprint": "e1a3b3587083f444389fa537ecdbd6523088ce6dcdf5f37372b961f80ce000ac",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalValidateOrder",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:33.351542400Z",
+      "uri": "https://fiscalvalidateorder-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalvalidateorder-00043-duw",
+      "environmentFingerprint": "79296f6792fb539ae7f442fa967ea599dd37dd7933810348586472e0bd900ba4",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerOrderDetail",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:44:02.273257228Z",
+      "uri": "https://customerorderdetail-6i65vyioiq-uc.a.run.app",
+      "revision": "customerorderdetail-00004-gas",
+      "environmentFingerprint": "e352f4453444afed750aa1b16ed92427b926041c019834735913f0a7e0c39f23",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/recalculateEntreLojasClosing",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:42.380671226Z",
+      "uri": "https://recalculateentrelojasclosing-6i65vyioiq-uc.a.run.app",
+      "revision": "recalculateentrelojasclosing-00003-faq",
+      "environmentFingerprint": "673b2f52ff9ff101481e7310ec0f8be3e6c3977ef37b7d3ae2020e7d15ec9e9f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalIssueManualInvoice",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:34.698264064Z",
+      "uri": "https://fiscalissuemanualinvoice-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalissuemanualinvoice-00023-jow",
+      "environmentFingerprint": "19e644e69bdbd304b64b37956b7a4767a8902690c62d7edf6ecb15723de08a17",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/listarSangriasCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:46.627193746Z",
+      "uri": "https://listarsangriascaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "listarsangriascaixa-00005-duv",
+      "environmentFingerprint": "a673bba53c032d389a363d25c4ed59916ccf324523d8d986f0eb46c606a05b9a",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/listAllUsers",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-25T12:58:52.729790620Z",
+      "uri": "https://listallusers-6i65vyioiq-uc.a.run.app",
+      "revision": "listallusers-00046-law",
+      "environmentFingerprint": "6b5b71ccb061be786f57365b09b7df07b1ed456665e7e03d7188942562001599",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodSaveConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:02.249971551Z",
+      "uri": "https://ifoodsaveconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodsaveconfiguration-00033-jaq",
+      "environmentFingerprint": "d4d4f0c85c5ab9760bd7cd0fa2b63c9d6f9f4a062e8b1d96c34515db09fc6a45",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodTestConnection",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:45.174367837Z",
+      "uri": "https://ifoodtestconnection-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodtestconnection-00032-zir",
+      "environmentFingerprint": "03ef3f460d78898f5f2e9623bef112c8c323d462c3f3c72307029735be6ff892",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99PromoteStoredCredentials",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:44.548397128Z",
+      "uri": "https://food99promotestoredcredentials-6i65vyioiq-uc.a.run.app",
+      "revision": "food99promotestoredcredentials-00016-jub",
+      "environmentFingerprint": "70df36c82db01129010135d511aa3dc82a70882953329de04a489aebadd494c0",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/staffGetFulfillment",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T20:51:22.298673432Z",
+      "uri": "https://staffgetfulfillment-6i65vyioiq-uc.a.run.app",
+      "revision": "staffgetfulfillment-00002-nom",
+      "environmentFingerprint": "a223e026f9e9f34815dd33d6aabc61e1f0189f9a74ebd0bb3ddf6bc1cad5827a",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99GetConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:45.913369607Z",
+      "uri": "https://food99getconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "food99getconfiguration-00017-piw",
+      "environmentFingerprint": "8f9704eb7240d013ae463590f48dd2b1d4978303228c733cb1678b148ae361eb",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalCancelInvoice",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:25.536436405Z",
+      "uri": "https://fiscalcancelinvoice-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalcancelinvoice-00040-duk",
+      "environmentFingerprint": "72aeca51d109dc88c191f4f2b35506a8ccb912f67bb713e4f5651e0f8c297431",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/reativarUsuario",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:45.673955308Z",
+      "uri": "https://reativarusuario-6i65vyioiq-uc.a.run.app",
+      "revision": "reativarusuario-00003-fal",
+      "environmentFingerprint": "cf1a5e0382cd23791ee90db400bb316f11c1fa1a1e7d99a267b1849a6b7f78d5",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalResolveOrderPaymentMethod",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:35.715208566Z",
+      "uri": "https://fiscalresolveorderpaymentmethod-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalresolveorderpaymentmethod-00002-fiw",
+      "environmentFingerprint": "3e28e9999f838a81dab7c95d02daa9b858873cdca4f49b647440acd0640dadfc",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodSyncStockNow",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:49.036615522Z",
+      "uri": "https://ifoodsyncstocknow-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodsyncstocknow-00032-mat",
+      "environmentFingerprint": "784f466aa2de685efd1762da7794e10cb54554d893f938b58e262f9368d06d83",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalSaveConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:34.254360264Z",
+      "uri": "https://fiscalsaveconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalsaveconfiguration-00031-xus",
+      "environmentFingerprint": "f6efe2ec63004a38fabf3d9d6e11db789554ae162e92141c30d232a6227250df",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/listarAlertasCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:07.566301332Z",
+      "uri": "https://listaralertascaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "listaralertascaixa-00004-tev",
+      "environmentFingerprint": "4fd6602d7d7b549d43527c3f879fc6eb6cb37ee957499e11b762672b694298d2",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99SavePlatformConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:53.403502658Z",
+      "uri": "https://food99saveplatformconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "food99saveplatformconfiguration-00018-tik",
+      "environmentFingerprint": "17447639d9f5b3377068c85f0021566f30dca866883d6ed014c0915cee02c4f2",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerOrders",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:44:01.219994443Z",
+      "uri": "https://customerorders-6i65vyioiq-uc.a.run.app",
+      "revision": "customerorders-00005-rid",
+      "environmentFingerprint": "dea2b005553a6c730ef9cc6cbc867c04c20cc734acb9c7820fd54e0988d60a26",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/obterDetalhesAlertaCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:50.695813253Z",
+      "uri": "https://obterdetalhesalertacaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "obterdetalhesalertacaixa-00004-ner",
+      "environmentFingerprint": "753cb5c2b85d1568e2250336b52b0fb86ec20792cb01ee7ebba6cdb64358be3f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99HubApi",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:11.077533729Z",
+      "uri": "https://food99hubapi-6i65vyioiq-uc.a.run.app",
+      "revision": "food99hubapi-00005-gom",
+      "environmentFingerprint": "bd016f06308e3fd185ea02804cf64eb192d7c8784460bf288eaba4eda97e3481",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalGetInvoice",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:35.987137044Z",
+      "uri": "https://fiscalgetinvoice-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalgetinvoice-00039-tac",
+      "environmentFingerprint": "0aaf85e6e400e9847f0c0505d59aefcd90f98ccdbd856cbe70df2005ab15de67",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/adminOrderHistory",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-30T12:26:24.152758338Z",
+      "uri": "https://adminorderhistory-6i65vyioiq-uc.a.run.app",
+      "revision": "adminorderhistory-00001-put",
+      "environmentFingerprint": "13dbe478cb92606caadefd23c79ebcbbf2d6876d5a1936e5b35344760e619ac3",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99SaveProductMapping",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:50.559969105Z",
+      "uri": "https://food99saveproductmapping-6i65vyioiq-uc.a.run.app",
+      "revision": "food99saveproductmapping-00016-wec",
+      "environmentFingerprint": "a0b8964cd60d989897fc97d0d6f9b10c1e44cbd875eb56758c4324a1129470b9",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/salvarConfiguracaoAlertasCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:52.964203224Z",
+      "uri": "https://salvarconfiguracaoalertascaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "salvarconfiguracaoalertascaixa-00005-vet",
+      "environmentFingerprint": "13b241a30227f8c3deb896d071ab95feeb3c3f83d4ac6d5998627880eab913af",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99GetCancellationReasons",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:43.880768646Z",
+      "uri": "https://food99getcancellationreasons-6i65vyioiq-uc.a.run.app",
+      "revision": "food99getcancellationreasons-00016-dar",
+      "environmentFingerprint": "5cf23dc2fd315345f6e985bfb8155caea8b22e87e17d9ca4f08b687826bea101",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodPublishProducts",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:08.639616019Z",
+      "uri": "https://ifoodpublishproducts-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodpublishproducts-00031-nel",
+      "environmentFingerprint": "f94bcabb755df6ae93bfd1edd0056e6989d8b69e034236495cf046160aec6db9",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/updateUser",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T20:48:47.577067785Z",
+      "uri": "https://updateuser-6i65vyioiq-uc.a.run.app",
+      "revision": "updateuser-00052-wov",
+      "environmentFingerprint": "2802c60fa5339bec46c6385ad02f33d2c781761b78e0f5949dc5e110a3604e42",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerReorderPreview",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:44:01.402267263Z",
+      "uri": "https://customerreorderpreview-6i65vyioiq-uc.a.run.app",
+      "revision": "customerreorderpreview-00005-nol",
+      "environmentFingerprint": "70b0bbb18686a3e40a746ad06b1329a838a5650147765a1254e55f2e28bfe1ee",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerAccount",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:43:51.384400454Z",
+      "uri": "https://customeraccount-6i65vyioiq-uc.a.run.app",
+      "revision": "customeraccount-00005-koz",
+      "environmentFingerprint": "61c19eafa0b048565282481a255082d5d9d40ce0e76c604ba48f2215accbdfd1",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/registerEmployeePoint",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-06T20:44:12.107501152Z",
+      "uri": "https://registeremployeepoint-6i65vyioiq-uc.a.run.app",
+      "revision": "registeremployeepoint-00024-lom",
+      "environmentFingerprint": "01be09b681b1b61c7d569506738abd9911614cc41dcf22dbc03a277778cde78f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalSaveProducts",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:33.674041801Z",
+      "uri": "https://fiscalsaveproducts-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalsaveproducts-00002-kuh",
+      "environmentFingerprint": "4e1d076411494dcc3c7ace00f1e25b0fb9f57df46aa2fb059f7b841e26fb901f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerDeleteAddress",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:43:59.063216182Z",
+      "uri": "https://customerdeleteaddress-6i65vyioiq-uc.a.run.app",
+      "revision": "customerdeleteaddress-00005-lal",
+      "environmentFingerprint": "b76d66f53ed64d3efbf15950d51352bfe0e200ffef18b9c1062dfc1a44bccbe1",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/listAuthorizedTransferDestinations",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-31T00:12:36.290833372Z",
+      "uri": "https://listauthorizedtransferdestinations-6i65vyioiq-uc.a.run.app",
+      "revision": "listauthorizedtransferdestinations-00001-jug",
+      "environmentFingerprint": "fe450a9bf6ff83e70279092760b035a43da2374321ceed06eecef6a75eed93d8",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalUploadCertificate",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:24.182291987Z",
+      "uri": "https://fiscaluploadcertificate-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscaluploadcertificate-00037-yiz",
+      "environmentFingerprint": "a3d1a0c69f7fea47ea7478e1f5834bd8e0d2be2b4e5aa46949293d6915b4d693",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/createUser",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-31T20:48:48.280399544Z",
+      "uri": "https://createuser-6i65vyioiq-uc.a.run.app",
+      "revision": "createuser-00051-wev",
+      "environmentFingerprint": "f075f18b87970373be166da4dc79f89b11b4f7a3994823856a3d9d64845e9a1b",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerPhoneClaimConfirm",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:44:01.618096690Z",
+      "uri": "https://customerphoneclaimconfirm-6i65vyioiq-uc.a.run.app",
+      "revision": "customerphoneclaimconfirm-00003-mac",
+      "environmentFingerprint": "3aa0af3eeaabd3bfabe677d136c93a1f965f9dff02ee1e39fdd19ac40e42ca0e",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/registrarRetiradaDespesaCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-09-04T16:58:32.374664842Z",
+      "uri": "https://registrarretiradadespesacaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "registrarretiradadespesacaixa-00007-xag",
+      "environmentFingerprint": "8b3ef80b373a17175f98430609c6cb789a0c361615462d856d43ec73f7f58b5e",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99ReplacePlatformSecret",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:06.053625198Z",
+      "uri": "https://food99replaceplatformsecret-6i65vyioiq-uc.a.run.app",
+      "revision": "food99replaceplatformsecret-00007-sip",
+      "environmentFingerprint": "396f59ffb3a94cf3df6131969f98837be11a459abbabafc7f2b7e2cdf1804c59",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/inativarUsuario",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:30.098304636Z",
+      "uri": "https://inativarusuario-6i65vyioiq-uc.a.run.app",
+      "revision": "inativarusuario-00003-wel",
+      "environmentFingerprint": "3b682f71c53ccb307e13a31ca3f965b6c3307c352728d3dca983cdd571c26588",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalSaveDraft",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:35.466298663Z",
+      "uri": "https://fiscalsavedraft-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalsavedraft-00004-jif",
+      "environmentFingerprint": "cb1ae2773165b39e8f73727166074a3f626cf8c87ec3b3b96c8f3bb439a34e9e",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodGetConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:42.774045454Z",
+      "uri": "https://ifoodgetconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodgetconfiguration-00033-mod",
+      "environmentFingerprint": "f417dc6bbbb78e25b8d9090574573c9c78c8fce67e0272cf9e4bfd6b16193400",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99StartAuthorization",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:44.130262713Z",
+      "uri": "https://food99startauthorization-6i65vyioiq-uc.a.run.app",
+      "revision": "food99startauthorization-00007-dof",
+      "environmentFingerprint": "761cdda23ee6a3586b2e799281fe86e57f7205855d34c79fc5be77f24685a4cf",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalRefreshInvoice",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:45.294622068Z",
+      "uri": "https://fiscalrefreshinvoice-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalrefreshinvoice-00029-zuk",
+      "environmentFingerprint": "72b0c49f96256326502bb4b0df3dc2ce0afebc11e54362dc179dcbc82b3e96dd",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/api",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-08T13:53:41.885316322Z",
+      "uri": "https://api-6i65vyioiq-uc.a.run.app",
+      "revision": "api-00076-vas",
+      "environmentFingerprint": "3c955b1edebd259e21639c531fac493e5b047b797cbc0bdb7698a3d5af5265c8",
+      "secretReferencesFingerprint": "9b3b8a6443b4711586bdf9cc9c157269d5640e817bc3c7807c9a57f8d94456ac",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerUpdateAddress",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:44:01.038365777Z",
+      "uri": "https://customerupdateaddress-6i65vyioiq-uc.a.run.app",
+      "revision": "customerupdateaddress-00004-qeq",
+      "environmentFingerprint": "32ae0000309ba6725303543b5c6d21340032f69e1d78adb14d4edb704c1be0a3",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/getEntreLojasReport",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:41.172107482Z",
+      "uri": "https://getentrelojasreport-6i65vyioiq-uc.a.run.app",
+      "revision": "getentrelojasreport-00002-nof",
+      "environmentFingerprint": "c9872992ceb8bdac22a965b621712d4617dd96c4cca55f5a6b06ae5c083a7281",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalGetConfiguration",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:35.909388494Z",
+      "uri": "https://fiscalgetconfiguration-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalgetconfiguration-00032-tev",
+      "environmentFingerprint": "143ba8bb3069accfb6a59f2dc65ec5f0d1f6388c7d28653857c178586a8d1a69",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99LinkCatalogProducts",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:09:10.084300709Z",
+      "uri": "https://food99linkcatalogproducts-6i65vyioiq-uc.a.run.app",
+      "revision": "food99linkcatalogproducts-00015-puv",
+      "environmentFingerprint": "beb6363b940557bf70e4089de2f4d3088d5fae0c507d7c2bf27b4dc565a834d8",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalDeleteProduct",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:34.795800658Z",
+      "uri": "https://fiscaldeleteproduct-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscaldeleteproduct-00001-paw",
+      "environmentFingerprint": "e64137b74d03c6c83465a45da7e774d2a4c1c05d9477c1cf230960cdb86acfa3",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerPhoneClaimStart",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:43:58.970012684Z",
+      "uri": "https://customerphoneclaimstart-6i65vyioiq-uc.a.run.app",
+      "revision": "customerphoneclaimstart-00003-fub",
+      "environmentFingerprint": "483fcdde74a9355b64a99835ecda3b238ed532c3fdf7a98124fc7696e12a8b86",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/authorizePointSheetAccess",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-14T02:07:18.572276369Z",
+      "uri": "https://authorizepointsheetaccess-6i65vyioiq-uc.a.run.app",
+      "revision": "authorizepointsheetaccess-00001-tiy",
+      "environmentFingerprint": "cff016632dc33b784454b0f50a4b8f164514cbd1f556fbf43733303d97cbf8f0",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalCloneInvoice",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:34.491788905Z",
+      "uri": "https://fiscalcloneinvoice-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalcloneinvoice-00002-haw",
+      "environmentFingerprint": "7f5ac4579e3ab44be7b14363cf167bd7c8e1627b1d0eb7fee87fd325089a2fbb",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalListCfopOptions",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:32.648594173Z",
+      "uri": "https://fiscallistcfopoptions-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscallistcfopoptions-00002-sir",
+      "environmentFingerprint": "3d455d51f660ea7ce1884c3cee8c6d6b15dd958286e2077e7edbdce14a71d52f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/updateTransferDestinations",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-31T00:12:39.769661557Z",
+      "uri": "https://updatetransferdestinations-6i65vyioiq-uc.a.run.app",
+      "revision": "updatetransferdestinations-00001-maz",
+      "environmentFingerprint": "5cd07e73f1de6a88b513c4bb4d71d188f9bf69134cf9affedbf3dcf051f37850",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99CheckAuthorization",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:05.208856097Z",
+      "uri": "https://food99checkauthorization-6i65vyioiq-uc.a.run.app",
+      "revision": "food99checkauthorization-00009-vaz",
+      "environmentFingerprint": "9df5c573693afca4bb46593401dc33b3ea39b493086d1d6d611522ffebf7ff39",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodGetCancellationReasons",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:46.302077401Z",
+      "uri": "https://ifoodgetcancellationreasons-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodgetcancellationreasons-00032-ved",
+      "environmentFingerprint": "9641c0e2080793bf8b857948d3c7e15723b17d127454b32f18d8ae3bdf26a2e2",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99LoadCatalogProducts",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:46.433289894Z",
+      "uri": "https://food99loadcatalogproducts-6i65vyioiq-uc.a.run.app",
+      "revision": "food99loadcatalogproducts-00017-rar",
+      "environmentFingerprint": "95b6c0dc883ba268c56e7e319ecdfdbd670c5476eeb426cc33d9e2cfd67350b9",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/customerSetDefaultAddress",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-06T00:43:59.485821827Z",
+      "uri": "https://customersetdefaultaddress-6i65vyioiq-uc.a.run.app",
+      "revision": "customersetdefaultaddress-00004-vik",
+      "environmentFingerprint": "b1eadc50d63545a53c0dffc2a5f731acbfdb5ee8cf654cdee27f1cd1f3d930ea",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodPromoteStoredCredentials",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:52.380772079Z",
+      "uri": "https://ifoodpromotestoredcredentials-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodpromotestoredcredentials-00030-pup",
+      "environmentFingerprint": "2185e4a6a29a8f31e6a564a805cc5d0606e1936ccac878ba7eeb89bf196daf76",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/ifoodLoadCatalogProducts",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:44.842297461Z",
+      "uri": "https://ifoodloadcatalogproducts-6i65vyioiq-uc.a.run.app",
+      "revision": "ifoodloadcatalogproducts-00033-jov",
+      "environmentFingerprint": "5218cb5115a2cb070a0219b47e14a2196df57b1f9ed175b1d63f4bb621dfe050",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/listarNotificacoesCaixa",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:07:48.173932284Z",
+      "uri": "https://listarnotificacoescaixa-6i65vyioiq-uc.a.run.app",
+      "revision": "listarnotificacoescaixa-00004-vup",
+      "environmentFingerprint": "2720eafe49a782ccb3d93150783dd1c2b597e3180799c3ecd5549fa6f5d56fed",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/fiscalUpdatePreInvoiceOrder",
+      "state": "ACTIVE",
+      "updateTime": "2026-11-01T01:08:32.819971670Z",
+      "uri": "https://fiscalupdatepreinvoiceorder-6i65vyioiq-uc.a.run.app",
+      "revision": "fiscalupdatepreinvoiceorder-00001-bup",
+      "environmentFingerprint": "f0860a71a8f15edfd10cb238ff0e9a4c60b833abcd985b694e4ac698474c7091",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/food99OrderAction",
+      "state": "ACTIVE",
+      "updateTime": "2026-08-21T18:08:44.069382453Z",
+      "uri": "https://food99orderaction-6i65vyioiq-uc.a.run.app",
+      "revision": "food99orderaction-00016-hej",
+      "environmentFingerprint": "cf3abe4cc7d3d2d61b3133672a755402178e3cd97a7ebf24e872dc4df4a8470f",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    },
+    {
+      "name": "projects/crmdoceria-9959e/locations/us-central1/functions/adminOrderSave",
+      "state": "ACTIVE",
+      "updateTime": "2026-10-30T12:26:12.825630993Z",
+      "uri": "https://adminordersave-6i65vyioiq-uc.a.run.app",
+      "revision": "adminordersave-00001-sig",
+      "environmentFingerprint": "546e9a58cecbe9c11797c261b2663b873c8872e21b69108422aad4f0dc1d4bb4",
+      "secretReferencesFingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "runtime": "nodejs22"
+    }
+  ],
+  "apiName": "projects/crmdoceria-9959e/locations/us-central1/functions/api",
+  "apiRevision": "api-00076-vas",
+  "ruleRelease": {
+    "name": "projects/crmdoceria-9959e/releases/cloud.firestore",
+    "rulesetName": "projects/crmdoceria-9959e/rulesets/19bc50df-ace4-453f-8bce-fae33bce3bcf",
+    "updateTime": "2026-11-04T19:07:46.979693Z"
+  },
+  "hosting": {
+    "version": "sites/crmdoceria-9959e/versions/31367e9a47a33ea9",
+    "release": "sites/crmdoceria-9959e/channels/live/releases/1794176675899000",
+    "releaseTime": "2026-11-08T22:24:35.899Z"
+  },
+  "readOnly": true
+}

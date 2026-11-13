@@ -1,0 +1,33 @@
+{
+  "at": "2026-11-12T03:00:25.722Z",
+  "project": "crmdoceria-9959e",
+  "functionCount": 146,
+  "api": {
+    "name": "projects/crmdoceria-9959e/locations/us-central1/functions/api",
+    "state": "ACTIVE",
+    "updateTime": "2026-11-12T01:30:33.406420185Z",
+    "uri": "https://api-6i65vyioiq-uc.a.run.app",
+    "revision": "api-00077-qux",
+    "environmentFingerprint": "3c955b1edebd259e21639c531fac493e5b047b797cbc0bdb7698a3d5af5265c8",
+    "secretReferencesFingerprint": "9b3b8a6443b4711586bdf9cc9c157269d5640e817bc3c7807c9a57f8d94456ac",
+    "runtime": "nodejs22"
+  },
+  "unrelatedFunctionsUnchanged": 145,
+  "credentialsAndEnvironmentUnchanged": true,
+  "ruleRelease": {
+    "name": "projects/crmdoceria-9959e/releases/cloud.firestore",
+    "rulesetName": "projects/crmdoceria-9959e/rulesets/eaa8ed3d-0434-41c7-bc5b-587530841fbb",
+    "updateTime": "2026-11-12T01:34:09.021915Z",
+    "sourceSha256Normalized": "70a85b55a6ba0cbe35b62b00f60a86990c4f34cadf5d050025a822bafcf15a29",
+    "matchesTestedRules": true
+  },
+  "hosting": {
+    "version": "sites/crmdoceria-9959e/versions/186b142d3703e536",
+    "release": "sites/crmdoceria-9959e/channels/live/releases/1794447122114000",
+    "releaseTime": "2026-11-12T01:32:02.114Z"
+  },
+  "commit": false,
+  "push": false,
+  "prodAccess": false,
+  "businessDataMutations": false
+}

@@ -1,5 +1,35 @@
 # Fase 10 — preparação da consolidação C16
 
+## 13/11/2026 — revisão adiada expressamente pelo Dono
+
+Não instalar Python nem tentar contornar a política da máquina. Dono informará novo prompt; aguardar antes de continuar a revisão. Candidato v2, testes, aceites e scan existente preservados, sem cancelamento/reinício. Não repetir a pergunta sobre caminho Python. C15 PASS; C16 PENDENTE; Fase10=93,75%(15/16),Fase9=100%,global97,00%,Fase13=0%,PRODREADY:NÃO. O procedimento de recuperação descrito abaixo fica suspenso até nova orientação, sem aprovação implícita do gate.
+
+## 13/11/2026 — candidato consolidado; revisão completa ainda impedida
+
+**C01–C15 PASS preservados. C16 PENDENTE; não há aceite final nem Fase10=100%.** Astra Low executou a revisão documental das evidências:44 referências Markdown locais resolvidas, C15-E/G sustentados e aceites complementares de Clientes/recebimento/visitante preservados. Isso não substitui revisão de código, segurança ou integridade financeira. [Handoff da revisão](C16_ASTRA_REVIEW_HANDOFF.md).
+
+Candidato DEV HEAD-base `7e7d7b69`, branch `feature/infinitepay-customer-auth`,446 arquivos de código/testes/configuração sem dotenv/credenciais,42 arquivos de fonte no delta, congelado em [manifesto v2](evidence/preprod-final-20261113/candidate-manifest-v2.json). Digest `3bdff367c2a31154184de342384341bb9bd93f9331cd2dfeb91720ea5cd3332a`. V1 permanece preservado; única mudança de fonte v1→v2 é ajuste de teste, não runtime. Todos os arquivos de runtime do delta correspondem ao stage publicado; [61/61 arquivos Hosting conferidos novamente](evidence/preprod-final-20261113/hosting-reverification.json). Sem build/deploy novo, pois não mudou código executado pela aplicação.
+
+Regressão:655 React/65suítes e147 integrações únicas aprovados nesta retomada anterior, com falhas de runner retidas nos artefatos originais. Nova execução C16: [164/164 unidades Fase10](evidence/preprod-final-20261113/c16-phase10-units-final.json) e [34/34 públicos](evidence/preprod-final-20261113/c16-public-regression.json). A primeira execução das164 teve163PASS/1falha: VM do teste de recompra não carregava `invalidateCheckoutFreight` já existente no HTML. Corrigido apenas o teste para executar o helper real e verificar invalidação da cotação; preservadas asserções de rollback/ownership. Não confundir com correção da ressalva real do mapa. Mesmo teste sincronizado seletivamente no PROD local,24/24PASS; nenhum runtime ou dado remoto alterado. Não somar grupos sobrepostos.
+
+Revisão de segurança iniciada no mecanismo Codex Security, scan `3c42172e-5cf1-4802-bafc-c7944b95fa86`, preservado em preflight. Python do SDK Google bloqueado por política de grupo Windows; nenhum Python no PATH. Helper não iniciou, sem resultado estruturado/configuração a corrigir. Não alterar configuração persistente, contornar política, declarar revisão completa ou criar scan substituto. Solicitado caminho de um Python3 aprovado para retomar o mesmo scan. Revisão documental Astra Low é parcial, não PASS do gate completo.
+
+Pendências independentes: confirmação de ponto no mapa exigida3vezes (logística P1 aberta, não invalida C15); decisão Garavelo entregaNÃO/retiradaSIM registrada, sem alterar flags nesta etapa.38 ocorrências CRM sem loja confiável preservadas, distintas dos14 remanescentes C14 formalmente dispostos. Status cadastral informativo não é bloqueio de conta nem pendência financeira. [Equivalência com PROD local](evidence/preprod-final-20261113/candidate-equivalence.json):13 arquivos de runtime deste delta ainda exigem integração/reconciliação seletiva; fees/credenciais já equivalentes. Terminal Android/runtime fiscal/configuração/rollback PROD continuam gates posteriores, sem Firebase PROD acessado.
+
+**Próximo ponto exato:** disponibilizar intérprete Python3 aprovado, retomar preflight/revisão completa do candidato congelado, resolver achados, revisão antes de commit/push DEV conforme regra vigente, consolidar pacote versionado/publicado e então registrar C16. Não repetir SMS/claim/testes reais C15. Global97,00%;Fase9=100%;Fase10=93,75%(15/16);Fase13=0%;PRODREADY:NÃO. As seções datadas abaixo são históricas; a matriz e a sequência atualizadas ao final não autorizam repetir C15.
+
+## 13/11/2026 — C15 encerrado: primeiro vínculo Google e continuidade aprovados
+
+**C15 PASS; Fase10=93,75% (15/16). C16 permanece PENDENTE. Fase9=100%; global ponderado=97,00%; Fase13=0%; PROD READY:NÃO.** Titular aprovou1endereço/2pedidos/detalhes,refresh,logout/relogin Google sem novoSMS/claim,retornoMatriz e ausência de menus administrativos. Leitura posterior confirmou16pós-condições técnicas, mesmo Customer/20documentos/2pedidos/1endereço,owner Google/mappings corretos e única auditoria, sem duplicidade. E-mail/senha já PASS preservado. [Aceite consolidado do caso](evidence/phase10-c15-google-20261113/acceptance.json).
+
+A trilha preserva2solicitações SMS (10h04 expirada;11h38 solicitada/11h39 consumida). Titular confirmou a solicitação das11h38. O limite inicial era1; diferença registrada, sem autorização retroativa presumida e sem envio/claim por ferramenta. Não reenviar nem refazer vínculo: Customer agora proprietário. C16 não é fechado automaticamente; próximos gates são aceites complementares, consolidação/versionamento DEV e revisão aplicável. Sem novo runtime/build/deploy,commit/push ou acesso PROD para registrar o aceite. Estados anteriores abaixo são históricos.
+
+
+## 12/11/2026 — novos candidatos conferidos, sem vínculo executado
+
+Leitura autorizada do próprio cadastro do Dono confirmou vínculo Google já existente, sem elegibilidade de primeiro claim. Sete casos sem owner/identidade foram encontrados; dois têm2pedidos e1endereço. Nomes e telefones mascarados somente para escolha privada, sem dados no Git. [Escopo e autorização ainda necessária](PHASE10_C15_SELECTION_SCOPE.md). Nenhum SMS/claim/allowlist alterado. C15-E/acessoGoogleexistente preservados; C15-Gprimeiroclaim/C16 pendentes. Fase1087,50%; global97,00%; Fase9100%; Fase130%.
+
+
 ## Situação em 07/11/2026
 
 Atualização após login humano no perfil Chrome da Ana: **acesso Google existente PASS**, com logout/refresh/relogin e dados preservados em [8 verificações posteriores](evidence/phase10-google-8602-data-preservation-dev.json). [UI e limites](evidence/phase10-google-8602-browser-dev.json). Primeiro claim Google de legado sem owner não foi demonstrado, sem novo SMS/claim. Abertura antecipada de detalhe voltou à lista uma vez; sessão estabilizada e pós-relogin passaram, causa não estabelecida/observação preservada. C15/C16 não encerrados, percentuais mantidos. Não repetir o login ou pedir de novo os aceites UI já concluídos.
@@ -25,13 +55,13 @@ A definição completa e o histórico estão em [PHASE10_LEGACY_RECOVERY_AUDIT.m
 | C07 — canônico e aliases revisados | PASS preservado | Caso C02, resolução de IDs, consolidação e referências originais preservadas |
 | C08 — histórico sem reescrita financeira | PASS preservado | Histórico canônico emulado; 2 pedidos C15-E com versões/referências inalteradas |
 | C09 — histórico privado autorizado | PASS preservado | `customer-orders.js`, campos alternativos concordantes, caminhos root revisados e limites defensivos |
-| C10 — claim após identidade forte e prova específica | PASS preservado na implementação | Claim emulado; pós-condições reais e-mail/senha registradas, C15 geral ainda pendente |
+| C10 — claim após identidade forte e prova específica | PASS preservado | Claim emulado e pós-condições reais e-mail/senha/primeiro Google com aceites completos C15; não repetir vínculo |
 | C11 — propósitos, expiração e consumo de prova | PASS preservado na implementação | Claim/endereço/grants segregados; sessão temporária homologada separadamente |
 | C12 — migração e rollback controlados | PASS preservado | Ferramentas/dry-run/CAS/backup/rollback e testes existentes; nenhuma migração nova autorizada |
 | C13 — processo de conflitos manuais | PASS preservado | [LEGACY_MANUAL_REVIEW.md](LEGACY_MANUAL_REVIEW.md), revisão e 23 testes emulados registrados na auditoria |
 | C14 — disposição dos remanescentes | PASS preservado por decisão formal | [Decisão dos 14 caseIds](evidence/phase10-remnants-owner-decision.json): preservar sem atribuição até prova futura; não equivale a recuperar/apagar registros |
-| C15 — claim real Google e e-mail/senha | **PENDENTE** | E-mail/senha integralmente PASS; acesso Google existente e preservação PASS; primeiro claim Google não demonstrado |
-| C16 — aceite consolidado do estado publicado | **PENDENTE** | Matriz preparada; depende de C15 integral e aceite consolidado, sem crédito por preparação |
+| C15 — claim real Google e e-mail/senha | **PASS** | C15-E preservado; primeiro claim Google real e continuidade aprovados em13/11. [Aceite](evidence/phase10-c15-google-20261113/acceptance.json) |
+| C16 — aceite consolidado do estado publicado | **PENDENTE** | C15 encerrado; candidato/evidências consolidados, revisão completa ainda impedida no preflight e versionamento/aceite final pendentes |
 
 ## Evidências complementares e limites
 
@@ -43,10 +73,10 @@ A definição completa e o histórico estão em [PHASE10_LEGACY_RECOVERY_AUDIT.m
 
 ## Sequência mínima restante
 
-1. **CONCLUÍDO:** confirmação do titular C15-E, “PASS demais checks”, incluindo 1 endereço/2 pedidos, refresh e logout/relogin sem novo claim/SMS. Retorno já PASS; não repetir.
-2. **ACESSO EXISTENTE CONCLUÍDO:** caso Google final 8602, conta legítima já proprietária. Login humano, histórico/endereço, refresh/logout/relogin/retorno e preservação do Customer/pedido PASS. Não reproduz primeira aquisição de ownership. Dono pediu concentrar testes nesse caso; não remover owner ou fabricar outro Customer para satisfazer o critério. Delimitar eventual proposta de reverificação do próprio owner, distinguindo-a da primeira recuperação; lacuna permanece explícita até aceite formal compatível com a rubrica.
-3. Preparar escopo exato e obter autorização específica para eventual destinatário/limite de SMS e vínculo Google. Autorização de deploy DEV não cobre essas ações. Credenciais e código somente na aplicação.
-4. Homologar C15-G com baseline/pós-condições de Customer original, UID, histórico/endereço, ausência de duplicidade, auditoria e acesso persistente; registrar resultado humano e técnico sem dados pessoais desnecessários. Falha não autoriza reenvio automático.
-5. Fechar C15 somente após os dois cenários aceitos. Consolidar C16: conferir critérios e evidências no estado final; executar regressão pertinente se houver novo delta/falha, registrar os limites e obter aceite consolidado. Não repetir suítes/build/deploy sem necessidade.
+1. **CONCLUÍDO:** C15-E aceito integralmente; preservar endereço/2pedidos/Customer, refresh/relogin/retorno sem novoSMS/claim.
+2. **CONCLUÍDO:** acesso Google já proprietário e primeiro vínculo Google legítimo independente, ambos com evidências próprias. C15-G do titular selecionado encerrou C15 em13/11; não remover owner, pedir novo telefone, SMS ou fabricar cenário.
+3. **CONCLUÍDO:** aceites complementares de Clientes por loja, conferência do recebimento e opções/privacidade do visitante; ressalva do mapa permanece logística independente, sem reabrir ownership.
+4. **EM ANDAMENTO:** candidato congelado/evidências/testes/publicação conferidos; retomar preflight e revisão Astra Low completa após disponibilizar Python3 aprovado. Revisão documental parcial não libera o gate.
+5. Resolver achados efetivos, concluir revisão prevista antes de commit/push DEV, verificar pacote versionado versus publicado e registrar aceite consolidado C16. Deploy DEV somente se houver novo runtime; não repetir testes reais aprovados ou alterar percentuais por preparação.
 
 C15 completo permite Fase 10 = 93,75% (15/16); C16 aceito permite 100%. Isso **não repondera** o global formal nem autoriza PROD. Configuração/backup/rollback efetivos de PROD e autorização explícita do proprietário continuam gates futuros, sem acesso nesta missão.

@@ -8,6 +8,8 @@ const {canReadPayment}=require('./payment-return-auth');
 const {createFinancialEvents}=require('./payment-financial-events');
 const {createPaymentVerification}=require('./payment-verification');
 const {assertOnlinePaymentAccess}=require('./checkout-payment-access');
+const {card1xSnapshot}=require('./card-1x-fee-policy');
+const {createCardFeeCredentials}=require('./card-1x-fee-credentials');
 function paymentError(message, httpStatus = 409) {return Object.assign(new Error(message), {httpStatus});}
 const cents = value => {const n = Math.round(Number(value)*100);if (!Number.isSafeInteger(n) || n <= 0) throw paymentError('Valor de pagamento inválido.',400);return n;};
 function assertPaid(result, expectedAmount) {
@@ -15,6 +17,7 @@ function assertPaid(result, expectedAmount) {
   if (!Number.isSafeInteger(result.amount) || result.amount !== expectedAmount || !Number.isSafeInteger(result.paid_amount) || result.paid_amount < expectedAmount) throw paymentError('Valor recebido não corresponde ao pedido.');
   if (!['pix','credit_card'].includes(result.capture_method)) throw paymentError('Forma de pagamento não reconhecida.');
 }
+function validateCheckoutUrl(raw){const url=new URL(raw);if(url.protocol!=='https:'||url.username||url.password||(url.port&&url.port!=='443')||!(url.hostname==='infinitepay.io'||url.hostname.endsWith('.infinitepay.io')||url.hostname==='checkout.infinitepay.com.br'))throw paymentError('Link de pagamento inválido.',502);return url.href;}
 function orderIdentity(payment) {
   const path = /^lojas\/([^/]+)\/pedidos\/([^/]+)$/.exec(payment.orderPath || '');
   // Older records can derive identity from their canonical path, never another store.
@@ -29,14 +32,14 @@ class InfinitePayProvider {
     this.fetch = fetchImpl;
     this.logError = logError;
   }
-  async post(path, body) {
+  async post(path, body,credentials) {
     let response;
     const record = details => {
       // Logging failures must not retry the request or expose upstream exceptions.
       try {this.logError(diagnostic({path, body, response, ...details}));} catch (_) { /* controlled error below */ }
     };
     try {
-      response = await this.fetch(`https://api.checkout.infinitepay.io/${path}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
+      response = await this.fetch(`https://api.checkout.infinitepay.io/${path}`, {method:'POST',redirect:'error',headers:{'Content-Type':'application/json',...(path==='links'&&credentials?.apiKey?{'X-Api-Key':credentials.apiKey}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
     } catch (error) {
       record({kind:'network_error',error});
       throw paymentError('A InfinitePay não respondeu. Consulte o pedido antes de tentar novamente.',path === 'links' ? 502 : 500);
@@ -46,17 +49,17 @@ class InfinitePayProvider {
       let error;
       try {sample = await readErrorBody(response);} catch (readError) {error = readError;}
       record({kind:'http_error',sample,error});
-      throw paymentError('A InfinitePay não respondeu. Consulte o pedido antes de tentar novamente.',502);
+      throw Object.assign(paymentError('A InfinitePay não respondeu. Consulte o pedido antes de tentar novamente.',502),{providerStatus:response.status});
     }
     try {return await response.json();} catch (error) {
       record({kind:'invalid_response',error});
       throw paymentError('A InfinitePay não respondeu. Consulte o pedido antes de tentar novamente.',path === 'links' ? 502 : 500);
     }
   }
-  create(payload) {return this.post('links', payload);}
+  create(payload,credentials) {return this.post('links', payload,credentials);}
   check(payload) {return this.post('payment_check',payload);}
 }
-function createPaymentService({db, admin, provider = new InfinitePayProvider(), now = Date.now,
+function createPaymentService({db, admin, provider = new InfinitePayProvider(), now = Date.now,resolveCardFeeCredentials=createCardFeeCredentials({projectId:db.projectId}),
   auditSignal = entry => logger.warn('Checkout payment signal held', entry)}) {
   const payments = db.collection('checkoutPayments');
   const timestamp = () => FieldValue.serverTimestamp();
@@ -70,7 +73,10 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
     const redirect = new URL(c.redirectUrl);
     const webhook = new URL(c.webhookUrl);
     if (redirect.protocol !== 'https:' || webhook.protocol !== 'https:') throw paymentError('Configuração de pagamento inválida.',503);
-    return {handle:c.handle,redirectUrl:redirect.href,webhookUrl:webhook.href,sendCustomerData:c.sendCustomerData!==false,sendDeliveryAddress:c.sendDeliveryAddress!==false};
+    let card1xFeePolicySnapshot;
+    try{card1xFeePolicySnapshot=card1xSnapshot(c,store,db.projectId);}catch{throw paymentError('A política de taxas desta loja exige configuração segura e compatível com o parcelamento vigente.',503);}
+    return {handle:c.handle,redirectUrl:redirect.href,webhookUrl:webhook.href,sendCustomerData:c.sendCustomerData!==false,sendDeliveryAddress:c.sendDeliveryAddress!==false,
+      ...(card1xFeePolicySnapshot?{card1xFeePolicySnapshot}:{})};
   }
   async function start(paymentId, ownerUid, checkoutProof=null) {
     const ref=payments.doc(paymentId);
@@ -106,21 +112,27 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
       return {...p,webhookEvents};
     });
     if(payment.checkoutUrl || payment.payment_status === 'PAID') return {id:payment.orderId, payment_status:payment.payment_status,checkoutUrl:payment.checkoutUrl || null,paymentId};
+    let providerCalled=false;
     try {
+      const fee=payment.card1xFeePolicySnapshot?await resolveCardFeeCredentials(payment.card1xFeePolicySnapshot,{storeId:payment.storeId,handle:payment.handle}):null;
+      providerCalled=true;
       const data=await provider.create({handle:payment.handle,order_nsu:paymentId,
         items:[{quantity:1,price:payment.amount,description:`Pedido ${payment.orderId} - ${payment.storeId}`}],
         ...(payment.customer ? {customer:payment.customer} : {}), ...(payment.address ? {address:payment.address} : {}),
-        redirect_url:payment.redirectUrl,webhook:{url:payment.webhookUrl,events:payment.webhookEvents}});
-      const url=new URL(data.url);
-      if(url.protocol!=='https:' || url.username || url.password || (url.port && url.port!=='443') ||
-        !(url.hostname==='infinitepay.io' || url.hostname.endsWith('.infinitepay.io') || url.hostname==='checkout.infinitepay.com.br')) throw paymentError('Link de pagamento inválido.',502);
+        redirect_url:payment.redirectUrl,webhook:{url:payment.webhookUrl,events:payment.webhookEvents},...(fee?{options:fee.options}:{})},fee?{apiKey:fee.apiKey}:undefined);
+      const url=new URL(validateCheckoutUrl(data.url));
       await db.runTransaction(async tx => {
         const latest=(await tx.get(ref)).data();
         if(latest.payment_status!=='PENDING') throw paymentError('Reserva encerrada. Consulte a loja antes de pagar.');
-        tx.update(ref,{checkoutUrl:url.href,linkState:'READY',updatedAt:timestamp()});
+        tx.update(ref,{checkoutUrl:url.href,linkState:'READY',updatedAt:timestamp(),...(fee?{card1xFeeApplied:{payer:payment.card1xFeePolicySnapshot.payer,assuredInstallments:fee.options.assured_installments,baselineAssuredInstallments:payment.card1xFeePolicySnapshot.baselineAssuredInstallments,appliedAt:timestamp()}}:{})});
       });
       return {id:payment.orderId,payment_status:'PENDING',checkoutUrl:url.href,paymentId};
     } catch(e) {
+      if(!providerCalled){
+        // No HTTP creation was attempted. A fixed credential can safely retry this same order.
+        await db.runTransaction(async tx=>{const latest=(await tx.get(ref)).data();if(latest?.linkState==='CREATING'&&!latest.checkoutUrl&&latest.payment_status==='PENDING')tx.update(ref,{linkState:FieldValue.delete(),updatedAt:timestamp()});});
+        throw paymentError('A configuração segura de taxas desta loja está pendente. Nenhuma cobrança foi iniciada.',503);
+      }
       // Do not repeat an ambiguous creation: a checkout may already exist at the provider.
       await ref.update({linkState:'RECONCILIATION_REQUIRED',updatedAt:timestamp()});throw e;
     }
@@ -250,4 +262,4 @@ function createPaymentService({db, admin, provider = new InfinitePayProvider(), 
   }
   return {config,start,reconcile,status,expire,expireDue,syncOrderStatus,get financialEvents(){return getFinancialEvents();}};
 }
-module.exports={InfinitePayProvider,createPaymentService,assertPaid,cents,paymentError};
+module.exports={InfinitePayProvider,createPaymentService,assertPaid,cents,paymentError,validateCheckoutUrl};

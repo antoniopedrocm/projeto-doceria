@@ -1,0 +1,31 @@
+{
+  "area": "dev",
+  "errors": 0,
+  "warnings": 0,
+  "files": [
+    {
+      "path": "crm\\src\\payments\\InfinitePaySettings.js",
+      "messages": []
+    },
+    {
+      "path": "crm\\src\\payments\\InfinitePaySettings.test.js",
+      "messages": []
+    },
+    {
+      "path": "functions\\payment-settings.js",
+      "messages": []
+    },
+    {
+      "path": "functions\\card-1x-fee-policy.js",
+      "messages": []
+    },
+    {
+      "path": "functions\\card-1x-fee-policy.test.js",
+      "messages": []
+    },
+    {
+      "path": "functions\\card-1x-fee-settings-emulator.test.js",
+      "messages": []
+    }
+  ]
+}

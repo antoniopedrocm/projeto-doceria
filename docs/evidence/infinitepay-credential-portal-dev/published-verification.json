@@ -1,0 +1,61 @@
+{
+  "at": "2026-11-12T20:49:23.241Z",
+  "project": "crmdoceria-9959e",
+  "functionsListed": 136,
+  "targets": [
+    {
+      "name": "paymentCredentialSave",
+      "state": "ACTIVE",
+      "revision": "paymentcredentialsave-00001-tef",
+      "serviceAccount": "payment-credentials@crmdoceria-9959e.iam.gserviceaccount.com"
+    },
+    {
+      "name": "paymentSettingsGet",
+      "state": "ACTIVE",
+      "revision": "paymentsettingsget-00003-suz",
+      "serviceAccount": "389481198252-compute@developer.gserviceaccount.com"
+    },
+    {
+      "name": "paymentCredentialActivate",
+      "state": "ACTIVE",
+      "revision": "paymentcredentialactivate-00001-rav",
+      "serviceAccount": "payment-credentials@crmdoceria-9959e.iam.gserviceaccount.com"
+    },
+    {
+      "name": "paymentSettingsSave",
+      "state": "ACTIVE",
+      "revision": "paymentsettingssave-00003-faq",
+      "serviceAccount": "389481198252-compute@developer.gserviceaccount.com"
+    },
+    {
+      "name": "api",
+      "state": "ACTIVE",
+      "revision": "api-00079-xid",
+      "serviceAccount": "389481198252-compute@developer.gserviceaccount.com"
+    }
+  ],
+  "unrelatedFunctionsUnchanged": 131,
+  "rulesUnchanged": true,
+  "ruleset": "projects/crmdoceria-9959e/rulesets/eaa8ed3d-0434-41c7-bc5b-587530841fbb",
+  "unauth": [
+    {
+      "name": "paymentCredentialSave",
+      "httpStatus": 401,
+      "error": "UNAUTHENTICATED"
+    },
+    {
+      "name": "paymentCredentialActivate",
+      "httpStatus": 401,
+      "error": "UNAUTHENTICATED"
+    }
+  ],
+  "featureGate": {
+    "enabled": true,
+    "controlsVersion": 1
+  },
+  "hosting": "sites/crmdoceria-9959e/versions/441974b6f414a567",
+  "realCredentialsValidated": false,
+  "secretsCreatedByAgent": 0,
+  "realPayments": 0,
+  "prodAccess": false
+}

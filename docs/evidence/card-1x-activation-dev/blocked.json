@@ -1,0 +1,43 @@
+{
+  "at": "2026-11-12T19:53:42.624Z",
+  "project": "crmdoceria-9959e",
+  "state": "BLOCKED_CREDENTIAL_RESOURCE_NOT_LOCATED",
+  "expectedSecrets": [
+    {
+      "storeId": "ana-guimaraes-doceria-matriz",
+      "secretName": "projects/crmdoceria-9959e/secrets/infinitepay-checkout-0ac34f0f9345e914f3f3",
+      "status": 404
+    },
+    {
+      "storeId": "ana-guimaraes-doceria-garavelo",
+      "secretName": "projects/crmdoceria-9959e/secrets/infinitepay-checkout-a1cccade83b8102c97d1",
+      "status": 404
+    }
+  ],
+  "metadataInventoryStatus": 200,
+  "totalSecretMetadata": 18,
+  "paymentCandidates": [],
+  "secretManagerValuesRead": false,
+  "providerLinksCreated": 0,
+  "payments": 0,
+  "refunds": 0,
+  "storeWrites": 0,
+  "credentialOrIamWrites": 0,
+  "bindingEnabled": false,
+  "newDeploy": false,
+  "newTests": false,
+  "reason": "No runtime change; credential resources missing before provider validation",
+  "priorTestsPreserved": {
+    "unitPerWorkspace": 30,
+    "uiPerWorkspace": 7,
+    "integrationPerWorkspace": 70
+  },
+  "userQuestion": "Exact Secret names, version numbers and Project ID; never key values",
+  "prodServiceAccess": false,
+  "formal": {
+    "phase9": 100,
+    "phase10": 87.5,
+    "global": 97,
+    "phase13": 0
+  }
+}
