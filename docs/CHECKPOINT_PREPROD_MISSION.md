@@ -1,5 +1,15 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## 13/11/2026 — integridade DEV aprovada; gate GitHub Apps concluído por atestação do Dono
+
+BackupDEV `DEV-completo-20261113.7z` criado com629.650.646bytes/AES256/cabeçalhoscriptografados, SHA256 `1351c2cb49a3aaebb91cdbaebc98c6ebed804c1fa8ce0fb6c336144c49badee7`. Primeiro teste retornou2 ao abrir conteúdo criptografado; registro preservado, sem concluir corrupção. Reteste interativo `7zG t <arquivo>` sem argumento vazio `-p` retornou **0/PASS** e titular confirmou “não há erros”. Mesmo arquivo/hash, sem recriar ou ler senha. Detalhes locais emcredenciais/archive-integrity.json e integrity-attempts.json; arquivos de credenciais/backup não entram noGit. Restauração na novamáquina aindaPENDENTE; não formatar.
+
+Dono confirmou manualmente InstalledGitHubApps: exclusivamenteChatGPTCodexConnector comacessoaoPROD;Vercelremovido;GoogleCloudBuild/Firebase nãoinstalados. [Atestação](evidence/machine-migration-20261113/github-apps-owner-attestation.json). CLI reconfirmou dois workflowsdisabled_manually/filas0/hooks0/deployments0. Não há outro publicador identificado nas fontes consultadas; **gate para commit/pushPROD satisfeito** após revisão de arquivos/commits. O403 anterior continua histórico daAPI, não pendência humana. Não foi necessário ou autorizado acessarFirebasePROD. CIlocal-only preservado/7testesPASS.
+
+DEVcandidato7d16f676+documentaçãob2fe7cd4 jáconfirmados noGitHub. Próximo: versionar/enviar candidatoPRODsemforce após revisão; atualizar manifestoPROD para incluir esses commits e criar/testar backupPROD comsenha somente no7-Zip. Ferramenta de teste ajustada para solicitar senha nativamente; prova da primeira falha permanece. Novos scripts/metadados não sensíveis serão preservados como complemento de migração fora doGit; não invalidam o arquivoDEVvalidado comsnapshotanterior.
+
+C15PASS;C16/Astra completosreservadosparanovamáquina;Fase9=100%;Fase10=93,75%;global97%;Fase13=0%;PRODREADY:NÃO. SemPythoninstalado, pagamentos/SMS/claims/dadosremotos ouFirebasePROD.
+
 ## 13/11/2026 — candidato DEV versionado e enviado; criptografia/validação humana pendentes
 
 **DEV commit/push confirmado `7d16f67683cd6a577baca73a69021e6d6490d773`**, branch `feature/infinitepay-customer-auth`, remoto igual à referência local na conferência.159arquivos públicos revisados, sem backups/dotenvreal/certificados/chaves; `.env` comflagdebuild retirado doGit e mantido local. Patternreview e inspeção de campos identificaram apenasfixtures sintéticas e nomes públicos de lojas. O commit é **candidato**, não aceiteC16 ou produção; novo commit apenas documental pode sucedê-lo sem mudar seu runtime. Nenhum deployDEV necessário: fontes executáveis já publicadas preservadas.

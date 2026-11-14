@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "recordedOn": "2026-11-13",
+  "repository": "antoniopedrocm/projeto-doceria-Multilojas",
+  "source": "Explicit owner's manual inspection in GitHub Settings > Applications > Installed GitHub Apps; not a successful CLI installation listing",
+  "installedApps": [{"name": "ChatGPT Codex Connector", "repositoryAccess": true}],
+  "removedApps": [{"name": "Vercel", "repositoryAccessByInstallation": false}],
+  "notInstalled": ["Google Cloud Build", "Firebase"],
+  "ownerConfirmedOnlyListedAppInstalled": true,
+  "cliInstallationListingPreviouslyReturned": 403,
+  "cliEvidence": {"publishingWorkflows": "both disabled_manually", "activeRuns": 0, "repositoryHooks": 0, "deployments": 0},
+  "decision": "No other automatic publisher identified from inspected repository sources and owner's installed-app inspection; production Git push gate satisfied after credential/staged/commit checks",
+  "authorizesFirebaseProdAccessOrDeploy": false,
+  "authorizesPaymentSmsClaimOrRemoteDataMutation": false,
+  "workflowSources": "local replacement is CI-only, no Firebase action, deployment command or secret usage",
+  "scopeLimit": "No Firebase PROD or Cloud Build project access performed; installed-app evidence is the owner's explicit attestation"
+}
