@@ -1,5 +1,15 @@
 # Checkpoint — missão de fechamento pré-PROD DEV
 
+## 13/11/2026 — GitHub DEV e PROD sincronizados como candidatos; preparar snapshot PROD pós-push
+
+PushDEVconfirmado `d23fd8028bf9db8c01c778bb5925b2829e67076c` (branchfeature/infinitepay-customer-auth). PushPRODconfirmado `153bd8514aa4dfd4dc3a8b48217f3c809f2064c9` namain, avanço normal7751ab46→153bd851, semforce. Os commits documentais posteriores podem avançar essesHEADs sem alterar o candidato funcional.88arquivos do commitPROD revisados: nenhumcredenciais/backup/certificado/token/dotenvreal, `.env`debuild mantido local e retirado doGit. Relatórios completos ficam somente emcredenciais/; não publicar seus arquivos. CodeCI e proteçãoGit versionados; fonte é **candidata**, não homologaçãoC16/PROD.
+
+Pós-pushGitHubPROD: workflows274898027/274898028 agora “Build and test…—no deploy”, ambos **disabled_manually**; total67execuções/nenhumaativa, deployments0. Não houve publicação automática identificada. Nenhum comando ou acessoFirebasePROD executado. Atestação deAppsdoDono preservada.
+
+DEVbackupPASS629.650.646bytes/hash1351c2cb…badee7 preservado, sem nova criptografia/vínculo/teste real. Restauração novaPC pendente. Próximo: atualizar apenas manifestoPROD para conterGitcommit/push e criar/testarPROD comsenha doDono no7-Zip. Ferramentas/metadados posteriores ao snapshotDEV acompanharãocredenciais/ como complemento não sensível, sem chaves/senhas. Não sobrescrever o manifestoDEV validado, nem o arquivo7z original.
+
+FonteProd651React/161integrações/build/lint0erros77avisos/diff-checkPASS; proteçãoCI7/7PASS. C15PASS,C16/Astrana novaPCPENDENTES,Fase9=100%,Fase10=93,75%,global97%,Fase13=0%,PRODREADY:NÃO. SemPythonna máquinaatual. Nãoformatarantes de validar restauração.
+
 ## 13/11/2026 — integridade DEV aprovada; gate GitHub Apps concluído por atestação do Dono
 
 BackupDEV `DEV-completo-20261113.7z` criado com629.650.646bytes/AES256/cabeçalhoscriptografados, SHA256 `1351c2cb49a3aaebb91cdbaebc98c6ebed804c1fa8ce0fb6c336144c49badee7`. Primeiro teste retornou2 ao abrir conteúdo criptografado; registro preservado, sem concluir corrupção. Reteste interativo `7zG t <arquivo>` sem argumento vazio `-p` retornou **0/PASS** e titular confirmou “não há erros”. Mesmo arquivo/hash, sem recriar ou ler senha. Detalhes locais emcredenciais/archive-integrity.json e integrity-attempts.json; arquivos de credenciais/backup não entram noGit. Restauração na novamáquina aindaPENDENTE; não formatar.
