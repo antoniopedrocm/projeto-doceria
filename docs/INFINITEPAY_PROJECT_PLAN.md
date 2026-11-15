@@ -1,5 +1,10 @@
 # Autenticação de clientes e pagamento online
 
+## 15/11/2026 — migração segura da máquina e C16
+
+C15-E/G PASS preservados; C16 aguarda auditoria completa e aceite consolidado na nova máquina com Python aprovado. Não instalar Python nem repetir vínculos/SMS nesta máquina. DEV e PROD local foram integrados, testados e enviados aos respectivos GitHubs como candidatos conforme autorização posterior; a antiga restrição de push somente na janela final foi substituída para esta missão. Firebase PROD continua bloqueado inclusive para leitura. Os dois backups criptografados passaram no teste local; restauração na nova máquina ainda é requisito antes de formatar. [Estado e roteiro](MACHINE_MIGRATION_STATUS_20261115.md). Fase 9=100%; Fase 10=93,75% (15/16); global formal=97,00%; Fase 13=0%; PROD READY:NÃO.
+
+
 ## 13/11/2026 — consolidação C16 e revisão em recuperação
 
 C15-E/G PASS preservados. [C16 consolidado](PHASE10_C16_CONSOLIDATION.md): candidato congelado,164 unidades/34 públicos finais PASS,655React e147integrações anteriores consolidados,61/61arquivos DEV publicados revalidados. Astra Low documental concluída; revisão completa ainda impedida no preflight pela indisponibilidade de Python3 aprovado, sem modificar política Windows. [Handoff](C16_ASTRA_REVIEW_HANDOFF.md). Não repetir vínculo ou elevar porcentagem por preparação. **C16 PENDENTE; Fase10=93,75%(15/16); Fase9=100%; global97,00%; Fase13=0%; PRODREADY:NÃO.** Sem runtime/deploy novo, commit/push ou FirebasePROD. Sequência: recuperar preflight/revisão, resolver achados, revisão/versionamento DEV, fechar C16, integrar seletivamente PROD local e concluir seus gates antes da janela final.

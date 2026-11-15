@@ -1,5 +1,10 @@
 # Migração de máquina — DEV e PROD local
 
+## Atualização verificada em 15/11/2026
+
+Os backups DEV e PROD passaram no teste de integridade do 7-Zip (retorno 0); originais e hashes preservados. A restauração na nova máquina continua PENDENTE. Seguir primeiro [estado atualizado e procedimento de transferência](MACHINE_MIGRATION_STATUS_20261115.md); registros de backup PROD pendente abaixo são históricos. Não instalar Python nesta máquina, não formatar e não acessar Firebase PROD. C16 pendente; Fase 10=93,75%; global formal=97,00%.
+
+
 ## Atualização — backup DEV e publicação automática
 
 DEV7z629.650.646bytes, SHA256 `1351c2cb49a3aaebb91cdbaebc98c6ebed804c1fa8ce0fb6c336144c49badee7`, teste de integridade **PASS** com retorno0 e confirmação do titular. Primeiro erro de abertura preservado; reteste usa `7zG t <arquivo>` **sem `-p` vazio**, senha digitada exclusivamente noaplicativo. Não é preciso recriarDEV; preservar o arquivo e os originais. BackupPROD e restauração na novamáquina ainda precisam de comprovação. Metadados/ferramentas de continuidade posteriores ao snapshotDEV devem acompanhar os diretórioscredenciais como complemento, semchaves/senhas/sessões.
