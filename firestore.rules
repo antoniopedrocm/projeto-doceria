@@ -1,6 +1,38 @@
 rules_version = '2';
 service cloud.firestore {
 match /databases/{database}/documents {
+// Financial receipts and their provenance are server-owned, for legacy and store orders.
+function receiptServerFields() {
+  return ['manualPaymentReceipt', 'adminPaymentAdjustment', 'paidAt', 'adminRevision',
+    'financialOperationId', 'paymentMethodResolvedAt', 'transactionNsu', 'slug',
+    'captureMethod', 'refundedAt', 'refundAmount', 'reservation'];
+}
+function safeOfflineOrderCreation() {
+  let data = request.resource.data;
+  return !data.keys().hasAny(receiptServerFields())
+    && !data.keys().hasAny(['paymentId', 'payment_status', 'order_status'])
+    && data.get('paymentStatus', 'PENDING') == 'PENDING'
+    && data.get('statusPagamento', 'PENDING') == 'PENDING'
+    && data.get('paymentMode', 'AGREED_LATER') == 'AGREED_LATER'
+    && data.get('paymentMethodSource', 'crm/manual') == 'crm/manual';
+}
+function orderReceiptProtected() {
+  return resource.data.keys().hasAny(['manualPaymentReceipt', 'adminPaymentAdjustment', 'paymentId'])
+    || resource.data.get('paymentStatus', '') == 'PAID'
+    || resource.data.get('payment_status', '') == 'PAID'
+    || resource.data.get('statusPagamento', '') == 'PAID';
+}
+function safeOrderFinancialUpdate() {
+  let changed = request.resource.data.diff(resource.data).affectedKeys();
+  return !changed.hasAny(receiptServerFields())
+    && !changed.hasAny(['paymentId', 'payment_status', 'paymentStatus', 'statusPagamento',
+      'order_status', 'paymentMode', 'paymentMethod', 'fiscalPaymentCode',
+      'paymentMethodSource', 'requiresReview', 'ownerUid', 'checkoutIdentity'])
+    && (!orderReceiptProtected() || !changed.hasAny([
+      'total', 'subtotal', 'desconto', 'valorFrete', 'itens', 'cupom', 'formaPagamento',
+      'lojaId', 'storeId', 'clienteId', 'customerId', 'clientId']));
+}
+
 function isPublicRead() {
   return true;
 }
@@ -668,12 +700,12 @@ match /clientes/{clienteId} {
 // APENAS usuários autenticados podem ler, alterar ou deletar pedidos existentes.
 match /pedidos/{pedidoId} {
   // Public checkout is created by the validated API, never a direct SDK write.
-  allow create: if canStaffWrite() && canReadLegacyOrder(request.resource.data);
+  allow create: if canStaffWrite() && canReadLegacyOrder(request.resource.data) && safeOfflineOrderCreation();
   allow read: if canReadLegacyOrder(resource.data);
-  allow update: if canStaffWrite() && canReadLegacyOrder(resource.data)
+  allow update: if canStaffWrite() && canReadLegacyOrder(resource.data) && safeOrderFinancialUpdate()
     && request.resource.data.get('lojaId', null) == resource.data.get('lojaId', null)
     && request.resource.data.get('storeId', null) == resource.data.get('storeId', null);
-  allow delete: if canStaffWrite() && canReadLegacyOrder(resource.data);
+  allow delete: if canStaffWrite() && canReadLegacyOrder(resource.data) && !orderReceiptProtected();
 }
 
 // --- REGRAS PARA LOJAS (MULTILOJAS) ---
@@ -684,9 +716,9 @@ match /lojas/{lojaId} {
   // Online financial state and reservations are changed only by the backend.
   match /pedidos/{pedidoId} {
     allow read: if canReadStoreCollection(lojaId, 'pedidos');
-    allow create: if (canWriteStoreData(lojaId)) && storeAcceptsNewOrders(lojaId) && !request.resource.data.keys().hasAny(['paymentId', 'payment_status', 'order_status']);
-    allow delete: if (canWriteStoreData(lojaId)) && !resource.data.keys().hasAny(['paymentId']);
-    allow update: if (canWriteStoreData(lojaId)) && (
+    allow create: if (canWriteStoreData(lojaId)) && storeAcceptsNewOrders(lojaId) && safeOfflineOrderCreation();
+    allow delete: if (canWriteStoreData(lojaId)) && !orderReceiptProtected();
+    allow update: if (canWriteStoreData(lojaId)) && safeOrderFinancialUpdate() && (
       (!resource.data.keys().hasAny(['paymentId']) && !request.resource.data.keys().hasAny(['paymentId', 'payment_status', 'order_status']))
       || (resource.data.get('payment_status', '') == 'PAID'
         && resource.data.get('order_status', '') in ['CONFIRMED', 'PREPARING', 'READY', 'DELIVERED']
