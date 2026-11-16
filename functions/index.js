@@ -1,3 +1,4 @@
+const {assertCustomerRelationship,grantCustomerRelationship}=require('./customer-store-relationship');
 /**
  * Import function triggers from their respective sub-packages:
  *
@@ -1517,6 +1518,7 @@ const upsertClientDocument = async ({
   let storeRelationshipVerified=false;
   if (crmStaffUid) {await staffCustomerDirectory.detail(crmStaffUid,lojaId,targetRef.id);storeRelationshipVerified=true;}
   return db.runTransaction(async (transaction) => {
+    if(crmStaffUid)await assertCustomerRelationship({db,tx:transaction,storeId:lojaId,customerId:targetRef.id});
     const snap = await transaction.get(targetRef);
     if(!snap.exists) throw createHttpError(404,'Cliente não encontrado.');
     if(snap.data().canonicalStatus==='ALIAS') throw createHttpError(409,'Este cadastro foi consolidado. Reabra o cadastro principal.');
@@ -1651,12 +1653,13 @@ app.post("/clientes", async (req, res) => {
         return res.status(403).json({message:'Confirme novamente a identificação. Endereços exigem verificação do telefone.'});
       }
     }
-    const result=await customerRegistry.createOrGet({phone:telefone,data:{...newClient,lojasVisitadas:[lojaId],numeroDeCompras:0,valorEmCompras:0}});
+    if(staff && existing)await staffCustomerDirectory.detail((await checkoutToken(req)).uid,lojaId,existing.id);
+    const result=await customerRegistry.createOrGet({registrationStoreId:lojaId,phone:telefone,data:{...newClient,lojasVisitadas:[lojaId],numeroDeCompras:0,valorEmCompras:0}});
     const targetRef=getClientsCollection().doc(result.customerId);
-    if(staff && !result.created) await upsertClientDocument({targetRef,data:newClient,lojaId,purchaseCountIncrement,purchaseValueIncrement});
-    const savedSnap = await targetRef.get();
+    if(staff && !result.created) await upsertClientDocument({targetRef,data:newClient,lojaId,crmStaffUid:(await checkoutToken(req)).uid,purchaseCountIncrement,purchaseValueIncrement});
+
     const responseStatus = result.created ? 201 : 200;
-    res.status(responseStatus).json(staff?{id: targetRef.id, ...savedSnap.data()}:{id:targetRef.id});
+    res.status(responseStatus).json(staff?await staffCustomerDirectory.detail((await checkoutToken(req)).uid,lojaId,targetRef.id):{id:targetRef.id});
   } catch (error) {
     logger.error("Erro ao criar cliente:", error);
     res.status(Number(error.httpStatus)||500).json({message:error.httpStatus?error.message:"Não foi possível salvar o cliente."});
@@ -1693,7 +1696,7 @@ app.put("/clientes/:id", async (req, res) => {
     });
 
     const updatedSnap = await clientRef.get();
-    res.status(200).json({id, ...updatedSnap.data()});
+    res.status(200).json(staff?await staffCustomerDirectory.detail(token.uid,lojaId,id):{id, ...updatedSnap.data()});
   } catch (error) {
     logger.error("Erro ao atualizar cliente:", error);
     res.status(Number(error.httpStatus)||500).json({message:error.httpStatus?error.message:"Não foi possível atualizar o cliente."});
@@ -1708,6 +1711,7 @@ app.delete('/clientes/:id',async(req,res)=>{
     const id=await customerRegistry.resolveId(req.params.id);
     if(id!==req.params.id)throw createHttpError(409,'Abra o cadastro principal para continuar.');
     await db.runTransaction(async tx=>{
+      await assertCustomerRelationship({db,tx,storeId:lojaId,customerId:id});
       const ref=getClientsCollection().doc(id),customer=await tx.get(ref);
       if(!customer.exists)throw createHttpError(404,'Cliente não encontrado.');
       const data=customer.data(),phone=normalizeCustomerPhone(data.telefone || data.phone_number);
@@ -2147,6 +2151,7 @@ app.post("/checkout/confirmar", async (req, res) => {
           createdAt:FieldValue.serverTimestamp()
         });
       }
+      if(explicitPaymentMode && checkoutIdentity.mode===CHECKOUT_MODES.STRONG && clienteSnap?.exists)grantCustomerRelationship({db,tx:transaction,storeId:lojaId,customerId:clienteRef.id,source:'STRONG_CHECKOUT',evidenceRef:orderRef.path});
       transaction.set(orderRef, {
         lojaId,
         checkoutIdentity:{mode:checkoutIdentity.mode,...(checkoutIdentity.mode===CHECKOUT_MODES.PHONE && checkoutIdentity.legacyCustomerId ? {legacyClientId:checkoutIdentity.legacyCustomerId} : {})},

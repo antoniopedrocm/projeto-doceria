@@ -1,3 +1,4 @@
+const {ROOT,activeRelationship,key}=require('./customer-store-relationship');
 // Read-only CRM projection. No customer/order backfill, phone matching or identity writes.
 const {createHash} = require('node:crypto');
 const {getOrderCreatedAt} = require('./customer-orders');
@@ -43,7 +44,7 @@ function isCompletedAgreedPending(data) {
   return isCompletedOrder(data) && isAgreedLater(data) && !data.paymentId &&
     (payment == null || ['PENDING','PENDENTE','PENDING_SELECTION','UNKNOWN'].includes(String(payment).toUpperCase())) && validOrderTotal(data);
 }
-function buildCustomerDirectory({customers, aliases=[], orders, storeIds, general=false, includeRegistered=false}) {
+function buildCustomerDirectory({customers, aliases=[], orders, storeIds, general=false, includeRegistered=false, trustedRelationships=[]}) {
   const stores = new Set(storeIds), records = new Map(customers.map(c => [c.id,c.data]));
   const aliasIndex = new Map(aliases.map(a => [a.id,a.data]));
   const reviewed = new Map();
@@ -69,6 +70,8 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
     }
     return null;
   }
+  const trusted=new Map();
+  for(const row of trustedRelationships) {const d=row.data; if(row.id===key(d.storeId,d.customerId)&&activeRelationship(d,d.storeId,d.customerId)&&stores.has(d.storeId)){const set=trusted.get(d.customerId)||new Set();set.add(d.storeId);trusted.set(d.customerId,set);}}
   const clients = new Map(), metrics = new Map(), pendingMetrics = new Map(), issues = [];
   const issue = (order, reason) => {if (issues.length < 100) issues.push({orderPath:order.path,reason});};
   for (const record of customers) {
@@ -76,7 +79,8 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
     const profile=Object.fromEntries(profileFields.filter(k => Object.hasOwn(record.data,k)).map(k => [k,record.data[k]]));
     if (!profile.telefone) profile.telefone=record.data.normalizedPhone || record.data.phone_number || '';
     const registered=[...new Set([...(Array.isArray(record.data.lojasVisitadas)?record.data.lojasVisitadas:[]), record.data.lojaId,record.data.lojaAtual].filter(id=>stores.has(id)))];
-    clients.set(record.id,{...profile,nome:typeof profile.nome==='string' && profile.nome.trim()?profile.nome:'Cliente sem nome',id:record.id,lojasVisitadas:registered});
+    if(!general&&!trusted.has(record.id))continue;
+    clients.set(record.id,{...profile,nome:typeof profile.nome==='string' && profile.nome.trim()?profile.nome:'Cliente sem nome',id:record.id,lojasVisitadas:general?registered:[...(trusted.get(record.id)||[])]});
     metrics.set(record.id,new Map());
     pendingMetrics.set(record.id,new Map());
   }
@@ -95,6 +99,7 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
     const ids=references.map(canonical), customerId=ids[0];
     if (!customerId || ids.some(id=>id!==customerId)) {issue(order,'CUSTOMER_UNRESOLVED_OR_CONFLICTING');continue;}
     if (order.data.ownerUid && !customerOwnerUids(records.get(customerId)).includes(order.data.ownerUid)) {issue(order,'OWNER_CONFLICT');continue;}
+    if(!clients.has(customerId)||(!general&&!trusted.get(customerId)?.has(store)))continue;
     const key=store+'/'+order.path.split('/').pop();
     if (conflicts.has(key)) continue;
     const previous=unique.get(key);
@@ -162,8 +167,8 @@ function createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePe
     return {role,stores,allStores:role==='dono' && stores.length===0,permissions:sanitizePermissions(custom.permissions || profile.permissions,role)};
   };
 }
-function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>id,now=()=>Date.now()}) {
-  const cache=new Map();
+function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>id}) {
+
   async function read(query,budget) {
     const result=[];let cursor=null;
     while (budget.count<=MAX_DOCUMENTS) {
@@ -198,19 +203,14 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
     for (const store of storeIds) orders.push(...await read(db.collection(`lojas/${store}/pedidos`).select(...orderFields),budget));
     if (storeId==='__all__') orders.push(...await read(db.collection('pedidos').select(...orderFields),budget));
     else for (const field of ['lojaId','storeId']) orders.push(...await read(db.collection('pedidos').where(field,'==',storeId).select(...orderFields),budget));
-    return buildCustomerDirectory({customers,aliases,orders,storeIds,general:storeId==='__all__',includeRegistered:true});
+    const trustedRelationships=[];
+    for(const store of storeIds) trustedRelationships.push(...await read(db.collection(ROOT).where('storeId','==',store),budget));
+    return buildCustomerDirectory({customers,aliases,orders,storeIds,trustedRelationships,general:storeId==='__all__',includeRegistered:true});
   }
   async function list(uid,storeId) {
-    const scope=await scopeFor(uid,storeId); // Recheck permissions before every cache hit.
-    const key=JSON.stringify([storeId,storeId==='__all__'?scope.allStores:null,storeId==='__all__'?scope.stores:null]);
-    let entry=cache.get(key);
-    if (!entry || (!entry.pending && now()-entry.at>=CACHE_MS)) {
-      if (cache.size>=8) cache.delete(cache.keys().next().value);
-      entry={at:now(),pending:true,promise:null};
-      entry.promise=load(storeId,scope).then(result=>{entry.at=now();entry.pending=false;return result;});cache.set(key,entry);
-      entry.promise.catch(()=>{if(cache.get(key)===entry)cache.delete(key);});
-    }
-    const result=await entry.promise,canViewHistoryIssues=scope.role==='dono' && scope.permissions?.clientes===true;
+    const scope=await scopeFor(uid,storeId); // Recheck user scope on every request.
+    // Relationship revocation must take effect on every request, including aliases.
+    const result=await load(storeId,scope),canViewHistoryIssues=scope.role==='dono' && scope.permissions?.clientes===true;
     return {...result,canViewHistoryIssues,issues:canViewHistoryIssues?result.issues:[]};
   }
   async function detail(uid,storeId,id) {
@@ -220,7 +220,7 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
     if (!customer) fail('Cliente não autorizado nesta loja.',404);
     return customer;
   }
-  return {list,detail,scopeFor,invalidate:()=>cache.clear()};
+  return {list,detail,scopeFor,invalidate:()=>{}};
 }
 function mountStaffCustomerDirectory(app,service,verifyToken) {
   const route=handler=>async(req,res)=>{

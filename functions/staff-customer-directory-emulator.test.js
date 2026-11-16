@@ -33,6 +33,8 @@ before(async()=>{
     if(!uid)throw Object.assign(new Error('Login obrigatório'),{code:'unauthenticated'});
     const p=(await db.doc('users/'+uid).get()).data();if(!p||p.ativo===false)throw Object.assign(new Error('Sem acesso'),{httpStatus:403});return p;
   },normalizeRole:r=>r==='admin'?'dono':r,sanitizePermissions:p=>p||{},extractStoreIds:p=>p.lojaIds||[]});
+  const {relationshipRef}=require('./customer-store-relationship');
+  for(const [id,stores] of Object.entries({a:['matriz'],b:['garavelo'],both:['matriz','garavelo'],registered:['matriz'],pendingOnly:['matriz'],noOrders:['matriz']}))for(const storeId of stores)await relationshipRef(db,storeId,id).set({schemaVersion:1,state:'ACTIVE',storeId,customerId:id,source:'REVIEWED_LEGACY',evidenceRef:'synthetic-reviewed-legacy'});
   service=createStaffCustomerDirectory({db,authorize,resolveCustomerId:id=>registry.resolveId(id),now:()=>clock});
   const http=express();mountStaffCustomerDirectory(http,service,async req=>{
     const uid=req.headers['x-test-uid'];if(!uid)throw Object.assign(new Error('Login obrigatório'),{httpStatus:401});return {uid};

@@ -1,3 +1,4 @@
+const {assertCustomerRelationship}=require('./customer-store-relationship');
 const crypto = require('node:crypto');
 const {fiscalChoices} = require('./order-payment-method');
 const STATUSES = ['Pendente', 'Em Produção', 'Pronto para Entrega', 'Finalizado', 'Cancelado'];
@@ -88,6 +89,7 @@ function createAdminOrderEdit({db, admin, HttpsError, authorize}) {
           let customer = await tx.get(db.doc(`clientes/${input.clienteId}`));
           if (customer.get('canonicalCustomerId') && customer.get('canonicalStatus') === 'ALIAS') customer = await tx.get(db.doc(`clientes/${customer.get('canonicalCustomerId')}`));
           if (!customer.exists) fail('not-found','Cliente não encontrado.');
+          await assertCustomerRelationship({db,tx,storeId:data.storeId,customerId:customer.id});
           patch.clienteId = customer.id;patch.clienteNome = customer.get('nome') || '';
           patch.telefone = customer.get('telefone') || '';
           patch.clienteEndereco = order.clienteEndereco === 'Retirar na Loja' ? order.clienteEndereco : clientAddress(customer.data());

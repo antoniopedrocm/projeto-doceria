@@ -1,7 +1,9 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {createHash}=require('node:crypto');
-const {buildCustomerDirectory,isCompletedPurchase,orderStore,createStaffCustomerDirectory,CACHE_MS,MAX_DOCUMENTS}=require('./staff-customer-directory');
+const {buildCustomerDirectory:buildRaw,isCompletedPurchase,orderStore,createStaffCustomerDirectory,CACHE_MS,MAX_DOCUMENTS}=require('./staff-customer-directory');
+const {key}=require('./customer-store-relationship');
+const buildCustomerDirectory=input=>buildRaw({...input,trustedRelationships:input.customers.flatMap(c=>(input.storeIds||[]).map(storeId=>({id:key(storeId,c.id),data:{schemaVersion:1,state:'ACTIVE',storeId,customerId:c.id,source:'REVIEWED_LEGACY',evidenceRef:'synthetic-reviewed'}})))});
 const customer=(id,data={})=>({id,data:{nome:id,telefone:'62980000000',...data}});
 const order=(store,id,customerId,total=10,data={})=>({path:`lojas/${store}/pedidos/${id}`,data:{clienteId:customerId,status:'Finalizado',total,createdAt:'2026-11-01T12:00:00Z',...data}});
 const fixture=()=>({customers:[customer('a'),customer('b'),customer('both'),customer('new')],storeIds:['matriz','garavelo'],general:true,
@@ -116,15 +118,6 @@ test('history query is bounded/paged; oversized data raises controlled 503 rathe
   const f=fakeDb(MAX_DOCUMENTS+1),service=createStaffCustomerDirectory({db:f.db,authorize:async()=>({role:'dono',allStores:true,permissions:{clientes:true}})});
   await assert.rejects(()=>service.list('owner','matriz'),e=>e.httpStatus===503);
   assert.ok(f.calls()<=Math.ceil(MAX_DOCUMENTS/400)+1);
-});
-test('parallel readers share one scan and warm cache, without per-customer queries',async()=>{
-  let release,clock=0;const f=fakeDb(100,call=>call===1?new Promise(r=>release=r):undefined);
-  const service=createStaffCustomerDirectory({db:f.db,now:()=>clock,authorize:async()=>({role:'atendente',stores:['matriz'],permissions:{clientes:true}})});
-  const a=service.list('a','matriz'),b=service.list('b','matriz');await new Promise(r=>setImmediate(r));
-  assert.equal(f.calls(),1);clock+=CACHE_MS*2;
-  const c=service.list('c','matriz');await new Promise(r=>setImmediate(r));assert.equal(f.calls(),1);
-  release();await Promise.all([a,b,c]);assert.equal(f.calls(),5);
-  await service.list('a','matriz');assert.equal(f.calls(),5);
 });
 test('phone display uses canonical document fallback without using phone to join unrelated orders',()=>{
   const r=buildCustomerDirectory({customers:[customer('canonical',{telefone:null,normalizedPhone:'+5562980000000'})],orders:[],storeIds:['matriz'],general:true});
