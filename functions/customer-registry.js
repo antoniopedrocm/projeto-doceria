@@ -62,7 +62,7 @@ function createCustomerRegistry({db}) {
     };
     return tx?run(tx):db.runTransaction(run);
   }
-  async function createOrGet({phone:value,data={},registrationStoreId=null}) {
+  async function createOrGet({phone:value,data={}}) {
     // Identity/ownership is a separate verified operation, never supplied here.
     if(Object.keys(data).some(k=>['uid','authOwnerUid','authOwnerUids','authIdentities','identityRegistryVersion','canonicalCustomerId','canonicalStatus','legacyCustomerIds'].includes(k))) throw failure('CUSTOMER_IDENTITY_FORBIDDEN','Confira os dados do cadastro.',403);
     const ref=db.collection('clientes').doc();
@@ -70,7 +70,6 @@ function createCustomerRegistry({db}) {
       const existing=await resolvePhone(value,tx);if(existing.customerId)return {...existing,created:false};
       const fields={...data,telefone:existing.phone.national,phone_number:existing.phone.e164,normalizedPhone:existing.phone.e164,
         canonicalStatus:'CANONICAL',identityRegistryVersion:1,legacyCustomerIds:[],criadoEm:FieldValue.serverTimestamp(),atualizadoEm:FieldValue.serverTimestamp()};
-      if(registrationStoreId)grantCustomerRelationship({db,tx,storeId:registrationStoreId,customerId:ref.id,source:'NEW_REGISTRATION',evidenceRef:ref.path});
       tx.create(ref,fields);tx.create(phoneRef(existing.phone),{state:'READY',normalizedPhone:existing.phone.e164,customerId:ref.id,updatedAt:FieldValue.serverTimestamp()});
       return {phone:existing.phone,customerId:ref.id,created:true};
     });
@@ -134,13 +133,16 @@ function createCustomerRegistry({db}) {
       if((mapping.exists && mapping.data().customerId!==existing.customerId) || (uid.exists && uid.data().customerId!==existing.customerId)) throw review();
       const owners=customerOwnerUids(existing.customer.data());
       if(owners.some(owner=>owner!==identity.user.uid))throw review();
+      // Store is bound to the server-issued, independently verified challenge.
+      // Do not infer other stores from editable order/profile references.
+      grantCustomerRelationship({db,tx,storeId:d.storeId,customerId:existing.customerId,source:'VERIFIED_CLAIM',evidenceRef:challengeRef.path});
       if(existing.indexMissing)tx.create(phoneRef(existing.phone),{state:'READY',normalizedPhone:existing.phone.e164,customerId:existing.customerId,updatedAt:FieldValue.serverTimestamp()});
       tx.update(existing.customer.ref,{authOwnerUid:identity.user.uid,authOwnerUids:[identity.user.uid],identityRegistryVersion:1,
         phoneOwnership:'VERIFIED',phone_verified_at:FieldValue.serverTimestamp(),atualizadoEm:FieldValue.serverTimestamp()});
       tx.set(identityRef(identity),{provider:identity.provider,subject:identity.sub,customerId:existing.customerId,uid:identity.user.uid,updatedAt:FieldValue.serverTimestamp()});
       tx.set(uidRef(identity.user.uid),{uid:identity.user.uid,customerId:existing.customerId,updatedAt:FieldValue.serverTimestamp()});
       tx.update(challengeRef,{status:'consumed',proof:null,consumedAt:now});
-      tx.create(db.collection('integrations/customerRegistry/audit').doc(),{action:'identity_claim_verified',customerId:existing.customerId,uid:identity.user.uid,phoneKey:existing.phone.key,at:now});
+      tx.create(db.collection('integrations/customerRegistry/audit').doc(),{action:'identity_claim_verified',customerId:existing.customerId,uid:identity.user.uid,storeId:d.storeId,relationshipSource:'VERIFIED_CLAIM',evidenceRef:challengeRef.path,phoneKey:existing.phone.key,at:now});
       return {customerId:existing.customerId};
     });
   }

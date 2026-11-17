@@ -20,6 +20,9 @@ test('cadastro existente retorna claimRequired sem novo Customer ou auto-merge',
   const result=await accounts.completeProfile(request({phone:'62985550091',nome:'Novo nome'}));
   assert.equal(result.claimRequired,true);assert.equal(result.identityReviewRequired,false);assert.equal((await db.collection('clientes').get()).size,1);
   assert.equal((await accounts.account(request())).needsPhone,true);assert.equal(sendCount,0);
+  assert.equal(users.a.emailVerified,undefined); // Password login alone is not verified email/phone.
+  const {assertCustomerRelationship}=require('./customer-store-relationship');
+  await assert.rejects(()=>assertCustomerRelationship({db,storeId:'claim-store',customerId:customer.customerId}));
 });
 test('claim é ligado a UID, telefone, Customer e loja; código incorreto não autoriza',async()=>{
   const challenge=await api.start(request());assert.equal(sendCount,1);
@@ -36,6 +39,10 @@ test('prova válida vincula ao mesmo ID, preserva endereço/perfil e não pode s
   const result=await api.confirm(request({challengeId:fixtureClaimId,code:'123456'}));
   assert.equal(result.customer.id,customer.customerId);assert.equal(result.customer.nome,'Legado preservado');assert.equal(result.customer.enderecos[0].id,'saved');
   assert.equal((await db.collection('clientes').get()).size,1);
+  const {assertCustomerRelationship,relationshipRef}=require('./customer-store-relationship');
+  await assertCustomerRelationship({db,storeId:'claim-store',customerId:customer.customerId});
+  assert.equal((await relationshipRef(db,'claim-store',customer.customerId).get()).get('source'),'VERIFIED_CLAIM');
+  await assert.rejects(()=>assertCustomerRelationship({db,storeId:'other-store',customerId:customer.customerId}));
   await assert.rejects(()=>api.confirm(request({challengeId:fixtureClaimId,code:'123456'})));
   assert.equal((await db.collection('integrations/customerRegistry/audit').get()).size,1);
   await assert.rejects(()=>api.start(request({},'b')),e=>e.code==='failed-precondition');
@@ -87,4 +94,16 @@ test('claims concorrentes de dois UIDs são serializados pelo Firestore emulado 
   const customer=(await db.doc('clientes/unindexed-race').get()).data();assert.equal(customer.authOwnerUids.length,1);
   assert.equal((await db.collection('clientes').where('telefone','==',phone).get()).size,1);
   assert.equal((await db.collection('integrations/customerRegistry/audit').where('customerId','==','unindexed-race').get()).size,1);
+});
+test('voluntary proof for another store preserves first grant and canonical identity without trusting historical orders',async()=>{
+  const {assertCustomerRelationship}=require('./customer-store-relationship');
+  await db.doc('lojas/second-store').set({nome:'Synthetic second store'});time+=60001;
+  const r=data=>request({storeId:'second-store',...data});
+  const before=(await db.doc('clientes/'+customer.customerId).get()).data();
+  const c=await api.start(r({}));await api.confirm(r({challengeId:c.challengeId,code:'123456'}));
+  await assertCustomerRelationship({db,storeId:'claim-store',customerId:customer.customerId});
+  await assertCustomerRelationship({db,storeId:'second-store',customerId:customer.customerId});
+  assert.equal((await accounts.account(r({}))).customer.id,customer.customerId);
+  assert.deepEqual((await db.doc('clientes/'+customer.customerId).get()).get('enderecos'),before.enderecos);
+  assert.equal((await db.collection('clientes').where('telefone','==','62985550091').get()).size,1);
 });

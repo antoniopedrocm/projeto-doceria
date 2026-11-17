@@ -4,7 +4,7 @@ const {FieldValue}=require('firebase-admin/firestore');
 const ROOT='integrations/customerStoreRelationships/links';
 const validId=id=>typeof id==='string'&&/^[a-zA-Z0-9_-]{1,150}$/.test(id)&&id!=='__all__';
 const key=(storeId,customerId)=>createHash('sha256').update(JSON.stringify([storeId,customerId])).digest('hex');
-const sources=['NEW_REGISTRATION','STRONG_CHECKOUT','REVIEWED_LEGACY'];
+const sources=['VERIFIED_CLAIM','STRONG_CHECKOUT','REVIEWED_LEGACY'];
 function activeRelationship(data,storeId,customerId) {
   return data?.schemaVersion===1&&data.state==='ACTIVE'&&data.storeId===storeId&&data.customerId===customerId&&sources.includes(data.source)&&typeof data.evidenceRef==='string'&&data.evidenceRef.length>0;
 }

@@ -66,10 +66,10 @@ test('actual profile upsert rechecks grant inside transaction; forged relation c
  await relationshipRef(db,'matriz','g').delete();context.staffCustomerDirectory={detail:async()=>before};
  await assert.rejects(()=>context.run({targetRef,data:{nome:'Stale grant'},lojaId:'matriz',crmStaffUid:'matriz'}),e=>e.httpStatus===403);
 });
-test('new registration creates trusted evidence but existing phone never creates a new-store grant',async()=>{
+test('unverified registration never creates a grant; existing phone cannot create a new-store grant',async()=>{
  const registry=createCustomerRegistry({db});await db.doc('integrations/customerRegistry').set({state:'READY'});
  const result=await registry.createOrGet({phone:'62981112222',data:{nome:'New synthetic'},registrationStoreId:'matriz'});
- await assertCustomerRelationship({db,storeId:'matriz',customerId:result.customerId});
+ await assert.rejects(()=>assertCustomerRelationship({db,storeId:'matriz',customerId:result.customerId}));
  const existing=await registry.createOrGet({phone:'62981112222',data:{nome:'Ignored'},registrationStoreId:'garavelo'});assert.equal(existing.customerId,result.customerId);
  await assert.rejects(()=>assertCustomerRelationship({db,storeId:'garavelo',customerId:result.customerId}));
 });

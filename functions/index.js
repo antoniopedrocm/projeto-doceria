@@ -1654,12 +1654,12 @@ app.post("/clientes", async (req, res) => {
       }
     }
     if(staff && existing)await staffCustomerDirectory.detail((await checkoutToken(req)).uid,lojaId,existing.id);
-    const result=await customerRegistry.createOrGet({registrationStoreId:lojaId,phone:telefone,data:{...newClient,lojasVisitadas:[lojaId],numeroDeCompras:0,valorEmCompras:0}});
+    const result=await customerRegistry.createOrGet({phone:telefone,data:{...newClient,lojasVisitadas:[lojaId],numeroDeCompras:0,valorEmCompras:0}});
     const targetRef=getClientsCollection().doc(result.customerId);
     if(staff && !result.created) await upsertClientDocument({targetRef,data:newClient,lojaId,crmStaffUid:(await checkoutToken(req)).uid,purchaseCountIncrement,purchaseValueIncrement});
 
     const responseStatus = result.created ? 201 : 200;
-    res.status(responseStatus).json(staff?await staffCustomerDirectory.detail((await checkoutToken(req)).uid,lojaId,targetRef.id):{id:targetRef.id});
+    res.status(responseStatus).json(staff&&!result.created?await staffCustomerDirectory.detail((await checkoutToken(req)).uid,lojaId,targetRef.id):{id:targetRef.id,...(staff?{relationshipPending:true}:{})});
   } catch (error) {
     logger.error("Erro ao criar cliente:", error);
     res.status(Number(error.httpStatus)||500).json({message:error.httpStatus?error.message:"Não foi possível salvar o cliente."});

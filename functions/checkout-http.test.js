@@ -187,12 +187,12 @@ test('serviço de iniciação rejeita marcador weak e contexto strong posteriorm
   await ref.delete();
 });
 
-test('pedido weak não herda ownership nem altera Customer mesmo com token válido',async()=>{
+test('pedido weak compra sem autenticação e não herda ownership nem altera Customer',async()=>{
   const customer=db.doc(`clientes/${customerId}`),before=(await customer.get()).data(),priorLinks=links;
   await db.doc(`lojas/${store}/produtos/weak-offline`).set({nome:'Fixture offline',preco:10,estoque:2,ativo:true});
-  const lookup=await functions.lookupClientByPhone.run({auth:{uid:before.authOwnerUid},data:{lojaId:store,telefone:before.telefone},rawRequest:{headers:{},ip:'weak-offline-fixture'}});
+  const lookup=await functions.lookupClientByPhone.run({data:{lojaId:store,telefone:before.telefone},rawRequest:{headers:{},ip:'weak-offline-fixture'}});
   const b={...body(),checkoutIdentityToken:lookup.checkoutIdentity.token,pagamento:{forma:'Dinheiro'},itens:[{produtoId:'weak-offline',quantity:1,preco:10}]};
-  const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(b)});
+  const r=await originalFetch(base+'/checkout/confirmar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
   const data=await r.json();assert.equal(r.status,200,JSON.stringify(data));
   const order=(await db.doc(`lojas/${store}/pedidos/${data.id}`).get()).data();
   assert.equal(order.checkoutIdentity.mode,'legacy_phone');assert.equal(order.checkoutIdentity.legacyClientId,customerId);
@@ -453,6 +453,9 @@ test('escolhas autenticadas: combinar é pendente, sem método/gateway, estoque/
   const ref=db.doc(`lojas/${store}/pedidos/${results[0].data.id}`),order=(await ref.get()).data();
   assert.equal(order.paymentMode,'AGREED_LATER');assert.equal(order.paymentMethod,null);assert.equal(order.paymentStatus,'PENDING');assert.equal(order.payment_status,undefined);assert.equal(order.status,'Pendente');assert.equal(order.paymentId,undefined);
   assert.equal(order.formaPagamento,'A combinar');assert.equal(order.total,9);assert.equal(order.clienteId,customerId);
+  const {assertCustomerRelationship,relationshipRef}=require('./customer-store-relationship');
+  await assertCustomerRelationship({db,storeId:store,customerId});
+  assert.equal((await relationshipRef(db,store,customerId).get()).get('source'),'STRONG_CHECKOUT');
   assert.equal((await product.get()).get('estoque'),4);assert.equal((await coupon.get()).get('usos'),1);
   assert.equal((await db.doc('checkoutPayments/'+ref.id).get()).exists,false);
   assert.equal(links,previousLinks);assert.equal((await send(b)).data.id,ref.id);
