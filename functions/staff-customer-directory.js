@@ -197,14 +197,20 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
   async function load(storeId,scope) {
     const budget={count:0};
     const storeIds=storeId==='__all__'?(scope.allStores?(await read(db.collection('lojas').select('nome'),budget)).map(s=>s.id):scope.stores):[storeId];
-    const customers=await read(db.collection('clientes').select(...profileFields,...identityFields),budget);
+    const trustedRelationships=[];
+    for(const store of storeIds) trustedRelationships.push(...await read(db.collection(ROOT).where('storeId','==',store),budget));
+    let customers=[];
+    if(storeId==='__all__')customers=await read(db.collection('clientes').select(...profileFields,...identityFields),budget);
+    else {
+      const ids=[...new Set(trustedRelationships.filter(row=>row.id===key(row.data.storeId,row.data.customerId)&&activeRelationship(row.data,storeId,row.data.customerId)).map(row=>row.data.customerId))];
+      // Fetch only authorized canonical profiles; never cache authorization.
+      for(let i=0;i<ids.length;i+=10)customers.push(...await read(db.collection('clientes').where(FieldPath.documentId(),'in',ids.slice(i,i+10)).select(...profileFields,...identityFields),budget));
+    }
     const aliases=await read(db.collection('integrations/customerRegistry/aliases').select('state','customerId'),budget);
     const orders=[];
     for (const store of storeIds) orders.push(...await read(db.collection(`lojas/${store}/pedidos`).select(...orderFields),budget));
     if (storeId==='__all__') orders.push(...await read(db.collection('pedidos').select(...orderFields),budget));
     else for (const field of ['lojaId','storeId']) orders.push(...await read(db.collection('pedidos').where(field,'==',storeId).select(...orderFields),budget));
-    const trustedRelationships=[];
-    for(const store of storeIds) trustedRelationships.push(...await read(db.collection(ROOT).where('storeId','==',store),budget));
     return buildCustomerDirectory({customers,aliases,orders,storeIds,trustedRelationships,general:storeId==='__all__',includeRegistered:true});
   }
   async function list(uid,storeId) {

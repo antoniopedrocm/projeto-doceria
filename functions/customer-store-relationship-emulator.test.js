@@ -73,3 +73,40 @@ test('new registration creates trusted evidence but existing phone never creates
  const existing=await registry.createOrGet({phone:'62981112222',data:{nome:'Ignored'},registrationStoreId:'garavelo'});assert.equal(existing.customerId,result.customerId);
  await assert.rejects(()=>assertCustomerRelationship({db,storeId:'garavelo',customerId:result.customerId}));
 });
+test('HTTP PUT actual route and transaction deny absent, revoked and stale grants; allow authorized edit',async()=>{
+ const source=fs.readFileSync('./index.js','utf8'),http=express();http.use(express.json());
+ const registry=createCustomerRegistry({db});
+ const context={app:http,db:{doc:p=>db.doc(p),collection:p=>db.collection(p),runTransaction:fn=>db.runTransaction(tx=>Promise.resolve(fn(tx)))},
+  FieldValue:admin.firestore.FieldValue,assertCustomerRelationship,staffCustomerDirectory:service,claimedClientPatch,customerOwnerUids,customerRegistry:registry,
+  getClientsCollection:()=>db.collection('clientes'),checkoutToken:async req=>({uid:req.headers['x-test-uid']}),
+  isClientStaff:async(token,store)=>(await db.doc('users/'+token.uid).get()).get('lojaIds')?.includes(store),canManageClient:async()=>false,
+  createHttpError:(httpStatus,message)=>Object.assign(new Error(message),{httpStatus}),logger:{error:()=>{}}};
+ const extract=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
+ vm.runInNewContext(extract('const requireStoreId =','const getStoreRef =')+extract('const sanitizeClientPayload =','const findClientByPhone =')+extract('const upsertClientDocument =','// Rota para buscar todos os produtos')+extract('app.put("/clientes/:id"','// CRM deletion'),context);
+ const listener=await new Promise(resolve=>{const s=http.listen(0,'127.0.0.1',()=>resolve(s));});
+ const put=nome=>fetch('http://127.0.0.1:'+listener.address().port+'/clientes/g?lojaId=matriz',{method:'PUT',headers:{'content-type':'application/json','x-test-uid':'matriz'},body:JSON.stringify({nome})});
+ try {
+  await relationshipRef(db,'matriz','g').delete();const before=(await db.doc('clientes/g').get()).data();
+  assert.equal((await put('Forbidden')).status,404);assert.deepEqual((await db.doc('clientes/g').get()).data(),before);
+  await grant('matriz','g');assert.equal((await put('HTTP legitimate')).status,200);assert.equal((await db.doc('clientes/g').get()).get('nome'),'HTTP legitimate');
+  await relationshipRef(db,'matriz','g').update({state:'REVOKED'});assert.equal((await put('Revoked')).status,404);
+  await grant('matriz','g');context.staffCustomerDirectory={detail:async(...args)=>{const result=await service.detail(...args);await relationshipRef(db,'matriz','g').update({state:'REVOKED'});return result;}};
+  assert.equal((await put('Stale')).status,403);assert.equal((await db.doc('clientes/g').get()).get('nome'),'HTTP legitimate');
+ } finally {await new Promise(resolve=>listener.close(resolve));}
+});
+test('store query avoids unrelated global profiles and reports loopback latency and document reads',async t=>{
+ for(let offset=0;offset<600;offset+=300) {
+  const batch=db.batch();for(let i=offset;i<offset+300;i++)batch.set(db.doc('clientes/unrelated-'+i),{nome:'Unrelated synthetic'});await batch.commit();
+ }
+ let reads=0,profiles=0,queries=0;
+ const wrap=(query,path)=>new Proxy(query,{get(target,property){
+  if(property==='get')return async()=>{const snapshot=await target.get();queries++;reads+=snapshot.docs.length;if(path==='clientes')profiles+=snapshot.docs.length;return snapshot;};
+  const value=target[property];return typeof value==='function'?(...args)=>wrap(value.apply(target,args),path):value;
+ }});
+ const measured=createStaffCustomerDirectory({db:{collection:path=>wrap(db.collection(path),path)},authorize:async()=>({role:'atendente',stores:['matriz'],permissions:{clientes:true}})});
+ for(let i=0;i<3;i++) {
+  reads=0;profiles=0;queries=0;const start=performance.now(),result=await measured.list('matriz','matriz');
+  assert.equal(profiles,2);assert.deepEqual(result.clients.map(c=>c.id).sort(),['both','m']);
+  t.diagnostic(JSON.stringify({sample:i+1,latencyMs:Math.round(performance.now()-start),documentReads:reads,profileReads:profiles,queries,unrelatedProfiles:600}));
+ }
+});

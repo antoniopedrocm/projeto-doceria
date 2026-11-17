@@ -116,8 +116,8 @@ function fakeDb(totalCustomers,onRead=()=>{}) {
 }
 test('history query is bounded/paged; oversized data raises controlled 503 rather than partial totals',async()=>{
   const f=fakeDb(MAX_DOCUMENTS+1),service=createStaffCustomerDirectory({db:f.db,authorize:async()=>({role:'dono',allStores:true,permissions:{clientes:true}})});
-  await assert.rejects(()=>service.list('owner','matriz'),e=>e.httpStatus===503);
-  assert.ok(f.calls()<=Math.ceil(MAX_DOCUMENTS/400)+1);
+  await assert.rejects(()=>service.list('owner','__all__'),e=>e.httpStatus===503);
+  assert.ok(f.calls()<=Math.ceil(MAX_DOCUMENTS/400)+3);
 });
 test('phone display uses canonical document fallback without using phone to join unrelated orders',()=>{
   const r=buildCustomerDirectory({customers:[customer('canonical',{telefone:null,normalizedPhone:'+5562980000000'})],orders:[],storeIds:['matriz'],general:true});
@@ -133,16 +133,16 @@ test('pending-order profile remains available for fulfillment forms without bein
 test('exact 10000-document boundary succeeds; one extra alias fails closed without caching partial totals',async()=>{
   const f=fakeDb(MAX_DOCUMENTS),authorize=async()=>({role:'dono',allStores:true,permissions:{clientes:true}});
   const service=createStaffCustomerDirectory({db:f.db,authorize});
-  assert.equal((await service.list('owner','matriz')).clients.length,0); // No purchases; no fabricated membership.
+  assert.equal((await service.list('owner','__all__')).clients.length,MAX_DOCUMENTS); // General preserves authorized canonical inventory.
   let extra=true;
   const db={collection:p=>{
     if(p!=='integrations/customerRegistry/aliases')return f.db.collection(p);
     const q={select:()=>q,orderBy:()=>q,limit:()=>q,get:async()=>({docs:extra?[{id:'alias',ref:{path:p+'/alias'},data:()=>({})}]:[]})};return q;
   }};
   const bounded=createStaffCustomerDirectory({db,authorize});
-  await assert.rejects(()=>bounded.list('owner','matriz'),e=>e.httpStatus===503);
+  await assert.rejects(()=>bounded.list('owner','__all__'),e=>e.httpStatus===503);
   extra=false;
-  assert.equal((await bounded.list('owner','matriz')).clients.length,0);
+  assert.equal((await bounded.list('owner','__all__')).clients.length,MAX_DOCUMENTS);
 });
 test('completed AGREED_LATER PENDING preserves store membership, reports pending separately and never fabricates PAID',()=>{
   const f={customers:[customer('a')],orders:[order('matriz','1','a',14.78,{paymentMode:'AGREED_LATER',paymentStatus:'PENDING'}),order('matriz','2','a',14.78,{paymentMode:'AGREED_LATER',paymentStatus:'PENDING',createdAt:'2026-11-08T20:00:00Z'})],storeIds:['matriz']};
