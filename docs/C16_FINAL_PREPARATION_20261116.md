@@ -28,7 +28,7 @@ Consultas novas usam documentId IN; vínculos já usam storeId == com ordenaçã
 
 ## Revogação
 
-Comportamento preservado: REVOKED nega próximas leituras/edições; novo checkout STRONG legítimo pode reativar a relação. Não é bloqueio administrativo permanente. O dry-run não propõe reativar REVOKED. Decisão solicitada ao usuário: manter revogação comum ou especificar bloqueio permanente em etapa separada. Ausência de resposta não autoriza mudança. Nenhuma política nova aplicada.
+Comportamento preservado: REVOKED nega próximas leituras/edições; novo checkout STRONG legítimo pode reativar a relação. Não é bloqueio administrativo permanente. O dry-run não propõe reativar REVOKED. Decisão explícita do usuário nesta conversa: "Manter revogação atual". Pendência de decisão encerrada; nenhum bloqueio permanente será implementado nesta etapa. Código e resultados dos testes permanecem os mesmos do candidato d29885fd7f7a0819c79bd5b7792a252605208e75.
 
 ## Evidências desta etapa
 
