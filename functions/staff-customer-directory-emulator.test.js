@@ -32,7 +32,8 @@ before(async()=>{
   const authorize=createDirectoryAuthorizer({db,assertActiveUser:async uid=>{
     if(!uid)throw Object.assign(new Error('Login obrigatório'),{code:'unauthenticated'});
     const p=(await db.doc('users/'+uid).get()).data();if(!p||p.ativo===false)throw Object.assign(new Error('Sem acesso'),{httpStatus:403});return p;
-  },normalizeRole:r=>r==='admin'?'dono':r,sanitizePermissions:p=>p||{},extractStoreIds:p=>p.lojaIds||[]});
+  },normalizeRole:r=>r==='admin'?'dono':r.toLowerCase(),sanitizePermissions:p=>p||{},
+    extractStoreIds:p=>p.lojaIds||(typeof p.lojaId==='string'?[p.lojaId.trim()]:[])});
   const {relationshipRef}=require('./customer-store-relationship');
   for(const [id,stores] of Object.entries({a:['matriz'],b:['garavelo'],both:['matriz','garavelo'],registered:['matriz'],pendingOnly:['matriz'],noOrders:['matriz']}))for(const storeId of stores)await relationshipRef(db,storeId,id).set({schemaVersion:1,state:'ACTIVE',storeId,customerId:id,source:'REVIEWED_LEGACY',evidenceRef:'synthetic-reviewed-legacy'});
   service=createStaffCustomerDirectory({db,authorize,resolveCustomerId:id=>registry.resolveId(id),now:()=>clock});
@@ -164,4 +165,67 @@ test('Gestão lists history and registrations in the authorized store only; lega
   assert.equal(general.clients.find(c=>c.id==='legacy-shared').valorEmCompras,37);
   const existing=await getDoc(doc(rules.authenticatedContext('staffA').firestore(),orderPath));
   assert.equal(existing.data().clienteNome,'Histórico Matriz');
+});
+test('Gestão authorizes root and nested order snapshots according to the current Rules',async()=>{
+  const cases=[
+    {path:'pedidos/directory-absent',scope:{storeId:'matriz'},reads:['staffA'],shown:['staffA']},
+    {path:'pedidos/directory-null',scope:{lojaId:null,storeId:'matriz'},reads:[],shown:[]},
+    {path:'pedidos/directory-empty',scope:{lojaId:'',storeId:'matriz'},reads:[],shown:[]},
+    {path:'pedidos/directory-primary',scope:{lojaId:'matriz'},reads:['staffA'],shown:['staffA']},
+    {path:'pedidos/directory-missing',scope:{},reads:[],shown:[]},
+    {path:'pedidos/directory-secondary-null',scope:{storeId:null},reads:[],shown:[]},
+    {path:'pedidos/directory-both',scope:{lojaId:'garavelo',storeId:'garavelo'},reads:['managerB'],shown:['managerB']},
+    {path:'pedidos/directory-conflicting',scope:{lojaId:'garavelo',storeId:'matriz'},reads:['managerB'],shown:[]},
+    {path:'lojas/matriz/pedidos/directory-physical',scope:{lojaId:null},reads:['staffA'],shown:['staffA']},
+    {path:'lojas/garavelo/pedidos/directory-path-conflict',scope:{lojaId:'matriz'},reads:['managerB'],shown:[]},
+  ];
+  for (const [index, item] of cases.entries()) {
+    const id=item.path.split('/').at(-1);
+    item.snapshot={clienteId:id,clienteNome:'Histórico '+id,status:'Finalizado',total:600+index,
+      createdAt:'2025-11-'+String(index+10).padStart(2,'0')+'T12:00:00Z',...item.scope};
+    await db.doc(item.path).set(item.snapshot);
+  }
+  for (const [uid,store] of [['staffA','matriz'],['managerB','garavelo']]) {
+    const sdk=rules.authenticatedContext(uid).firestore();
+    const response=await fetch(base+'/clientes/diretorio?usage=gestao&lojaId='+store,{headers:{'x-test-uid':uid}});
+    assert.equal(response.status,200);
+    const directory=await response.json();
+    const rows=[...directory.clients,...directory.operationalClients];
+    for (const item of cases) {
+      const read=getDoc(doc(sdk,item.path));
+      if (item.reads.includes(uid)) await assertSucceeds(read);
+      else await assertFails(read);
+      const {clienteNome,total,createdAt}=item.snapshot;
+      const matches=rows.filter(row=>row.nome===clienteNome || row.valorEmCompras===total || row.ultimaCompra===new Date(createdAt).toISOString());
+      if (item.shown.includes(uid)) {
+        assert.equal(matches.length,1,item.path);
+        assert.equal(matches[0].nome,clienteNome);
+        assert.equal(matches[0].valorEmCompras,total);
+        assert.equal(matches[0].ultimaCompra,new Date(createdAt).toISOString());
+      } else assert.deepEqual(matches,[],item.path);
+    }
+  }
+  const scopedOwner=await service.list('ownerA','__all__',true);
+  assert.equal(scopedOwner.issues.some(issue=>issue.orderPath==='pedidos/directory-empty'),false);
+  for (const [uid,profile] of [['wrong-role',{role:'DONO',lojaIds:['matriz']}],['wrong-scope',{role:'atendente',lojaId:' matriz '}]]) {
+    await db.doc('users/'+uid).set({...profile,permissions:{clientes:true}});
+    const sdk=rules.authenticatedContext(uid).firestore();
+    await assertFails(getDoc(doc(sdk,'pedidos/directory-primary')));
+    await assertFails(getDoc(doc(sdk,'lojas/matriz/pedidos/directory-physical')));
+    const denied=await fetch(base+'/clientes/diretorio?usage=gestao&lojaId=matriz',{headers:{'x-test-uid':uid}});
+    assert.equal(denied.status,403);
+  }
+});
+test('operational HTTP results are unchanged by updates to a protected alias outside the store scope',async()=>{
+  const registry=createCustomerRegistry({db});
+  await db.doc('lojas/matriz/pedidos/directory-alias-history').set({
+    clienteId:'directory-legacy-id',clienteNome:'Registro histórico',status:'Finalizado',total:17,
+  });
+  const get=()=>fetch(base+'/clientes/diretorio?usage=gestao&lojaId=matriz',{headers:{'x-test-uid':'staffA'}});
+  const before=await (await get()).json();
+  await registry.aliasRef('directory-legacy-id').set({state:'READY',customerId:'b'});
+  const after=await (await get()).json();
+  assert.deepEqual(after,before);
+  assert.equal(after.operationalClients.find(row=>row.nome==='Registro histórico').valorEmCompras,17);
+  assert.equal(after.clients.some(row=>row.id==='b'),false);
 });

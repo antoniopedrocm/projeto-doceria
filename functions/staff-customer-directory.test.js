@@ -50,6 +50,29 @@ test('order snapshots and staff registrations cannot populate protected profile 
   assert.equal(scoped.operationalClients.find(row=>row.staffRegistered).numeroDeCompras,0);
   assert.deepEqual(buildRaw({...f,operational:true,storeIds:['garavelo']}).operationalClients,[]);
 });
+test('operational deduplication ignores the global index and respects the store of reviewed references',()=>{
+  const customerRecord=customer('buyer',{identityRegistryVersion:1,legacyCustomerIds:['prior-id']});
+  const orders=[
+    order('matriz','a','buyer',10,{clienteNome:'Mesmo nome'}),
+    order('matriz','b','prior-id',20,{clienteNome:'Mesmo nome'}),
+    order('garavelo','c','prior-id',30,{clienteNome:'Mesmo nome'}),
+  ];
+  const input={customers:[customerRecord],orders,operational:true,storeIds:['matriz','garavelo']};
+  const separate=buildRaw(input);
+  assert.deepEqual(separate.operationalClients.map(row=>row.valorEmCompras).sort((a,b)=>a-b),[10,50]);
+  assert.deepEqual(buildRaw({...input,aliases:[{
+    id:createHash('sha256').update('prior-id').digest('hex'),data:{state:'READY',customerId:'buyer'},
+  }]}),separate);
+  const storeId='matriz',customerId='buyer';
+  const relationship={id:key(storeId,customerId),data:{schemaVersion:1,state:'ACTIVE',storeId,customerId,
+    source:'REVIEWED_LEGACY',evidenceRef:'synthetic-reviewed'}};
+  const scoped=buildRaw({...input,trustedRelationships:[relationship]});
+  assert.equal(scoped.clients[0].valorEmCompras,30);
+  assert.deepEqual(Object.keys(scoped.clients[0].metricasComprasPorLoja),['matriz']);
+  assert.equal(scoped.operationalClients.length,1);
+  assert.equal(scoped.operationalClients[0].valorEmCompras,30);
+  assert.deepEqual(Object.keys(scoped.operationalClients[0].metricasComprasPorLoja),['garavelo']);
+});
 test('Visão Geral includes no-purchase Customer once, scopes last date and exact cents',()=>{
   const f=fixture();f.orders.push(order('matriz','a2','a',.1),order('matriz','a3','a',.2));
   const rows=buildCustomerDirectory(f).clients;
