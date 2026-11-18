@@ -2,6 +2,7 @@
 const {createHash}=require('node:crypto');
 const {FieldValue}=require('firebase-admin/firestore');
 const ROOT='integrations/customerStoreRelationships/links';
+const REGISTRATIONS='integrations/customerStoreRelationships/registrations';
 const validId=id=>typeof id==='string'&&/^[a-zA-Z0-9_-]{1,150}$/.test(id)&&id!=='__all__';
 const key=(storeId,customerId)=>createHash('sha256').update(JSON.stringify([storeId,customerId])).digest('hex');
 const sources=['VERIFIED_CLAIM','STRONG_CHECKOUT','REVIEWED_LEGACY'];
@@ -21,4 +22,4 @@ function grantCustomerRelationship({db,tx,storeId,customerId,source,evidenceRef}
   if(!sources.includes(source)||typeof evidenceRef!=='string'||!evidenceRef)throw new Error('Evidência de relacionamento obrigatória.');
   tx.set(relationshipRef(db,storeId,customerId),{schemaVersion:1,state:'ACTIVE',storeId,customerId,source,evidenceRef,updatedAt:FieldValue.serverTimestamp()});
 }
-module.exports={ROOT,key,activeRelationship,relationshipRef,assertCustomerRelationship,grantCustomerRelationship};
+module.exports={ROOT,REGISTRATIONS,key,activeRelationship,relationshipRef,assertCustomerRelationship,grantCustomerRelationship};

@@ -1642,8 +1642,12 @@ app.post("/clientes", async (req, res) => {
     const telefone = typeof newClient.telefone === 'string' ? newClient.telefone.trim() : '';
 
     const existing = await findClientByNormalizedPhone(normalizePhoneNumber(telefone));
-    let staff=false;
-    try {staff=await isClientStaff(await checkoutToken(req),lojaId);} catch { /* Public creation is restricted below. */ }
+    const staffToken=await checkoutToken(req).catch(()=>null);
+    const staff=staffToken && await isClientStaff(staffToken,lojaId);
+    if (staff) {
+      const scope=await staffCustomerDirectory.scopeFor(staffToken.uid,lojaId);
+      if (!scope.permissions?.clientes || lojaId==='__all__') throw createHttpError(403,'Cadastro exige permissão de Clientes nesta loja.');
+    }
     if(!staff) {
       const context=await checkoutIdentities.read(checkoutIdentityToken,lojaId);
       if(context.mode!==CHECKOUT_MODES.PHONE || context.revision!==checkoutIdentityRevision || context.legacyCustomerId ||
@@ -1653,13 +1657,14 @@ app.post("/clientes", async (req, res) => {
         return res.status(403).json({message:'Confirme novamente a identificação. Endereços exigem verificação do telefone.'});
       }
     }
-    if(staff && existing)await staffCustomerDirectory.detail((await checkoutToken(req)).uid,lojaId,existing.id);
-    const result=await customerRegistry.createOrGet({phone:telefone,data:{...newClient,lojasVisitadas:[lojaId],numeroDeCompras:0,valorEmCompras:0}});
+    if(staff && existing)await staffCustomerDirectory.detail(staffToken.uid,lojaId,existing.id);
+    const result=await customerRegistry.createOrGet({phone:telefone,data:{...newClient,lojasVisitadas:[lojaId],numeroDeCompras:0,valorEmCompras:0},
+      staffRegistrationStore:staff?lojaId:null});
     const targetRef=getClientsCollection().doc(result.customerId);
-    if(staff && !result.created) await upsertClientDocument({targetRef,data:newClient,lojaId,crmStaffUid:(await checkoutToken(req)).uid,purchaseCountIncrement,purchaseValueIncrement});
+    if(staff && !result.created) await upsertClientDocument({targetRef,data:newClient,lojaId,crmStaffUid:staffToken.uid,purchaseCountIncrement,purchaseValueIncrement});
 
     const responseStatus = result.created ? 201 : 200;
-    res.status(responseStatus).json(staff&&!result.created?await staffCustomerDirectory.detail((await checkoutToken(req)).uid,lojaId,targetRef.id):{id:targetRef.id,...(staff?{relationshipPending:true}:{})});
+    res.status(responseStatus).json(staff&&!result.created?await staffCustomerDirectory.detail(staffToken.uid,lojaId,targetRef.id):{id:targetRef.id,...(staff?{relationshipPending:true}:{})});
   } catch (error) {
     logger.error("Erro ao criar cliente:", error);
     res.status(Number(error.httpStatus)||500).json({message:error.httpStatus?error.message:"Não foi possível salvar o cliente."});

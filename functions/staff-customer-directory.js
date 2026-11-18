@@ -1,4 +1,4 @@
-const {ROOT,activeRelationship,key}=require('./customer-store-relationship');
+const {ROOT,REGISTRATIONS,activeRelationship,key}=require('./customer-store-relationship');
 // Read-only CRM projection. No customer/order backfill, phone matching or identity writes.
 const {createHash} = require('node:crypto');
 const {getOrderCreatedAt} = require('./customer-orders');
@@ -44,7 +44,7 @@ function isCompletedAgreedPending(data) {
   return isCompletedOrder(data) && isAgreedLater(data) && !data.paymentId &&
     (payment == null || ['PENDING','PENDENTE','PENDING_SELECTION','UNKNOWN'].includes(String(payment).toUpperCase())) && validOrderTotal(data);
 }
-function buildCustomerDirectory({customers, aliases=[], orders, storeIds, general=false, includeRegistered=false, trustedRelationships=[]}) {
+function buildCustomerDirectory({customers, aliases=[], orders, storeIds, general=false, includeRegistered=false, trustedRelationships=[], operational=false, registrations=[]}) {
   const stores = new Set(storeIds), records = new Map(customers.map(c => [c.id,c.data]));
   const aliasIndex = new Map(aliases.map(a => [a.id,a.data]));
   const reviewed = new Map();
@@ -53,7 +53,7 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
       const owners = reviewed.get(id) || new Set(); owners.add(customer.id); reviewed.set(id,owners);
     }
   }
-  function canonical(id) {
+  function canonical(id, orderOnly=false) {
     if (!validId(id)) return null;
     const seen = new Set(); let current = id;
     for (let depth=0;depth<5;depth++) {
@@ -66,7 +66,8 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
         const owners=reviewed.get(current); if (owners.size!==1) return null;
         current=[...owners][0]; continue;
       }
-      return records.has(current) && records.get(current).canonicalStatus !== 'ALIAS' ? current : null;
+      if (records.has(current)) return records.get(current).canonicalStatus !== 'ALIAS' ? current : null;
+      return orderOnly ? current : null;
     }
     return null;
   }
@@ -84,6 +85,32 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
     metrics.set(record.id,new Map());
     pendingMetrics.set(record.id,new Map());
   }
+  const historical = new Map(), staffRegistered = new Set();
+  const sortedStores = [...stores].sort();
+  function addOperationalRow(customerId, store, sourcePath, name, date) {
+    // An opaque display row carries only data already present in this store's records.
+    // It is never returned to profile/detail or order-selection callers.
+    if (!historical.has(customerId)) {
+      historical.set(customerId, {path:sourcePath, name:'', date:null});
+      metrics.set(customerId,new Map());
+      pendingMetrics.set(customerId,new Map());
+      clients.set(customerId,{operationalOnly:true,lojasVisitadas:[]});
+    }
+    const row = historical.get(customerId);
+    if (sourcePath < row.path) row.path = sourcePath;
+    const text = typeof name === 'string' ? name.trim().slice(0,150) : '';
+    if (text && (!row.name || (date && (!row.date || date > row.date)))) Object.assign(row,{name:text,date});
+    const profile = clients.get(customerId);
+    if (!profile.lojasVisitadas.includes(store)) profile.lojasVisitadas.push(store);
+  }
+  for (const row of registrations) {
+    const {storeId,customerId,nome,createdAt} = row.data;
+    if (!operational || !stores.has(storeId) || !validId(customerId) || row.id !== key(storeId,customerId)) continue;
+    const id = canonical(customerId,true);
+    if (!id) continue;
+    staffRegistered.add(id);
+    if (!clients.has(id) || historical.has(id)) addOperationalRow(id,storeId,row.path,nome,getOrderCreatedAt({createdAt}));
+  }
   // Prefer the canonical store document over its legacy root mirror.
   const seenPaths=new Set(), unique=new Map(), conflicts=new Set();
   for (const order of [...orders].sort((a,b)=>Number(b.path.startsWith('lojas/'))-Number(a.path.startsWith('lojas/')))) {
@@ -95,11 +122,11 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
     // This server-persisted legacy-phone reference predates clienteId in some orders.
     // It is an ID resolved by the same reviewed registry, never a phone/name join.
     if (order.data.checkoutIdentity?.mode==='legacy_phone' && order.data.checkoutIdentity.legacyClientId) references.push(order.data.checkoutIdentity.legacyClientId);
-    if (!references.length && order.data.checkoutIdentity?.mode==='guest') continue;
-    const ids=references.map(canonical), customerId=ids[0];
+    if ((!references.length && order.data.checkoutIdentity?.mode==='guest') || (operational && references.length===1 && references[0]==='loja')) continue;
+    const ids=references.map(id=>canonical(id,operational)), customerId=ids[0];
     if (!customerId || ids.some(id=>id!==customerId)) {issue(order,'CUSTOMER_UNRESOLVED_OR_CONFLICTING');continue;}
-    if (order.data.ownerUid && !customerOwnerUids(records.get(customerId)).includes(order.data.ownerUid)) {issue(order,'OWNER_CONFLICT');continue;}
-    if(!clients.has(customerId)||(!general&&!trusted.get(customerId)?.has(store)))continue;
+    if (order.data.ownerUid && records.has(customerId) && !customerOwnerUids(records.get(customerId)).includes(order.data.ownerUid)) {issue(order,'OWNER_CONFLICT');continue;}
+    if (!operational && (!clients.has(customerId)||(!general&&!trusted.get(customerId)?.has(store)))) continue;
     const key=store+'/'+order.path.split('/').pop();
     if (conflicts.has(key)) continue;
     const previous=unique.get(key);
@@ -111,13 +138,18 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
   const payments=new Map(), eligible=[], relationships=new Map();
   for (const candidate of unique.values()) {
     const {order,store,customerId}=candidate;
+    const completed=isCompletedPurchase(order.data), pending=isCompletedAgreedPending(order.data);
+    if (!clients.has(customerId) || historical.has(customerId)) {
+      if (!operational || !(completed || pending)) continue;
+      addOperationalRow(customerId,store,order.path,order.data.clienteNome,getOrderCreatedAt(order.data));
+    }
     const related=relationships.get(customerId) || new Set();related.add(store);relationships.set(customerId,related);
-    if (isCompletedAgreedPending(order.data)) {
+    if (pending) {
       const perStore=pendingMetrics.get(customerId),m=perStore.get(store) || {cents:0,count:0,latest:null};
       m.cents+=Math.round(Number(order.data.total)*100);if (!Number.isSafeInteger(m.cents)) fail('Total pendente excede o limite monetário seguro.',503);
       m.count++;const date=getOrderCreatedAt(order.data);if(date && (!m.latest || date>m.latest))m.latest=date;perStore.set(store,m);
     }
-    if (!isCompletedPurchase(order.data)) continue;
+    if (!completed) continue;
     const paymentKey=order.data.paymentId && store+'/'+order.data.paymentId;
     if (paymentKey && payments.has(paymentKey)) {
       const previous=payments.get(paymentKey);
@@ -138,10 +170,11 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
     if (date && (!metric.ultimaCompra || date>metric.ultimaCompra)) metric.ultimaCompra=date;
     perStore.set(store,metric);
   }
-  const output=[];
+  const output=[], operationalClients=[];
   for (const [id,profile] of clients) {
     const perStore=metrics.get(id),pending=pendingMetrics.get(id),hasPurchases=perStore.size>0,hasHistory=hasPurchases || pending.size>0;
-    if (!general && !hasHistory && !(includeRegistered && (profile.lojasVisitadas.length || relationships.has(id)))) continue;
+    if (profile.operationalOnly && !hasHistory && !staffRegistered.has(id)) continue;
+    if (!general && !hasHistory && !staffRegistered.has(id) && !(includeRegistered && (profile.lojasVisitadas.length || relationships.has(id)))) continue;
     let cents=0, count=0, latest=null,pendingCents=0,pendingCount=0,pendingLatest=null;const scoped={};
     for (const store of new Set([...perStore.keys(),...pending.keys()])) {
       const m=perStore.get(store)||{cents:0,numeroDeCompras:0,ultimaCompra:null},p=pending.get(store)||{cents:0,count:0,latest:null};
@@ -153,18 +186,21 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
       pendingCents+=p.cents;if(!Number.isSafeInteger(pendingCents))fail('Total pendente excede o limite monetário seguro.',503);
       pendingCount+=p.count;if(p.latest&&(!pendingLatest||p.latest>pendingLatest))pendingLatest=p.latest;
     }
-    output.push({...profile,lojasVisitadas:[...new Set([...profile.lojasVisitadas,...(relationships.get(id) || []),...perStore.keys()])],
+    const row=historical.get(id);
+    const display=row?{...profile,id:'historico:'+hash(JSON.stringify([sortedStores,row.path])),nome:row.name || 'Cliente histórico'}:profile;
+    (row?operationalClients:output).push({...display,...(staffRegistered.has(id)?{staffRegistered:true}:{}),lojasVisitadas:[...new Set([...profile.lojasVisitadas,...(relationships.get(id) || []),...perStore.keys()])],
       hasStorePurchases:hasPurchases,hasStoreHistory:hasHistory,numeroDeCompras:count,valorEmCompras:cents/100,ultimaCompra:latest,
       valorPendente:pendingCents/100,pedidosPendentes:pendingCount,ultimoPedidoPendente:pendingLatest,metricasComprasPorLoja:scoped});
   }
-  return {clients:output,issues};
+  return {clients:output,issues,...(operational?{operationalClients}:{})};
 }
 function createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePermissions,extractStoreIds}) {
   return async uid=>{
     const profile=await assertActiveUser(uid),role=normalizeRole(profile.role),stores=extractStoreIds(profile);
     if (!['dono','gerente','atendente','contador'].includes(role)) fail('Acesso restrito à equipe.');
     const custom=(await db.doc('customProfiles/'+uid).get()).data() || {};
-    return {role,stores,allStores:role==='dono' && stores.length===0,permissions:sanitizePermissions(custom.permissions || profile.permissions,role)};
+    return {role,stores,allStores:role==='dono' && stores.length===0,scopedGeneral:profile.role==='dono',
+      permissions:sanitizePermissions(custom.permissions || profile.permissions,role)};
   };
 }
 function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>id}) {
@@ -182,41 +218,47 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
     }
     fail('Consulta excede o limite seguro.',503);
   }
-  async function scopeFor(uid,storeId) {
+  async function scopeFor(uid,storeId,operational=false) {
     const scope=await authorize(uid);
     if (!scope.permissions?.clientes && !scope.permissions?.pedidos && !scope.permissions?.['nota-fiscal']) fail('Módulo não autorizado.');
+    if (operational && scope.permissions?.clientes!==true) fail('Gestão de Clientes exige permissão do módulo Clientes.');
     if (storeId==='__all__') {
       if (scope.role!=='dono') fail('Visão Geral exige acesso multiloja autorizado.');
-      if (!scope.allStores) {
+      const useScopedGeneral=operational&&scope.scopedGeneral;
+      if (useScopedGeneral && !scope.allStores && !scope.stores?.some(validId)) fail('Nenhuma loja autorizada.');
+      if (!useScopedGeneral && !scope.allStores) {
         const all=await read(db.collection('lojas').select('nome'),{count:0});
         if (!all.length || all.some(store=>!scope.stores?.includes(store.id))) fail('Visão Geral exige autorização para todas as lojas.');
       }
     } else if (!validId(storeId) || (!scope.allStores && !scope.stores?.includes(storeId))) fail('Loja não autorizada.');
     return scope;
   }
-  async function load(storeId,scope) {
+  async function load(storeId,scope,operational=false) {
     const budget={count:0};
-    const storeIds=storeId==='__all__'?(scope.allStores?(await read(db.collection('lojas').select('nome'),budget)).map(s=>s.id):scope.stores):[storeId];
-    const trustedRelationships=[];
+    const storeIds=storeId==='__all__'?(scope.allStores?(await read(db.collection('lojas').select('nome'),budget)).map(s=>s.id):[...new Set(scope.stores.filter(validId))]):[storeId];
+    const general=storeId==='__all__'&&(!operational||scope.allStores);
+    const trustedRelationships=[],registrations=[];
     for(const store of storeIds) trustedRelationships.push(...await read(db.collection(ROOT).where('storeId','==',store),budget));
+    if (operational) for (const store of storeIds) registrations.push(...await read(db.collection(REGISTRATIONS).where('storeId','==',store).select('storeId','customerId','nome','createdAt'),budget));
     let customers=[];
-    if(storeId==='__all__')customers=await read(db.collection('clientes').select(...profileFields,...identityFields),budget);
+    if(general)customers=await read(db.collection('clientes').select(...profileFields,...identityFields),budget);
     else {
-      const ids=[...new Set(trustedRelationships.filter(row=>row.id===key(row.data.storeId,row.data.customerId)&&activeRelationship(row.data,storeId,row.data.customerId)).map(row=>row.data.customerId))];
+      const ids=[...new Set(trustedRelationships.filter(row=>storeIds.includes(row.data.storeId)&&row.id===key(row.data.storeId,row.data.customerId)&&activeRelationship(row.data,row.data.storeId,row.data.customerId)).map(row=>row.data.customerId))];
       // Fetch only authorized canonical profiles; never cache authorization.
       for(let i=0;i<ids.length;i+=10)customers.push(...await read(db.collection('clientes').where(FieldPath.documentId(),'in',ids.slice(i,i+10)).select(...profileFields,...identityFields),budget));
     }
     const aliases=await read(db.collection('integrations/customerRegistry/aliases').select('state','customerId'),budget);
     const orders=[];
-    for (const store of storeIds) orders.push(...await read(db.collection(`lojas/${store}/pedidos`).select(...orderFields),budget));
-    if (storeId==='__all__') orders.push(...await read(db.collection('pedidos').select(...orderFields),budget));
-    else for (const field of ['lojaId','storeId']) orders.push(...await read(db.collection('pedidos').where(field,'==',storeId).select(...orderFields),budget));
-    return buildCustomerDirectory({customers,aliases,orders,storeIds,trustedRelationships,general:storeId==='__all__',includeRegistered:true});
+    const fields=operational?[...orderFields,'clienteNome']:orderFields;
+    for (const store of storeIds) orders.push(...await read(db.collection(`lojas/${store}/pedidos`).select(...fields),budget));
+    if (general) orders.push(...await read(db.collection('pedidos').select(...fields),budget));
+    else for (const store of storeIds) for (const field of ['lojaId','storeId']) orders.push(...await read(db.collection('pedidos').where(field,'==',store).select(...fields),budget));
+    return buildCustomerDirectory({customers,aliases,orders,storeIds,trustedRelationships,general,includeRegistered:true,operational,registrations});
   }
-  async function list(uid,storeId) {
-    const scope=await scopeFor(uid,storeId); // Recheck user scope on every request.
+  async function list(uid,storeId,operational=false) {
+    const scope=await scopeFor(uid,storeId,operational); // Recheck user scope on every request.
     // Relationship revocation must take effect on every request, including aliases.
-    const result=await load(storeId,scope),canViewHistoryIssues=scope.role==='dono' && scope.permissions?.clientes===true;
+    const result=await load(storeId,scope,operational),canViewHistoryIssues=scope.role==='dono' && scope.permissions?.clientes===true;
     return {...result,canViewHistoryIssues,issues:canViewHistoryIssues?result.issues:[]};
   }
   async function detail(uid,storeId,id) {
@@ -235,8 +277,9 @@ function mountStaffCustomerDirectory(app,service,verifyToken) {
     catch(error) {return res.status(error.httpStatus || ({unauthenticated:401,'permission-denied':403}[error.code]) || 503).json({message:error.message || 'Não foi possível carregar clientes.'});}
   };
   app.get('/clientes/diretorio',route(async(uid,req)=>{
-    const result=await service.list(uid,req.query.lojaId);
-    return {...result,clients:result.clients.filter(c=>req.query.usage==='crm' || req.query.lojaId==='__all__' || c.hasStoreHistory)};
+    const operational=req.query.usage==='gestao';
+    const result=await service.list(uid,req.query.lojaId,operational);
+    return {...result,clients:result.clients.filter(c=>operational || req.query.usage==='crm' || req.query.lojaId==='__all__' || c.hasStoreHistory)};
   }));
   app.get('/clientes/:id',route((uid,req)=>service.detail(uid,req.query.lojaId,req.params.id)));
 }

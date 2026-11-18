@@ -17,6 +17,39 @@ test('Matriz/Garavelo associate purchases, not cadastro storeId or phone/name co
     assert.ok(r.clients.every(c=>Object.keys(c.metricasComprasPorLoja).every(s=>s===store)));
   }
 });
+test('operational history lists only scoped snapshots, keeps dates and cents, and merges the buyer in General',()=>{
+  const records=fixture();
+  const orders=records.orders.map(o=>({...o,data:{...o.data,clienteNome:{a:'Compra Matriz',b:'Compra Garavelo',both:'Duas lojas'}[o.data.clienteId]}}));
+  const before=structuredClone(orders);
+  const shared={customers:[],orders,operational:true};
+  for (const [store,expected] of [['matriz',['Compra Matriz','Duas lojas']],['garavelo',['Compra Garavelo','Duas lojas']]]) {
+    const result=buildRaw({...shared,storeIds:[store]});
+    assert.deepEqual(result.clients,[]);
+    assert.deepEqual(result.operationalClients.map(row=>row.nome).sort(),expected);
+    assert.ok(result.operationalClients.every(row=>row.operationalOnly && row.id.startsWith('historico:') &&
+      row.lojasVisitadas.length===1 && row.lojasVisitadas[0]===store && !('email' in row) && !('telefone' in row)));
+  }
+  const result=buildRaw({...shared,storeIds:records.storeIds});
+  const both=result.operationalClients.find(row=>row.nome==='Duas lojas');
+  assert.equal(result.operationalClients.length,3);
+  assert.equal(both.valorEmCompras,70);
+  assert.equal(both.ultimaCompra,'2026-11-02T12:00:00.000Z');
+  assert.equal(both.metricasComprasPorLoja.matriz.valorEmCompras,30);
+  assert.equal(both.metricasComprasPorLoja.garavelo.valorEmCompras,40);
+  assert.deepEqual(result.issues,[]);
+  assert.deepEqual(orders,before);
+});
+test('order snapshots and staff registrations cannot populate protected profile results',()=>{
+  const registration={id:key('matriz','registered'),path:'synthetic/registration',data:{storeId:'matriz',customerId:'registered',nome:'Cadastro autorizado'}};
+  const purchase=order('matriz','a','legacy',12,{clienteNome:'Nome no pedido'});
+  const f={customers:[customer('legacy',{nome:'Cadastro global',email:'private@example.invalid'})],orders:[purchase],registrations:[registration],storeIds:['matriz']};
+  assert.deepEqual(buildRaw(f).clients,[]);
+  const scoped=buildRaw({...f,operational:true});
+  assert.deepEqual(scoped.clients,[]);
+  assert.deepEqual(scoped.operationalClients.map(row=>row.nome).sort(),['Cadastro autorizado','Nome no pedido']);
+  assert.equal(scoped.operationalClients.find(row=>row.staffRegistered).numeroDeCompras,0);
+  assert.deepEqual(buildRaw({...f,operational:true,storeIds:['garavelo']}).operationalClients,[]);
+});
 test('Visão Geral includes no-purchase Customer once, scopes last date and exact cents',()=>{
   const f=fixture();f.orders.push(order('matriz','a2','a',.1),order('matriz','a3','a',.2));
   const rows=buildCustomerDirectory(f).clients;

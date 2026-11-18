@@ -8,7 +8,7 @@ export function createCustomerDirectorySync({load,onData,onError,isVisible=()=>t
     running=true;
     try {const result=await load();if (!disposed) {
       // Polling revalidates access, but identical UI data must not remount open forms.
-      const projection=JSON.stringify([result.clients,result.issues||[],result.canViewHistoryIssues===true]);
+      const projection=JSON.stringify([result.clients,result.operationalClients||[],result.issues||[],result.canViewHistoryIssues===true]);
       if(projection!==lastProjection){onData(result);lastProjection=projection;}
     }}
     catch(error) {lastProjection=null;if (!disposed) onError(error);}

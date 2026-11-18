@@ -3524,6 +3524,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
   const initialDataLoaded = useRef(false);
   const storeCollectionsDataRef = useRef({});
   const clientesDataRef = useRef([]);
+  const [operationalDirectory, setOperationalDirectory] = useState(null);
   const refreshCustomersRef = useRef(() => {});
   const [customerDirectoryIssues,setCustomerDirectoryIssues] = useState([]);
   const [customerDirectoryDiagnosticsAllowed,setCustomerDirectoryDiagnosticsAllowed] = useState(false);
@@ -4276,16 +4277,20 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
 
           const setupClientesListener = () => {
                 let initialResolved = false;
+                const directoryStoreId=selectedStoreId===STORE_ALL_KEY?STORE_ALL_KEY:storeIds[0];
+                const directoryUsage=currentPage==='clientes'?'gestao':'crm';
                 clientesDataRef.current = [];
+                setOperationalDirectory(null);
                 setCustomerDirectoryIssues([]);setCustomerDirectoryDiagnosticsAllowed(false);setCustomerDirectoryError('');
                 setData(recomputeDataForView());
                 const sync = createCustomerDirectorySync({
                   isVisible: () => !document.hidden,
-                  load: () => clientApiRequest({auth,baseUrl:API_BASE_URL,path:'/clientes/diretorio?usage=crm',
-                    storeId:selectedStoreId===STORE_ALL_KEY?STORE_ALL_KEY:storeIds[0]}),
+                  load: () => clientApiRequest({auth,baseUrl:API_BASE_URL,path:`/clientes/diretorio?usage=${directoryUsage}`,
+                    storeId:directoryStoreId}),
                   onData: result => {
                     if (!isMounted) return;
                     clientesDataRef.current = result.clients;
+                    if (directoryUsage==='gestao') setOperationalDirectory({userId,selectedStoreId,clients:result.operationalClients || []});
                     setCustomerDirectoryDiagnosticsAllowed(result.canViewHistoryIssues===true);
                     setCustomerDirectoryIssues(result.canViewHistoryIssues===true?(result.issues || []):[]);setCustomerDirectoryError('');
                     setData(recomputeDataForView());
@@ -4294,6 +4299,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
                   onError: error => {
                     if (!isMounted) return;
                     clientesDataRef.current=[];
+                    setOperationalDirectory(null);
                     setCustomerDirectoryIssues([]);setCustomerDirectoryDiagnosticsAllowed(false);
                     setCustomerDirectoryError(error.message || 'Não foi possível carregar os clientes desta loja.');
                     setData(recomputeDataForView());
@@ -9453,7 +9459,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
     );
   };
 
-  const Clientes = () => {
+  const Clientes = ({operationalDirectory, userId, selectedStoreId}) => {
     const { clientes } = data;
     const generalView = isGeneralViewSelected;
     const [searchTerm, setSearchTerm] = usePersistentState("clientes_searchTerm", "");
@@ -9473,10 +9479,13 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
     };
 
     const filteredClients = useMemo(() => {
+      const operationalRows = operationalDirectory && operationalDirectory.userId === userId &&
+        operationalDirectory.selectedStoreId === selectedStoreId ? operationalDirectory.clients : [];
       const term = searchTerm.toLowerCase();
       const digitsTerm = searchTerm.replace(/\D/g, '');
-      return (clientes || []).filter(c => generalView || c.hasStoreHistory || c.hasStorePurchases).filter(c => (c.nome && c.nome.toLowerCase().includes(term)) || (c.email && c.email.toLowerCase().includes(term)) || (digitsTerm && (c.cpf || c.documento) && String(c.cpf || c.documento).includes(digitsTerm)));
-    }, [clientes, searchTerm, generalView]);
+      return [...(clientes || []),...operationalRows].filter(c => generalView || c.hasStoreHistory || c.hasStorePurchases || c.staffRegistered)
+        .filter(c => (c.nome && c.nome.toLowerCase().includes(term)) || (c.email && c.email.toLowerCase().includes(term)) || (digitsTerm && (c.cpf || c.documento) && String(c.cpf || c.documento).includes(digitsTerm)));
+    }, [clientes, operationalDirectory, userId, selectedStoreId, searchTerm, generalView]);
 
 
 
@@ -9563,11 +9572,11 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
         },
         { header: "Valor em Compras", render: (row) => { const metrics = getPurchaseMetrics(row); return (<div><span className="font-semibold text-green-600">R$ {(metrics.valorEmCompras || 0).toFixed(2)}</span>{metrics.pedidosPendentes>0 && <><p className="text-xs text-gray-600">Acumulado confirmado</p><p className="text-xs text-amber-800 mt-1">R$ {metrics.valorPendente.toFixed(2)} pendentes · {metrics.pedidosPendentes} pedido(s) finalizado(s) com pagamento pendente</p></>}</div>); } },
         { header: "Última Compra", render: (row) => { const metrics = getPurchaseMetrics(row); return <div>{metrics.ultimaCompra ? getJSDate(metrics.ultimaCompra)?.toLocaleDateString('pt-BR') : '-'}{metrics.ultimoPedidoPendente && <p className="text-xs text-amber-800 mt-1">Último pedido: {getJSDate(metrics.ultimoPedidoPendente)?.toLocaleDateString('pt-BR')} · pagamento pendente</p>}</div>; } },
-        { header: "Status", render: (row) => {const status=typeof row.status==='string'&&row.status.trim()?row.status.trim():'Não informado';return <span className={`px-3 py-1 rounded-full text-xs font-medium ${status === 'VIP' ? 'bg-purple-100 text-purple-800' : status==='Ativo'?'bg-green-100 text-green-800':'bg-gray-100 text-gray-700'}`}>{status}</span>;} }
+        { header: "Status", render: (row) => {const status=row.operationalOnly?(row.staffRegistered?'Cadastro da loja':'Histórico da loja'):(typeof row.status==='string'&&row.status.trim()?row.status.trim():'Não informado');return <span className={`px-3 py-1 rounded-full text-xs font-medium ${status === 'VIP' ? 'bg-purple-100 text-purple-800' : status==='Ativo'?'bg-green-100 text-green-800':'bg-gray-100 text-gray-700'}`}>{status}</span>;} }
     ];
-    const actions = [ ...(canPreviewCustomer(user?.role,user?.permissions,user?.permissionDetails)?[{icon:Eye,label:"Visualizar como Cliente — somente leitura",onClick:row=>{
+    const actions = [ ...(canPreviewCustomer(user?.role,user?.permissions,user?.permissionDetails)?[{icon:Eye,label:"Visualizar como Cliente — somente leitura",isVisible:row=>!row.operationalOnly,onClick:row=>{
       window.history.pushState(null,'','/admin/customer-preview/'+encodeURIComponent(row.id));setPreviewId(row.id);
-    }}]:[]), { icon: Edit, label: "Editar", onClick: handleEdit }, { icon: Trash2, label: "Excluir", onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('clientes', row.id) }) } ];
+    }}]:[]), { icon: Edit, label: "Editar", isVisible:row=>!row.operationalOnly, onClick: handleEdit }, { icon: Trash2, label: "Excluir", isVisible:row=>!row.operationalOnly, onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('clientes', row.id) }) } ];
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Clientes</h1><p className="text-gray-600 mt-1">Gerencie seus clientes</p></div><Button onClick={handleNewClient} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Novo Cliente</Button></div>
@@ -21316,7 +21325,9 @@ const handleSubmit = async (e) => {
                                         alarmPauseMinutes={resolvedAlarmPauseMinutes}
                                         // --- REMOVIDO: unlockAudio e audioUnlocked ---
                                         /> : <PaginaInicial onImageClick={setLightboxImage} />;
-      case 'clientes': return userHasPermission('clientes') ? <Clientes /> : <PaginaInicial onImageClick={setLightboxImage} />;
+      case 'clientes': return userHasPermission('clientes')
+        ? <Clientes operationalDirectory={operationalDirectory} userId={userId} selectedStoreId={selectedStoreId} />
+        : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'produtos': return userHasPermission('produtos') ? <Produtos /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'pedidos': return userHasPermission('pedidos') ? <Pedidos /> : <PaginaInicial onImageClick={setLightboxImage} />;
       case 'entre-lojas': return userHasPermission('entre-lojas') ? <EntreLojas /> : <PaginaInicial onImageClick={setLightboxImage} />;

@@ -1,6 +1,7 @@
 const {test,before,after}=require('node:test'),assert=require('node:assert/strict');
 const admin=require('firebase-admin'),{HttpsError}=require('firebase-functions/v2/https');
 const {createAdminOrderEdit,createOrderAuthorizer}=require('./admin-order-edit');
+const {relationshipRef}=require('./customer-store-relationship');
 const {explicitFiscalPayment}=require('./order-payment-method');
 let db,api,sequence=0;const storeId='admin-edit-fixture';
 const snapshot=extra=>({lojaId:storeId,clienteId:'legacy-customer',clienteNome:'Cliente fixture',status:'Pendente',categoria:'Delivery',formaPagamento:'A combinar',observacao:'Antes',origem:'Cardapio Online',paymentMode:'AGREED_LATER',paymentMethod:null,paymentStatus:'PENDING',itens:[{produtoId:'brownie',nome:'Brownie',preco:10,quantity:1}],subtotal:10,desconto:0,total:10,cupom:null,...extra});
@@ -27,6 +28,20 @@ test('nota emitida/emissão protege itens/valores e permite observação interna
 test('estoque manual só alocado na finalização completa; atalho não baixa e edição posterior não duplica',async()=>{const f=await fixture({origem:'Manual',paymentMode:null});await api.save(request(f,{status:'Finalizado'},'STATUS'));assert.equal(await stock('brownie'),9);const order=(await f.ref.get()).data();await api.save(request({...f,order},{observacao:'Conferido'},'FULL','staffA',{expectedRevision:1}));assert.equal(await stock('brownie'),8);});
 test('Customer/Contador/revogado/sem capability/loja externa/anônimo não usam gravação ou histórico',async()=>{const f=await fixture();for(const uid of ['customer','accountant','revoked','noPermission','foreign',null]){await assert.rejects(api.save(request(f,{observacao:'Denied'},'FULL',uid)));await assert.rejects(api.history({auth:uid?{uid}:null,data:{storeId,orderId:f.id}}));}assert.equal((await f.ref.get()).get('observacao'),'Antes');});
 test('versão concorrente, reutilização de operação com outro payload e estoque insuficiente são atômicos',async()=>{const f=await fixture(),req=request(f,{observacao:'Primeira'});await api.save(req);await assert.rejects(api.save({...req,data:{...req.data,patch:{...req.data.patch,observacao:'Forjada'}}}),/já utilizado/);await assert.rejects(api.save(request(f,{observacao:'Obsoleta'})),/outra sessão/);const g=await fixture();await assert.rejects(api.save(request(g,{itens:[{produtoId:'brownie',quantity:100}]})),/Estoque/);assert.equal((await g.ref.get()).get('total'),10);assert.equal((await g.ref.collection('auditEvents').get()).size,0);});
-test('mudança legítima de cliente manual mantém referência original e histórico',async()=>{const f=await fixture({origem:'Manual',paymentMode:null});await db.doc('clientes/manual-new').set({nome:'Cliente novo',telefone:'fixture-phone',enderecos:[{enderecoCompleto:'Endereço fixture',isDefault:true}]});await api.save(request(f,{clienteId:'manual-new'}));const order=(await f.ref.get()).data();assert.equal(order.clienteId,'manual-new');assert.equal(order.clienteEndereco,'Endereço fixture');assert.equal(order.telefone,'fixture-phone');assert.equal(order.originalCustomerId,'legacy-customer');const h=await api.history({auth:{uid:'staffA'},data:{storeId,orderId:f.id}});assert.ok(h.events[0].changes.some(c=>c.field==='clienteId'&&c.before==='legacy-customer'&&c.after==='manual-new'));});
+test('mudança legítima de cliente manual mantém referência original e histórico',async()=>{
+  const f=await fixture({origem:'Manual',paymentMode:null});
+  await db.doc('clientes/manual-new').set({nome:'Cliente novo',telefone:'fixture-phone',enderecos:[{enderecoCompleto:'Endereço fixture',isDefault:true}]});
+  await relationshipRef(db,storeId,'manual-new').set({
+    schemaVersion:1,state:'ACTIVE',storeId,customerId:'manual-new',source:'REVIEWED_LEGACY',evidenceRef:'synthetic-reviewed',
+  });
+  await api.save(request(f,{clienteId:'manual-new'}));
+  const order=(await f.ref.get()).data();
+  assert.equal(order.clienteId,'manual-new');
+  assert.equal(order.clienteEndereco,'Endereço fixture');
+  assert.equal(order.telefone,'fixture-phone');
+  assert.equal(order.originalCustomerId,'legacy-customer');
+  const history=await api.history({auth:{uid:'staffA'},data:{storeId,orderId:f.id}});
+  assert.ok(history.events[0].changes.some(c=>c.field==='clienteId'&&c.before==='legacy-customer'&&c.after==='manual-new'));
+});
 test('nota histórica autorizada sem ponte no pedido também bloqueia edição fiscal',async()=>{const f=await fixture();await db.doc(`lojas/${storeId}/invoices/historical-${f.id}`).set({orderId:f.id,status:'authorized'});await assert.rejects(api.save(request(f,{desconto:1})),/dados fiscais protegidos/);assert.equal((await f.ref.get()).get('total'),10);});
 test('observação de pedido histórico não cria defaults fiscais nem é bloqueada por campos ausentes',async()=>{const f=await fixture({fiscal:{authorizedInvoiceId:'issued'}});await f.ref.update({categoria:admin.firestore.FieldValue.delete(),subtotal:admin.firestore.FieldValue.delete(),desconto:admin.firestore.FieldValue.delete()});delete f.order.categoria;delete f.order.subtotal;delete f.order.desconto;await api.save(request(f,{categoria:'Delivery',desconto:0,dataEntrega:'',observacao:'Interna histórica'}));const saved=(await f.ref.get()).data();assert.equal(saved.observacao,'Interna histórica');assert.equal(saved.categoria,undefined);assert.equal(saved.subtotal,undefined);assert.equal(saved.desconto,undefined);});

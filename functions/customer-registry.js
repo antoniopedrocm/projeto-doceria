@@ -1,4 +1,4 @@
-const {grantCustomerRelationship}=require('./customer-store-relationship');
+const {REGISTRATIONS,key,grantCustomerRelationship}=require('./customer-store-relationship');
 const {createHash}=require('node:crypto');
 const {FieldValue}=require('firebase-admin/firestore');
 const {normalizeCustomerPhone}=require('./customer-phone');
@@ -62,15 +62,25 @@ function createCustomerRegistry({db}) {
     };
     return tx?run(tx):db.runTransaction(run);
   }
-  async function createOrGet({phone:value,data={}}) {
+  async function createOrGet({phone:value,data={},staffRegistrationStore=null}) {
     // Identity/ownership is a separate verified operation, never supplied here.
     if(Object.keys(data).some(k=>['uid','authOwnerUid','authOwnerUids','authIdentities','identityRegistryVersion','canonicalCustomerId','canonicalStatus','legacyCustomerIds'].includes(k))) throw failure('CUSTOMER_IDENTITY_FORBIDDEN','Confira os dados do cadastro.',403);
     const ref=db.collection('clientes').doc();
     return db.runTransaction(async tx=>{
       const existing=await resolvePhone(value,tx);if(existing.customerId)return {...existing,created:false};
+      if (staffRegistrationStore && (!validId(staffRegistrationStore) || staffRegistrationStore === '__all__' ||
+        !(await tx.get(db.doc('lojas/'+staffRegistrationStore))).exists)) {
+        throw failure('STAFF_REGISTRATION_STORE_INVALID','Selecione uma loja válida para o cadastro.',400);
+      }
       const fields={...data,telefone:existing.phone.national,phone_number:existing.phone.e164,normalizedPhone:existing.phone.e164,
         canonicalStatus:'CANONICAL',identityRegistryVersion:1,legacyCustomerIds:[],criadoEm:FieldValue.serverTimestamp(),atualizadoEm:FieldValue.serverTimestamp()};
       tx.create(ref,fields);tx.create(phoneRef(existing.phone),{state:'READY',normalizedPhone:existing.phone.e164,customerId:ref.id,updatedAt:FieldValue.serverTimestamp()});
+      if (staffRegistrationStore) {
+        tx.create(db.doc(REGISTRATIONS+'/'+key(staffRegistrationStore,ref.id)),{
+          storeId:staffRegistrationStore,customerId:ref.id,nome:typeof data.nome==='string'?data.nome.trim().slice(0,150):'',
+          createdAt:FieldValue.serverTimestamp(),
+        });
+      }
       return {phone:existing.phone,customerId:ref.id,created:true};
     });
   }

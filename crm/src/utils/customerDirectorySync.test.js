@@ -1,4 +1,17 @@
 import {createCustomerDirectorySync} from './customerDirectorySync';
+
+test('refresh notifies the CRM when only the store history changes',async()=>{
+  const first={clients:[],operationalClients:[{id:'historico:1',numeroDeCompras:1}]};
+  const next={clients:[],operationalClients:[{id:'historico:1',numeroDeCompras:2}]};
+  const load=jest.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(next);
+  const onData=jest.fn();
+  const sync=createCustomerDirectorySync({load,onData,onError:jest.fn()});
+  await sync.start();
+  await sync.start();
+  expect(onData).toHaveBeenCalledTimes(2);
+  expect(onData).toHaveBeenLastCalledWith(next);
+  sync.dispose();
+});
 const flush=async()=>{await Promise.resolve();await Promise.resolve();};
 beforeEach(()=>jest.useFakeTimers());afterEach(()=>jest.useRealTimers());
 test('refreshes after a new order; coalesces a burst and disposes every timer',async()=>{

@@ -132,3 +132,36 @@ test('technical diagnostics remain admin-only even when the full cache was warme
   for(const uid of ['staffA','accountant']){const r=await service.list(uid,'matriz');assert.equal(r.canViewHistoryIssues,false);assert.deepEqual(r.issues,[]);}
   const r=await fetch(base+'/clientes/diretorio?lojaId=matriz',{headers:{'x-test-uid':'staffA'}});assert.equal(JSON.stringify(await r.json()).includes('unresolved-private'),false);
 });
+test('Gestão lists history and registrations in the authorized store only; legacy orders remain operational',async()=>{
+  const {REGISTRATIONS,ROOT}=require('./customer-store-relationship');
+  const registry=createCustomerRegistry({db});
+  await db.doc('integrations/customerRegistry').set({state:'READY'});
+  const registered=await registry.createOrGet({phone:'62985551163',data:{nome:'Novo da Matriz'},staffRegistrationStore:'matriz'});
+  const reused=await registry.createOrGet({phone:'62985551163',data:{nome:'Mesmo cadastro'},staffRegistrationStore:'garavelo'});
+  assert.equal(registered.customerId,reused.customerId);
+  assert.equal(reused.created,false);
+  assert.equal((await db.collection(REGISTRATIONS).get()).size,1);
+  assert.equal((await db.collection(ROOT).where('customerId','==',registered.customerId).get()).empty,true);
+  const orderPath='lojas/matriz/pedidos/legado-isolado';
+  await db.doc('clientes/legacy-shared').set({nome:'Perfil global',email:'global@example.invalid'});
+  await db.doc(orderPath).set({clienteId:'legacy-shared',clienteNome:'Histórico Matriz',status:'Finalizado',total:15,createdAt:'2026-11-01'});
+  await db.doc('lojas/garavelo/pedidos/legado-isolado').set({clienteId:'legacy-shared',clienteNome:'Histórico Garavelo',status:'Finalizado',total:22,createdAt:'2026-11-02'});
+  const get=(uid,store)=>fetch(base+'/clientes/diretorio?usage=gestao&lojaId='+store,{headers:{'x-test-uid':uid}});
+  const a=await (await get('staffA','matriz')).json(),b=await (await get('managerB','garavelo')).json();
+  assert.equal(a.operationalClients.find(c=>c.nome==='Histórico Matriz').valorEmCompras,15);
+  assert.equal(b.operationalClients.find(c=>c.nome==='Histórico Garavelo').valorEmCompras,22);
+  assert.ok(a.operationalClients.some(c=>c.nome==='Novo da Matriz'&&c.staffRegistered));
+  assert.equal(b.operationalClients.some(c=>c.nome==='Novo da Matriz'),false);
+  assert.equal(JSON.stringify(a).includes('global@example.invalid'),false);
+  assert.equal((await get('staffA','garavelo')).status,403);
+  assert.equal((await get('accountant','matriz')).status,403);
+  assert.equal((await get('adminA','__all__')).status,403);
+  await assert.rejects(()=>service.detail('staffA','matriz','legacy-shared'),e=>e.httpStatus===404);
+  const restricted=await (await get('ownerA','__all__')).json();
+  assert.equal(restricted.operationalClients.find(c=>c.nome==='Histórico Matriz').valorEmCompras,15);
+  assert.equal(JSON.stringify(restricted).includes('Histórico Garavelo'),false);
+  const general=await (await get('owner','__all__')).json();
+  assert.equal(general.clients.find(c=>c.id==='legacy-shared').valorEmCompras,37);
+  const existing=await getDoc(doc(rules.authenticatedContext('staffA').firestore(),orderPath));
+  assert.equal(existing.data().clienteNome,'Histórico Matriz');
+});
