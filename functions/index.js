@@ -1295,7 +1295,7 @@ const app = express();
 app.use(cors({origin: true})); // Habilita CORS para a API do cardápio
 app.use(express.json());
 const staffCustomerDirectory=createStaffCustomerDirectory({db,resolveCustomerId:id=>customerRegistry.resolveId(id),
-  authorize:createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePermissions,extractStoreIds})});
+  authorize:createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePermissions})});
 // Specific lookup route is mounted after /clientes/buscar to preserve its contract.
 const adminCustomerPreview=createAdminCustomerPreview({db,registry:customerRegistry,authorize:verifyManagementAccess});
 mountAdminCustomerPreview(app,adminCustomerPreview,checkoutToken);

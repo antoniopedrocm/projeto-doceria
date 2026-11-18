@@ -10,6 +10,7 @@ const {createCustomerRegistry}=require('./customer-registry');
 const app=admin.initializeApp({projectId:process.env.GCLOUD_PROJECT},'staff-directory-test'),db=app.firestore();
 const permissions={clientes:true,pedidos:true};
 let rules,service,clock=0,server,base;
+const unfilteredCustomerQueries = [];
 before(async()=>{
   rules=await initializeTestEnvironment({projectId:process.env.GCLOUD_PROJECT,firestore:{host:'127.0.0.1',port:8080,rules:fs.readFileSync(require('node:path').join(__dirname,'../firestore.rules'),'utf8')}});
   await rules.clearFirestore(); // This fixed demo project exists only in the loopback emulator.
@@ -32,11 +33,21 @@ before(async()=>{
   const authorize=createDirectoryAuthorizer({db,assertActiveUser:async uid=>{
     if(!uid)throw Object.assign(new Error('Login obrigatório'),{code:'unauthenticated'});
     const p=(await db.doc('users/'+uid).get()).data();if(!p||p.ativo===false)throw Object.assign(new Error('Sem acesso'),{httpStatus:403});return p;
-  },normalizeRole:r=>r==='admin'?'dono':r.toLowerCase(),sanitizePermissions:p=>p||{},
-    extractStoreIds:p=>p.lojaIds||(typeof p.lojaId==='string'?[p.lojaId.trim()]:[])});
+  },normalizeRole:r=>r==='admin'?'dono':r.toLowerCase(),sanitizePermissions:p=>p||{}});
   const {relationshipRef}=require('./customer-store-relationship');
   for(const [id,stores] of Object.entries({a:['matriz'],b:['garavelo'],both:['matriz','garavelo'],registered:['matriz'],pendingOnly:['matriz'],noOrders:['matriz']}))for(const storeId of stores)await relationshipRef(db,storeId,id).set({schemaVersion:1,state:'ACTIVE',storeId,customerId:id,source:'REVIEWED_LEGACY',evidenceRef:'synthetic-reviewed-legacy'});
-  service=createStaffCustomerDirectory({db,authorize,resolveCustomerId:id=>registry.resolveId(id),now:()=>clock});
+  const directoryDb = {collection(path) {
+    const ref = db.collection(path);
+    if (path !== 'clientes') return ref;
+    return {
+      where: ref.where.bind(ref),
+      select(...fields) {
+        unfilteredCustomerQueries.push(path);
+        return ref.select(...fields);
+      },
+    };
+  }};
+  service=createStaffCustomerDirectory({db:directoryDb,authorize,resolveCustomerId:id=>registry.resolveId(id),now:()=>clock});
   const http=express();mountStaffCustomerDirectory(http,service,async req=>{
     const uid=req.headers['x-test-uid'];if(!uid)throw Object.assign(new Error('Login obrigatório'),{httpStatus:401});return {uid};
   });
@@ -228,4 +239,93 @@ test('operational HTTP results are unchanged by updates to a protected alias out
   assert.deepEqual(after,before);
   assert.equal(after.operationalClients.find(row=>row.nome==='Registro histórico').valorEmCompras,17);
   assert.equal(after.clients.some(row=>row.id==='b'),false);
+});
+
+test('malformed or unassigned legacy admin profiles cannot list Customers', async () => {
+  const variants = [
+    ['spaces', {lojaId:'   '}],
+    ['null', {lojaId:null, lojaIds:[]}],
+    ['missing', {}],
+    ['wrong-type', {lojaId:123}],
+    ['invalid-array', {lojaIds:['matriz', null]}],
+    ['malformed-assignment', {lojaIds:'matriz'}],
+    ['reserved-store', {lojaIds:['__all__']}],
+    ['invalid-owner', {role:'dono', lojaId:'   '}],
+    ['malformed-owner', {role:'dono', lojaIds:null}],
+    ['unknown-role', {role:'unknown', lojaIds:['matriz']}],
+    ['inconsistent-role', {role:'ADMIN', lojaIds:['matriz']}],
+  ];
+  const before = unfilteredCustomerQueries.length;
+  for (const [uid, profile] of variants) {
+    await db.doc('users/'+uid).set({role:'admin', permissions, ...profile});
+    for (const query of ['lojaId=__all__&usage=gestao', 'lojaId=__all__', 'lojaId=matriz&usage=gestao']) {
+      const response = await fetch(base+'/clientes/diretorio?'+query, {headers:{'x-test-uid':uid}});
+      assert.equal(response.status, 403, uid+'/'+query);
+      assert.deepEqual(Object.keys(await response.json()), ['message']);
+    }
+  }
+  assert.equal(unfilteredCustomerQueries.length, before);
+});
+
+test('only an explicitly global Dono loads the full Customers inventory', async () => {
+  const profiles = {
+    adminB: {role:'admin', lojaId:'garavelo'},
+    adminBoth: {role:'admin', lojaIds:['matriz','garavelo']},
+    ownerGlobal: {role:'dono', lojaIds:[], lojaId:null},
+  };
+  for (const [uid, profile] of Object.entries(profiles)) {
+    await db.doc('users/'+uid).set({ativo:true, permissions, ...profile});
+  }
+  await db.doc('clientes/out-of-scope').set({
+    nome:'Perfil sem vínculo', email:'unscoped@example.invalid', telefone:'62980000111',
+  });
+  const get = (uid, store, usage='gestao') => fetch(
+    base+'/clientes/diretorio?lojaId='+store+'&usage='+usage, {headers:{'x-test-uid':uid}},
+  );
+  const before = unfilteredCustomerQueries.length;
+  for (const [uid, store, other, value] of [
+    ['adminA','matriz','garavelo',30], ['adminB','garavelo','matriz',40],
+  ]) {
+    const response = await get(uid,store);
+    assert.equal(response.status,200);
+    const {clients, operationalClients} = await response.json();
+    const shared = clients.find(row=>row.id==='both');
+    assert.equal(shared.valorEmCompras,value);
+    assert.equal(shared.numeroDeCompras,1);
+    assert.deepEqual(Object.keys(shared.metricasComprasPorLoja),[store]);
+    assert.equal(clients.some(row=>row.id===(other==='matriz'?'a':'b')),false);
+    assert.equal(operationalClients.some(row=>row.nome==='Histórico Garavelo' && store==='matriz'),false);
+    assert.equal((await get(uid,other)).status,403);
+    assert.equal((await get(uid,'__all__')).status,403);
+  }
+  for (const [uid, usage, value, stores] of [
+    ['ownerA','gestao',30,['matriz']],
+    ['adminBoth','gestao',70,['matriz','garavelo']],
+    ['adminBoth','crm',70,['matriz','garavelo']],
+  ]) {
+    const response = await get(uid,'__all__',usage);
+    assert.equal(response.status,200);
+    const directory = await response.json();
+    assert.doesNotMatch(JSON.stringify(directory), /Perfil sem vínculo|unscoped@example\.invalid|62980000111/);
+    const shared = directory.clients.find(row=>row.id==='both');
+    assert.equal(shared.valorEmCompras,value);
+    assert.equal(shared.numeroDeCompras,stores.length);
+    assert.deepEqual(Object.keys(shared.metricasComprasPorLoja).sort(),[...stores].sort());
+    if (usage==='gestao') {
+      const legacy = directory.operationalClients.find(row=>row.nome==='Histórico Matriz' || row.nome==='Histórico Garavelo');
+      assert.equal(legacy.valorEmCompras,stores.length===1?15:37);
+      assert.equal(legacy.numeroDeCompras,stores.length);
+      assert.doesNotMatch(JSON.stringify(directory), /global@example\.invalid/);
+    }
+  }
+  assert.equal(unfilteredCustomerQueries.length,before);
+  const response = await get('ownerGlobal','__all__');
+  assert.equal(response.status,200);
+  const global = await response.json();
+  assert.equal(global.clients.find(row=>row.id==='out-of-scope').email,'unscoped@example.invalid');
+  assert.equal(unfilteredCustomerQueries.length,before+1);
+  const globalOwner = rules.authenticatedContext('ownerGlobal').firestore();
+  const multiStoreAdmin = rules.authenticatedContext('adminBoth').firestore();
+  await assertSucceeds(getDoc(doc(globalOwner,'clientes/out-of-scope')));
+  await assertFails(getDoc(doc(multiStoreAdmin,'clientes/out-of-scope')));
 });

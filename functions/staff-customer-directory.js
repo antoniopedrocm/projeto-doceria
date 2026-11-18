@@ -26,20 +26,27 @@ function orderStore(order) {
 }
 const ruleOwnerRoles = ['dono','owner','admin','adm','administrador','administradora','administrador_master'];
 const ruleStaffRoles = [...ruleOwnerRoles,'gerente','atendente','funcionario','contador','corretor'];
-function orderReadScope(profile) {
-  // Match isSignedIn, staffStoreIds and canReadStoreCollection in firestore.rules.
+function directoryStoreScope(profile) {
+  // Match the Rules' role checks and store precedence, rejecting malformed assignments.
   const {role, lojaIds, lojas, lojaId, permissions} = profile;
   if (!ruleStaffRoles.includes(role) || profile.ativo===false || profile.status==='inativo') {
-    return {active:false,allStores:false,stores:[],nestedStores:[]};
+    fail('Acesso restrito à equipe autorizada.');
   }
-  const stores=Array.isArray(lojaIds) && lojaIds.length ? lojaIds :
-    Array.isArray(lojas) && lojas.length ? lojas :
-    Array.isArray(lojaId) ? lojaId : typeof lojaId==='string' && lojaId!=='' ? [lojaId] : [];
-  const allStores=ruleOwnerRoles.includes(role) && stores.length===0;
-  if (role!=='contador') return {active:true,allStores,stores,nestedStores:stores};
+  if (['lojaIds','lojas'].some(field=>Object.hasOwn(profile,field) && !Array.isArray(profile[field]))) {
+    fail('Atribuição de lojas inválida.');
+  }
+  const primary = Array.isArray(lojaId) ? lojaId : lojaId == null || lojaId === '' ? [] : [lojaId];
+  if ([...(lojaIds || []), ...(lojas || []), ...primary].some(id=>!validId(id))) {
+    fail('Atribuição de lojas inválida.');
+  }
+  const stores = [...new Set(lojaIds?.length ? lojaIds : lojas?.length ? lojas : primary)];
+  // Only the canonical Dono role can have global directory access without an assignment.
+  const allStores = role === 'dono' && stores.length === 0;
+  if (!allStores && stores.length === 0) fail('Nenhuma loja autorizada.');
+  if (role !== 'contador') return {allStores,stores,nestedStores:stores};
   const hasModule=['dashboard','pedidos','financeiro','relatorios','nota-fiscal'].some(module=>permissions?.[module]===true);
   const nestedStores=hasModule?stores.filter(store=>store===lojaId || (Array.isArray(lojaIds) && lojaIds.includes(store))):[];
-  return {active:true,allStores,stores,nestedStores};
+  return {allStores,stores,nestedStores};
 }
 function isCompletedOrder(data) {
   if (data.requiresReview === true || ['Cancelado','CANCELLED','CANCELED','REFUNDED'].includes(data.status) ||
@@ -230,12 +237,13 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
   }
   return {clients:output,issues,...(operational?{operationalClients}:{})};
 }
-function createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePermissions,extractStoreIds}) {
+function createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePermissions}) {
   return async uid=>{
-    const profile=await assertActiveUser(uid),role=normalizeRole(profile.role),stores=extractStoreIds(profile);
+    const profile=await assertActiveUser(uid),role=normalizeRole(profile.role);
     if (!['dono','gerente','atendente','contador'].includes(role)) fail('Acesso restrito à equipe.');
+    const storeScope=directoryStoreScope(profile);
     const custom=(await db.doc('customProfiles/'+uid).get()).data() || {};
-    return {role,stores,allStores:role==='dono' && stores.length===0,scopedGeneral:profile.role==='dono',orderReads:orderReadScope(profile),
+    return {role,...storeScope,scopedGeneral:profile.role==='dono',
       permissions:sanitizePermissions(custom.permissions || profile.permissions,role)};
   };
 }
@@ -258,25 +266,21 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
     const scope=await authorize(uid);
     if (!scope.permissions?.clientes && !scope.permissions?.pedidos && !scope.permissions?.['nota-fiscal']) fail('Módulo não autorizado.');
     if (operational && scope.permissions?.clientes!==true) fail('Gestão de Clientes exige permissão do módulo Clientes.');
-    if (operational && !scope.orderReads?.active) fail('Acesso restrito à equipe autorizada.');
     if (storeId==='__all__') {
       if (scope.role!=='dono') fail('Visão Geral exige acesso multiloja autorizado.');
-      const useScopedGeneral=operational&&scope.scopedGeneral;
-      if (useScopedGeneral && !scope.orderReads.allStores && !scope.stores?.some(id=>validId(id)&&scope.orderReads.stores.includes(id))) fail('Nenhuma loja autorizada.');
-      if (!useScopedGeneral && !scope.allStores) {
+      if (!scope.allStores && !(operational && scope.scopedGeneral)) {
         const all=await read(db.collection('lojas').select('nome'),{count:0});
         if (!all.length || all.some(store=>!scope.stores?.includes(store.id))) fail('Visão Geral exige autorização para todas as lojas.');
       }
-    } else if (!validId(storeId) || (!scope.allStores && !scope.stores?.includes(storeId)) ||
-      (operational && !scope.orderReads.allStores && !scope.orderReads.stores.includes(storeId))) fail('Loja não autorizada.');
+    } else if (!validId(storeId) || (!scope.allStores && !scope.stores?.includes(storeId))) fail('Loja não autorizada.');
     return scope;
   }
   async function load(storeId,scope,operational=false) {
     const budget={count:0};
-    const orderReads=scope.orderReads || {allStores:false,stores:[],nestedStores:[]};
-    let storeIds=storeId==='__all__'?(scope.allStores?(await read(db.collection('lojas').select('nome'),budget)).map(s=>s.id):[...new Set(scope.stores.filter(validId))]):[storeId];
-    if (operational && !orderReads.allStores) storeIds=storeIds.filter(id=>orderReads.stores.includes(id));
-    const general=storeId==='__all__'&&(!operational||scope.allStores);
+    const general=storeId==='__all__' && scope.allStores===true;
+    const storeIds=general?(await read(db.collection('lojas').select('nome'),budget)).map(s=>s.id):
+      storeId==='__all__'?scope.stores:[storeId];
+    const nestedStores=scope.nestedStores ?? scope.stores;
     const trustedRelationships=[],registrations=[];
     for(const store of storeIds) trustedRelationships.push(...await read(db.collection(ROOT).where('storeId','==',store),budget));
     if (operational) for (const store of storeIds) registrations.push(...await read(db.collection(REGISTRATIONS).where('storeId','==',store).select('storeId','customerId','nome','createdAt'),budget));
@@ -290,17 +294,17 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
     const aliases=operational?[]:await read(db.collection('integrations/customerRegistry/aliases').select('state','customerId'),budget);
     const orders=[];
     const fields=operational?[...orderFields,'clienteNome']:orderFields;
-    for (const store of storeIds.filter(id=>orderReads.allStores || orderReads.nestedStores.includes(id))) {
+    for (const store of storeIds.filter(id=>scope.allStores || nestedStores.includes(id))) {
       orders.push(...await read(db.collection(`lojas/${store}/pedidos`).select(...fields),budget));
     }
-    if (general && orderReads.allStores) orders.push(...await read(db.collection('pedidos').select(...fields),budget));
-    else for (const store of storeIds.filter(id=>orderReads.allStores || orderReads.stores.includes(id))) {
+    if (general) orders.push(...await read(db.collection('pedidos').select(...fields),budget));
+    else for (const store of storeIds) {
       for (const field of ['lojaId','storeId']) {
         const results=await read(db.collection('pedidos').where(field,'==',store).select(...fields),budget);
         orders.push(...results.filter(order=>orderReadStore(order)===store));
       }
     }
-    return buildCustomerDirectory({customers,aliases,orders,storeIds,trustedRelationships,general,includeRegistered:true,operational,registrations,allowUnassignedRoot:orderReads.allStores});
+    return buildCustomerDirectory({customers,aliases,orders,storeIds,trustedRelationships,general,includeRegistered:true,operational,registrations});
   }
   async function list(uid,storeId,operational=false) {
     const scope=await scopeFor(uid,storeId,operational); // Recheck user scope on every request.
