@@ -408,3 +408,58 @@ test('Gestão includes a newly registered store according to canonical ID and op
     await assert.rejects(() => service.detail('staffNewStore', store, id), {httpStatus: 404});
   }
 });
+
+test('operational history exposes only the selected authorized projection and gates order references', async () => {
+  const third = 'loja-sintetica-03';
+  const actor = 'staffNewStore';
+  const buyer = 'comprador-multiloja-sintetico';
+  const get = (uid, store, id) => {
+    const path = id == null ? '/clientes/diretorio?usage=gestao&' :
+      '/clientes/diretorio/historico/' + encodeURIComponent(id) + '?';
+    return fetch(base + path + new URLSearchParams({lojaId: store}), {
+      headers: uid ? {'x-test-uid': uid} : {},
+    });
+  };
+  await db.doc('pedidos/history-unauthorized-root').set({
+    lojaId:null, storeId:third, clienteId:buyer, clienteNome:'Nome reservado', total:999,
+    status:'Finalizado', createdAt:'2026-11-12',
+  });
+  const directory = await (await get(actor, third)).json();
+  const buyerRow = directory.operationalClients.find(row => row.hasStorePurchases);
+  const registered = directory.operationalClients.find(row => row.staffRegistered);
+  assert.equal(buyerRow.canEditProfile, false);
+  assert.equal(registered.canEditProfile, false);
+  const historyResponse = await get(actor, third, buyerRow.id);
+  assert.equal(historyResponse.status, 200);
+  assert.equal(historyResponse.headers.get('cache-control'), 'no-store');
+  const history = await historyResponse.json();
+  assert.deepEqual(history.pedidos, [{
+    referencia:'pedido-multiloja-sintetico', lojaId:third, data:'2026-11-03T00:00:00.000Z',
+    valor:33, pagamento:'confirmado',
+  }]);
+  assert.deepEqual(Object.keys(history.metricasComprasPorLoja), [third]);
+  assert.equal(history.totalPedidos, 1);
+  assert.doesNotMatch(JSON.stringify(history), /Nome reservado|history-unauthorized-root|email|telefone|authOwner|customerId/);
+  assert.equal((await get(actor, third, buyer)).status, 404);
+  assert.equal((await get('staffA', third, buyerRow.id)).status, 403);
+  assert.equal((await get('staffA', 'matriz', buyerRow.id)).status, 404);
+  assert.equal((await get(null, third, buyerRow.id)).status, 401);
+  const registrationHistory = await (await get(actor, third, registered.id)).json();
+  assert.equal(registrationHistory.totalPedidos, 0);
+  assert.deepEqual(registrationHistory.pedidos, []);
+
+  const scopedOwner = await (await get('ownerWithNewStore','__all__')).json();
+  const scopedBuyer = scopedOwner.operationalClients.find(row => row.nome === 'Histórico sintético ' + third);
+  const general = await (await get('ownerWithNewStore','__all__',scopedBuyer.id)).json();
+  assert.deepEqual(general.pedidos.map(row => row.lojaId).sort(), ['matriz',third].sort());
+  assert.equal(general.totalPedidos, 2);
+  const matrix = await (await get('staffA','matriz')).json();
+  assert.equal(matrix.clients.find(row => row.id === 'a').canEditProfile, true);
+
+  await db.doc('users/' + actor).update({permissions:{clientes:true}});
+  const metricsOnly = await (await get(actor, third, buyerRow.id)).json();
+  assert.equal(metricsOnly.pedidos, null);
+  assert.equal(metricsOnly.totalPedidos, 1);
+  await db.doc('users/' + actor).update({lojaIds:['matriz']});
+  assert.equal((await get(actor, third, buyerRow.id)).status, 403);
+});

@@ -13,14 +13,16 @@ afterAll(()=>{global.IS_REACT_ACT_ENVIRONMENT=priorActEnvironment;});
 const ast=parse(source,{sourceType:'module',plugins:['jsx']});let node;
 function walk(n){if(!n || typeof n!=='object')return;if(n.type==='VariableDeclarator'&&n.id.name==='Clientes')node=n.init;Object.values(n).forEach(v=>Array.isArray(v)?v.forEach(walk):walk(v));}walk(ast);
 const compiled=transformSync('const View='+source.slice(node.start,node.end),{babelrc:false,configFile:false,presets:[require.resolve('@babel/preset-react')]}).code;
-function view(clients,general,store,{diagnostics=false,issues=[],operational=[],operationalStore=store}={}){
+function view(clients,general,store,{diagnostics=false,issues=[],operational=[],operationalStore=store,history=jest.fn()}={}){
   const icon=()=>null,stub=()=>null;
   const bindings={React,useState:React.useState,useMemo:React.useMemo,usePersistentState:(_,value)=>React.useState(value),
     data:{clientes:clients},isGeneralViewSelected:general,selectedStoreIdForAlarm:store,
     user:{role:'dono',permissions:{}},customerDirectoryDiagnosticsAllowed:diagnostics,customerDirectoryIssues:issues,customerDirectoryError:'',refreshCustomersRef:{current:jest.fn()},
-    canPreviewCustomer:()=>false,setConfirmDelete:jest.fn(),Button:({children,...props})=><button {...props}>{children}</button>,
-    Modal:stub,Input:stub,Select:stub,Search:icon,Plus:icon,Edit:icon,Trash2:icon,Eye:icon,Save:icon,
-    getJSDate:value=>new Date(value),Table:({columns,data,actions})=><table><tbody>{data.map(row=><tr key={row.id} data-customer={row.id}>{columns.map((col,i)=><td key={i}>{col.render?col.render(row):row[col.key]}</td>)}<td>{actions.filter(action=>!action.isVisible || action.isVisible(row)).map(action=><button key={action.label}>{action.label}</button>)}</td></tr>)}</tbody></table>};
+    canPreviewCustomer:()=>false,Button:({children,...props})=><button {...props}>{children}</button>,
+    auth:{},API_BASE_URL:'https://example.invalid/api',clientApiRequest:history,directoryNames:{},storeInfoMap:{},
+    Modal:({isOpen,title,children})=>isOpen?<div role="dialog" aria-label={title}>{children}</div>:null,
+    Input:stub,Select:stub,Search:icon,Plus:icon,Edit:icon,Eye:icon,Save:icon,
+    getJSDate:value=>new Date(value),Table:({columns,data,actions})=><table><tbody>{data.map(row=><tr key={row.id} data-customer={row.id}>{columns.map((col,i)=><td key={i}>{col.render?col.render(row):row[col.key]}</td>)}<td>{actions.filter(action=>!action.isVisible || action.isVisible(row)).map(action=><button key={action.label} onClick={()=>action.onClick(row)}>{action.label}</button>)}</td></tr>)}</tbody></table>};
   // Exercise the existing Clientes component, not a duplicate rendering implementation.
   // eslint-disable-next-line no-new-func
   const View=new Function(...Object.keys(bindings),compiled+';return View;')(...Object.values(bindings));
@@ -48,17 +50,33 @@ test('Visão Geral retains canonical Customer without orders and consolidated am
   expect(container.querySelector('[data-customer="both"]').textContent).toContain('R$ 70.00');
   expect(container.querySelector('[data-customer="noOrders"]').textContent).toContain('R$ 0.00');
 });
-test('store history and new Staff registration are visible without global profile actions',()=>{
+test.each(['matriz','garavelo','loja-sintetica-03','__all__'])('store history and Staff registration offer read-only history in %s',async store=>{
   const operational=[
     {id:'historico:1',nome:'Compra legada',operationalOnly:true,hasStoreHistory:true},
     {id:'historico:2',nome:'Registro novo',operationalOnly:true,staffRegistered:true},
   ];
+  const history=jest.fn().mockResolvedValue({nome:'Compra legada',metricasComprasPorLoja:{},
+    totalPedidos:1,pedidos:[{lojaId:'loja-sintetica-03',referencia:'sintetico',valor:45,data:'2026-11-01',pagamento:'confirmado'}]});
   // eslint-disable-next-line testing-library/no-unnecessary-act
-  const View=view(rows,false,'matriz',{operational});act(()=>root.render(<View/>));
+  const View=view(rows,store==='__all__',store,{operational,history});act(()=>root.render(<View/>));
   expect(container.querySelector('[data-customer="historico:1"]').textContent).toContain('Histórico da loja');
   expect(container.querySelector('[data-customer="historico:2"]').textContent).toContain('Cadastro da loja');
-  expect(container.querySelector('[data-customer="historico:1"] button')).toBeNull();
-  expect(container.querySelector('[data-customer="historico:2"] button')).toBeNull();
+  for (const id of ['historico:1','historico:2']) {
+    const buttons=container.querySelectorAll('[data-customer="'+id+'"] button');
+    expect([...buttons].map(button=>button.textContent)).toEqual(['Visualizar histórico']);
+  }
+  await act(async()=>container.querySelector('[data-customer="historico:1"] button').click());
+  expect(history).toHaveBeenCalledWith(expect.objectContaining({
+    storeId:store,path:'/clientes/diretorio/historico/historico%3A1',
+  }));
+  expect(container.querySelector('[role="dialog"]').textContent).toContain('Pedido sintetico');
+});
+test.each([['loja-sintetica-03',true],['__all__',false]])('editing requires a concrete authorized store in %s',(store,canEdit)=>{
+  const profiles=[{...rows[0],canEditProfile:true},{...rows[1],canEditProfile:false,hasStoreHistory:true}];
+  const View=view(profiles,store==='__all__',store);act(()=>root.render(<View/>));
+  const actions=id=>[...container.querySelectorAll('[data-customer="'+id+'"] button')].map(button=>button.textContent);
+  expect(actions('both')).toEqual(canEdit?['Visualizar histórico','Editar']:['Visualizar histórico']);
+  expect(actions('noOrders')).toEqual(['Visualizar histórico']);
 });
 test('previous store operational data is never rendered after a store switch',()=>{
   const operational=[{id:'historico:1',nome:'Compra legada',operationalOnly:true,hasStoreHistory:true}];

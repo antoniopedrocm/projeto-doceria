@@ -9465,8 +9465,25 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
     const [searchTerm, setSearchTerm] = usePersistentState("clientes_searchTerm", "");
     const [showModal, setShowModal] = useState(false);
     const [editingClient, setEditingClient] = useState(null);
+    const [customerHistory, setCustomerHistory] = useState(null);
     const defaultClientFormData = { nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", bairro: "", cidade: "Goiania", uf: "GO", codigoIbge: "5208707", aniversario: "", status: "Ativo" };
     const [formData, setFormData] = useState(defaultClientFormData);
+    const visibleHistory = customerHistory?.userId === userId &&
+      customerHistory?.storeId === selectedStoreId ? customerHistory : null;
+
+    const showCustomerHistory = async (row) => {
+      const request = {userId, storeId:selectedStoreId, name:row.nome, pending:true};
+      setCustomerHistory(request);
+      try {
+        const result = await clientApiRequest({
+          auth, baseUrl:API_BASE_URL, storeId:selectedStoreId,
+          path:'/clientes/diretorio/historico/'+encodeURIComponent(row.id),
+        });
+        setCustomerHistory(current => current === request ? {...request, pending:false, result} : current);
+      } catch {
+        setCustomerHistory(current => current === request ? {...request, pending:false, failed:true} : current);
+      }
+    };
 
     const getPurchaseMetrics = (client) => {
       if (!isGeneralViewSelected && selectedStoreIdForAlarm) {
@@ -9574,9 +9591,14 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
         { header: "Última Compra", render: (row) => { const metrics = getPurchaseMetrics(row); return <div>{metrics.ultimaCompra ? getJSDate(metrics.ultimaCompra)?.toLocaleDateString('pt-BR') : '-'}{metrics.ultimoPedidoPendente && <p className="text-xs text-amber-800 mt-1">Último pedido: {getJSDate(metrics.ultimoPedidoPendente)?.toLocaleDateString('pt-BR')} · pagamento pendente</p>}</div>; } },
         { header: "Status", render: (row) => {const status=row.operationalOnly?(row.staffRegistered?'Cadastro da loja':'Histórico da loja'):(typeof row.status==='string'&&row.status.trim()?row.status.trim():'Não informado');return <span className={`px-3 py-1 rounded-full text-xs font-medium ${status === 'VIP' ? 'bg-purple-100 text-purple-800' : status==='Ativo'?'bg-green-100 text-green-800':'bg-gray-100 text-gray-700'}`}>{status}</span>;} }
     ];
-    const actions = [ ...(canPreviewCustomer(user?.role,user?.permissions,user?.permissionDetails)?[{icon:Eye,label:"Visualizar como Cliente — somente leitura",isVisible:row=>!row.operationalOnly,onClick:row=>{
-      window.history.pushState(null,'','/admin/customer-preview/'+encodeURIComponent(row.id));setPreviewId(row.id);
-    }}]:[]), { icon: Edit, label: "Editar", isVisible:row=>!row.operationalOnly, onClick: handleEdit }, { icon: Trash2, label: "Excluir", isVisible:row=>!row.operationalOnly, onClick: (row) => setConfirmDelete({ isOpen: true, onConfirm: () => deleteItem('clientes', row.id) }) } ];
+    const actions = [
+      {icon:Eye, label:"Visualizar histórico", isVisible:()=>Boolean(selectedStoreId), onClick:showCustomerHistory},
+      ...(canPreviewCustomer(user?.role,user?.permissions,user?.permissionDetails)
+        ? [{icon:Eye, label:"Visualizar como Cliente — somente leitura", isVisible:row=>!row.operationalOnly, onClick:row=>{
+          window.history.pushState(null,'','/admin/customer-preview/'+encodeURIComponent(row.id));setPreviewId(row.id);
+        }}] : []),
+      {icon:Edit, label:"Editar", isVisible:row=>!generalView && !row.operationalOnly && row.canEditProfile===true, onClick:handleEdit},
+    ];
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4"><div><h1 className="text-3xl font-bold bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">Gestão de Clientes</h1><p className="text-gray-600 mt-1">Gerencie seus clientes</p></div><Button onClick={handleNewClient} className="w-full md:w-auto"><Plus className="w-4 h-4" /> Novo Cliente</Button></div>
@@ -9584,6 +9606,35 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
         {customerDirectoryError && <div role="alert" className="p-4 rounded-xl border border-red-200 bg-red-50 text-red-800">{customerDirectoryError}<Button variant="secondary" onClick={()=>refreshCustomersRef.current()}>Tentar novamente</Button></div>}
         {customerDirectoryDiagnosticsAllowed && customerDirectoryIssues.length>0 && <details className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900"><summary>{customerDirectoryIssues.length} ocorrência(s) exigem regularização do histórico. Nenhum vínculo foi presumido.</summary><ul className="mt-2 space-y-2">{customerDirectoryIssues.map((issue,index)=><li key={issue.orderPath+index}>{({STORE_UNRESOLVED_OR_CONFLICTING:'Loja não identificada ou divergente no pedido.',CUSTOMER_UNRESOLVED_OR_CONFLICTING:'Referência do cliente ausente ou divergente.',OWNER_CONFLICT:'Titularidade do pedido divergente.',DUPLICATE_ORDER_CONFLICT:'Cópias do pedido com dados divergentes.',DUPLICATE_PAYMENT_CONFLICT:'Referências do pagamento com dados divergentes.',DUPLICATE_PAYMENT_REFERENCE:'Pagamento referenciado em mais de um pedido.'})[issue.reason] || 'Histórico precisa de conferência administrativa.'}<code className="block break-all text-xs">{issue.orderPath} · {issue.reason}</code></li>)}</ul></details>}
         <Table columns={columns} data={filteredClients} actions={actions} />
+        <Modal isOpen={Boolean(visibleHistory)} onClose={() => setCustomerHistory(null)} title="Histórico de compras" size="lg">
+          {visibleHistory?.pending && <p role="status">Carregando histórico…</p>}
+          {visibleHistory?.failed && <p role="alert">Não foi possível carregar o histórico. Atualize a lista e tente novamente.</p>}
+          {visibleHistory?.result && (() => {
+            const {nome, metricasComprasPorLoja, pedidos, totalPedidos} = visibleHistory.result;
+            const storeName = id => directoryNames[id] || storeInfoMap[id]?.nome || id;
+            const date = value => value ? getJSDate(value)?.toLocaleDateString('pt-BR') : 'Sem data';
+            const currency = value => Number(value).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+            return <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900">{nome}</h3>
+              {Object.entries(metricasComprasPorLoja).map(([id, metrics]) => <section key={id} className="rounded-lg border p-3">
+                <h4 className="font-medium">{storeName(id)}</h4>
+                <p>{metrics.numeroDeCompras} compra(s) confirmada(s) · {currency(metrics.valorEmCompras)}</p>
+                {metrics.ultimaCompra && <p>Última compra: {date(metrics.ultimaCompra)}</p>}
+                {metrics.pedidosPendentes>0 && <p>{metrics.pedidosPendentes} pedido(s) com pagamento pendente · {currency(metrics.valorPendente)}</p>}
+              </section>)}
+              {totalPedidos===0 && <p>Nenhuma compra elegível no histórico.</p>}
+              {totalPedidos>0 && pedidos===null && <p>A permissão Pedidos é necessária para ver as referências individuais.</p>}
+              {pedidos?.length>0 && <div>
+                <h4 className="font-medium">Pedidos</h4>
+                {totalPedidos>pedidos.length && <p>Exibindo os {pedidos.length} pedidos mais recentes de {totalPedidos}.</p>}
+                <ul className="divide-y">{pedidos.map(order=><li key={order.lojaId+'/'+order.referencia} className="py-2">
+                  <p>{storeName(order.lojaId)} · {date(order.data)} · {currency(order.valor)}</p>
+                  <p className="text-sm text-gray-600">Pedido {order.referencia} · Pagamento {order.pagamento}</p>
+                </li>)}</ul>
+              </div>}
+            </div>;
+          })()}
+        </Modal>
         <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingClient ? "Editar Cliente" : "Novo Cliente"} size="lg">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

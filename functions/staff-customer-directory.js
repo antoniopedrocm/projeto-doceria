@@ -3,6 +3,7 @@ const {ROOT,REGISTRATIONS,activeRelationship,key}=require('./customer-store-rela
 const {createHash} = require('node:crypto');
 const {getOrderCreatedAt} = require('./customer-orders');
 const {customerOwnerUids} = require('./customer-ownership');
+const {isClientStaffProfile} = require('./crm-client-edit');
 const {FieldPath} = require('firebase-admin/firestore');
 const validId = id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,150}$/.test(id);
 const hash = id => createHash('sha256').update(id).digest('hex');
@@ -74,7 +75,7 @@ function isCompletedAgreedPending(data) {
   return isCompletedOrder(data) && isAgreedLater(data) && !data.paymentId &&
     (payment == null || ['PENDING','PENDENTE','PENDING_SELECTION','UNKNOWN'].includes(String(payment).toUpperCase())) && validOrderTotal(data);
 }
-function buildCustomerDirectory({customers, aliases=[], orders, storeIds, general=false, includeRegistered=false, trustedRelationships=[], operational=false, registrations=[], allowUnassignedRoot=general}) {
+function buildCustomerDirectory({customers, aliases=[], orders, storeIds, general=false, includeRegistered=false, trustedRelationships=[], operational=false, registrations=[], allowUnassignedRoot=general, canEditStore=false, historyId=null, includeOrderHistory=false}) {
   const stores = new Set(storeIds), records = new Map(customers.map(c => [c.id,c.data]));
   const aliasIndex = new Map(aliases.map(a => [a.id,a.data]));
   const reviewed = new Map();
@@ -214,6 +215,7 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
     perStore.set(store,metric);
   }
   const output=[], operationalClients=[];
+  let history;
   for (const [id,profile] of clients) {
     const perStore=metrics.get(id),pending=pendingMetrics.get(id),hasPurchases=perStore.size>0,hasHistory=hasPurchases || pending.size>0;
     if (profile.operationalOnly && !hasHistory && !staffRegistered.has(id)) continue;
@@ -231,11 +233,31 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
     }
     const row=historical.get(id);
     const display=row?{...profile,id:'historico:'+hash(JSON.stringify([sortedStores,row.path])),nome:row.name || 'Cliente histórico'}:profile;
-    (row?operationalClients:output).push({...display,...(staffRegistered.has(id)?{staffRegistered:true}:{}),lojasVisitadas:[...new Set([...profile.lojasVisitadas,...(relationships.get(id) || []),...perStore.keys()])],
+    const entry={...display,...(staffRegistered.has(id)?{staffRegistered:true}:{}),lojasVisitadas:[...new Set([...profile.lojasVisitadas,...(relationships.get(id) || []),...perStore.keys()])],
       hasStorePurchases:hasPurchases,hasStoreHistory:hasHistory,numeroDeCompras:count,valorEmCompras:cents/100,ultimaCompra:latest,
-      valorPendente:pendingCents/100,pedidosPendentes:pendingCount,ultimoPedidoPendente:pendingLatest,metricasComprasPorLoja:scoped});
+      valorPendente:pendingCents/100,pedidosPendentes:pendingCount,ultimoPedidoPendente:pendingLatest,metricasComprasPorLoja:scoped};
+    if (operational) entry.canEditProfile = Boolean(!row && canEditStore && trusted.get(id)?.has(storeIds[0]));
+    (row?operationalClients:output).push(entry);
+    if (operational && historyId === entry.id) {
+      history = {nome: entry.nome, metricasComprasPorLoja: scoped, pedidos: null, totalPedidos: count+pendingCount};
+      if (includeOrderHistory) {
+        const summarize = ({order,store}, payment) => ({
+          referencia: order.path.split('/').at(-1),
+          lojaId: store,
+          data: getOrderCreatedAt(order.data),
+          valor: Math.round(Number(order.data.total)*100)/100,
+          pagamento: payment,
+        });
+        const confirmed = eligible.filter(order=>order.customerId===id && !order.conflict);
+        const waiting = [...unique.values()].filter(order=>order.customerId===id && isCompletedAgreedPending(order.order.data));
+        history.pedidos = [
+          ...confirmed.map(order=>summarize(order,'confirmado')),
+          ...waiting.map(order=>summarize(order,'pendente')),
+        ].sort((a,b)=>(b.data || '').localeCompare(a.data || '')).slice(0,100);
+      }
+    }
   }
-  return {clients:output,issues,...(operational?{operationalClients}:{})};
+  return {clients:output,issues,...(operational?{operationalClients}:{}),...(history?{history}:{})};
 }
 function createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePermissions}) {
   return async uid=>{
@@ -244,6 +266,7 @@ function createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePe
     const storeScope=directoryStoreScope(profile);
     const custom=(await db.doc('customProfiles/'+uid).get()).data() || {};
     return {role,...storeScope,scopedGeneral:profile.role==='dono',
+      canEditStore:storeId=>isClientStaffProfile(profile,storeId),
       permissions:sanitizePermissions(custom.permissions || profile.permissions,role)};
   };
 }
@@ -275,7 +298,7 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
     } else if (!validId(storeId) || (!scope.allStores && !scope.stores?.includes(storeId))) fail('Loja não autorizada.');
     return scope;
   }
-  async function load(storeId,scope,operational=false) {
+  async function load(storeId,scope,operational=false,historyId=null) {
     const budget={count:0};
     const general=storeId==='__all__' && scope.allStores===true;
     const storeIds=general?(await read(db.collection('lojas').select('nome'),budget)).map(s=>s.id):
@@ -304,7 +327,11 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
         orders.push(...results.filter(order=>orderReadStore(order)===store));
       }
     }
-    return buildCustomerDirectory({customers,aliases,orders,storeIds,trustedRelationships,general,includeRegistered:true,operational,registrations});
+    return buildCustomerDirectory({
+      customers,aliases,orders,storeIds,trustedRelationships,general,includeRegistered:true,operational,registrations,historyId,
+      canEditStore: operational && storeId!=='__all__' && scope.canEditStore?.(storeId),
+      includeOrderHistory: scope.permissions?.pedidos===true,
+    });
   }
   async function list(uid,storeId,operational=false) {
     const scope=await scopeFor(uid,storeId,operational); // Recheck user scope on every request.
@@ -319,7 +346,14 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
     if (!customer) fail('Cliente não autorizado nesta loja.',404);
     return customer;
   }
-  return {list,detail,scopeFor,invalidate:()=>{}};
+  async function history(uid,storeId,id) {
+    const scope=await scopeFor(uid,storeId,true);
+    if (!validId(id) && !/^historico:[0-9a-f]{64}$/.test(id)) fail('Histórico não disponível nesta loja.',404);
+    const result=await load(storeId,scope,true,id);
+    if (!result.history) fail('Histórico não disponível nesta loja.',404);
+    return result.history;
+  }
+  return {list,detail,history,scopeFor,invalidate:()=>{}};
 }
 function mountStaffCustomerDirectory(app,service,verifyToken) {
   const route=handler=>async(req,res)=>{
@@ -332,6 +366,7 @@ function mountStaffCustomerDirectory(app,service,verifyToken) {
     const result=await service.list(uid,req.query.lojaId,operational);
     return {...result,clients:result.clients.filter(c=>operational || req.query.usage==='crm' || req.query.lojaId==='__all__' || c.hasStoreHistory)};
   }));
+  app.get('/clientes/diretorio/historico/:id',route((uid,req)=>service.history(uid,req.query.lojaId,req.params.id)));
   app.get('/clientes/:id',route((uid,req)=>service.detail(uid,req.query.lojaId,req.params.id)));
 }
 module.exports={buildCustomerDirectory,isCompletedPurchase,orderStore,createDirectoryAuthorizer,createStaffCustomerDirectory,mountStaffCustomerDirectory,MAX_DOCUMENTS,CACHE_MS};
