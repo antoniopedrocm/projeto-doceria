@@ -329,3 +329,82 @@ test('only an explicitly global Dono loads the full Customers inventory', async 
   await assertSucceeds(getDoc(doc(globalOwner,'clientes/out-of-scope')));
   await assertFails(getDoc(doc(multiStoreAdmin,'clientes/out-of-scope')));
 });
+
+test('Gestão includes a newly registered store according to canonical ID and operator scope', async () => {
+  const store = 'loja-sintetica-03';
+  const buyer = 'comprador-multiloja-sintetico';
+  const {REGISTRATIONS, ROOT, key} = require('./customer-store-relationship');
+  const registry = createCustomerRegistry({db});
+  const list = async (uid, storeId, expectedStatus = 200) => {
+    const query = new URLSearchParams({usage: 'gestao', lojaId: storeId});
+    const response = await fetch(base + '/clientes/diretorio?' + query, {headers: {'x-test-uid': uid}});
+    assert.equal(response.status, expectedStatus, uid + '/' + storeId);
+    return response.json();
+  };
+
+  await db.doc('lojas/' + store).set({nome: 'Unidade sintética'});
+  await db.doc('users/staffNewStore').set({role: 'atendente', ativo: true, lojaIds: [store], permissions});
+  await db.doc('users/ownerWithNewStore').set({role: 'dono', ativo: true, lojaIds: ['matriz', store], permissions});
+  const empty = await list('staffNewStore', store);
+  assert.deepEqual(empty.clients, []);
+  assert.deepEqual(empty.operationalClients, []);
+
+  await db.doc('integrations/customerRegistry').set({state: 'READY'});
+  const registration = await registry.createOrGet({
+    phone: '62985551164', data: {nome: 'Cadastro sintético da nova loja'}, staffRegistrationStore: store,
+  });
+  assert.equal(registration.created, true);
+  const registrationPath = REGISTRATIONS + '/' + key(store, registration.customerId);
+  assert.equal((await db.doc(registrationPath).get()).data().storeId, store);
+  const afterRegistration = await list('staffNewStore', store);
+  assert.equal(afterRegistration.operationalClients.length, 1);
+  assert.equal(afterRegistration.operationalClients[0].staffRegistered, true);
+  assert.equal(afterRegistration.operationalClients[0].numeroDeCompras, 0);
+
+  await db.doc('clientes/' + buyer).set({nome: 'Comprador sintético'});
+  const totals = {matriz: 11, garavelo: 22, [store]: 33};
+  const dates = {matriz: '2026-11-01', garavelo: '2026-11-02', [store]: '2026-11-03'};
+  const displayName = id => 'Histórico sintético ' + id;
+  for (const [id, total] of Object.entries(totals)) {
+    await db.doc('lojas/' + id + '/pedidos/pedido-multiloja-sintetico').set({
+      clienteId: buyer, clienteNome: displayName(id), status: 'Finalizado', total, createdAt: dates[id],
+    });
+  }
+  for (const [uid, id] of [['staffA', 'matriz'], ['managerB', 'garavelo'], ['staffNewStore', store]]) {
+    const result = await list(uid, id);
+    const row = result.operationalClients.find(item => item.nome === displayName(id));
+    assert.ok(row);
+    assert.deepEqual(Object.keys(row.metricasComprasPorLoja), [id]);
+    assert.equal(row.valorEmCompras, totals[id]);
+    assert.equal(row.numeroDeCompras, 1);
+    assert.equal(row.ultimaCompra, new Date(dates[id]).toISOString());
+    assert.equal(result.operationalClients.some(item => item.staffRegistered &&
+      item.nome === 'Cadastro sintético da nova loja'), id === store);
+  }
+  await list('staffA', store, 403);
+  await list('staffNewStore', 'garavelo', 403);
+  const previousScope = await list('ownerBoth', '__all__');
+  assert.equal(previousScope.operationalClients.some(row => row.lojasVisitadas.includes(store)), false);
+  const expandedScope = await list('ownerWithNewStore', '__all__');
+  const scopedBuyer = expandedScope.operationalClients.find(row => row.nome === displayName(store));
+  assert.deepEqual(Object.keys(scopedBuyer.metricasComprasPorLoja).sort(), ['matriz', store].sort());
+  assert.equal(scopedBuyer.valorEmCompras, 44);
+  const global = await list('owner', '__all__');
+  const globalBuyer = global.clients.find(row => row.id === buyer);
+  assert.equal(globalBuyer.valorEmCompras, 66);
+  assert.equal(globalBuyer.numeroDeCompras, 3);
+  for (const [id, total] of Object.entries(totals)) {
+    const metrics = globalBuyer.metricasComprasPorLoja[id];
+    assert.equal(metrics.valorEmCompras, total);
+    assert.equal(metrics.numeroDeCompras, 1);
+    assert.equal(metrics.ultimaCompra, new Date(dates[id]).toISOString());
+  }
+  for (const id of [buyer, registration.customerId]) {
+    const profile = (await db.doc('clientes/' + id).get()).data();
+    assert.equal(profile.authOwnerUid, undefined);
+    assert.equal(profile.authOwnerUids, undefined);
+    assert.equal(profile.authIdentities, undefined);
+    assert.equal((await db.collection(ROOT).where('customerId', '==', id).get()).empty, true);
+    await assert.rejects(() => service.detail('staffNewStore', store, id), {httpStatus: 404});
+  }
+});
