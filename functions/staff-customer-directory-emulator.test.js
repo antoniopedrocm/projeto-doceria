@@ -4,7 +4,7 @@ process.env.GCLOUD_PROJECT='demo-staff-customer-directory';
 const {test,before,after}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
 const admin=require('firebase-admin'),express=require('express');
 const {initializeTestEnvironment,assertFails,assertSucceeds}=require('@firebase/rules-unit-testing');
-const {getDoc,getDocs,doc,collection,query,where}=require('firebase/firestore');
+const {getDoc,getDocs,doc,collection,query,where,setDoc}=require('firebase/firestore');
 const {createStaffCustomerDirectory,mountStaffCustomerDirectory,createDirectoryAuthorizer,CACHE_MS}=require('./staff-customer-directory');
 const {createCustomerRegistry}=require('./customer-registry');
 const app=admin.initializeApp({projectId:process.env.GCLOUD_PROJECT},'staff-directory-test'),db=app.firestore();
@@ -30,13 +30,13 @@ before(async()=>{
   await seed('matriz','pending-only','pendingOnly',10,{status:'Pendente',payment_status:'PENDING'});
   await db.doc('pedidos/legacy').set({storeId:'matriz',clientId:'old',status:'Finalizado',total:5,dataPedido:'2020-01-01'});
   await db.doc('pedidos/unknown').set({clienteId:'a',status:'Finalizado',total:999});
-  const authorize=createDirectoryAuthorizer({db,assertActiveUser:async uid=>{
+  const authorize=createDirectoryAuthorizer({db,assertActiveUser:async (uid,tx)=>{
     if(!uid)throw Object.assign(new Error('Login obrigatório'),{code:'unauthenticated'});
-    const p=(await db.doc('users/'+uid).get()).data();if(!p||p.ativo===false)throw Object.assign(new Error('Sem acesso'),{httpStatus:403});return p;
+    const ref=db.doc('users/'+uid);const p=(await(tx?tx.get(ref):ref.get())).data();if(!p||p.ativo===false)throw Object.assign(new Error('Sem acesso'),{httpStatus:403});return p;
   },normalizeRole:r=>r==='admin'?'dono':r.toLowerCase(),sanitizePermissions:p=>p||{}});
   const {relationshipRef}=require('./customer-store-relationship');
   for(const [id,stores] of Object.entries({a:['matriz'],b:['garavelo'],both:['matriz','garavelo'],registered:['matriz'],pendingOnly:['matriz'],noOrders:['matriz']}))for(const storeId of stores)await relationshipRef(db,storeId,id).set({schemaVersion:1,state:'ACTIVE',storeId,customerId:id,source:'REVIEWED_LEGACY',evidenceRef:'synthetic-reviewed-legacy'});
-  const directoryDb = {collection(path) {
+  const directoryDb = {doc:db.doc.bind(db), runTransaction:db.runTransaction.bind(db), collection(path) {
     const ref = db.collection(path);
     if (path !== 'clientes') return ref;
     return {
@@ -48,7 +48,7 @@ before(async()=>{
     };
   }};
   service=createStaffCustomerDirectory({db:directoryDb,authorize,resolveCustomerId:id=>registry.resolveId(id),now:()=>clock});
-  const http=express();mountStaffCustomerDirectory(http,service,async req=>{
+  const http=express();http.use(express.json());mountStaffCustomerDirectory(http,service,async req=>{
     const uid=req.headers['x-test-uid'];if(!uid)throw Object.assign(new Error('Login obrigatório'),{httpStatus:401});return {uid};
   });
   server=await new Promise(resolve=>{const s=http.listen(0,'127.0.0.1',()=>resolve(s));});base='http://127.0.0.1:'+server.address().port;
@@ -462,4 +462,111 @@ test('operational history exposes only the selected authorized projection and ga
   assert.equal(metricsOnly.totalPedidos, 1);
   await db.doc('users/' + actor).update({lojaIds:['matriz']});
   assert.equal((await get(actor, third, buyerRow.id)).status, 403);
+});
+
+test('store contacts are versioned, audited, and independent of orders and authenticated profiles',async()=>{
+  const {OPERATIONAL_PROFILES}=require('./crm-operational-contact');
+  const {REGISTRATIONS,key,relationshipRef}=require('./customer-store-relationship');
+  const third='loja-sintetica-03';
+  const operator='contact-operator';
+  await db.doc('users/'+operator).set({ativo:true,role:'atendente',lojaIds:[third],permissions:{clientes:true}});
+  await db.doc('lojas/'+third).set({nome:'Loja sintética'});
+  const orderRef=db.doc('lojas/matriz/pedidos/contact-history-synthetic');
+  const historyOrder={clienteId:'contact-legacy',clienteNome:'Cliente legado',status:'Finalizado',total:23,
+    createdAt:'2026-11-03',paymentStatus:'PAID',manualPaymentReceipt:{synthetic:true}};
+  await orderRef.set(historyOrder);
+  const party='contact-staff-registration';
+  await db.doc(REGISTRATIONS+'/'+key(third,party)).set({storeId:third,customerId:party,nome:'Cadastro sem compras'});
+  const request=(uid,view,row=null,body=null)=>{
+    const path=row?'/clientes/diretorio/historico/'+encodeURIComponent(row.id):'/clientes/diretorio';
+    return fetch(base+path+'?'+new URLSearchParams({lojaId:view,usage:'gestao'}),{
+      method:body?'PUT':'GET', headers:{'Content-Type':'application/json',...(uid?{'x-test-uid':uid}:{})},
+      ...(body?{body:JSON.stringify(body)}:{}),
+    });
+  };
+  async function directory(uid,store) {
+    const response=await request(uid,store);
+    assert.equal(response.status,200);
+    return response.json();
+  }
+  async function view(uid,store,row) {
+    const response=await request(uid,store,row);
+    assert.equal(response.status,200);
+    return response.json();
+  }
+  const payload=(contact,fields)=>({storeId:contact.storeId,targetId:contact.id,revision:contact.revision,fields});
+
+  const before=(await directory('staffA','matriz')).operationalClients.find(row=>row.nome==='Cliente legado');
+  assert.equal(before.canEditOperational,true);
+  const legacy=(await view('staffA','matriz',before)).cadastros[0];
+  const patch=payload(legacy,{nome:'Nome operacional',telefone:'(62) 90000-0000',aniversario:'2000-02-29'});
+  assert.equal((await request(null,'matriz',before,patch)).status,401);
+  assert.equal((await request('customer','matriz',before,patch)).status,403);
+  assert.equal((await request('noModule','matriz',before,patch)).status,403);
+  assert.equal((await request('managerB','matriz',before,patch)).status,403);
+  assert.equal((await request('staffA','matriz',before, {...patch,storeId:'garavelo'})).status,403);
+  assert.equal((await request('staffA','matriz',before, {...patch,fields:{paymentStatus:'PAID'}})).status,400);
+  assert.equal((await request('staffA','matriz',before,patch)).status,200);
+  assert.equal((await request('staffA','matriz',before,patch)).status,409);
+  const refreshed=(await directory('staffA','matriz')).operationalClients.find(row=>row.id===before.id);
+  assert.equal(refreshed.nome,'Nome operacional');
+  assert.equal(refreshed.telefone,'(62) 90000-0000');
+  const refreshedView=await view('staffA','matriz',refreshed);
+  assert.equal(refreshedView.cadastros[0].fields.aniversario,'2000-02-29');
+  assert.equal(refreshedView.metricasComprasPorLoja.matriz.valorEmCompras,23);
+  assert.deepEqual((await orderRef.get()).data(),historyOrder);
+  assert.equal((await db.doc('clientes/contact-legacy').get()).exists,false);
+  assert.equal((await relationshipRef(db,'matriz','contact-legacy').get()).exists,false);
+  const savedRef=db.doc(OPERATIONAL_PROFILES+'/'+legacy.id);
+  const entries=(await savedRef.collection('audit').get()).docs;
+  assert.equal(entries.length,1);
+  const audit=entries[0].data();
+  assert.equal(audit.actorUid,'staffA');
+  assert.equal(audit.storeId,'matriz');
+  assert.deepEqual(audit.changedFields.sort(),['aniversario','nome','telefone']);
+  assert.ok(audit.updatedAt.toMillis()>0);
+  const directRef=doc(rules.authenticatedContext('staffA').firestore(),savedRef.path);
+  await assertFails(getDoc(directRef));
+  await assertFails(setDoc(directRef,{note:'synthetic'}));
+
+  const staffRow=(await directory(operator,third)).operationalClients.find(row=>row.staffRegistered && row.nome==='Cadastro sem compras');
+  assert.equal(staffRow.canEditOperational,true);
+  const staffHistory=await view(operator,third,staffRow);
+  assert.equal(staffHistory.totalPedidos,0);
+  assert.equal(staffHistory.pedidos,null);
+  assert.equal((await request(operator,third,staffRow,payload(staffHistory.cadastros[0],{nome:'Cadastro atualizado'}))).status,200);
+  assert.equal((await directory(operator,third)).operationalClients.find(row=>row.id===staffRow.id).nome,'Cadastro atualizado');
+  const freshStaff=(await view(operator,third,staffRow)).cadastros[0];
+  await db.doc('customProfiles/'+operator).set({permissions:{clientes:false}});
+  assert.equal((await request(operator,third,staffRow,payload(freshStaff,{nome:'Revogado'}))).status,403);
+  await db.doc('customProfiles/'+operator).set({permissions:{clientes:true}});
+  await db.doc('users/'+operator).update({lojaIds:['matriz']});
+  assert.equal((await request(operator,third,staffRow,payload(freshStaff,{nome:'Revogado'}))).status,403);
+
+  const protectedRef=db.doc('clientes/both');
+  const globalBefore=(await protectedRef.get()).data();
+  const linkBefore=(await relationshipRef(db,'matriz','both').get()).data();
+  const general=(await directory('owner','__all__')).clients.find(row=>row.id==='both');
+  assert.equal(general.canEditOperational,true);
+  const multistore=await view('owner','__all__',general);
+  const matrix=multistore.cadastros.find(contact=>contact.storeId==='matriz');
+  const garavelo=multistore.cadastros.find(contact=>contact.storeId==='garavelo');
+  assert.ok(matrix.canEdit && garavelo.canEdit);
+  assert.equal((await request('owner','__all__',general,{targetId:matrix.id,revision:matrix.revision,fields:{nome:'Sem seleção'}})).status,403);
+  assert.equal((await request('ownerA','__all__',general,payload(garavelo,{nome:'Outra loja'}))).status,403);
+  assert.equal((await request('owner','__all__',general,payload(matrix,{nome:'Contato da Matriz',email:'contato@example.invalid'}))).status,200);
+  const update=await view('owner','__all__',general);
+  assert.equal(update.cadastros.find(contact=>contact.storeId==='matriz').fields.nome,'Contato da Matriz');
+  assert.equal(update.cadastros.find(contact=>contact.storeId==='garavelo').fields.nome,garavelo.fields.nome);
+  assert.deepEqual((await protectedRef.get()).data(),globalBefore);
+  assert.deepEqual((await relationshipRef(db,'matriz','both').get()).data(),linkBefore);
+  assert.equal((await directory('staffA','matriz')).clients.find(row=>row.id==='both').nome,'Contato da Matriz');
+  assert.equal((await directory('managerB','garavelo')).clients.find(row=>row.id==='both').nome,garavelo.fields.nome);
+
+  const sameRevision=update.cadastros.find(contact=>contact.storeId==='matriz');
+  // Two synthetic submissions from the same loaded form exercise transaction retries.
+  const concurrent=await Promise.all(['Contato A','Contato B'].map(nome=>
+    request('owner','__all__',general,payload(sameRevision,{nome}))));
+  assert.deepEqual(concurrent.map(response=>response.status).sort(),[200,409]);
+  assert.equal((await db.doc(OPERATIONAL_PROFILES+'/'+matrix.id).collection('audit').get()).size,2);
 });

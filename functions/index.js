@@ -354,16 +354,17 @@ const userHasAccessToStores = (requesterStores, targetStores) => {
   return targetStores.every((storeId) => requesterStores.includes(storeId));
 };
 
-const getUserProfile = async (uid) => {
-  const snap = await db.collection('users').doc(uid).get();
+const getUserProfile = async (uid, tx = null) => {
+  const ref = db.collection('users').doc(uid);
+  const snap = await (tx ? tx.get(ref) : ref.get());
   return snap.exists ? snap.data() : {};
 };
 
-const assertActiveUser = async (uid) => {
+const assertActiveUser = async (uid, tx = null) => {
   if (!uid) {
     throw new HttpsError('unauthenticated', 'Você precisa estar autenticado.');
   }
-  const profile = await getUserProfile(uid);
+  const profile = await getUserProfile(uid, tx);
   if (!Object.keys(profile).length) {
     throw new HttpsError('permission-denied', 'Perfil de usuário não encontrado.');
   }

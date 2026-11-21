@@ -9464,24 +9464,53 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
     const generalView = isGeneralViewSelected;
     const [searchTerm, setSearchTerm] = usePersistentState("clientes_searchTerm", "");
     const [showModal, setShowModal] = useState(false);
-    const [editingClient, setEditingClient] = useState(null);
     const [customerHistory, setCustomerHistory] = useState(null);
     const defaultClientFormData = { nome: "", email: "", telefone: "", cpf: "", documento: "", endereco: "", cep: "", bairro: "", cidade: "Goiania", uf: "GO", codigoIbge: "5208707", aniversario: "", status: "Ativo" };
     const [formData, setFormData] = useState(defaultClientFormData);
     const visibleHistory = customerHistory?.userId === userId &&
       customerHistory?.storeId === selectedStoreId ? customerHistory : null;
 
-    const showCustomerHistory = async (row) => {
-      const request = {userId, storeId:selectedStoreId, name:row.nome, pending:true};
+    const contactFields = [
+      ['nome', 'Nome', 'text', 150], ['telefone', 'Telefone de contato', 'tel', 30],
+      ['aniversario', 'Aniversário', 'date', 10], ['email', 'E-mail de contato', 'email', 254],
+      ['endereco', 'Endereço de contato', 'text', 200], ['cep', 'CEP', 'text', 9],
+      ['bairro', 'Bairro', 'text', 100], ['cidade', 'Cidade', 'text', 100], ['uf', 'UF', 'text', 2],
+    ];
+    const storeName = id => directoryNames[id] || storeInfoMap[id]?.nome || id;
+
+    const showCustomerHistory = async (row, editing = false) => {
+      const path = '/clientes/diretorio/historico/'+encodeURIComponent(row.id);
+      const request = {userId, storeId:selectedStoreId, row, path, editing, pending:true};
       setCustomerHistory(request);
       try {
-        const result = await clientApiRequest({
-          auth, baseUrl:API_BASE_URL, storeId:selectedStoreId,
-          path:'/clientes/diretorio/historico/'+encodeURIComponent(row.id),
-        });
-        setCustomerHistory(current => current === request ? {...request, pending:false, result} : current);
+        const result = await clientApiRequest({auth, baseUrl:API_BASE_URL, storeId:selectedStoreId, path});
+        const editable = (result.cadastros || []).filter(contact => contact.canEdit);
+        const contact = editing && !generalView && editable.length === 1 ? editable[0] : null;
+        setCustomerHistory(current => current === request ? {...request, pending:false, result,
+          contactId:contact?.id || '', draft:contact ? {...contact.fields} : {},
+        } : current);
       } catch {
         setCustomerHistory(current => current === request ? {...request, pending:false, failed:true} : current);
+      }
+    };
+
+    const saveOperationalContact = async (event) => {
+      event.preventDefault();
+      const view = visibleHistory;
+      const contact = view?.result?.cadastros?.find(item => item.id === view.contactId && item.canEdit);
+      if (!contact || view.saving) return;
+      const fields = Object.fromEntries(contactFields.map(([field]) => field)
+        .filter(field => (view.draft[field] ?? '') !== (contact.fields[field] ?? ''))
+        .map(field => [field, view.draft[field] ?? '']));
+      if (!Object.keys(fields).length) return;
+      const saving = {...view, saving:true, saveError:''};
+      setCustomerHistory(saving);
+      try {
+        await clientApiRequest({auth, baseUrl:API_BASE_URL, path:view.path, storeId:view.storeId, method:'PUT',
+          body:{storeId:contact.storeId, targetId:contact.id, revision:contact.revision, fields}});
+        setCustomerHistory(current => current === saving ? null : current);
+      } catch (error) {
+        setCustomerHistory(current => current === saving ? {...view, saving:false, saveError:error.message} : current);
       }
     };
 
@@ -9507,7 +9536,6 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
 
 
     const resetForm = () => {
-      setEditingClient(null);
       setFormData(defaultClientFormData);
     };
 
@@ -9543,36 +9571,13 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
             address: fiscalAddress,
         };
         try {
-            if (editingClient) {
-                const { id, ...clientData } = updateData;
-                await updateItem('clientes', editingClient.id, clientData);
-            } else {
-                await addItem('clientes', { ...updateData, numeroDeCompras: 0, valorEmCompras: 0 });
-            }
+            await addItem('clientes', { ...updateData, numeroDeCompras: 0, valorEmCompras: 0 });
             setShowModal(false);
             resetForm();
         } catch {
             // The shared write handlers already show the error. Keep the form
             // and its values open, without an unhandled promise rejection.
         }
-    };
-    const handleEdit = (client) => {
-      const firstAddress = Array.isArray(client.enderecos) ? client.enderecos[0] : null;
-      const address = client.address || firstAddress || {};
-      setEditingClient(client);
-      setFormData({
-        ...defaultClientFormData,
-        ...client,
-        cpf: client.cpf || client.documento || '',
-        documento: client.documento || client.cpf || '',
-        endereco: client.endereco || address.street || address.logradouro || address.enderecoCompleto || '',
-        cep: client.cep || address.zip || address.cep || '',
-        bairro: client.bairro || address.district || address.bairro || '',
-        cidade: client.cidade || address.city || address.cidade || 'Goiania',
-        uf: client.uf || address.state || address.uf || 'GO',
-        codigoIbge: client.codigoIbge || address.cityCode || address.codigoIbge || address.codigoMunicipio || '5208707',
-      });
-      setShowModal(true);
     };
     const columns = [
         { header: "Cliente", render: (row) => (<div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white font-bold shadow-md">{row.nome.charAt(0).toUpperCase()}</div><div><p className="font-semibold text-gray-800">{row.nome}</p><p className="text-sm text-gray-500">{row.email}</p></div></div>) },
@@ -9592,12 +9597,9 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
         { header: "Status", render: (row) => {const status=row.operationalOnly?(row.staffRegistered?'Cadastro da loja':'Histórico da loja'):(typeof row.status==='string'&&row.status.trim()?row.status.trim():'Não informado');return <span className={`px-3 py-1 rounded-full text-xs font-medium ${status === 'VIP' ? 'bg-purple-100 text-purple-800' : status==='Ativo'?'bg-green-100 text-green-800':'bg-gray-100 text-gray-700'}`}>{status}</span>;} }
     ];
     const actions = [
-      {icon:Eye, label:"Visualizar histórico", isVisible:()=>Boolean(selectedStoreId), onClick:showCustomerHistory},
-      ...(canPreviewCustomer(user?.role,user?.permissions,user?.permissionDetails)
-        ? [{icon:Eye, label:"Visualizar como Cliente — somente leitura", isVisible:row=>!row.operationalOnly, onClick:row=>{
-          window.history.pushState(null,'','/admin/customer-preview/'+encodeURIComponent(row.id));setPreviewId(row.id);
-        }}] : []),
-      {icon:Edit, label:"Editar", isVisible:row=>!generalView && !row.operationalOnly && row.canEditProfile===true, onClick:handleEdit},
+      {icon:Eye, label:"Visualizar", isVisible:()=>Boolean(selectedStoreId), onClick:row=>showCustomerHistory(row)},
+      {icon:Edit, label:"Editar", isVisible:row=>Boolean(selectedStoreId) && row.canEditOperational===true,
+        onClick:row=>showCustomerHistory(row,true)},
     ];
     return (
       <div className="p-4 md:p-6 space-y-6 bg-gradient-to-br from-pink-50/30 to-rose-50/30 min-h-screen">
@@ -9606,16 +9608,56 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
         {customerDirectoryError && <div role="alert" className="p-4 rounded-xl border border-red-200 bg-red-50 text-red-800">{customerDirectoryError}<Button variant="secondary" onClick={()=>refreshCustomersRef.current()}>Tentar novamente</Button></div>}
         {customerDirectoryDiagnosticsAllowed && customerDirectoryIssues.length>0 && <details className="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900"><summary>{customerDirectoryIssues.length} ocorrência(s) exigem regularização do histórico. Nenhum vínculo foi presumido.</summary><ul className="mt-2 space-y-2">{customerDirectoryIssues.map((issue,index)=><li key={issue.orderPath+index}>{({STORE_UNRESOLVED_OR_CONFLICTING:'Loja não identificada ou divergente no pedido.',CUSTOMER_UNRESOLVED_OR_CONFLICTING:'Referência do cliente ausente ou divergente.',OWNER_CONFLICT:'Titularidade do pedido divergente.',DUPLICATE_ORDER_CONFLICT:'Cópias do pedido com dados divergentes.',DUPLICATE_PAYMENT_CONFLICT:'Referências do pagamento com dados divergentes.',DUPLICATE_PAYMENT_REFERENCE:'Pagamento referenciado em mais de um pedido.'})[issue.reason] || 'Histórico precisa de conferência administrativa.'}<code className="block break-all text-xs">{issue.orderPath} · {issue.reason}</code></li>)}</ul></details>}
         <Table columns={columns} data={filteredClients} actions={actions} />
-        <Modal isOpen={Boolean(visibleHistory)} onClose={() => setCustomerHistory(null)} title="Histórico de compras" size="lg">
+        <Modal isOpen={Boolean(visibleHistory)} onClose={() => {if (!visibleHistory?.saving) setCustomerHistory(null);}}
+          title={visibleHistory?.editing ? "Editar cadastro da loja" : "Visualizar cliente"} size="lg">
           {visibleHistory?.pending && <p role="status">Carregando histórico…</p>}
           {visibleHistory?.failed && <p role="alert">Não foi possível carregar o histórico. Atualize a lista e tente novamente.</p>}
           {visibleHistory?.result && (() => {
-            const {nome, metricasComprasPorLoja, pedidos, totalPedidos} = visibleHistory.result;
-            const storeName = id => directoryNames[id] || storeInfoMap[id]?.nome || id;
+            const {nome, cadastros = [], metricasComprasPorLoja, pedidos, totalPedidos} = visibleHistory.result;
+            if (visibleHistory.editing) {
+              const editable = cadastros.filter(contact => contact.canEdit);
+              const contact = editable.find(item => item.id === visibleHistory.contactId);
+              if (!editable.length) return <p role="alert">Edição indisponível no escopo atual.</p>;
+              return <form onSubmit={saveOperationalContact} className="space-y-4">
+                {(generalView || editable.length > 1) && <Select label="Loja do cadastro" aria-label="Loja do cadastro"
+                  value={visibleHistory.contactId} disabled={visibleHistory.saving} onChange={event => {
+                    const selected = editable.find(item => item.id === event.target.value);
+                    setCustomerHistory({...visibleHistory, contactId:selected?.id || '', draft:{...selected?.fields}, saveError:''});
+                  }}>
+                  <option value="">Selecione o cadastro</option>
+                  {editable.map((item, index) => <option key={item.id} value={item.id}>
+                    {storeName(item.storeId)}{editable.filter(other => other.storeId === item.storeId).length > 1
+                      ? ' · '+item.fields.nome+' ('+(index+1)+')' : ''}
+                  </option>)}
+                </Select>}
+                {contact && <>
+                  <p className="text-sm text-gray-700">Cadastro operacional de {storeName(contact.storeId)}. O login e os pedidos do cliente ficam separados.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {contactFields.map(([field, label, type, maxLength])=><Input key={field} label={label} aria-label={label}
+                      type={type} maxLength={maxLength} required={field==='nome'} disabled={visibleHistory.saving}
+                      value={visibleHistory.draft[field] ?? ''} onChange={event=>{
+                        setCustomerHistory({...visibleHistory,draft:{...visibleHistory.draft,[field]:event.target.value}});
+                      }} />)}
+                  </div>
+                  {visibleHistory.saveError && <p role="alert">{visibleHistory.saveError}</p>}
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={visibleHistory.saving}><Save className="w-4 h-4" />Salvar cadastro da loja</Button>
+                  </div>
+                </>}
+              </form>;
+            }
             const date = value => value ? getJSDate(value)?.toLocaleDateString('pt-BR') : 'Sem data';
             const currency = value => Number(value).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
             return <div className="space-y-4">
               <h3 className="font-semibold text-gray-900">{nome}</h3>
+              {cadastros.map(({id, storeId, fields})=><section key={id} className="rounded-lg border p-3">
+                <h4 className="font-medium">Cadastro da loja · {storeName(storeId)}</h4>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {contactFields.filter(([field])=>fields[field]).map(([field,label])=><div key={field}>
+                    <dt className="text-sm text-gray-600">{label}</dt><dd>{field==='aniversario' ? fields[field].split('-').reverse().join('/') : fields[field]}</dd>
+                  </div>)}
+                </dl>
+              </section>)}
               {Object.entries(metricasComprasPorLoja).map(([id, metrics]) => <section key={id} className="rounded-lg border p-3">
                 <h4 className="font-medium">{storeName(id)}</h4>
                 <p>{metrics.numeroDeCompras} compra(s) confirmada(s) · {currency(metrics.valorEmCompras)}</p>
@@ -9632,10 +9674,17 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
                   <p className="text-sm text-gray-600">Pedido {order.referencia} · Pagamento {order.pagamento}</p>
                 </li>)}</ul>
               </div>}
+              {!visibleHistory.row.operationalOnly && canPreviewCustomer(user?.role,user?.permissions,user?.permissionDetails) &&
+                <Button variant="secondary" onClick={()=>{
+                  const id = visibleHistory.row.id;
+                  setCustomerHistory(null);
+                  window.history.pushState(null,'','/admin/customer-preview/'+encodeURIComponent(id));
+                  setPreviewId(id);
+                }}>Visualizar como Cliente — somente leitura</Button>}
             </div>;
           })()}
         </Modal>
-        <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title={editingClient ? "Editar Cliente" : "Novo Cliente"} size="lg">
+        <Modal isOpen={showModal} onClose={() => { setShowModal(false); resetForm(); }} title="Novo Cliente" size="lg">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Input label="Nome Completo" type="text" value={formData.nome} onChange={(e) => setFormData({...formData, nome: e.target.value})} required />
@@ -9652,7 +9701,7 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button variant="secondary" type="button" onClick={() => { setShowModal(false); resetForm(); }}>Cancelar</Button>
-              <Button type="submit"><Save className="w-4 h-4" />{editingClient ? "Salvar Alterações" : "Criar Cliente"}</Button>
+              <Button type="submit"><Save className="w-4 h-4" />Criar Cliente</Button>
             </div>
           </form>
         </Modal>
