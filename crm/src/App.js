@@ -9475,10 +9475,11 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
       customerHistory?.storeId === selectedStoreId ? customerHistory : null;
 
     const contactFields = [
-      ['nome', 'Nome', 'text', 150], ['telefone', 'Telefone de contato', 'tel', 30],
+      ['nome', 'Nome completo', 'text', 150], ['telefone', 'Telefone de contato', 'tel', 30],
       ['aniversario', 'Aniversário', 'date', 10], ['email', 'E-mail de contato', 'email', 254],
-      ['endereco', 'Endereço de contato', 'text', 200], ['cep', 'CEP', 'text', 9],
+      ['cpf', 'CPF/CNPJ', 'text', 18], ['endereco', 'Endereço de contato', 'text', 200], ['cep', 'CEP', 'text', 9],
       ['bairro', 'Bairro', 'text', 100], ['cidade', 'Cidade', 'text', 100], ['uf', 'UF', 'text', 2],
+      ['codigoIbge', 'Código IBGE', 'text', 7],
     ];
     const storeName = id => directoryNames[id] || storeInfoMap[id]?.nome || id;
 
@@ -9638,7 +9639,8 @@ function StaffApplication({ staffProfile = null, staffUid = null, canOpenCustome
                   <p className="text-sm text-gray-700">Cadastro operacional de {storeName(contact.storeId)}. O login e os pedidos do cliente ficam separados.</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {contactFields.map(([field, label, type, maxLength])=><Input key={field} label={label} aria-label={label}
-                      type={type} maxLength={maxLength} required={field==='nome'} disabled={visibleHistory.saving}
+                      type={type} maxLength={maxLength} inputMode={['cpf','cep','codigoIbge'].includes(field) ? 'numeric' : undefined}
+                      required={field==='nome'} disabled={visibleHistory.saving}
                       value={visibleHistory.draft[field] ?? ''} onChange={event=>{
                         setCustomerHistory({...visibleHistory,draft:{...visibleHistory.draft,[field]:event.target.value}});
                       }} />)}

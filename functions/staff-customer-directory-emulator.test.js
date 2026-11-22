@@ -505,20 +505,31 @@ test('store contacts are versioned, audited, and independent of orders and authe
   const before=(await directory('staffA','matriz')).operationalClients.find(row=>row.nome==='Cliente legado');
   assert.equal(before.canEditOperational,true);
   const legacy=(await view('staffA','matriz',before)).cadastros[0];
-  const patch=payload(legacy,{nome:'Nome operacional',telefone:'(62) 90000-0000',aniversario:'2000-02-29'});
+  const allFields={nome:'Nome operacional',telefone:'(62) 90000-0000',aniversario:'2000-02-29',
+    email:'cadastro@example.invalid',cpf:'529.982.247-25',cep:'75000-000',endereco:'Rua sintética',
+    bairro:'Centro',cidade:'Anápolis',uf:'GO',codigoIbge:'5201108'};
+  const patch=payload(legacy,allFields);
   assert.equal((await request(null,'matriz',before,patch)).status,401);
   assert.equal((await request('customer','matriz',before,patch)).status,403);
   assert.equal((await request('noModule','matriz',before,patch)).status,403);
   assert.equal((await request('managerB','matriz',before,patch)).status,403);
   assert.equal((await request('staffA','matriz',before, {...patch,storeId:'garavelo'})).status,403);
   assert.equal((await request('staffA','matriz',before, {...patch,fields:{paymentStatus:'PAID'}})).status,400);
+  for (const fields of [{cpf:'529.982.247-26'}, {cpf:'texto52998224725'}, {codigoIbge:'520110'}]) {
+    assert.equal((await request('staffA','matriz',before,payload(legacy,fields))).status,400);
+  }
+  const fiscalRef=db.doc('lojas/matriz/invoices/contact-previous-invoice');
+  const fiscalSnapshot={status:'authorized',customer:{document:'04252011000110',address:{cityCode:'5208707'}}};
+  await fiscalRef.set(fiscalSnapshot);
   assert.equal((await request('staffA','matriz',before,patch)).status,200);
   assert.equal((await request('staffA','matriz',before,patch)).status,409);
   const refreshed=(await directory('staffA','matriz')).operationalClients.find(row=>row.id===before.id);
   assert.equal(refreshed.nome,'Nome operacional');
   assert.equal(refreshed.telefone,'(62) 90000-0000');
   const refreshedView=await view('staffA','matriz',refreshed);
-  assert.equal(refreshedView.cadastros[0].fields.aniversario,'2000-02-29');
+  assert.equal(refreshed.cpf,undefined);
+  assert.equal(refreshed.codigoIbge,undefined);
+  assert.deepEqual(refreshedView.cadastros[0].fields,{...allFields,cpf:'52998224725'});
   assert.equal(refreshedView.metricasComprasPorLoja.matriz.valorEmCompras,23);
   assert.deepEqual((await orderRef.get()).data(),historyOrder);
   assert.equal((await db.doc('clientes/contact-legacy').get()).exists,false);
@@ -529,8 +540,11 @@ test('store contacts are versioned, audited, and independent of orders and authe
   const audit=entries[0].data();
   assert.equal(audit.actorUid,'staffA');
   assert.equal(audit.storeId,'matriz');
-  assert.deepEqual(audit.changedFields.sort(),['aniversario','nome','telefone']);
+  assert.deepEqual(audit.changedFields.sort(),Object.keys(allFields).sort());
   assert.ok(audit.updatedAt.toMillis()>0);
+  assert.equal((await request('staffA','matriz',refreshed,payload(refreshedView.cadastros[0],{email:'partial@example.invalid'}))).status,200);
+  assert.deepEqual((await savedRef.get()).data().fields,{...allFields,cpf:'52998224725',email:'partial@example.invalid'});
+  assert.deepEqual((await fiscalRef.get()).data(),fiscalSnapshot);
   const directRef=doc(rules.authenticatedContext('staffA').firestore(),savedRef.path);
   await assertFails(getDoc(directRef));
   await assertFails(setDoc(directRef,{note:'synthetic'}));
@@ -540,7 +554,7 @@ test('store contacts are versioned, audited, and independent of orders and authe
   const staffHistory=await view(operator,third,staffRow);
   assert.equal(staffHistory.totalPedidos,0);
   assert.equal(staffHistory.pedidos,null);
-  const staffPatch=payload(staffHistory.cadastros[0],{nome:'Cadastro atualizado'});
+  const staffPatch=payload(staffHistory.cadastros[0],{nome:'Cadastro atualizado',cpf:'04.252.011/0001-10',codigoIbge:'5201108'});
   for (const uid of [reader,legacyOperator]) {
     const readOnlyRow=(await directory(uid,third)).operationalClients.find(row=>row.id===staffRow.id);
     assert.equal(readOnlyRow.canEditOperational,false);
@@ -565,6 +579,9 @@ test('store contacts are versioned, audited, and independent of orders and authe
   assert.equal((await request(operator,third,staffRow,payload(freshStaff,{nome:'Revogado'}))).status,403);
 
   const protectedRef=db.doc('clientes/both');
+  await protectedRef.update({cpf_cnpj:'04.252.011/0001-10',dataAniversario:'29/02/2000',
+    address:{logradouro:'Legado',numero:'10',complemento:'Fundos',cep:'74000000',bairro:'Centro',
+      cidade:'Goiânia',uf:'GO',codigoMunicipio:5208707}});
   const globalBefore=(await protectedRef.get()).data();
   const linkBefore=(await relationshipRef(db,'matriz','both').get()).data();
   const general=(await directory('owner','__all__')).clients.find(row=>row.id==='both');
@@ -573,13 +590,19 @@ test('store contacts are versioned, audited, and independent of orders and authe
   const matrix=multistore.cadastros.find(contact=>contact.storeId==='matriz');
   const garavelo=multistore.cadastros.find(contact=>contact.storeId==='garavelo');
   assert.ok(matrix.canEdit && garavelo.canEdit);
+  assert.equal(matrix.fields.cpf,'04252011000110');
+  assert.equal(matrix.fields.codigoIbge,'5208707');
+  assert.equal(matrix.fields.aniversario,'2000-02-29');
+  assert.equal(matrix.fields.endereco,'Legado');
   assert.equal((await request('owner','__all__',general,{targetId:matrix.id,revision:matrix.revision,fields:{nome:'Sem seleção'}})).status,403);
   assert.equal((await request('ownerA','__all__',general,payload(garavelo,{nome:'Outra loja'}))).status,403);
-  assert.equal((await request('owner','__all__',general,payload(matrix,{nome:'Contato da Matriz',email:'contato@example.invalid'}))).status,200);
+  assert.equal((await request('owner','__all__',general,payload(matrix,{nome:'Contato da Matriz',email:'contato@example.invalid',cpf:'52998224725',codigoIbge:'5201108'}))).status,200);
   const update=await view('owner','__all__',general);
   assert.equal(update.cadastros.find(contact=>contact.storeId==='matriz').fields.nome,'Contato da Matriz');
   assert.equal(update.cadastros.find(contact=>contact.storeId==='matriz').fields.email,'contato@example.invalid');
   assert.equal(update.cadastros.find(contact=>contact.storeId==='garavelo').fields.email,garavelo.fields.email);
+  assert.equal(update.cadastros.find(contact=>contact.storeId==='garavelo').fields.cpf,'04252011000110');
+  assert.equal(update.cadastros.find(contact=>contact.storeId==='garavelo').fields.codigoIbge,'5208707');
   assert.equal(update.cadastros.find(contact=>contact.storeId==='garavelo').fields.nome,garavelo.fields.nome);
   assert.deepEqual((await protectedRef.get()).data(),globalBefore);
   assert.deepEqual((await relationshipRef(db,'matriz','both').get()).data(),linkBefore);

@@ -204,3 +204,46 @@ test('real Firestore reserves unique numbers for concurrent new drafts and one r
   const blocks = await Promise.all(numbers.map((number) => counter.parent.parent.collection('fiscalNumberBlocks').doc(`homologation_55_1_${number}`).get()));
   assert.ok(blocks.every((block) => block.exists && block.get('status') === 'reserved'));
 });
+
+test('prévia fiscal conserva destinatário do pedido e permite conferência manual do cadastro operacional', async () => {
+  const {OPERATIONAL_PROFILES, sanitizeOperationalPatch} = require('./crm-operational-contact');
+  const {key} = require('./customer-store-relationship');
+  const contact = sanitizeOperationalPatch({nome: 'Contato da loja', cpf: '04.252.011/0001-10',
+    endereco: 'Rua operacional', bairro: 'Centro', cidade: 'Anápolis', uf: 'GO', cep: '75000-000', codigoIbge: '5201108'});
+  const clientId = 'customer-fiscal-compatibility';
+  await db.doc('clientes/' + clientId).set({nome:'Cadastro legado', documento:'04252011000110',
+    address:{logradouro:'Endereço legado', numero:'18', complemento:'Fundos', bairro:'Centro',
+      cidade:'Anápolis', codigoMunicipio:'5201108', uf:'GO', cep:'75000000'}});
+  await db.doc(OPERATIONAL_PROFILES + '/' + key(storeId, clientId)).set({storeId, customerId:clientId, fields:contact, version:1});
+  const orderRef = db.doc(`lojas/${storeId}/pedidos/customer-fiscal-compatibility`);
+  const order = {clienteId:clientId, clienteNome:'Nome do pedido', clienteDocumento:'52998224725', status:'Finalizado',
+    clienteEnderecoFiscal:{logradouro:'Rua do pedido', numero:'20', complemento:'Sala B', bairro:'Centro',
+      cidade:'Goiânia', codigoMunicipio:'5208707', uf:'GO', cep:'74000000'},
+    formaPagamento:'Dinheiro', itens:manualInvoice().items};
+  await orderRef.set(order);
+  const fiscalOrder = await invoke('fiscalValidateOrder', {orderId:orderRef.id, modelOverride:55, operationCfop:'5101'});
+  assert.equal(fiscalOrder.preview.customer.document,'52998224725');
+  assert.equal(fiscalOrder.preview.customer.address.cityCode,'5208707');
+  assert.equal(fiscalOrder.preview.customer.address.number,'20');
+  assert.equal(fiscalOrder.preview.customer.address.complement,'Sala B');
+
+  const legacyRef = db.doc(`lojas/${storeId}/pedidos/customer-fiscal-legacy`);
+  await legacyRef.set({clienteId:clientId,status:'Finalizado',formaPagamento:'Dinheiro',itens:manualInvoice().items});
+  const legacy = await invoke('fiscalValidateOrder', {orderId:legacyRef.id, modelOverride:55, operationCfop:'5101'});
+  assert.equal(legacy.preview.customer.document,'04252011000110');
+  assert.equal(legacy.preview.customer.address.street,'Endereço legado');
+  assert.equal(legacy.preview.customer.address.cityCode,'5201108');
+  assert.equal(legacy.preview.customer.address.complement,'Fundos');
+
+  const draft = {...manualInvoice(), customer:{name:contact.nome, document:contact.cpf, address:{
+    street:contact.endereco, district:contact.bairro, city:contact.cidade, state:contact.uf,
+    zip:contact.cep, cityCode:contact.codigoIbge,
+  }}};
+  const saved = await invoke('fiscalSaveDraft', {model:55, manualInvoice:draft});
+  const checked = await invoke('fiscalCheckDraft', {draftId:saved.draftId});
+  assert.equal(checked.ok,true,checked.errors?.join(', '));
+  assert.equal(checked.preview.customer.document,'04252011000110');
+  assert.equal(checked.preview.customer.address.cityCode,'5201108');
+  assert.deepEqual((await orderRef.get()).data(),order);
+  assert.ok(transmissions.every(request => request.path === '/validate'));
+});

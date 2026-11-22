@@ -5,7 +5,7 @@ const {getOrderCreatedAt} = require('./customer-orders');
 const {customerOwnerUids} = require('./customer-ownership');
 const {canManageStores}=require('./store-owner-policy');
 const {isClientStaffProfile} = require('./crm-client-edit');
-const {OPERATIONAL_PROFILES, operationalFields, operationalRevision, sanitizeOperationalPatch}=require('./crm-operational-contact');
+const {OPERATIONAL_PROFILES, LEGACY_CONTACT_FIELDS, legacyOperationalFields, operationalFields, operationalRevision, sanitizeOperationalPatch}=require('./crm-operational-contact');
 const {FieldPath,FieldValue} = require('firebase-admin/firestore');
 const validId = id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,150}$/.test(id);
 const hash = id => createHash('sha256').update(id).digest('hex');
@@ -169,7 +169,7 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
     const data = savedContacts.get(id);
     const saved = data?.storeId === storeId && data.customerId === customerId &&
       Number.isSafeInteger(data.version) && data.version > 0 ? data : null;
-    const base = trusted.get(customerId)?.has(storeId) ? operationalFields(records.get(customerId)) : {};
+    const base = trusted.get(customerId)?.has(storeId) ? legacyOperationalFields(records.get(customerId)) : {};
     const fields = {...base, nome: base.nome || (typeof name === 'string' && name.trim().slice(0,150)) || 'Cliente histórico',
       ...operationalFields(saved?.fields)};
     const version = saved?.version || 0;
@@ -297,7 +297,13 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
         const target = targets.values().next().value;
         // A contact override changes only the directory display, not the canonical profile.
         const data = savedContacts.get(target.id);
-        if (data) Object.assign(entry, contactData(target).fields);
+        if (data) {
+          const publicFields = {...contactData(target).fields};
+          // Operational fiscal fields belong to the authorized contact detail.
+          delete publicFields.cpf;
+          delete publicFields.codigoIbge;
+          Object.assign(entry, publicFields);
+        }
       }
     }
     (row?operationalClients:output).push(entry);
@@ -393,11 +399,12 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
     if (operational) for (const store of storeIds) operationalProfiles.push(...await readScoped(
       db.collection(OPERATIONAL_PROFILES).where('storeId','==',store).select('storeId','customerId','fields','version')));
     let customers=[];
-    if(general)customers=await readScoped(db.collection('clientes').select(...profileFields,...identityFields));
+    const customerProjection = [...profileFields, ...identityFields, ...(operational && historyId ? LEGACY_CONTACT_FIELDS : [])];
+    if(general)customers=await readScoped(db.collection('clientes').select(...customerProjection));
     else {
       const ids=[...new Set(trustedRelationships.filter(row=>storeIds.includes(row.data.storeId)&&row.id===key(row.data.storeId,row.data.customerId)&&activeRelationship(row.data,row.data.storeId,row.data.customerId)).map(row=>row.data.customerId))];
       // Fetch only authorized canonical profiles; never cache authorization.
-      for(let i=0;i<ids.length;i+=10)customers.push(...await readScoped(db.collection('clientes').where(FieldPath.documentId(),'in',ids.slice(i,i+10)).select(...profileFields,...identityFields)));
+      for(let i=0;i<ids.length;i+=10)customers.push(...await readScoped(db.collection('clientes').where(FieldPath.documentId(),'in',ids.slice(i,i+10)).select(...customerProjection)));
     }
     const aliases=operational?[]:await readScoped(db.collection('integrations/customerRegistry/aliases').select('state','customerId'));
     const orders=[];
@@ -466,7 +473,7 @@ function createStaffCustomerDirectory({db,authorize,resolveCustomerId=async id=>
       const version = (saved?.version || 0) + 1;
       const updatedAt = FieldValue.serverTimestamp();
       const updates = Object.fromEntries(changedFields.map(field => [field,patch[field]]));
-      tx.set(ref,{storeId,customerId:target.customerId,fields:{...operationalFields(saved?.fields),...updates},version,updatedAt});
+      tx.set(ref,{storeId,customerId:target.customerId,fields:{...saved?.fields,...updates},version,updatedAt});
       tx.create(ref.collection('audit').doc(String(version)),{actorUid:uid,storeId,changedFields,updatedAt});
       return {updated:true};
     });

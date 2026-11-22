@@ -96,15 +96,20 @@ test.each(['matriz','garavelo','loja-sintetica-03','__all__'])('an authorized hi
     const select=container.querySelector('select');
     act(()=>{select.value=contact.id;select.dispatchEvent(new Event('change',{bubbles:true}));});
   }
-  const input=container.querySelector('input[aria-label="Telefone de contato"]');
-  act(()=>{
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'62900000000');
-    input.dispatchEvent(new Event('input',{bubbles:true}));
-  });
+  expect(container.querySelectorAll('form input')).toHaveLength(11);
+  for (const [label, value] of [['Telefone de contato','62900000000'], ['CPF/CNPJ','529.982.247-25'],
+    ['Código IBGE','5201108']]) {
+    const input=container.querySelector('input[aria-label="' + label + '"]');
+    expect(input.required).toBe(false);
+    act(()=>{
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,value);
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+  }
   await act(async()=>container.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
   expect(history).toHaveBeenLastCalledWith(expect.objectContaining({method:'PUT',storeId:store,
     path:'/clientes/diretorio/historico/historico%3A1',body:{storeId:contact.storeId,targetId:contact.id,
-      revision:contact.revision,fields:{telefone:'62900000000'}}}));
+      revision:contact.revision,fields:{telefone:'62900000000',cpf:'529.982.247-25',codigoIbge:'5201108'}}}));
   expect(container.querySelector('[role="dialog"]')).toBeNull();
 });
 test('previous store operational data is never rendered after a store switch',()=>{
