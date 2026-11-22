@@ -29,23 +29,26 @@ function orderStore(order) {
 }
 const ruleOwnerRoles = ['dono','owner','admin','adm','administrador','administradora','administrador_master'];
 const ruleStaffRoles = [...ruleOwnerRoles,'gerente','atendente','funcionario','contador','corretor'];
-function directoryStoreScope(profile) {
+function directoryStoreScope(profile, {forManagement = false} = {}) {
   // Match the Rules' role checks and store precedence, rejecting malformed assignments.
   const {role, lojaIds, lojas, lojaId, permissions} = profile;
-  if (!ruleStaffRoles.includes(role) || profile.ativo===false || profile.status==='inativo') {
+  if (!ruleStaffRoles.includes(role) || (!forManagement && (profile.ativo===false || profile.status==='inativo'))) {
     fail('Acesso restrito à equipe autorizada.');
   }
   if (['lojaIds','lojas'].some(field=>Object.hasOwn(profile,field) && !Array.isArray(profile[field]))) {
     fail('Atribuição de lojas inválida.');
   }
   const primary = Array.isArray(lojaId) ? lojaId : lojaId == null || lojaId === '' ? [] : [lojaId];
-  if ([...(lojaIds || []), ...(lojas || []), ...primary].some(id=>!validId(id))) {
+  if ([...(lojaIds || []), ...(lojas || []), ...primary].some(id=>!validId(id) || (forManagement && id === '__all__'))) {
     fail('Atribuição de lojas inválida.');
   }
   const stores = [...new Set(lojaIds?.length ? lojaIds : lojas?.length ? lojas : primary)];
   // Only the canonical Dono role can have global directory access without an assignment.
   const allStores = role === 'dono' && stores.length === 0;
-  if (!allStores && stores.length === 0) fail('Nenhuma loja autorizada.');
+  if (forManagement && [...(lojas || []), ...primary].some(id => !stores.includes(id))) {
+    fail('Atribuições de lojas contraditórias.');
+  }
+  if (!forManagement && !allStores && stores.length === 0) fail('Nenhuma loja autorizada.');
   if (role !== 'contador') return {allStores,stores,nestedStores:stores};
   const hasModule=['dashboard','pedidos','financeiro','relatorios','nota-fiscal'].some(module=>permissions?.[module]===true);
   const nestedStores=hasModule?stores.filter(store=>store===lojaId || (Array.isArray(lojaIds) && lojaIds.includes(store))):[];
@@ -324,6 +327,16 @@ function buildCustomerDirectory({customers, aliases=[], orders, storeIds, genera
   }
   return {clients:output,issues,...(operational?{operationalClients}:{}),...(history?{history,historyTargets}:{})};
 }
+function createOperationalCustomerEditPolicy(profile, custom, scope, permissions) {
+  const configured = custom.permissions || profile.permissions;
+  const grant = custom.permissionDetails?.clientes?.edit_operational_customer;
+  const editAllowed = grant === true ||
+    (grant === undefined && profile.role === 'dono' && scope.allStores && canManageStores(profile, custom));
+  const hasModule = permissions.clientes === true &&
+    (!Object.hasOwn(configured || {}, 'clientes') || configured.clientes === true);
+  return storeId => editAllowed && hasModule &&
+    (scope.allStores || scope.stores.includes(storeId)) && isClientStaffProfile(profile, storeId);
+}
 function createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePermissions}) {
   return async (uid, tx=null)=>{
     const profile=await assertActiveUser(uid,tx),role=normalizeRole(profile.role);
@@ -333,12 +346,8 @@ function createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePe
     const custom=(await (tx?tx.get(ref):ref.get())).data() || {};
     const configured=custom.permissions || profile.permissions;
     const permissions=sanitizePermissions(configured,role);
-    const editGrant = custom.permissionDetails?.clientes?.edit_operational_customer;
-    const editAllowed = editGrant === true ||
-      (editGrant === undefined && profile.role === 'dono' && storeScope.allStores && canManageStores(profile, custom));
     return {role,...storeScope,scopedGeneral:profile.role==='dono',
-      canEditStore:storeId=>editAllowed && permissions.clientes===true && (!Object.hasOwn(configured || {}, 'clientes') || configured.clientes===true) &&
-        (storeScope.allStores || storeScope.stores.includes(storeId)) && isClientStaffProfile(profile,storeId),
+      canEditStore: createOperationalCustomerEditPolicy(profile, custom, storeScope, permissions),
       permissions};
   };
 }
@@ -483,4 +492,4 @@ function mountStaffCustomerDirectory(app,service,verifyToken) {
   app.put('/clientes/diretorio/historico/:id',route((uid,req)=>service.editOperationalContact(uid,req.query.lojaId,req.params.id,req.body)));
   app.get('/clientes/:id',route((uid,req)=>service.detail(uid,req.query.lojaId,req.params.id)));
 }
-module.exports={canManageOperationalCustomerEdit,buildCustomerDirectory,isCompletedPurchase,orderStore,createDirectoryAuthorizer,createStaffCustomerDirectory,mountStaffCustomerDirectory,MAX_DOCUMENTS,CACHE_MS};
+module.exports={directoryStoreScope,createOperationalCustomerEditPolicy,canManageOperationalCustomerEdit,buildCustomerDirectory,isCompletedPurchase,orderStore,createDirectoryAuthorizer,createStaffCustomerDirectory,mountStaffCustomerDirectory,MAX_DOCUMENTS,CACHE_MS};

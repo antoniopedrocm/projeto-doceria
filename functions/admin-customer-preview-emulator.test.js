@@ -9,7 +9,7 @@ async function send(method,path,{actor='owner',session:token=session,body,auth=t
 }
 const prefix='/admin/customer-preview';
 before(async()=>{
-  for(const [name,profile] of Object.entries({owner:{role:'dono'},manager:{role:'gerente',lojaIds:['preview-one']},staff:{role:'atendente'},customer:{role:'cliente'}})) {
+  for(const [name,profile] of Object.entries({owner:{role:'dono'},manager:{role:'gerente',lojaIds:['preview-one']},staff:{role:'atendente',lojaIds:['preview-one']},customer:{role:'cliente'}})) {
     const response=await fetch('http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:`preview-${name}-${Date.now()}@example.test`,password:'Emulator-fixture-only-123!',returnSecureToken:true})});
     const user=await response.json();assert.ok(user.idToken);actors[name]={uid:user.localId,token:user.idToken};await db.doc('users/'+user.localId).set({...profile,ativo:true});
   }
@@ -125,4 +125,102 @@ test('the user-management flow preserves, grants and revokes operational custome
   await update('owner');
   assert.equal(await grant(),false);
   assert.equal((await ref.get()).data().permissions.clientes,true);
+});
+
+
+test('user management authorizes both store scopes and audits only approved changes to customer edit access', async () => {
+  const [matrix, second, third] = ['preview-one', 'preview-two', 'permission-third'];
+  const actorId = actors.manager.uid;
+  const ownerId = actors.owner.uid;
+  const auth = admin.auth();
+  const target = await auth.createUser({email: 'permission-target@example.test', displayName: 'Synthetic target'});
+  const scopedOwner = await auth.createUser({email: 'permission-owner@example.test'});
+  const targetRef = db.doc('users/' + target.uid);
+  const customRef = db.doc('customProfiles/' + target.uid);
+  const audit = db.collection('integrations/customerStoreRelationships/permissionAudit').where('targetUid', '==', target.uid);
+  await db.doc('lojas/' + third).set({nome: third});
+  await db.doc('users/' + scopedOwner.uid).set({role:'dono', ativo:true, lojaId:matrix, lojaIds:[matrix, second]});
+  await db.doc('users/' + actorId).update({lojaIds:[matrix, second, third]});
+  await targetRef.set({role:'atendente', ativo:true, lojaId:matrix, lojaIds:[matrix]});
+  await customRef.set({permissions:{clientes:true}, permissionDetails:{clientes:{edit_operational_customer:true}}});
+
+  const update = (uid, changes = {}) => handlers.updateUser.run({
+    auth:{uid},
+    data:{uid:target.uid, nome:'Synthetic target', email:target.email, role:'atendente', ...changes},
+  });
+  const snapshot = async () => ({
+    user: (await targetRef.get()).data(),
+    custom: (await customRef.get()).data(),
+    displayName: (await auth.getUser(target.uid)).displayName,
+    audits: (await audit.get()).size,
+  });
+  const denied = async (uid, changes, code = 'permission-denied') => {
+    const before = await snapshot();
+    await assert.rejects(() => update(uid, {...changes, nome:'Rejected name'}), {code});
+    assert.deepEqual(await snapshot(), before);
+  };
+
+  try {
+    await denied(actorId, {lojaIds:[second]});
+    await denied(actorId, {lojaIds:[matrix, second]});
+    await denied(actorId, {lojaIds:[third], editOperationalCustomer:true});
+    await denied(actorId, {lojaIds:[matrix], lojaId:second}, 'invalid-argument');
+    await denied(actorId, {lojaIds:null}, 'invalid-argument');
+    await denied(scopedOwner.uid, {lojaIds:[third]});
+
+    await update(actorId, {nome:'Routine edit'});
+    let current = await snapshot();
+    assert.equal(current.displayName, 'Routine edit');
+    assert.equal(current.custom.permissionDetails.clientes.edit_operational_customer, true);
+    assert.deepEqual(current.user.lojaIds, [matrix]);
+    assert.equal(current.audits, 0);
+
+    // Disabling the module leaves the stored grant dormant and does not permit moving it.
+    await update(actorId, {permissions:{clientes:false}});
+    await denied(actorId, {lojaIds:[second]});
+    await denied(actorId, {permissions:{clientes:true}});
+    await update(scopedOwner.uid, {lojaIds:[matrix, second], permissions:{clientes:true}});
+    await update(actorId, {lojaIds:[second]});
+    await denied(actorId, {lojaIds:[matrix]});
+
+    // The destination alone is insufficient, even when the grant is explicitly revoked.
+    await update(ownerId, {lojaIds:[second], editOperationalCustomer:false});
+    await db.doc('users/' + actorId).update({lojaIds:[matrix]});
+    await denied(actorId, {lojaIds:[matrix]});
+    await denied(actors.staff.uid, {lojaIds:[second], editOperationalCustomer:true});
+    await db.doc('users/' + actorId).update({lojaIds:[matrix, second, third]});
+    await update(actorId, {lojaIds:[third]});
+    current = await snapshot();
+    assert.deepEqual(current.user.lojaIds, [third]);
+    assert.equal(current.custom.permissions.clientes, true);
+    assert.equal(current.custom.permissionDetails.clientes.edit_operational_customer, false);
+
+    await update(ownerId, {lojaIds:[second], editOperationalCustomer:true});
+    const entries = (await audit.get()).docs.map(doc => doc.data());
+    const entry = entries.find(item => item.actorUid === ownerId &&
+      item.before.storeIds.includes(third) && item.after.storeIds.includes(second));
+    assert.ok(entry.timestamp.toMillis() > 0);
+    assert.equal(entry.targetUid, target.uid);
+    assert.deepEqual(entry.before, {storeIds:[third], allStores:false, stores:[], grant:false});
+    assert.deepEqual(entry.after, {storeIds:[second], allStores:false, stores:[second], grant:true});
+
+    await assert.rejects(() => handlers.updateUser.run({
+      auth:{uid:ownerId},
+      data:{uid:ownerId, nome:'Self', email:'self@example.test', role:'dono', editOperationalCustomer:true},
+    }), {code:'permission-denied'});
+
+    await update(ownerId, {editOperationalCustomer:false});
+    const [move, grant] = await Promise.allSettled([
+      update(actorId, {lojaIds:[third]}),
+      update(scopedOwner.uid, {editOperationalCustomer:true}),
+    ]);
+    assert.equal([move, grant].filter(result => result.status === 'fulfilled').length, 1);
+    const rejected = [move, grant].find(result => result.status === 'rejected');
+    assert.equal(rejected.reason.code, 'permission-denied');
+    current = await snapshot();
+    assert.deepEqual(current.user.lojaIds, move.status === 'fulfilled' ? [third] : [second]);
+    assert.equal(current.custom.permissionDetails.clientes.edit_operational_customer, grant.status === 'fulfilled');
+  } finally {
+    await db.doc('users/' + actorId).update({lojaIds:[matrix]});
+  }
 });

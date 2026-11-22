@@ -45,7 +45,7 @@ const {
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
 const db = admin.firestore();
-const {createStaffCustomerDirectory,mountStaffCustomerDirectory,createDirectoryAuthorizer,canManageOperationalCustomerEdit}=require('./staff-customer-directory');
+const {createStaffCustomerDirectory,mountStaffCustomerDirectory,createDirectoryAuthorizer,canManageOperationalCustomerEdit,directoryStoreScope,createOperationalCustomerEditPolicy}=require('./staff-customer-directory');
 const whatsappWorker = createWhatsAppWorker({db, logger});
 Object.assign(exports, createWhatsAppWorkerFunctions({db, onDocumentCreated, onDocumentUpdated, onSchedule, logger, worker: whatsappWorker}));
 Object.assign(exports, createWhatsAppAdminFunctions({db, onCall, HttpsError}));
@@ -309,7 +309,7 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
   };
 };
 
-const ensureCustomProfile = async (uid, role, permissionsInput = null, permissionDetailsInput = null, editOperationalCustomer, batch) => {
+const ensureCustomProfile = async (uid, role, permissionsInput = null, permissionDetailsInput = null, editOperationalCustomer, writer) => {
   const permissions = sanitizePermissions(permissionsInput, role);
   const permissionDetails = permissionDetailsInput &&
     typeof permissionDetailsInput === 'object' ?
@@ -323,7 +323,7 @@ const ensureCustomProfile = async (uid, role, permissionsInput = null, permissio
   }
   const ref = db.collection('customProfiles').doc(uid);
   const data = {uid, permissions, permissionDetails, role, updatedAt: FieldValue.serverTimestamp()};
-  if (batch) batch.set(ref, data, {merge: true});
+  if (writer) writer.set(ref, data, {merge: true});
   else await ref.set(data, {merge: true});
   return {permissions, permissionDetails};
 };
@@ -396,11 +396,12 @@ const onActiveUserCall = (optionsOrHandler, possibleHandler) => {
     onCall(guardedHandler);
 };
 
-const verifyManagementAccess = async (uid) => {
-  const profile = await assertActiveUser(uid);
+const verifyManagementAccess = async (uid, tx = null) => {
+  const profile = await assertActiveUser(uid, tx);
   const role = normalizeRole(profile.role);
   const stores = extractStoreIds(profile);
-  const customProfileSnap = await db.collection('customProfiles').doc(uid).get();
+  const ref = db.collection('customProfiles').doc(uid);
+  const customProfileSnap = await (tx ? tx.get(ref) : ref.get());
   const customProfile = customProfileSnap.exists ? customProfileSnap.data() : {};
   const permissions = sanitizePermissions(
       customProfile.permissions || profile.permissions,
@@ -483,13 +484,14 @@ const assertManagerCannotGrantUserStatusAccess = async (
     requester,
     targetUid,
     requestedPermissionDetails,
+    tx = null,
 ) => {
-  const existingFinancialDetails = targetUid ?
-    (await db.collection('customProfiles').doc(targetUid).get()).data()?.permissionDetails : null;
-  assertFinancialPermissionGrant(requester, requestedPermissionDetails, existingFinancialDetails);
+  const ref = targetUid ? db.collection('customProfiles').doc(targetUid) : null;
+  const existingDetails = ref ? (await (tx ? tx.get(ref) : ref.get())).data()?.permissionDetails : null;
+  assertFinancialPermissionGrant(requester, requestedPermissionDetails, existingDetails);
   if(requester.role!==ROLE_OWNER &&
       requestedPermissionDetails?.clientes?.view_customer_as_readonly===true &&
-      existingFinancialDetails?.clientes?.view_customer_as_readonly!==true) {
+      existingDetails?.clientes?.view_customer_as_readonly!==true) {
     throw new HttpsError('permission-denied','Somente um Dono pode conceder a visualização de clientes.');
   }
 
@@ -499,12 +501,7 @@ const assertManagerCannotGrantUserStatusAccess = async (
   ) {
     return;
   }
-  if (targetUid) {
-    const existingCustomProfile = await db.collection('customProfiles')
-        .doc(targetUid).get();
-    const existingDetails = existingCustomProfile.data()?.permissionDetails || {};
-    if (managerHasUserStatusPermission(existingDetails)) return;
-  }
+  if (managerHasUserStatusPermission(existingDetails)) return;
   throw new HttpsError(
       'permission-denied',
       'Somente um Dono pode conceder a permissão de gerenciar status de usuários.',
@@ -3358,17 +3355,31 @@ exports.createUser = onCall(async (request) => {
     }
 });
 
+function managementStoreScope(profile, code = 'permission-denied') {
+  try {
+    return directoryStoreScope(profile, {forManagement: true});
+  } catch (error) {
+    if (error.httpStatus === 403) throw new HttpsError(code, error.message);
+    throw error;
+  }
+}
+
+function operationalEditScope(profile, custom, scope) {
+  const permissions = sanitizePermissions(custom.permissions || profile.permissions, profile.role);
+  const canEdit = createOperationalCustomerEditPolicy(profile, custom, scope, permissions);
+  return {allStores: scope.allStores && canEdit(null), stores: scope.stores.filter(canEdit)};
+}
+
 // Atualiza um usuário
 exports.updateUser = onCall(async (request) => {
-
-    const requester = await verifyManagementAccess(request.auth?.uid);
+    const actorUid = request.auth?.uid;
     const {
         uid,
         nome,
         role,
         email,
         lojaId,
-        lojaIds = [],
+        lojaIds,
         permissions: requestedPermissions = null,
         permissionDetails: requestedPermissionDetails = null,
         editOperationalCustomer,
@@ -3380,98 +3391,126 @@ exports.updateUser = onCall(async (request) => {
         throw new HttpsError("invalid-argument", "Dados incompletos. UID, nome, role e email são obrigatórios.");
     }
 
-    assertNotManagingSelf(request.auth?.uid, uid);
+    assertNotManagingSelf(actorUid, uid);
 
     try {
-
-		const normalizedRole = normalizeRole(role);
-        if (normalizedRole === ROLE_OWNER && requester.role !== ROLE_OWNER) {
-            throw new HttpsError("permission-denied", "Somente donos podem atualizar dados de um dono.");
+        const rawRole = typeof role === 'string' ? role.toLowerCase() : '';
+        if (![ROLE_OWNER, 'owner', 'admin', ROLE_MANAGER, ROLE_ATTENDANT, ROLE_ACCOUNTANT, 'accountant'].includes(rawRole)) {
+            throw new HttpsError('invalid-argument', 'Papel administrativo inválido.');
         }
-
-        const existingProfile = await getUserProfile(uid);
-        const existingStores = extractStoreIds(existingProfile);
-        const existingRole = normalizeRole(existingProfile.role);
-        assertOwnerAccountChange(requester,normalizedRole,existingProfile.role,HttpsError);
-
-        let targetStores = [];
-        if (normalizedRole === ROLE_OWNER) {
-            targetStores = Array.isArray(lojaIds) ? lojaIds : existingStores;
-        } else {
-            const primaryStore = lojaId || (Array.isArray(lojaIds) && lojaIds.length ? lojaIds[0] : existingStores[0]);
-            if (!primaryStore) {
-                throw new HttpsError("invalid-argument", "lojaId é obrigatório para este tipo de usuário.");
+        const normalizedRole = rawRole === 'owner' ? ROLE_OWNER : normalizeRole(rawRole);
+        const authUpdatePayload = await db.runTransaction(async (tx) => {
+            const requester = await verifyManagementAccess(actorUid, tx);
+            const requesterScope = managementStoreScope(requester.profile);
+            const existingProfile = await getUserProfile(uid, tx);
+            const existingScope = managementStoreScope(existingProfile);
+            const existingStores = existingScope.stores;
+            const existingRole = normalizeRole(existingProfile.role);
+            const nextRole = persistedStaffRole(rawRole, normalizedRole, existingProfile);
+            assertOwnerAccountChange(requester, normalizedRole, existingProfile.role, HttpsError);
+            if (lojaIds !== undefined && !Array.isArray(lojaIds)) {
+                throw new HttpsError('invalid-argument', 'A lista de lojas deve ser uma lista válida.');
             }
-            targetStores = Array.isArray(lojaIds) && lojaIds.length ? lojaIds : [primaryStore];
-        }
-
-        const requesterStores = requester.role === ROLE_OWNER && requester.allStores ? targetStores : requester.stores;
-        const storesToCheck = targetStores.length ? targetStores : existingStores;
-
-        if (requester.role === ROLE_MANAGER) {
-            if (existingRole === ROLE_OWNER || normalizedRole === ROLE_OWNER) {
-                throw new HttpsError("permission-denied", "Gerentes não podem atualizar dados de donos.");
+            const suppliedPrimary = lojaId !== undefined && lojaId !== null && lojaId !== '';
+            if (suppliedPrimary && typeof lojaId !== 'string') {
+                throw new HttpsError('invalid-argument', 'Loja principal inválida.');
             }
-            if (!userHasAccessToStores(requesterStores, storesToCheck)) {
-                throw new HttpsError("permission-denied", "Você não pode atualizar usuários de outra loja.");
+            const proposedStores = lojaIds?.length ? lojaIds :
+                suppliedPrimary ? [lojaId] : lojaIds === undefined ? existingStores : [];
+            const proposedPrimary = suppliedPrimary ? lojaId : proposedStores[0] ?? null;
+            if (proposedPrimary !== null && !proposedStores.includes(proposedPrimary)) {
+                throw new HttpsError('invalid-argument', 'A loja principal deve constar nas lojas atribuídas.');
             }
-        } else if (requester.role === ROLE_OWNER && !requester.allStores && requester.stores.length) {
-            if (!userHasAccessToStores(requester.stores, storesToCheck)) {
-                throw new HttpsError("permission-denied", "Você não pode atualizar usuários de outra loja.");
+            const proposedProfile = {
+                ...existingProfile,
+                role: nextRole,
+                lojaId: proposedPrimary,
+                lojaIds: [...new Set(proposedStores)],
+            };
+            if (Object.hasOwn(existingProfile, 'lojas')) proposedProfile.lojas = proposedProfile.lojaIds;
+            const proposedScope = managementStoreScope(proposedProfile, 'invalid-argument');
+            const targetStores = proposedScope.stores;
+            if (!proposedScope.allStores && !targetStores.length) {
+                throw new HttpsError('invalid-argument', 'Selecione pelo menos uma loja para este usuário.');
             }
-        }
+            if (requester.role === ROLE_MANAGER && (existingRole === ROLE_OWNER || normalizedRole === ROLE_OWNER)) {
+                throw new HttpsError('permission-denied', 'Gerentes não podem atualizar dados de donos.');
+            }
+            if (!requesterScope.allStores && (
+                !existingStores.length || !targetStores.length ||
+                !userHasAccessToStores(requesterScope.stores, existingStores) ||
+                !userHasAccessToStores(requesterScope.stores, targetStores)
+            )) {
+                throw new HttpsError('permission-denied', 'Você não pode atualizar usuários de outra loja.');
+            }
 
-        assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
-        await assertManagerCannotGrantUserStatusAccess(
-            requester,
-            uid,
-            requestedPermissionDetails,
-        );
-        assertOperationalCustomerEditChange(requester, editOperationalCustomer, existingStores, targetStores, normalizedRole);
-        const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
-        const hasBankStartDatePayload = Object.prototype.hasOwnProperty.call(request.data || {}, "dataInicioBancoHoras");
-        const sanitizedBankStartDate = hasBankStartDatePayload
-          ? normalizePointBankStartDate(dataInicioBancoHoras)
-          : normalizePointBankStartDate(existingProfile.dataInicioBancoHoras);
+            const customRef = db.collection('customProfiles').doc(uid);
+            const custom = (await tx.get(customRef)).data() || {};
+            assertManagerCannotGrantOwnerAccess(requester, normalizedRole, requestedPermissions, targetStores);
+            await assertManagerCannotGrantUserStatusAccess(requester, uid, requestedPermissionDetails, tx);
+            assertOperationalCustomerEditChange(requester, editOperationalCustomer, existingStores, targetStores, normalizedRole);
+            if (requestedPermissions !== null && (
+                typeof requestedPermissions !== 'object' || Array.isArray(requestedPermissions)
+            )) {
+                throw new HttpsError('invalid-argument', 'Permissões inválidas.');
+            }
+            if (Object.hasOwn(requestedPermissions || {}, 'clientes') &&
+                typeof requestedPermissions.clientes !== 'boolean') {
+                throw new HttpsError('invalid-argument', 'A permissão Clientes deve ser verdadeira ou falsa.');
+            }
+            const existingPermissions = sanitizePermissions(custom.permissions || existingProfile.permissions, existingRole);
+            const permissionsToSave = {...(requestedPermissions || existingPermissions)};
+            const configured = custom.permissions || existingProfile.permissions;
+            if (!Object.hasOwn(requestedPermissions || {}, 'clientes') &&
+                Object.hasOwn(configured || {}, 'clientes')) {
+                permissionsToSave.clientes = configured.clientes === true;
+            }
+            const nextPermissions = sanitizePermissions(permissionsToSave, normalizedRole);
+            const oldGrant = custom.permissionDetails?.clientes?.edit_operational_customer;
+            const newGrant = editOperationalCustomer === undefined ? oldGrant : editOperationalCustomer;
+            const nextCustom = {...custom, permissions: nextPermissions,
+                permissionDetails: {clientes: {edit_operational_customer: newGrant}}};
+            const beforeEdit = operationalEditScope(existingProfile, custom, existingScope);
+            const afterEdit = operationalEditScope(proposedProfile, nextCustom, proposedScope);
+            const addsStores = !existingScope.allStores &&
+                (proposedScope.allStores || targetStores.some(store => !existingStores.includes(store)));
+            const expandsEdit = !beforeEdit.allStores &&
+                (afterEdit.allStores || afterEdit.stores.some(store => !beforeEdit.stores.includes(store)));
+            // A disabled Clientes module must not allow an existing grant to move to a new store.
+            if (editOperationalCustomer === undefined && (expandsEdit || (oldGrant === true && addsStores))) {
+                assertOperationalCustomerEditChange(requester, true, existingStores, targetStores, normalizedRole);
+            }
 
-        const authUpdatePayload = {
-            displayName: nome,
-        };
-
-        const currentUser = await auth.getUser(uid);
-        if (currentUser.email !== email) {
-            authUpdatePayload.email = email;
-        }
-
-        await auth.updateUser(uid, authUpdatePayload);
-
-        const existingPermissions = await getUserPermissions(uid, existingRole);
-        const batch = db.batch();
-        const {permissions, permissionDetails} = await ensureCustomProfile(
-            uid,
-            normalizedRole,
-            requestedPermissions || existingPermissions,
-            requestedPermissionDetails,
-            editOperationalCustomer,
-            batch,
-        );
-
-        // **CORREÇÃO APLICADA AQUI**
-        // Troca `update` por `set` com `merge: true` para evitar erros
-        // caso o documento do usuário não exista no Firestore.
-        batch.set(db.collection("users").doc(uid), {
-            nome: nome,
-            role: persistedStaffRole(role,normalizedRole,existingProfile),
-            email: email,
-            lojaId: targetStores[0] || null,
-            lojaIds: targetStores,
-            permissions,
-            permissionDetails,
-            jornadaTrabalho: sanitizedWorkSchedule,
-            dataInicioBancoHoras: sanitizedBankStartDate,
-        }, { merge: true });
-
-        await batch.commit();
+            const currentUser = await auth.getUser(uid);
+            const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
+            const bankStartDate = Object.hasOwn(request.data, 'dataInicioBancoHoras')
+                ? dataInicioBancoHoras : existingProfile.dataInicioBancoHoras;
+            const {permissions, permissionDetails} = await ensureCustomProfile(
+                uid, normalizedRole, permissionsToSave, requestedPermissionDetails, editOperationalCustomer, tx,
+            );
+            tx.set(db.collection('users').doc(uid), {
+                nome, role: nextRole, email, lojaId: proposedPrimary, lojaIds: targetStores,
+                ...(Object.hasOwn(existingProfile, 'lojas') ? {lojas: targetStores} : {}),
+                permissions, permissionDetails, jornadaTrabalho: sanitizedWorkSchedule,
+                dataInicioBancoHoras: normalizePointBankStartDate(bankStartDate),
+            }, {merge: true});
+            if (addsStores || existingScope.allStores !== proposedScope.allStores ||
+                existingStores.some(store => !targetStores.includes(store)) ||
+                oldGrant !== newGrant || beforeEdit.allStores !== afterEdit.allStores ||
+                beforeEdit.stores.length !== afterEdit.stores.length || expandsEdit) {
+                tx.create(db.collection('integrations/customerStoreRelationships/permissionAudit').doc(), {
+                    actorUid, targetUid: uid, timestamp: FieldValue.serverTimestamp(),
+                    before: {storeIds: existingStores, ...beforeEdit, grant: typeof oldGrant === 'boolean' ? oldGrant : null},
+                    after: {storeIds: targetStores, ...afterEdit, grant: typeof newGrant === 'boolean' ? newGrant : null},
+                });
+            }
+            return {
+                ...(currentUser.displayName !== nome ? {displayName: nome} : {}),
+                ...(currentUser.email !== email ? {email} : {}),
+            };
+        });
+        // Auth metadata is separate from the authorization transaction and has no side effects on retry.
+        if (Object.keys(authUpdatePayload).length) await auth.updateUser(uid, authUpdatePayload);
         return { message: "Usuário atualizado com sucesso!" };
     } catch (error) {
         rethrowHttpsError(error);
