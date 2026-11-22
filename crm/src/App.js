@@ -1070,7 +1070,11 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
     : [];
 
   return {
-    clientes: previewPermissionDetails(normalizedRole,permissions,details),
+    clientes: {
+      ...previewPermissionDetails(normalizedRole,permissions,details),
+      ...(typeof details?.clientes?.edit_operational_customer === 'boolean'
+        ? {edit_operational_customer: details.clientes.edit_operational_customer} : {}),
+    },
     'entre-lojas': {
       statuses: Array.from(new Set(validStatuses)),
       manageTransferDestinations: normalizedRole === ROLE_OWNER || (
@@ -10986,6 +10990,8 @@ const effectiveStoreName = useMemo(() => {
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
                         permissionDetails: permissionDetailsToPersist,
+                        ...(typeof userFormData.editOperationalCustomer === 'boolean'
+                            ? {editOperationalCustomer: userFormData.editOperationalCustomer} : {}),
                         applyCustomProfile,
                         jornadaTrabalho: jornadaTrabalhoToPersist,
                         ...(pointScheduleNeedsEffectiveDate ? {dataInicioJornada: pointScheduleEffectiveDate} : {}),
@@ -11005,6 +11011,8 @@ const effectiveStoreName = useMemo(() => {
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
                         permissionDetails: permissionDetailsToPersist,
+                        ...(typeof userFormData.editOperationalCustomer === 'boolean'
+                            ? {editOperationalCustomer: userFormData.editOperationalCustomer} : {}),
                         applyCustomProfile,
                         jornadaTrabalho: jornadaTrabalhoToPersist,
                         dataInicioBancoHoras: dataInicioBancoHorasToPersist
@@ -12335,6 +12343,10 @@ const effectiveStoreName = useMemo(() => {
                                 const canManageTransferDestinations = sanitizedDetails['entre-lojas']?.manageTransferDestinations === true;
                                 const selectedCaixaPermissions = sanitizedDetails.caixa || getEmptyCaixaPermissions();
                                 const canManageUserStatuses = sanitizedDetails.configuracoes?.gerenciarStatusUsuarios === true;
+                                const editCustomerChecked = userFormData.editOperationalCustomer ??
+                                    sanitizedDetails.clientes?.edit_operational_customer ??
+                                    (editingUser?.operationalCustomerEditInherited === true &&
+                                        normalizedFormRole === ROLE_OWNER && !userFormData.lojaIds?.length);
 
                                 return (
                                     <div key={item.id} className={(isEntreLojas || isFornecedores || isConfiguracoes) && moduleChecked ? 'sm:col-span-2 space-y-2' : ''}>
@@ -12360,7 +12372,7 @@ const effectiveStoreName = useMemo(() => {
                                                     });
                                                 }}
                                             />
-                                            {item.label}
+                                            {item.id === 'clientes' ? 'Clientes — consultar' : item.label}
                                             {isRequiredAttendantModule && (
                                                 <span className="text-xs text-gray-400">(acesso operacional obrigatório)</span>
                                             )}
@@ -12369,6 +12381,14 @@ const effectiveStoreName = useMemo(() => {
                                             )}
                                         </label>
 
+                                        {item.id==='clientes' && [ROLE_OWNER,ROLE_MANAGER,ROLE_ATTENDANT].includes(normalizedFormRole) && (
+                                          <label className="ml-6 flex items-center gap-2 text-sm"><input type="checkbox"
+                                            checked={editCustomerChecked}
+                                            disabled={!user?.manage_stores || (!moduleChecked && !editCustomerChecked)}
+                                            onChange={event=>setUserFormData(prev=>({...prev,editOperationalCustomer:event.target.checked}))}/>
+                                            Editar cadastro operacional de clientes (concessão pelo Dono)
+                                          </label>
+                                        )}
                                         {item.id==='clientes' && moduleChecked && userFormData.applyCustomProfile && ['dono','gerente'].includes(normalizedFormRole) && (
                                           <label className="ml-6 flex items-center gap-2 text-sm"><input type="checkbox"
                                             checked={sanitizedDetails.clientes?.view_customer_as_readonly===true}

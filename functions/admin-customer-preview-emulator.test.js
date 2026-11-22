@@ -105,3 +105,24 @@ test('Rules negam sessão, lease e auditoria a SDK Customer e Staff, inclusive D
     }
   } finally {await env.cleanup();}
 });
+
+test('the user-management flow preserves, grants and revokes operational customer editing',async()=>{
+  const staff=await admin.auth().getUser(actors.staff.uid);
+  const ref=db.doc('customProfiles/'+staff.uid);
+  const input={uid:staff.uid,nome:'Staff fixture',email:staff.email,role:'atendente',
+    lojaId:'preview-one',lojaIds:['preview-one'],permissions:{clientes:true}};
+  const update=(actor,changes={})=>handlers.updateUser.run({auth:{uid:actors[actor].uid},data:{...input,...changes}});
+  const grant=async()=>(await ref.get()).data()?.permissionDetails?.clientes?.edit_operational_customer;
+  await update('owner');
+  assert.equal(await grant(),undefined);
+  await assert.rejects(()=>update('manager',{editOperationalCustomer:true}),e=>e.code==='permission-denied');
+  await update('owner',{editOperationalCustomer:true});
+  assert.equal(await grant(),true);
+  await update('manager');
+  assert.equal(await grant(),true);
+  await assert.rejects(()=>update('manager',{editOperationalCustomer:false}),e=>e.code==='permission-denied');
+  await update('owner',{editOperationalCustomer:false});
+  await update('owner');
+  assert.equal(await grant(),false);
+  assert.equal((await ref.get()).data().permissions.clientes,true);
+});

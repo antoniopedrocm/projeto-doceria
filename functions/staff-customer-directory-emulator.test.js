@@ -454,7 +454,7 @@ test('operational history exposes only the selected authorized projection and ga
   assert.deepEqual(general.pedidos.map(row => row.lojaId).sort(), ['matriz',third].sort());
   assert.equal(general.totalPedidos, 2);
   const matrix = await (await get('staffA','matriz')).json();
-  assert.equal(matrix.clients.find(row => row.id === 'a').canEditProfile, true);
+  assert.equal(matrix.clients.find(row => row.id === 'a').canEditOperational, false);
 
   await db.doc('users/' + actor).update({permissions:{clientes:true}});
   const metricsOnly = await (await get(actor, third, buyerRow.id)).json();
@@ -468,8 +468,14 @@ test('store contacts are versioned, audited, and independent of orders and authe
   const {OPERATIONAL_PROFILES}=require('./crm-operational-contact');
   const {REGISTRATIONS,key,relationshipRef}=require('./customer-store-relationship');
   const third='loja-sintetica-03';
-  const operator='contact-operator';
-  await db.doc('users/'+operator).set({ativo:true,role:'atendente',lojaIds:[third],permissions:{clientes:true}});
+  const operator='contact-operator', reader='contact-reader', legacyOperator='contact-legacy-operator';
+  const editGrant=flag=>({permissionDetails:{clientes:{edit_operational_customer:flag}}});
+  for (const uid of [operator,reader,legacyOperator]) {
+    await db.doc('users/'+uid).set({ativo:true,role:'atendente',lojaIds:[third],permissions:{clientes:true}});
+  }
+  await db.doc('customProfiles/'+operator).set(editGrant(true));
+  await db.doc('customProfiles/'+reader).set(editGrant(false));
+  await db.doc('customProfiles/staffA').set(editGrant(true));
   await db.doc('lojas/'+third).set({nome:'Loja sintética'});
   const orderRef=db.doc('lojas/matriz/pedidos/contact-history-synthetic');
   const historyOrder={clienteId:'contact-legacy',clienteNome:'Cliente legado',status:'Finalizado',total:23,
@@ -534,12 +540,27 @@ test('store contacts are versioned, audited, and independent of orders and authe
   const staffHistory=await view(operator,third,staffRow);
   assert.equal(staffHistory.totalPedidos,0);
   assert.equal(staffHistory.pedidos,null);
-  assert.equal((await request(operator,third,staffRow,payload(staffHistory.cadastros[0],{nome:'Cadastro atualizado'}))).status,200);
+  const staffPatch=payload(staffHistory.cadastros[0],{nome:'Cadastro atualizado'});
+  for (const uid of [reader,legacyOperator]) {
+    const readOnlyRow=(await directory(uid,third)).operationalClients.find(row=>row.id===staffRow.id);
+    assert.equal(readOnlyRow.canEditOperational,false);
+    assert.equal((await view(uid,third,readOnlyRow)).cadastros[0].canEdit,false);
+    assert.equal((await request(uid,third,readOnlyRow,staffPatch)).status,403);
+  }
+  assert.equal((await request(operator,third,staffRow,staffPatch)).status,200);
   assert.equal((await directory(operator,third)).operationalClients.find(row=>row.id===staffRow.id).nome,'Cadastro atualizado');
   const freshStaff=(await view(operator,third,staffRow)).cadastros[0];
-  await db.doc('customProfiles/'+operator).set({permissions:{clientes:false}});
-  assert.equal((await request(operator,third,staffRow,payload(freshStaff,{nome:'Revogado'}))).status,403);
-  await db.doc('customProfiles/'+operator).set({permissions:{clientes:true}});
+  const pendingEdit=payload(freshStaff,{nome:'Revogado'});
+  for (const flag of [false,'true',null]) {
+    await db.doc('customProfiles/'+operator).set(editGrant(flag));
+    assert.equal((await view(operator,third,staffRow)).cadastros[0].canEdit,false);
+    assert.equal((await request(operator,third,staffRow,pendingEdit)).status,403);
+  }
+  assert.equal((await db.doc(OPERATIONAL_PROFILES+'/'+freshStaff.id).collection('audit').get()).size,1);
+  await db.doc('customProfiles/'+operator).set({...editGrant(true),permissions:{clientes:false}});
+  assert.equal((await request(operator,third,staffRow)).status,403);
+  assert.equal((await request(operator,third,staffRow,pendingEdit)).status,403);
+  await db.doc('customProfiles/'+operator).set({...editGrant(true), permissions:{clientes:true}});
   await db.doc('users/'+operator).update({lojaIds:['matriz']});
   assert.equal((await request(operator,third,staffRow,payload(freshStaff,{nome:'Revogado'}))).status,403);
 
@@ -562,6 +583,17 @@ test('store contacts are versioned, audited, and independent of orders and authe
   assert.deepEqual((await relationshipRef(db,'matriz','both').get()).data(),linkBefore);
   assert.equal((await directory('staffA','matriz')).clients.find(row=>row.id==='both').nome,'Contato da Matriz');
   assert.equal((await directory('managerB','garavelo')).clients.find(row=>row.id==='both').nome,garavelo.fields.nome);
+
+  const garaveloRow=(await directory('managerB','garavelo')).clients.find(row=>row.id==='both');
+  const gerencial=await view('managerB','garavelo',garaveloRow);
+  const managerPatch=payload(gerencial.cadastros[0],{nome:'Contato gerencial'});
+  assert.equal((await request('managerB','garavelo',garaveloRow,managerPatch)).status,403);
+  await db.doc('customProfiles/managerB').set(editGrant(true));
+  assert.equal((await request('managerB','garavelo',garaveloRow,managerPatch)).status,200);
+  await db.doc('customProfiles/adminA').set(editGrant(true));
+  const scopedAdmin=(await directory('adminA','matriz')).clients.find(row=>row.id==='both');
+  assert.equal(scopedAdmin.canEditOperational,false);
+  assert.equal((await view('adminA','matriz',scopedAdmin)).cadastros[0].canEdit,false);
 
   const sameRevision=update.cadastros.find(contact=>contact.storeId==='matriz');
   // Two synthetic submissions from the same loaded form exercise transaction retries.

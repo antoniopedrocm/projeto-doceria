@@ -3,6 +3,7 @@ const {ROOT,REGISTRATIONS,activeRelationship,key}=require('./customer-store-rela
 const {createHash} = require('node:crypto');
 const {getOrderCreatedAt} = require('./customer-orders');
 const {customerOwnerUids} = require('./customer-ownership');
+const {canManageStores}=require('./store-owner-policy');
 const {isClientStaffProfile} = require('./crm-client-edit');
 const {OPERATIONAL_PROFILES, operationalFields, operationalRevision, sanitizeOperationalPatch}=require('./crm-operational-contact');
 const {FieldPath,FieldValue} = require('firebase-admin/firestore');
@@ -49,6 +50,19 @@ function directoryStoreScope(profile) {
   const hasModule=['dashboard','pedidos','financeiro','relatorios','nota-fiscal'].some(module=>permissions?.[module]===true);
   const nestedStores=hasModule?stores.filter(store=>store===lojaId || (Array.isArray(lojaIds) && lojaIds.includes(store))):[];
   return {allStores,stores,nestedStores};
+}
+function canManageOperationalCustomerEdit(profile, existingStores, targetStores, custom) {
+  if (profile?.role !== 'dono' || !canManageStores(profile, custom)) return false;
+  let scope;
+  try {
+    scope = directoryStoreScope(profile);
+  } catch (error) {
+    if (error.httpStatus === 403) return false;
+    throw error;
+  }
+  return [existingStores, targetStores].filter(stores => stores !== null).every(stores =>
+    stores.every(id => validId(id) && id !== '__all__') &&
+    (scope.allStores || stores.length > 0 && stores.every(id => scope.stores.includes(id))));
 }
 function isCompletedOrder(data) {
   if (data.requiresReview === true || ['Cancelado','CANCELLED','CANCELED','REFUNDED'].includes(data.status) ||
@@ -319,8 +333,11 @@ function createDirectoryAuthorizer({db,assertActiveUser,normalizeRole,sanitizePe
     const custom=(await (tx?tx.get(ref):ref.get())).data() || {};
     const configured=custom.permissions || profile.permissions;
     const permissions=sanitizePermissions(configured,role);
+    const editGrant = custom.permissionDetails?.clientes?.edit_operational_customer;
+    const editAllowed = editGrant === true ||
+      (editGrant === undefined && profile.role === 'dono' && storeScope.allStores && canManageStores(profile, custom));
     return {role,...storeScope,scopedGeneral:profile.role==='dono',
-      canEditStore:storeId=>permissions.clientes===true && (!Object.hasOwn(configured || {}, 'clientes') || configured.clientes===true) &&
+      canEditStore:storeId=>editAllowed && permissions.clientes===true && (!Object.hasOwn(configured || {}, 'clientes') || configured.clientes===true) &&
         (storeScope.allStores || storeScope.stores.includes(storeId)) && isClientStaffProfile(profile,storeId),
       permissions};
   };
@@ -466,4 +483,4 @@ function mountStaffCustomerDirectory(app,service,verifyToken) {
   app.put('/clientes/diretorio/historico/:id',route((uid,req)=>service.editOperationalContact(uid,req.query.lojaId,req.params.id,req.body)));
   app.get('/clientes/:id',route((uid,req)=>service.detail(uid,req.query.lojaId,req.params.id)));
 }
-module.exports={buildCustomerDirectory,isCompletedPurchase,orderStore,createDirectoryAuthorizer,createStaffCustomerDirectory,mountStaffCustomerDirectory,MAX_DOCUMENTS,CACHE_MS};
+module.exports={canManageOperationalCustomerEdit,buildCustomerDirectory,isCompletedPurchase,orderStore,createDirectoryAuthorizer,createStaffCustomerDirectory,mountStaffCustomerDirectory,MAX_DOCUMENTS,CACHE_MS};

@@ -125,3 +125,14 @@ test.each([false,true])('technical diagnostics require the server-authorized fla
   const View=view(rows,true,null,{diagnostics,issues:[{orderPath:'pedidos/synthetic',reason:'STORE_UNRESOLVED_OR_CONFLICTING'}]});act(()=>root.render(<View/>));
   expect(container.textContent.includes('pedidos/synthetic')).toBe(diagnostics);
 });
+
+test.each([
+  [false,['Visualizar']],
+  [true,['Visualizar','Editar']],
+])('same customer and store expose editing only with the effective API flag %s',(canEditOperational,expected)=>{
+  const row={id:'historico:par',nome:'Cadastro da loja',operationalOnly:true,staffRegistered:true,canEditOperational};
+  const View=view([],false,'loja-sintetica-03',{operational:[row]});
+  act(()=>root.render(<View/>));
+  const buttons=container.querySelectorAll('[data-customer="historico:par"] button');
+  expect([...buttons].map(button=>button.textContent)).toEqual(expected);
+});

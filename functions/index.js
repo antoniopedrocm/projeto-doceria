@@ -45,7 +45,7 @@ const {
 // Inicializa o Firebase Admin SDK
 admin.initializeApp();
 const db = admin.firestore();
-const {createStaffCustomerDirectory,mountStaffCustomerDirectory,createDirectoryAuthorizer}=require('./staff-customer-directory');
+const {createStaffCustomerDirectory,mountStaffCustomerDirectory,createDirectoryAuthorizer,canManageOperationalCustomerEdit}=require('./staff-customer-directory');
 const whatsappWorker = createWhatsAppWorker({db, logger});
 Object.assign(exports, createWhatsAppWorkerFunctions({db, onDocumentCreated, onDocumentUpdated, onSchedule, logger, worker: whatsappWorker}));
 Object.assign(exports, createWhatsAppAdminFunctions({db, onCall, HttpsError}));
@@ -290,7 +290,11 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
   const normalizedRole = normalizeRole(role);
 
   return {
-    clientes: previewDetails(normalizedRole,permissions,details),
+    clientes: {
+      ...previewDetails(normalizedRole,permissions,details),
+      ...(typeof details?.clientes?.edit_operational_customer === 'boolean'
+        ? {edit_operational_customer: details.clientes.edit_operational_customer} : {}),
+    },
     'entre-lojas': {statuses},
     caixa: permissions?.fornecedores ?
       sanitizeCashPermissions(caixaDetails, role) :
@@ -305,19 +309,22 @@ const sanitizePermissionDetails = (permissionDetails, role, permissionsInput = n
   };
 };
 
-const ensureCustomProfile = async (uid, role, permissionsInput = null, permissionDetailsInput = null) => {
+const ensureCustomProfile = async (uid, role, permissionsInput = null, permissionDetailsInput = null, editOperationalCustomer, batch) => {
   const permissions = sanitizePermissions(permissionsInput, role);
   const permissionDetails = permissionDetailsInput &&
     typeof permissionDetailsInput === 'object' ?
     sanitizePermissionDetails(permissionDetailsInput, role, permissions) :
     getDefaultPermissionDetailsForRole(role, permissions);
-  await db.collection('customProfiles').doc(uid).set({
-    uid,
-    permissions,
-    permissionDetails,
-    role,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, {merge: true});
+  // Persist this capability only from the explicit, authorized admin change.
+  // Ordinary profile saves and permission reads preserve the existing grant.
+  delete permissionDetails.clientes.edit_operational_customer;
+  if (typeof editOperationalCustomer === 'boolean') {
+    permissionDetails.clientes.edit_operational_customer = editOperationalCustomer;
+  }
+  const ref = db.collection('customProfiles').doc(uid);
+  const data = {uid, permissions, permissionDetails, role, updatedAt: FieldValue.serverTimestamp()};
+  if (batch) batch.set(ref, data, {merge: true});
+  else await ref.set(data, {merge: true});
   return {permissions, permissionDetails};
 };
 
@@ -411,6 +418,7 @@ const verifyManagementAccess = async (uid) => {
       stores,
       allStores: stores.length === 0,
       profile,
+      canGrantOperationalCustomerEdit: customProfile.capabilities?.manage_stores !== false,
       permissions,
       permissionDetails,
     };
@@ -502,6 +510,18 @@ const assertManagerCannotGrantUserStatusAccess = async (
       'Somente um Dono pode conceder a permissão de gerenciar status de usuários.',
   );
 };
+
+function assertOperationalCustomerEditChange(requester, value, existingStores, targetStores, role) {
+  if (value === undefined) return;
+  if (typeof value !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'A permissão de edição de clientes deve ser verdadeira ou falsa.');
+  }
+  const allowed = requester.canGrantOperationalCustomerEdit === true &&
+    canManageOperationalCustomerEdit(requester.profile, existingStores, targetStores);
+  if (!allowed || (value && ![ROLE_OWNER, ROLE_MANAGER, ROLE_ATTENDANT].includes(role))) {
+    throw new HttpsError('permission-denied', 'Somente Dono autorizado para as lojas do usuário pode alterar a edição de clientes.');
+  }
+}
 
 const rethrowHttpsError = (error) => {
   if (error instanceof HttpsError) {
@@ -2936,6 +2956,7 @@ exports.listAllUsers = onCall(async (request) => {
                 lojaIds,
                 permissions,
                 permissionDetails,
+                operationalCustomerEditInherited: canManageOperationalCustomerEdit(firestoreData, [], [], storedProfile),
                 ativo: active,
                 status: active ? USER_STATUS_ACTIVE : USER_STATUS_INACTIVE,
                 authDisabled: userRecord.disabled === true,
@@ -3257,6 +3278,7 @@ exports.createUser = onCall(async (request) => {
         lojaIds = [],
         permissions: requestedPermissions = null,
         permissionDetails: requestedPermissionDetails = null,
+        editOperationalCustomer,
         jornadaTrabalho = null,
         dataInicioBancoHoras = "",
     } = request.data;
@@ -3296,6 +3318,7 @@ exports.createUser = onCall(async (request) => {
             null,
             requestedPermissionDetails,
         );
+        assertOperationalCustomerEditChange(requester, editOperationalCustomer, null, targetStores, normalizedRole);
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho);
         const sanitizedBankStartDate = normalizePointBankStartDate(dataInicioBancoHoras);
 
@@ -3309,6 +3332,7 @@ exports.createUser = onCall(async (request) => {
             normalizedRole,
             requestedPermissions,
             requestedPermissionDetails,
+            editOperationalCustomer,
         );
 
         await db.collection("users").doc(userRecord.uid).set({
@@ -3347,6 +3371,7 @@ exports.updateUser = onCall(async (request) => {
         lojaIds = [],
         permissions: requestedPermissions = null,
         permissionDetails: requestedPermissionDetails = null,
+        editOperationalCustomer,
         jornadaTrabalho = null,
         dataInicioBancoHoras = "",
     } = request.data;
@@ -3402,6 +3427,7 @@ exports.updateUser = onCall(async (request) => {
             uid,
             requestedPermissionDetails,
         );
+        assertOperationalCustomerEditChange(requester, editOperationalCustomer, existingStores, targetStores, normalizedRole);
         const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
         const hasBankStartDatePayload = Object.prototype.hasOwnProperty.call(request.data || {}, "dataInicioBancoHoras");
         const sanitizedBankStartDate = hasBankStartDatePayload
@@ -3420,17 +3446,20 @@ exports.updateUser = onCall(async (request) => {
         await auth.updateUser(uid, authUpdatePayload);
 
         const existingPermissions = await getUserPermissions(uid, existingRole);
+        const batch = db.batch();
         const {permissions, permissionDetails} = await ensureCustomProfile(
             uid,
             normalizedRole,
             requestedPermissions || existingPermissions,
             requestedPermissionDetails,
+            editOperationalCustomer,
+            batch,
         );
 
         // **CORREÇÃO APLICADA AQUI**
         // Troca `update` por `set` com `merge: true` para evitar erros
         // caso o documento do usuário não exista no Firestore.
-        await db.collection("users").doc(uid).set({
+        batch.set(db.collection("users").doc(uid), {
             nome: nome,
             role: persistedStaffRole(role,normalizedRole,existingProfile),
             email: email,
@@ -3442,6 +3471,7 @@ exports.updateUser = onCall(async (request) => {
             dataInicioBancoHoras: sanitizedBankStartDate,
         }, { merge: true });
 
+        await batch.commit();
         return { message: "Usuário atualizado com sucesso!" };
     } catch (error) {
         rethrowHttpsError(error);
