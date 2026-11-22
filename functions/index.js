@@ -3387,8 +3387,8 @@ exports.updateUser = onCall(async (request) => {
         dataInicioBancoHoras = "",
     } = request.data;
 
-    if (!uid || !nome || !role || !email) {
-        throw new HttpsError("invalid-argument", "Dados incompletos. UID, nome, role e email são obrigatórios.");
+    if (!uid || !nome || !role) {
+        throw new HttpsError("invalid-argument", "Dados incompletos. UID, nome e role são obrigatórios.");
     }
 
     assertNotManagingSelf(actorUid, uid);
@@ -3399,7 +3399,7 @@ exports.updateUser = onCall(async (request) => {
             throw new HttpsError('invalid-argument', 'Papel administrativo inválido.');
         }
         const normalizedRole = rawRole === 'owner' ? ROLE_OWNER : normalizeRole(rawRole);
-        const authUpdatePayload = await db.runTransaction(async (tx) => {
+        const updateDisplayName = await db.runTransaction(async (tx) => {
             const requester = await verifyManagementAccess(actorUid, tx);
             const requesterScope = managementStoreScope(requester.profile);
             const existingProfile = await getUserProfile(uid, tx);
@@ -3482,6 +3482,11 @@ exports.updateUser = onCall(async (request) => {
             }
 
             const currentUser = await auth.getUser(uid);
+            // Older CRM versions echo the login email. It is only an assertion.
+            if (Object.hasOwn(request.data, 'email') &&
+                (typeof email !== 'string' || email !== currentUser.email)) {
+                throw new HttpsError('invalid-argument', 'O e-mail de login não pode ser alterado neste formulário.');
+            }
             const sanitizedWorkSchedule = sanitizeEmployeeWorkSchedule(jornadaTrabalho || existingProfile.jornadaTrabalho);
             const bankStartDate = Object.hasOwn(request.data, 'dataInicioBancoHoras')
                 ? dataInicioBancoHoras : existingProfile.dataInicioBancoHoras;
@@ -3489,7 +3494,7 @@ exports.updateUser = onCall(async (request) => {
                 uid, normalizedRole, permissionsToSave, requestedPermissionDetails, editOperationalCustomer, tx,
             );
             tx.set(db.collection('users').doc(uid), {
-                nome, role: nextRole, email, lojaId: proposedPrimary, lojaIds: targetStores,
+                nome, role: nextRole, lojaId: proposedPrimary, lojaIds: targetStores,
                 ...(Object.hasOwn(existingProfile, 'lojas') ? {lojas: targetStores} : {}),
                 permissions, permissionDetails, jornadaTrabalho: sanitizedWorkSchedule,
                 dataInicioBancoHoras: normalizePointBankStartDate(bankStartDate),
@@ -3504,13 +3509,18 @@ exports.updateUser = onCall(async (request) => {
                     after: {storeIds: targetStores, ...afterEdit, grant: typeof newGrant === 'boolean' ? newGrant : null},
                 });
             }
-            return {
-                ...(currentUser.displayName !== nome ? {displayName: nome} : {}),
-                ...(currentUser.email !== email ? {email} : {}),
-            };
+            return currentUser.displayName !== nome;
         });
-        // Auth metadata is separate from the authorization transaction and has no side effects on retry.
-        if (Object.keys(authUpdatePayload).length) await auth.updateUser(uid, authUpdatePayload);
+        if (updateDisplayName) {
+            try {
+                await auth.updateUser(uid, {displayName: nome});
+            } catch (error) {
+                logger.error('Falha ao sincronizar nome de exibição após salvar usuário', {uid, code: error.code});
+                throw new HttpsError('unavailable',
+                    'Cadastro salvo. O nome de exibição do login não foi sincronizado. Reabra o cadastro e salve novamente para tentar a sincronização.',
+                    {firestoreSaved: true, displayNameSynced: false});
+            }
+        }
         return { message: "Usuário atualizado com sucesso!" };
     } catch (error) {
         rethrowHttpsError(error);
@@ -3522,10 +3532,6 @@ exports.updateUser = onCall(async (request) => {
         
         const detailedMessage = `Não foi possível atualizar o usuário. Motivo: ${error.message || 'Erro interno no servidor.'}`;
 
-        if (error.code === "auth/email-already-exists") {
-            throw new HttpsError("already-exists", "O email fornecido já está em uso por outro usuário.");
-        }
-        
         throw new HttpsError("internal", detailedMessage, { originalCode: error.code });
     }
 });

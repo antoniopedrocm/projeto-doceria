@@ -10938,7 +10938,7 @@ const effectiveStoreName = useMemo(() => {
 	const handleUserSubmit = async (e) => {
 	  e.preventDefault();
 
-	  if (!userFormData.email || !userFormData.nome || !userFormData.role) {
+	  if ((!editingUser && !userFormData.email) || !userFormData.nome || !userFormData.role) {
 		alert('Por favor, preencha todos os campos obrigatórios');
 		return;
 	  }
@@ -10985,7 +10985,6 @@ const effectiveStoreName = useMemo(() => {
                         uid: editingUser.uid,
                         nome: userFormData.nome,
                         role: selectedRole,
-                        email: userFormData.email,
                         lojaId: singleStoreId || null,
                         lojaIds: lojasSelecionadas,
                         permissions: permissionsToPersist,
@@ -12138,11 +12137,12 @@ const effectiveStoreName = useMemo(() => {
                     </div>
                     <Input label="Nome" value={userFormData.nome || ''} onChange={e => setUserFormData({...userFormData, nome: e.target.value})} required />
                     <Input
-                        label="Email"
+                        label="E-mail de login"
                         type="email"
                         value={userFormData.email || ''}
                         onChange={(e) => setUserFormData({...userFormData, email: e.target.value})}
-                        required
+                        readOnly={Boolean(editingUser)}
+                        required={!editingUser}
                     />
                     {!editingUser && (
                         <Input

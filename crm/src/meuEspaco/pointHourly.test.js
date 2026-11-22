@@ -356,7 +356,7 @@ test.each([true, false])('actual profile submit sends the selected date only whe
   const payloads = [];
   const alerts = [];
   const dependencies = {
-    userFormData: {email: 'employee@example.test', nome: 'Employee', role: 'atendente', lojaId: 'store', lojaIds: ['store'],
+    userFormData: {email: changingSchedule ? 'employee@example.test' : '', nome: 'Employee', role: 'atendente', lojaId: 'store', lojaIds: ['store'],
       applyCustomProfile: true, permissions: {}, permissionDetails: {}, jornadaTrabalho: hourly, dataInicioBancoHoras: ''},
     editingUser: {uid: 'employee'}, pointScheduleNeedsEffectiveDate: changingSchedule, pointScheduleEffectiveDate: '2026-11-01',
     isValidPointScheduleDate, sanitizeEmployeeWorkSchedule,
@@ -375,6 +375,7 @@ test.each([true, false])('actual profile submit sends the selected date only whe
   await submit({preventDefault: jest.fn()});
   expect(alerts).toEqual(['Usuário atualizado com sucesso!']);
   expect(payloads).toHaveLength(1);
+  expect(payloads[0]).not.toHaveProperty('email');
   expect(Object.prototype.hasOwnProperty.call(payloads[0], 'dataInicioJornada')).toBe(changingSchedule);
   expect(payloads[0].dataInicioJornada).toBe(changingSchedule ? '2026-11-01' : undefined);
 });

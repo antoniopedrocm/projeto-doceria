@@ -224,3 +224,73 @@ test('user management authorizes both store scopes and audits only approved chan
     await db.doc('users/' + actorId).update({lojaIds:[matrix]});
   }
 });
+
+
+test('administrative saves leave login email with Auth and report a failed display name sync', async (t) => {
+  const auth = admin.auth();
+  const target = await auth.createUser({email: 'staff-login@example.test', displayName: 'Original name'});
+  const ref = db.doc('users/' + target.uid);
+  const custom = db.doc('customProfiles/' + target.uid);
+  const audit = db.collection('integrations/customerStoreRelationships/permissionAudit').where('targetUid', '==', target.uid);
+  const oldProfile = {role: 'atendente', ativo: true, nome: 'Original name',
+    email: 'historical-copy@example.test', lojaIds: ['preview-one'], lojaId: 'preview-one'};
+  await ref.set(oldProfile);
+  const update = (changes) => handlers.updateUser.run({
+    auth: {uid: actors.owner.uid},
+    data: {uid: target.uid, nome: 'Updated name', role: 'atendente', ...changes},
+  });
+  const writeAuth = auth.updateUser.bind(auth);
+  let releaseFirstWrite;
+  const waitForRelease = new Promise(resolve => { releaseFirstWrite = resolve; });
+  let firstWriteStarted;
+  const waitForFirstWrite = new Promise(resolve => { firstWriteStarted = resolve; });
+  let failDisplayNameSync = false;
+  const writes = t.mock.method(auth, 'updateUser', async (uid, patch) => {
+    assert.deepEqual(Object.keys(patch), ['displayName']);
+    if (patch.displayName === 'First save') {
+      firstWriteStarted();
+      await waitForRelease;
+    }
+    if (failDisplayNameSync) {
+      throw Object.assign(new Error('Synthetic Auth failure'), {code: 'auth/internal-error'});
+    }
+    return writeAuth(uid, patch);
+  });
+
+  await assert.rejects(() => update({email: 'new-login@example.test', editOperationalCustomer: true}),
+    {code: 'invalid-argument'});
+  assert.deepEqual((await ref.get()).data(), oldProfile);
+  assert.equal((await custom.get()).exists, false);
+  assert.equal((await audit.get()).size, 0);
+  assert.equal(writes.mock.callCount(), 0);
+  assert.equal((await auth.getUser(target.uid)).email, target.email);
+
+  const pendingSave = update({nome: 'First save', email: target.email});
+  try {
+    await Promise.race([
+      waitForFirstWrite,
+      pendingSave.then(() => { throw new Error('Expected the display name sync to be in progress.'); }),
+    ]);
+    await writeAuth(target.uid, {email: 'verified-new-login@example.test'});
+    await update({nome: 'Second save', lojaIds: ['preview-two'], editOperationalCustomer: true});
+  } finally {
+    releaseFirstWrite();
+    await pendingSave;
+  }
+  assert.equal((await auth.getUser(target.uid)).email, 'verified-new-login@example.test');
+  assert.equal((await ref.get()).get('email'), oldProfile.email);
+  assert.equal((await ref.get()).get('nome'), 'Second save');
+  assert.deepEqual((await ref.get()).get('lojaIds'), ['preview-two']);
+  assert.equal((await custom.get()).get('permissionDetails.clientes.edit_operational_customer'), true);
+
+  failDisplayNameSync = true;
+  await assert.rejects(() => update({nome: 'Retry sync'}), error =>
+    error.code === 'unavailable' && error.details.firestoreSaved && !error.details.displayNameSynced);
+  assert.equal((await ref.get()).get('nome'), 'Retry sync');
+  assert.notEqual((await auth.getUser(target.uid)).displayName, 'Retry sync');
+  failDisplayNameSync = false;
+  await update({nome: 'Retry sync'});
+  assert.equal((await auth.getUser(target.uid)).displayName, 'Retry sync');
+  assert.equal((await auth.getUser(target.uid)).email, 'verified-new-login@example.test');
+  assert.equal((await audit.get()).size, 1);
+});

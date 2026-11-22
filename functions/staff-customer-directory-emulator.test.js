@@ -578,6 +578,8 @@ test('store contacts are versioned, audited, and independent of orders and authe
   assert.equal((await request('owner','__all__',general,payload(matrix,{nome:'Contato da Matriz',email:'contato@example.invalid'}))).status,200);
   const update=await view('owner','__all__',general);
   assert.equal(update.cadastros.find(contact=>contact.storeId==='matriz').fields.nome,'Contato da Matriz');
+  assert.equal(update.cadastros.find(contact=>contact.storeId==='matriz').fields.email,'contato@example.invalid');
+  assert.equal(update.cadastros.find(contact=>contact.storeId==='garavelo').fields.email,garavelo.fields.email);
   assert.equal(update.cadastros.find(contact=>contact.storeId==='garavelo').fields.nome,garavelo.fields.nome);
   assert.deepEqual((await protectedRef.get()).data(),globalBefore);
   assert.deepEqual((await relationshipRef(db,'matriz','both').get()).data(),linkBefore);
